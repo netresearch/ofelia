@@ -2,12 +2,8 @@ package cli
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"strings"
-	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -79,6 +75,50 @@ func getLabels(d *docker.Client, filterFlags []string) (map[string]map[string]st
 	return labels, nil
 }
 
+||||||| parent of 992b1a2 (Applied changes)
+func getLabels(d *docker.Client) (map[string]map[string]string, error) {
+	// sleep before querying containers
+	// because docker not always propagating labels in time
+	// so ofelia app can't find it's own container
+	if IsDockerEnv {
+		time.Sleep(1 * time.Second)
+	}
+
+	conts, err := d.ListContainers(docker.ListContainersOptions{
+		Filters: map[string][]string{
+			"label": {requiredLabelFilter},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(conts) == 0 {
+		return nil, errors.New("Couldn't find containers with label 'ofelia.enabled=true'")
+	}
+
+	var labels = make(map[string]map[string]string)
+
+	for _, c := range conts {
+		if len(c.Names) > 0 && len(c.Labels) > 0 {
+			name := strings.TrimPrefix(c.Names[0], "/")
+			for k := range c.Labels {
+				// remove all not relevant labels
+				if !strings.HasPrefix(k, labelPrefix) {
+					delete(c.Labels, k)
+					continue
+				}
+			}
+
+			labels[name] = c.Labels
+		}
+	}
+
+	return labels, nil
+}
+
+=======
+>>>>>>> 992b1a2 (Applied changes)
 func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) error {
 	execJobs := make(map[string]map[string]interface{})
 	localJobs := make(map[string]map[string]interface{})
@@ -129,7 +169,7 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 					serviceJobs[jobName] = make(map[string]interface{})
 				}
 				setJobParam(serviceJobs[jobName], jopParam, v)
-			case jobType == jobRun && isServiceContainer:
+			case jobType == jobRun:
 				if _, ok := runJobs[jobName]; !ok {
 					runJobs[jobName] = make(map[string]interface{})
 				}
