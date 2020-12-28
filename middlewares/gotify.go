@@ -57,7 +57,7 @@ func (m *Gotify) pushMessage(ctx *core.Context) {
 }
 
 func (m *Gotify) buildMessage(ctx *core.Context) *gotifyMessage {
-	msg := &gotifyMessage{Title: ctx.Job.GetName(), Priority: m.GotifyPriority}
+	msg := &gotifyMessage{Title: ctx.Job.GetName(), Priority: m.GotifyPriority, Extras: gotifyMessageExtras{ClientDisplay: gotifyMessageExtrasDisplay{ContentType: "text/markdown"}}}
 
 	msg.Message = fmt.Sprintf(
 		"Job *%q* finished in *%s*, command `%s`",
@@ -73,7 +73,16 @@ func (m *Gotify) buildMessage(ctx *core.Context) *gotifyMessage {
 }
 
 type gotifyMessage struct {
-	Title    string `json:"title"`
-	Message  string `json:"message"`
-	Priority int64  `json:"priority"`
+	Title    string              `json:"title"`
+	Message  string              `json:"message"`
+	Priority int64               `json:"priority"`
+	Extras   gotifyMessageExtras `json:"extras"`
+}
+
+type gotifyMessageExtras struct {
+	ClientDisplay gotifyMessageExtrasDisplay `json:"client::display"`
+}
+
+type gotifyMessageExtrasDisplay struct {
+	ContentType string `json:"contentType"`
 }
