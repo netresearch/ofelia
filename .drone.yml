@@ -1,0 +1,12 @@
+kind: pipeline
+name: default
+
+steps:
+- name: docker  
+  image: plugins/docker
+  settings:
+    auto_tag: true
+    repo: registry.home.ramirodelcorro.com/ofelia
+    registry: registry.home.ramirodelcorro.com
+    insecure: true
+    
