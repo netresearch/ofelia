@@ -74,6 +74,10 @@ func (c *Config) InitializeApp() error {
 	// In order to support non dynamic job types such as Local or Run using labels
 	// lets parse the labels and merge the job lists
 	dockerLabels, err := c.dockerHandler.GetDockerLabels()
+	if err != nil {
+		return nil
+	}
+
 	var parsedLabelConfig Config
 	parsedLabelConfig.buildFromDockerLabels(dockerLabels)
 	for name, j := range parsedLabelConfig.RunJobs {
