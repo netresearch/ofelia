@@ -14,6 +14,8 @@ require (
 	github.com/mcuadros/go-defaults v1.2.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
+	github.com/opencontainers/image-spec v1.1.0-rc2 // indirect
+	github.com/opencontainers/runc v1.1.5 // indirect
 	github.com/robfig/cron/v3 v3.0.1
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/sys v0.0.0-20211002104244-808efd93c36d // indirect
