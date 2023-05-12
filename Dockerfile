@@ -11,7 +11,7 @@ COPY . ${GOPATH}/src/github.com/netresearch/ofelia
 
 RUN go build -o /go/bin/ofelia .
 
-FROM alpine:3.17.3
+FROM alpine:3
 
 # this label is required to identify container with ofelia running
 LABEL ofelia.service=true
