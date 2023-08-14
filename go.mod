@@ -7,7 +7,7 @@ require (
 	github.com/bradfitz/go-smtpd v0.0.0-20170404230938-deb6d6237625
 	github.com/containerd/containerd v1.7.0 // indirect
 	github.com/docker/docker v24.0.5+incompatible
-	github.com/fsouza/go-dockerclient v1.9.7
+	github.com/fsouza/go-dockerclient v1.9.8
 	github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/mcuadros/go-defaults v1.2.0
