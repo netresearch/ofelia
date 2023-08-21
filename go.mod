@@ -13,7 +13,7 @@ require (
 	github.com/mcuadros/go-defaults v1.2.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect
-	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
+	github.com/op/go-logging v0.0.0-20160211212156-b2cb9fa56473
 	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
