@@ -140,11 +140,9 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 
 	// Calculate the delta execJobs
 	for name, j := range c.ExecJobs {
-		found := false
 		for newJobsName, newJob := range parsedLabelConfig.ExecJobs {
 			// Check if the schedule has changed
 			if name == newJobsName {
-				found = true
 				// There is a slight race condition were a job can be canceled / restarted with different params
 				// so, lets take care of it by simply restarting
 				// For the hash to work properly, we must fill the fields before calling it
@@ -162,11 +160,6 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				}
 				break
 			}
-		}
-		if !found {
-			// Remove the job
-			c.sh.RemoveJob(j)
-			delete(c.ExecJobs, name)
 		}
 	}
 
@@ -190,11 +183,9 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	}
 
 	for name, j := range c.RunJobs {
-		found := false
 		for newJobsName, newJob := range parsedLabelConfig.RunJobs {
 			// Check if the schedule has changed
 			if name == newJobsName {
-				found = true
 				// There is a slight race condition were a job can be canceled / restarted with different params
 				// so, lets take care of it by simply restarting
 				// For the hash to work properly, we must fill the fields before calling it
@@ -212,11 +203,6 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				}
 				break
 			}
-		}
-		if !found {
-			// Remove the job
-			c.sh.RemoveJob(j)
-			delete(c.RunJobs, name)
 		}
 	}
 
@@ -238,7 +224,6 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 			c.RunJobs[newJobsName] = newJob
 		}
 	}
-
 }
 
 // ExecJobConfig contains all configuration params needed to build a ExecJob
