@@ -72,6 +72,8 @@ This job can be used in 2 situations:
   - User as which the command should be executed, similar to `docker run --user <user>`
 - `network`: string (1)
   - Connect the container to this network
+- `hostname`: string (1)
+  - Define the hostname of the instantiated container, e.g. `test-server`
 - `delete`: boolean = `true` (1)
   - Delete the container after the job is finished. Similar to `docker run --rm`
 - **`container`: string** (2)
