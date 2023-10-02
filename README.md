@@ -138,7 +138,7 @@ services:
     image: ghcr.io/netresearch/ofelia:latest
     depends_on:
       - nginx
-    command: daemon --docker -f label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}
+    command: daemon -f label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
