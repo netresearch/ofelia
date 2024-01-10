@@ -1,4 +1,4 @@
-FROM golang:1.21.3-alpine AS builder
+FROM golang:1.21.6-alpine AS builder
 
 RUN apk update
 RUN apk upgrade
