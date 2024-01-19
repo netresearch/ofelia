@@ -29,7 +29,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Cache docker layers
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: cache
         with:
           path: /tmp/.buildx-cache
@@ -46,7 +46,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           push: true
           tags: ${{ env.REGISTRY  }}/${{ env.IMAGE_NAME }}
