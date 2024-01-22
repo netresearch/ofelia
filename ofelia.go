@@ -30,7 +30,11 @@ func main() {
 	parser.AddCommand("validate", "validates the config file", "", &cli.ValidateCommand{Logger: logger})
 
 	if _, err := parser.Parse(); err != nil {
-		if _, ok := err.(*flags.Error); ok {
+		if flagErr, ok := err.(*flags.Error); ok {
+			if flagErr.Type == flags.ErrHelp {
+				return
+			}
+
 			parser.WriteHelp(os.Stdout)
 			fmt.Printf("\nBuild information\n  commit: %s\n  date:%s\n", version, build)
 		}
