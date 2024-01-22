@@ -42,6 +42,7 @@ func (c *DaemonCommand) boot() (err error) {
 	if err != nil {
 		c.Logger.Debugf("Config file: %v not found", c.ConfigFile)
 	}
+	config.Docker.Filters = c.DockerFilters
 
 	err = config.InitializeApp()
 	if err != nil {
