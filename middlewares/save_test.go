@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mcuadros/ofelia/core"
+	"github.com/netresearch/ofelia/core"
 	. "gopkg.in/check.v1"
 )
 

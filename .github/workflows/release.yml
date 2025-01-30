@@ -9,7 +9,11 @@ env:
   IMAGE_NAME: "${{ github.repository_owner }}/ofelia"
 
 jobs:
-  goreleaser:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
