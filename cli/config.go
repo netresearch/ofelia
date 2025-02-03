@@ -134,15 +134,27 @@ func (c *Config) buildSchedulerMiddlewares(sh *core.Scheduler) {
 }
 
 func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
+	// log start of func
+	c.logger.Debugf("dockerLabelsUpdate started")
+
 	// Get the current labels
 	var parsedLabelConfig Config
 	parsedLabelConfig.buildFromDockerLabels(labels)
+	c.logger.Debugf("dockerLabelsUpdate labels: %v", labels)
+
+	var hasIterated bool
 
 	// Calculate the delta execJobs
+	hasIterated = false
 	for name, j := range c.ExecJobs {
+		hasIterated = true
+		c.logger.Debugf("checking exec job %s for changes", name)
+		found := false
 		for newJobsName, newJob := range parsedLabelConfig.ExecJobs {
+			c.logger.Debugf("checking exec job %s vs %s", name, newJobsName)
 			// Check if the schedule has changed
 			if name == newJobsName {
+				found = true
 				// There is a slight race condition were a job can be canceled / restarted with different params
 				// so, lets take care of it by simply restarting
 				// For the hash to work properly, we must fill the fields before calling it
@@ -161,10 +173,23 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				break
 			}
 		}
+		if !found {
+			// Remove from the scheduler
+			c.sh.RemoveJob(j)
+			// Remove the job from the ExecJobs map
+			delete(c.ExecJobs, name)
+			c.logger.Debugf("removing exec job %s", name)
+		}
+	}
+	if !hasIterated {
+		c.logger.Debugf("no exec jobs to update")
 	}
 
 	// Check for aditions
+	hasIterated = false
 	for newJobsName, newJob := range parsedLabelConfig.ExecJobs {
+		hasIterated = true
+		c.logger.Debugf("checking exec job %s if new", newJobsName)
 		found := false
 		for name := range c.ExecJobs {
 			if name == newJobsName {
@@ -181,11 +206,19 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 			c.ExecJobs[newJobsName] = newJob
 		}
 	}
+	if !hasIterated {
+		c.logger.Debugf("no new exec jobs")
+	}
 
+	hasIterated = false
 	for name, j := range c.RunJobs {
+		hasIterated = true
+		c.logger.Debugf("checking run job %s for changes", name)
+		found := false
 		for newJobsName, newJob := range parsedLabelConfig.RunJobs {
 			// Check if the schedule has changed
 			if name == newJobsName {
+				found = true
 				// There is a slight race condition were a job can be canceled / restarted with different params
 				// so, lets take care of it by simply restarting
 				// For the hash to work properly, we must fill the fields before calling it
@@ -204,10 +237,23 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				break
 			}
 		}
+		if !found {
+			// Remove from the scheduler
+			c.sh.RemoveJob(j)
+			// Remove the job from the RunJobs map
+			delete(c.RunJobs, name)
+			c.logger.Debugf("removing run job %s", name)
+		}
+	}
+	if !hasIterated {
+		c.logger.Debugf("no run jobs to update")
 	}
 
 	// Check for aditions
+	hasIterated = false
 	for newJobsName, newJob := range parsedLabelConfig.RunJobs {
+		hasIterated = true
+		c.logger.Debugf("checking run job %s if new", newJobsName)
 		found := false
 		for name := range c.RunJobs {
 			if name == newJobsName {
@@ -223,6 +269,9 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 			c.sh.AddJob(newJob)
 			c.RunJobs[newJobsName] = newJob
 		}
+	}
+	if !hasIterated {
+		c.logger.Debugf("no new run jobs")
 	}
 }
 
