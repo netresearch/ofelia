@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
@@ -38,10 +39,23 @@ type RunJob struct {
 	Environment []string
 
 	containerID string
+	mu          sync.RWMutex // Protect containerID access
 }
 
 func NewRunJob(c *docker.Client) *RunJob {
 	return &RunJob{Client: c}
+}
+
+func (j *RunJob) setContainerID(id string) {
+	j.mu.Lock()
+	j.containerID = id
+	j.mu.Unlock()
+}
+
+func (j *RunJob) getContainerID() string {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.containerID
 }
 
 func (j *RunJob) Run(ctx *Context) error {
@@ -103,7 +117,7 @@ func (j *RunJob) Run(ctx *Context) error {
 	}
 
 	if container != nil {
-		j.containerID = container.ID
+		j.setContainerID(container.ID)
 	}
 
 	// cleanup container if it is a created one
@@ -126,7 +140,7 @@ func (j *RunJob) Run(ctx *Context) error {
 	}
 
 	if logsErr := j.Client.Logs(docker.LogsOptions{
-		Container:    container.ID,
+		Container:    j.getContainerID(),
 		OutputStream: ctx.Execution.OutputStream,
 		ErrorStream:  ctx.Execution.ErrorStream,
 		Stdout:       true,
@@ -205,19 +219,16 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 }
 
 func (j *RunJob) startContainer() error {
-	return j.Client.StartContainer(j.containerID, &docker.HostConfig{})
+	return j.Client.StartContainer(j.getContainerID(), &docker.HostConfig{})
 }
 
 func (j *RunJob) stopContainer(timeout uint) error {
-	return j.Client.StopContainer(j.containerID, timeout)
+	return j.Client.StopContainer(j.getContainerID(), timeout)
 }
 
 func (j *RunJob) getContainer() (*docker.Container, error) {
-	container, err := j.Client.InspectContainer(j.containerID)
-	if err != nil {
-		return nil, err
-	}
-	return container, nil
+	id := j.getContainerID()
+	return j.Client.InspectContainer(id)
 }
 
 const (
@@ -236,7 +247,7 @@ func (j *RunJob) watchContainer() error {
 			return ErrMaxTimeRunning
 		}
 
-		c, err := j.Client.InspectContainer(j.containerID)
+		c, err := j.Client.InspectContainer(j.getContainerID())
 		if err != nil {
 			return err
 		}
@@ -261,8 +272,7 @@ func (j *RunJob) deleteContainer() error {
 	if delete, _ := strconv.ParseBool(j.Delete); !delete {
 		return nil
 	}
-
 	return j.Client.RemoveContainer(docker.RemoveContainerOptions{
-		ID: j.containerID,
+		ID: j.getContainerID(),
 	})
 }

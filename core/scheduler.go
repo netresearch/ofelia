@@ -21,6 +21,7 @@ type Scheduler struct {
 	cron      *cron.Cron
 	wg        sync.WaitGroup
 	isRunning bool
+	mu        sync.RWMutex // Protect isRunning and wg operations
 }
 
 func NewScheduler(l Logger) *Scheduler {
@@ -60,21 +61,28 @@ func (s *Scheduler) RemoveJob(j Job) error {
 }
 
 func (s *Scheduler) Start() error {
-	s.Logger.Debugf("Starting scheduler")
+	s.mu.Lock()
 	s.isRunning = true
+	s.mu.Unlock()
+	s.Logger.Debugf("Starting scheduler")
 	s.cron.Start()
 	return nil
 }
 
 func (s *Scheduler) Stop() error {
-	s.wg.Wait()
-	s.cron.Stop()
-	s.isRunning = false
+	s.cron.Stop() // Stop cron first to prevent new jobs
 
+	s.mu.Lock()
+	s.isRunning = false
+	s.mu.Unlock()
+
+	s.wg.Wait() // Then wait for existing jobs
 	return nil
 }
 
 func (s *Scheduler) IsRunning() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.isRunning
 }
 
@@ -84,8 +92,19 @@ type jobWrapper struct {
 }
 
 func (w *jobWrapper) Run() {
+	w.s.mu.Lock()
+	if !w.s.isRunning {
+		w.s.mu.Unlock()
+		return
+	}
 	w.s.wg.Add(1)
-	defer w.s.wg.Done()
+	w.s.mu.Unlock()
+
+	defer func() {
+		w.s.mu.Lock()
+		w.s.wg.Done()
+		w.s.mu.Unlock()
+	}()
 
 	e := NewExecution()
 	ctx := NewContext(w.s, w.j, e)
