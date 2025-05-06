@@ -1,11 +1,11 @@
 package cli
 
 import (
-	"github.com/netresearch/ofelia/core"
-	"github.com/netresearch/ofelia/middlewares"
+    "github.com/netresearch/ofelia/core"
+    "github.com/netresearch/ofelia/middlewares"
 
-	defaults "github.com/mcuadros/go-defaults"
-	gcfg "gopkg.in/gcfg.v1"
+    defaults "github.com/mcuadros/go-defaults"
+    gcfg "gopkg.in/gcfg.v1"
 )
 
 const (
@@ -54,6 +54,9 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 }
 
 // BuildFromString builds a scheduler using the config from a string
+
+// newDockerHandler allows overriding Docker handler creation (e.g., for testing)
+var newDockerHandler = NewDockerHandler
 func BuildFromString(config string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
 	if err := gcfg.ReadStringInto(c, config); err != nil {
@@ -68,7 +71,7 @@ func (c *Config) InitializeApp() error {
 	c.buildSchedulerMiddlewares(c.sh)
 
 	var err error
-	c.dockerHandler, err = NewDockerHandler(c, c.logger, c.Docker.Filters)
+	c.dockerHandler, err = newDockerHandler(c, c.logger, c.Docker.Filters)
 	if err != nil {
 		return err
 	}

@@ -28,12 +28,17 @@ func (c *DockerHandler) GetInternalDockerClient() *docker.Client {
 }
 
 func (c *DockerHandler) buildDockerClient() (*docker.Client, error) {
-	d, err := docker.NewClientFromEnv()
+	client, err := docker.NewClientFromEnv()
 	if err != nil {
 		return nil, err
 	}
 
-	return d, nil
+	// Sanity check Docker connection
+	if _, err := client.Info(); err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }
 
 func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, filters []string) (*DockerHandler, error) {
