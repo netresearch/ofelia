@@ -68,6 +68,8 @@ This job can be used in 2 situations:
 - **`image`: string** (1)
   - Image you want to use for the job.
   - If left blank, Ofelia assumes you will specify a container to start (situation 2).
+- `entrypoint`: string (1)
+  - Override the image entrypoint. Use an empty value to remove it.
 - `user`: string = `root` (1)
   - User as which the command should be executed, similar to `docker run --user <user>`
 - `network`: string (1)

@@ -1,16 +1,16 @@
 package cli
 
 import (
-    "io/ioutil"
-    "os"
-    "encoding/json"
-    "testing"
+	"encoding/json"
+	"io/ioutil"
+	"os"
+	"testing"
 
-    defaults "github.com/mcuadros/go-defaults"
-    "github.com/netresearch/ofelia/core"
-    "github.com/netresearch/ofelia/middlewares"
-    . "gopkg.in/check.v1"
-    gcfg "gopkg.in/gcfg.v1"
+	defaults "github.com/mcuadros/go-defaults"
+	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/middlewares"
+	. "gopkg.in/check.v1"
+	gcfg "gopkg.in/gcfg.v1"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -123,11 +123,11 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 		},
 		{
 			Ini: `
-				[job-run "foo"]
-				schedule = @every 10s
-				volumes-from = "volume1"
-				volumes-from = "volume2"
-				`,
+                                [job-run "foo"]
+                                schedule = @every 10s
+                                volumes-from = "volume1"
+                                volumes-from = "volume2"
+                                `,
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
 					"foo": {RunJob: core.RunJob{BareJob: core.BareJob{
@@ -138,6 +138,23 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 				},
 			},
 			Comment: "Test job-run with Env Variables",
+		},
+		{
+			Ini: `
+                                [job-run "foo"]
+                                schedule = @every 10s
+                                entrypoint = ""
+                                `,
+			ExpectedConfig: Config{
+				RunJobs: map[string]*RunJobConfig{
+					"foo": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "@every 10s",
+					},
+						Entrypoint: func() *string { s := ""; return &s }(),
+					}},
+				},
+			},
+			Comment: "Test job-run with entrypoint",
 		},
 	}
 
@@ -409,6 +426,27 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 			},
 			Comment: "Test run job with volumes-from",
 		},
+		{
+			Labels: map[string]map[string]string{
+				"some": {
+					requiredLabel: "true",
+					serviceLabel:  "true",
+					labelPrefix + "." + jobRun + ".job1.schedule":   "schedule1",
+					labelPrefix + "." + jobRun + ".job1.entrypoint": "",
+				},
+			},
+			ExpectedConfig: Config{
+				RunJobs: map[string]*RunJobConfig{
+					"job1": {
+						RunJob: core.RunJob{
+							BareJob:    core.BareJob{Schedule: "schedule1"},
+							Entrypoint: func() *string { s := ""; return &s }(),
+						},
+					},
+				},
+			},
+			Comment: "Test run job with entrypoint override",
+		},
 	}
 
 	for _, t := range testcases {
@@ -422,75 +460,74 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 }
 
 func toJSON(any interface{}) string {
-        b, _ := json.MarshalIndent(any, "", "  ")
-        return string(b)
+	b, _ := json.MarshalIndent(any, "", "  ")
+	return string(b)
 }
 
 // Test for BuildFromString error path
 func (s *SuiteConfig) TestBuildFromStringError(c *C) {
-        _, err := BuildFromString("[invalid", &TestLogger{})
-        c.Assert(err, NotNil)
+	_, err := BuildFromString("[invalid", &TestLogger{})
+	c.Assert(err, NotNil)
 }
 
 // Test for BuildFromFile success path
 func (s *SuiteConfig) TestBuildFromFile(c *C) {
-        // Create temporary config file
-        tmpFile, err := ioutil.TempFile("", "ofelia_test_*.ini")
-        c.Assert(err, IsNil)
-        defer os.Remove(tmpFile.Name())
+	// Create temporary config file
+	tmpFile, err := ioutil.TempFile("", "ofelia_test_*.ini")
+	c.Assert(err, IsNil)
+	defer os.Remove(tmpFile.Name())
 
-        content := `
+	content := `
 [ job-run "foo" ]
 schedule = @every 5s
 command = echo test123
 `
-        _, err = tmpFile.WriteString(content)
-        c.Assert(err, IsNil)
-        err = tmpFile.Close()
-        c.Assert(err, IsNil)
+	_, err = tmpFile.WriteString(content)
+	c.Assert(err, IsNil)
+	err = tmpFile.Close()
+	c.Assert(err, IsNil)
 
-        conf, err := BuildFromFile(tmpFile.Name(), &TestLogger{})
-        c.Assert(err, IsNil)
-        // Verify parsed values
-        c.Assert(conf.RunJobs, HasLen, 1)
-        job, ok := conf.RunJobs["foo"]
-        c.Assert(ok, Equals, true)
-        c.Assert(job.Schedule, Equals, "@every 5s")
-        c.Assert(job.Command, Equals, "echo test123")
+	conf, err := BuildFromFile(tmpFile.Name(), &TestLogger{})
+	c.Assert(err, IsNil)
+	// Verify parsed values
+	c.Assert(conf.RunJobs, HasLen, 1)
+	job, ok := conf.RunJobs["foo"]
+	c.Assert(ok, Equals, true)
+	c.Assert(job.Schedule, Equals, "@every 5s")
+	c.Assert(job.Command, Equals, "echo test123")
 }
 
 // Test NewConfig initializes empty maps and applies defaults
 func (s *SuiteConfig) TestNewConfig(c *C) {
-        cfg := NewConfig(&TestLogger{})
-        c.Assert(cfg.ExecJobs, NotNil)
-        c.Assert(cfg.RunJobs, NotNil)
-        c.Assert(cfg.ServiceJobs, NotNil)
-        c.Assert(cfg.LocalJobs, NotNil)
-        c.Assert(len(cfg.ExecJobs), Equals, 0)
-        c.Assert(len(cfg.RunJobs), Equals, 0)
-        c.Assert(len(cfg.ServiceJobs), Equals, 0)
-        c.Assert(len(cfg.LocalJobs), Equals, 0)
+	cfg := NewConfig(&TestLogger{})
+	c.Assert(cfg.ExecJobs, NotNil)
+	c.Assert(cfg.RunJobs, NotNil)
+	c.Assert(cfg.ServiceJobs, NotNil)
+	c.Assert(cfg.LocalJobs, NotNil)
+	c.Assert(len(cfg.ExecJobs), Equals, 0)
+	c.Assert(len(cfg.RunJobs), Equals, 0)
+	c.Assert(len(cfg.ServiceJobs), Equals, 0)
+	c.Assert(len(cfg.LocalJobs), Equals, 0)
 }
 
 // Test buildSchedulerMiddlewares adds only non-empty middlewares
 func (s *SuiteConfig) TestBuildSchedulerMiddlewares(c *C) {
-        // Prepare config with non-empty global middleware settings
-        cfg := Config{}
-        cfg.Global.SlackConfig.SlackWebhook = "http://example.com/webhook"
-        cfg.Global.SaveConfig.SaveFolder = "/tmp"
-        cfg.Global.MailConfig.EmailTo = "to@example.com"
-        cfg.Global.MailConfig.EmailFrom = "from@example.com"
+	// Prepare config with non-empty global middleware settings
+	cfg := Config{}
+	cfg.Global.SlackConfig.SlackWebhook = "http://example.com/webhook"
+	cfg.Global.SaveConfig.SaveFolder = "/tmp"
+	cfg.Global.MailConfig.EmailTo = "to@example.com"
+	cfg.Global.MailConfig.EmailFrom = "from@example.com"
 
-        sh := core.NewScheduler(&TestLogger{})
-        cfg.buildSchedulerMiddlewares(sh)
-        ms := sh.Middlewares()
-        c.Assert(ms, HasLen, 3)
-        // Assert types of middlewares
-        _, ok := ms[0].(*middlewares.Slack)
-        c.Assert(ok, Equals, true)
-        _, ok = ms[1].(*middlewares.Save)
-        c.Assert(ok, Equals, true)
-        _, ok = ms[2].(*middlewares.Mail)
-        c.Assert(ok, Equals, true)
+	sh := core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(sh)
+	ms := sh.Middlewares()
+	c.Assert(ms, HasLen, 3)
+	// Assert types of middlewares
+	_, ok := ms[0].(*middlewares.Slack)
+	c.Assert(ok, Equals, true)
+	_, ok = ms[1].(*middlewares.Save)
+	c.Assert(ok, Equals, true)
+	_, ok = ms[2].(*middlewares.Mail)
+	c.Assert(ok, Equals, true)
 }
-

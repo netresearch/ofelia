@@ -38,6 +38,7 @@ type RunJob struct {
 	Image       string
 	Network     string
 	Hostname    string
+	Entrypoint  *string
 	Container   string
 	Volume      []string
 	VolumesFrom []string `gcfg:"volumes-from" mapstructure:"volumes-from,"`
@@ -61,6 +62,13 @@ func (j *RunJob) getContainerID() string {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	return j.containerID
+}
+
+func entrypointSlice(ep *string) []string {
+	if ep == nil {
+		return nil
+	}
+	return args.GetArgs(*ep)
 }
 
 func (j *RunJob) Run(ctx *Context) error {
@@ -195,6 +203,7 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 			AttachStderr: true,
 			Tty:          j.TTY,
 			Cmd:          args.GetArgs(j.Command),
+			Entrypoint:   entrypointSlice(j.Entrypoint),
 			User:         j.User,
 			Env:          j.Environment,
 			Hostname:     j.Hostname,
