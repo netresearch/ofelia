@@ -1,14 +1,13 @@
 package cli
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/netresearch/ofelia/core"
+	logging "github.com/op/go-logging"
 	. "gopkg.in/check.v1"
 )
 
@@ -18,31 +17,12 @@ type DaemonBootSuite struct{}
 
 var _ = Suite(&DaemonBootSuite{})
 
-// BufferLogger collects formatted logs in memory for inspection.
-type BufferLogger struct{ buf bytes.Buffer }
-
-func (l *BufferLogger) Criticalf(format string, args ...interface{}) {
-	fmt.Fprintf(&l.buf, format, args...)
-	l.buf.WriteByte('\n')
+func newMemoryLogger(level logging.Level) (*logging.MemoryBackend, core.Logger) {
+	backend := logging.InitForTesting(level)
+	logging.SetFormatter(logging.MustStringFormatter(logFormat))
+	logger := logging.MustGetLogger("ofelia")
+	return backend, logger
 }
-func (l *BufferLogger) Debugf(format string, args ...interface{}) {
-	fmt.Fprintf(&l.buf, format, args...)
-	l.buf.WriteByte('\n')
-}
-func (l *BufferLogger) Errorf(format string, args ...interface{}) {
-	fmt.Fprintf(&l.buf, format, args...)
-	l.buf.WriteByte('\n')
-}
-func (l *BufferLogger) Noticef(format string, args ...interface{}) {
-	fmt.Fprintf(&l.buf, format, args...)
-	l.buf.WriteByte('\n')
-}
-func (l *BufferLogger) Warningf(format string, args ...interface{}) {
-	fmt.Fprintf(&l.buf, format, args...)
-	l.buf.WriteByte('\n')
-}
-
-func (l *BufferLogger) String() string { return l.buf.String() }
 
 func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 	tmpFile, err := os.CreateTemp("", "ofelia_bad_*.ini")
@@ -53,8 +33,9 @@ func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 	c.Assert(err, IsNil)
 	tmpFile.Close()
 
-	logger := &BufferLogger{}
-	cmd := &DaemonCommand{ConfigFile: tmpFile.Name(), Logger: logger}
+	backend, logger := newMemoryLogger(logging.DEBUG)
+	defer logging.Reset()
+	cmd := &DaemonCommand{ConfigFile: tmpFile.Name(), Logger: logger, LogLevel: "DEBUG"}
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
@@ -64,7 +45,41 @@ func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 
 	_ = cmd.boot()
 
-	logOutput := logger.String()
-	c.Assert(strings.Contains(logOutput, "no-overlap"), Equals, true)
-	c.Assert(strings.Contains(logOutput, "not found"), Equals, false)
+	var debugMsg bool
+	for n := backend.Head(); n != nil; n = n.Next() {
+		if n.Record.Level == logging.DEBUG && strings.Contains(n.Record.Message(), "no-overlap") {
+			debugMsg = true
+		}
+	}
+	c.Assert(debugMsg, Equals, true)
+}
+
+func (s *DaemonBootSuite) TestBootLogsConfigErrorSuppressed(c *C) {
+	tmpFile, err := os.CreateTemp("", "ofelia_bad_*.ini")
+	c.Assert(err, IsNil)
+	defer os.Remove(tmpFile.Name())
+
+	_, err = tmpFile.WriteString("[global]\nno-overlap = true\n")
+	c.Assert(err, IsNil)
+	tmpFile.Close()
+
+	backend, logger := newMemoryLogger(logging.INFO)
+	defer logging.Reset()
+	cmd := &DaemonCommand{ConfigFile: tmpFile.Name(), Logger: logger, LogLevel: "INFO"}
+
+	orig := newDockerHandler
+	defer func() { newDockerHandler = orig }()
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string) (*DockerHandler, error) {
+		return nil, errors.New("docker unavailable")
+	}
+
+	_ = cmd.boot()
+
+	var debugMsg bool
+	for n := backend.Head(); n != nil; n = n.Next() {
+		if n.Record.Level == logging.DEBUG {
+			debugMsg = true
+		}
+	}
+	c.Assert(debugMsg, Equals, false)
 }

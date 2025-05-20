@@ -69,6 +69,7 @@ See [Jobs reference documentation](docs/jobs.md) for all available parameters.
 
 - `slack-webhook` - URL of the slack webhook.
 - `slack-only-on-error` - only send a slack message if the execution was not successful.
+- `log-level` - logging level (DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL).
 
 ### INI-style configuration
 
@@ -78,6 +79,7 @@ Run with `ofelia daemon --config=/path/to/config.ini`
 [global]
 save-folder = /var/log/ofelia_reports
 save-only-on-error = true
+log-level = INFO
 
 [job-exec "job-executed-on-running-container"]
 schedule = @hourly
@@ -111,6 +113,7 @@ docker run -it --rm \
     -v /var/run/docker.sock:/var/run/docker.sock:ro \
     --label ofelia.save-folder="/var/log/ofelia_reports" \
     --label ofelia.save-only-on-error="true" \
+    --label ofelia.log-level="INFO" \
         ghcr.io/netresearch/ofelia:latest daemon
 ```
 
