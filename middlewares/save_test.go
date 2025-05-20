@@ -49,6 +49,7 @@ func (s *SuiteSave) TestNewSlackEmpty(c *C) {
 func (s *SuiteSave) TestRunSuccess(c *C) {
 	dir, err := ioutil.TempDir("/tmp", "save")
 	c.Assert(err, IsNil)
+	defer os.RemoveAll(dir)
 
 	s.ctx.Start()
 	s.ctx.Stop(nil)
@@ -72,6 +73,7 @@ func (s *SuiteSave) TestRunSuccess(c *C) {
 func (s *SuiteSave) TestRunSuccessOnError(c *C) {
 	dir, err := ioutil.TempDir("/tmp", "save")
 	c.Assert(err, IsNil)
+	defer os.RemoveAll(dir)
 
 	s.ctx.Start()
 	s.ctx.Stop(nil)
@@ -89,6 +91,7 @@ func (s *SuiteSave) TestRunSuccessOnError(c *C) {
 func (s *SuiteSave) TestSensitiveData(c *C) {
 	dir, err := ioutil.TempDir("/tmp", "save")
 	c.Assert(err, IsNil)
+	defer os.RemoveAll(dir)
 
 	s.ctx.Start()
 	s.ctx.Stop(nil)
