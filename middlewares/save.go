@@ -31,7 +31,7 @@ type Save struct {
 	SaveConfig
 }
 
-// ContinueOnStop return allways true, we want always report the final status
+// ContinueOnStop always returns true; we always want to report the final status
 func (m *Save) ContinueOnStop() bool {
 	return true
 }

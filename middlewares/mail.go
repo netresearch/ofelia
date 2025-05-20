@@ -44,12 +44,12 @@ type Mail struct {
 	MailConfig
 }
 
-// ContinueOnStop return allways true, we want always report the final status
+// ContinueOnStop always returns true; we always want to report the final status
 func (m *Mail) ContinueOnStop() bool {
 	return true
 }
 
-// Run sents a email with the result of the execution
+// Run sends an email with the result of the execution
 func (m *Mail) Run(ctx *core.Context) error {
 	err := ctx.Next()
 	ctx.Stop(err)
