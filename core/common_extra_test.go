@@ -1,39 +1,38 @@
 package core
 
 import (
-	"testing"
 	docker "github.com/fsouza/go-dockerclient"
+	"testing"
 )
 
 // TestNewExecutionInitial tests the initial state of a new Execution.
 func TestNewExecutionInitial(t *testing.T) {
-    e := NewExecution()
-    if e == nil {
-        t.Error("expected NewExecution to return non-nil")
-    }
-    if e.ID == "" {
-        t.Error("expected non-empty ID")
-    }
-    if len(e.ID) != 12 {
-        t.Errorf("expected ID length 12, got %d", len(e.ID))
-    }
-    if e.OutputStream == nil || e.ErrorStream == nil {
-        t.Error("expected non-nil output and error streams")
-    }
-    if e.IsRunning {
-        t.Error("expected IsRunning to be false initially")
-    }
-    if e.Failed {
-        t.Error("expected Failed to be false initially")
-    }
-    if e.Skipped {
-        t.Error("expected Skipped to be false initially")
-    }
-    if e.Error != nil {
-        t.Errorf("expected Error to be nil initially, got %v", e.Error)
-    }
+	e := NewExecution()
+	if e == nil {
+		t.Error("expected NewExecution to return non-nil")
+	}
+	if e.ID == "" {
+		t.Error("expected non-empty ID")
+	}
+	if len(e.ID) != 12 {
+		t.Errorf("expected ID length 12, got %d", len(e.ID))
+	}
+	if e.OutputStream == nil || e.ErrorStream == nil {
+		t.Error("expected non-nil output and error streams")
+	}
+	if e.IsRunning {
+		t.Error("expected IsRunning to be false initially")
+	}
+	if e.Failed {
+		t.Error("expected Failed to be false initially")
+	}
+	if e.Skipped {
+		t.Error("expected Skipped to be false initially")
+	}
+	if e.Error != nil {
+		t.Errorf("expected Error to be nil initially, got %v", e.Error)
+	}
 }
-
 
 // TestBuildFindLocalImageOptions verifies that buildFindLocalImageOptions sets the correct filter.
 func TestBuildFindLocalImageOptions(t *testing.T) {
@@ -50,6 +49,10 @@ func TestBuildFindLocalImageOptions(t *testing.T) {
 
 // TestBuildPullOptionsTagSpecified tests buildPullOptions with an explicit tag.
 func TestBuildPullOptionsTagSpecified(t *testing.T) {
+	orig := dockercfg
+	defer func() { dockercfg = orig }()
+	dockercfg = nil
+
 	image := "repo/name:tag"
 	opts, auth := buildPullOptions(image)
 	if opts.Repository != "repo/name" {
@@ -68,6 +71,10 @@ func TestBuildPullOptionsTagSpecified(t *testing.T) {
 
 // TestBuildPullOptionsDefaultTag tests buildPullOptions without specifying a tag.
 func TestBuildPullOptionsDefaultTag(t *testing.T) {
+	orig := dockercfg
+	defer func() { dockercfg = orig }()
+	dockercfg = nil
+
 	image := "repo/name"
 	opts, auth := buildPullOptions(image)
 	if opts.Repository != "repo/name" {
@@ -83,6 +90,7 @@ func TestBuildPullOptionsDefaultTag(t *testing.T) {
 		t.Errorf("expected empty auth, got %+v", auth)
 	}
 }
+
 // TestBuildAuthConfigurationRegistry tests buildAuthConfiguration for a specific registry entry.
 func TestBuildAuthConfigurationRegistry(t *testing.T) {
 	orig := dockercfg
