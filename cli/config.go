@@ -185,7 +185,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		c.logger.Debugf("no exec jobs to update")
 	}
 
-	// Check for aditions
+	// Check for additions
 	hasIterated = false
 	for newJobsName, newJob := range parsedLabelConfig.ExecJobs {
 		hasIterated = true
@@ -249,7 +249,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		c.logger.Debugf("no run jobs to update")
 	}
 
-	// Check for aditions
+	// Check for additions
 	hasIterated = false
 	for newJobsName, newJob := range parsedLabelConfig.RunJobs {
 		hasIterated = true
