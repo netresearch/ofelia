@@ -10,6 +10,10 @@ import (
 
 // TestBuildPullOptionsSingle tests buildPullOptions for a single-segment image name.
 func TestBuildPullOptionsSingle(t *testing.T) {
+	orig := dockercfg
+	defer func() { dockercfg = orig }()
+	dockercfg = nil
+
 	image := "alpine"
 	opts, auth := buildPullOptions(image)
 	if opts.Repository != "alpine" {
@@ -43,7 +47,7 @@ func TestBuildPullOptionsThreeParts(t *testing.T) {
 
 // TestParseRegistryVarious tests parseRegistry with different repository formats.
 func TestParseRegistryVarious(t *testing.T) {
-	tests := []struct{
+	tests := []struct {
 		repo string
 		want string
 	}{
