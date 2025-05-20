@@ -120,6 +120,8 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 		return fmt.Errorf("Failed to inspect service %s: %s", svcID, err.Error())
 	}
 
+	startTime := time.Now()
+
 	// On every tick, check if all the services have completed, or have error out
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -128,7 +130,7 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 		defer wg.Done()
 		for range svcChecker.C {
 
-			if time.Since(svc.CreatedAt) > maxProcessDuration {
+			if time.Since(startTime) > maxProcessDuration {
 				err = ErrMaxTimeRunning
 				return
 			}
