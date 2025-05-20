@@ -24,6 +24,9 @@ RUN apk --no-cache add ca-certificates tzdata
 
 COPY --from=builder /go/bin/ofelia /usr/bin/ofelia
 
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
+  CMD pgrep ofelia >/dev/null || exit 1
+
 ENTRYPOINT ["/usr/bin/ofelia"]
 
 CMD ["daemon", "--config", "/etc/ofelia/config.ini"]
