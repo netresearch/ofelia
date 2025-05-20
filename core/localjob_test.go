@@ -50,3 +50,18 @@ func (s *SuiteLocalJob) TestEnvironment(c *C) {
 		c.Assert(found, Equals, true)
 	}
 }
+
+func (s *SuiteLocalJob) TestRunFailed(c *C) {
+	job := &LocalJob{}
+	job.Command = "false"
+
+	e := NewExecution()
+	ctx := &Context{Execution: e, Job: job}
+
+	ctx.Start()
+	err := job.Run(ctx)
+	ctx.Stop(err)
+
+	c.Assert(err, NotNil)
+	c.Assert(e.Failed, Equals, true)
+}

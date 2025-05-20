@@ -85,6 +85,27 @@ func (s *SuiteExecJob) TestRun(c *C) {
 	// no way to check for env :|
 }
 
+func (s *SuiteExecJob) TestRunStartExecError(c *C) {
+	failureID := "startfail"
+	s.server.PrepareFailure(failureID, "/exec/.*/start")
+
+	job := &ExecJob{Client: s.client}
+	job.Container = ContainerFixture
+	job.Command = "echo foo"
+
+	e := NewExecution()
+	ctx := &Context{Execution: e, Job: job}
+
+	ctx.Start()
+	err := job.Run(ctx)
+	ctx.Stop(err)
+
+	c.Assert(err, NotNil)
+	c.Assert(e.Failed, Equals, true)
+
+	s.server.ResetFailure(failureID)
+}
+
 func (s *SuiteExecJob) buildContainer(c *C) {
 	inputbuf := bytes.NewBuffer(nil)
 	tr := tar.NewWriter(inputbuf)
