@@ -126,9 +126,9 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 
 	go func() {
 		defer wg.Done()
-		for _ = range svcChecker.C {
+		for range svcChecker.C {
 
-			if svc.CreatedAt.After(time.Now().Add(maxProcessDuration)) {
+			if time.Since(svc.CreatedAt) > maxProcessDuration {
 				err = ErrMaxTimeRunning
 				return
 			}
