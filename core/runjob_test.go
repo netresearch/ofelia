@@ -87,6 +87,40 @@ func (s *SuiteRunJob) TestRun(c *C) {
 	c.Assert(containers, HasLen, 0)
 }
 
+func (s *SuiteRunJob) TestRunWithEntrypoint(c *C) {
+	ep := ""
+	job := &RunJob{Client: s.client}
+	job.Image = ImageFixture
+	job.Entrypoint = &ep
+	job.Command = `echo -a "foo bar"`
+	job.Name = "test-ep"
+	job.Delete = "true"
+
+	ctx := &Context{}
+	ctx.Execution = NewExecution()
+	logging.SetFormatter(logging.MustStringFormatter(logFormat))
+	ctx.Logger = logging.MustGetLogger("ofelia")
+	ctx.Job = job
+
+	go func() {
+		if err := job.Run(ctx); err != nil {
+			c.Fatal(err)
+		}
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	container, err := job.getContainer()
+	c.Assert(err, IsNil)
+	c.Assert(container.Config.Entrypoint, DeepEquals, []string{})
+
+	err = job.stopContainer(0)
+	c.Assert(err, IsNil)
+
+	time.Sleep(watchDuration * 2)
+	container, _ = job.getContainer()
+	c.Assert(container, IsNil)
+}
+
 func (s *SuiteRunJob) TestBuildPullImageOptionsBareImage(c *C) {
 	o, _ := buildPullOptions("foo")
 	c.Assert(o.Repository, Equals, "foo")
