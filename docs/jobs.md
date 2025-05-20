@@ -74,6 +74,9 @@ This job can be used in 2 situations:
   - Connect the container to this network
 - `hostname`: string (1)
   - Define the hostname of the instantiated container, e.g. `test-server`
+- `container-name`: string (1)
+  - Name assigned to the created container. Defaults to the job name. If left
+    empty, Docker will choose a random name.
 - `delete`: boolean = `true` (1)
   - Delete the container after the job is finished. Similar to `docker run --rm`
 - **`container`: string** (2)
