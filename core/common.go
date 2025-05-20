@@ -18,7 +18,7 @@ var (
 	// it as skipped.
 	ErrSkippedExecution   = errors.New("skipped execution")
 	ErrUnexpected         = errors.New("error unexpected, docker has returned exit code -1, maybe wrong user?")
-	ErrMaxTimeRunning     = errors.New("the job has exceed the maximum allowed time running.")
+	ErrMaxTimeRunning     = errors.New("the job has exceeded the maximum allowed time running.")
 	ErrLocalImageNotFound = errors.New("couldn't find image on the host")
 )
 
