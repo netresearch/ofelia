@@ -158,15 +158,15 @@ func NewExecution() *Execution {
 	}
 }
 
-// Start start the exection, initialize the running flags and the start date.
+// Start starts the execution, initializes the running flags and the start date.
 func (e *Execution) Start() {
 	e.IsRunning = true
 	e.Date = time.Now()
 }
 
-// Stop stops the executions, if a ErrSkippedExecution is given the exection
-// is mark as skipped, if any other error is given the exection is mark as
-// failed. Also mark the exection as IsRunning false and save the duration time
+// Stop halts the execution. If a ErrSkippedExecution is given the execution
+// is marked as skipped; if any other error is given the execution is marked as
+// failed. Also mark the execution as IsRunning false and save the duration time
 func (e *Execution) Stop(err error) {
 	e.IsRunning = false
 	e.Duration = time.Since(e.Date)
@@ -186,8 +186,8 @@ type Middleware interface {
 	// inside of the middleware `Run` function otherwise you will broken the
 	// Job workflow.
 	Run(*Context) error
-	// ContinueOnStop,  If return true the Run function will be called even if
-	// the execution is stopped
+	// ContinueOnStop reports whether Run should be called even when the
+	// execution has been stopped
 	ContinueOnStop() bool
 }
 
