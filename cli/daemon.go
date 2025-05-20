@@ -15,6 +15,7 @@ import (
 type DaemonCommand struct {
 	ConfigFile    string   `long:"config" description:"configuration file" default:"/etc/ofelia.conf"`
 	DockerFilters []string `short:"f" long:"docker-filter" description:"Filter for docker containers"`
+	LogLevel      string   `long:"log-level" description:"Set log level"`
 	EnablePprof   bool     `long:"enable-pprof" description:"Enable the pprof HTTP server"`
 	PprofAddr     string   `long:"pprof-address" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
 
@@ -45,12 +46,19 @@ func (c *DaemonCommand) Execute(args []string) error {
 func (c *DaemonCommand) boot() (err error) {
 	c.httpServer = &http.Server{Addr: c.PprofAddr}
 
+	// Apply CLI log level before reading config
+	ApplyLogLevel(c.LogLevel)
+
 	// Always try to read the config file, as there are options such as globals or some tasks that can be specified there and not in docker
 	config, err := BuildFromFile(c.ConfigFile, c.Logger)
 	if err != nil {
 		c.Logger.Debugf("Error loading config file %v: %v", c.ConfigFile, err)
 	}
 	config.Docker.Filters = c.DockerFilters
+
+	if c.LogLevel == "" {
+		ApplyLogLevel(config.Global.LogLevel)
+	}
 
 	err = config.InitializeApp()
 	if err != nil {

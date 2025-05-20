@@ -1,11 +1,11 @@
 package cli
 
 import (
-    "github.com/netresearch/ofelia/core"
-    "github.com/netresearch/ofelia/middlewares"
+	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/middlewares"
 
-    defaults "github.com/mcuadros/go-defaults"
-    gcfg "gopkg.in/gcfg.v1"
+	defaults "github.com/mcuadros/go-defaults"
+	gcfg "gopkg.in/gcfg.v1"
 )
 
 const (
@@ -22,6 +22,7 @@ type Config struct {
 		middlewares.SlackConfig `mapstructure:",squash"`
 		middlewares.SaveConfig  `mapstructure:",squash"`
 		middlewares.MailConfig  `mapstructure:",squash"`
+		LogLevel                string `gcfg:"log-level" mapstructure:"log-level"`
 	}
 	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
@@ -57,6 +58,7 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 
 // newDockerHandler allows overriding Docker handler creation (e.g., for testing)
 var newDockerHandler = NewDockerHandler
+
 func BuildFromString(config string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
 	if err := gcfg.ReadStringInto(c, config); err != nil {
