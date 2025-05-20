@@ -16,6 +16,8 @@ The easiest way to deploy **Ofelia** is using a container runtime like **Docker*
 
     docker pull ghcr.io/netresearch/ofelia
 
+The image exposes a Docker health check so you can use `depends_on.condition: service_healthy` in Docker Compose.
+
 ### Standalone
 
 If you don't want to run **Ofelia** using our (Docker) container image, you can download a binary from [our releases page](https://github.com/netresearch/ofelia/releases).
