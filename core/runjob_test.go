@@ -45,11 +45,9 @@ func (s *SuiteRunJob) TestRun(c *C) {
 	job.Environment = []string{"test_Key1=value1", "test_Key2=value2"}
 	job.Volume = []string{"/test/tmp:/test/tmp:ro", "/test/tmp:/test/tmp:rw"}
 
-	ctx := &Context{}
-	ctx.Execution = NewExecution()
+	ctx := &Context{Job: job, Execution: NewExecution()}
 	logging.SetFormatter(logging.MustStringFormatter(logFormat))
 	ctx.Logger = logging.MustGetLogger("ofelia")
-	ctx.Job = job
 
 	go func() {
 		// Docker Test Server doesn't actually start container
@@ -85,6 +83,35 @@ func (s *SuiteRunJob) TestRun(c *C) {
 	containers, err := s.client.ListContainers(docker.ListContainersOptions{All: true})
 	c.Assert(err, IsNil)
 	c.Assert(containers, HasLen, 0)
+}
+
+func (s *SuiteRunJob) TestRunFailed(c *C) {
+	job := &RunJob{Client: s.client}
+	job.Image = ImageFixture
+	job.Command = "echo fail"
+	job.Delete = "true"
+	job.Name = "fail"
+
+	ctx := &Context{Job: job, Execution: NewExecution()}
+	logging.SetFormatter(logging.MustStringFormatter(logFormat))
+	ctx.Logger = logging.MustGetLogger("ofelia")
+
+	done := make(chan struct{})
+	go func() {
+		ctx.Start()
+		err := job.Run(ctx)
+		ctx.Stop(err)
+		c.Assert(err, NotNil)
+		c.Assert(ctx.Execution.Failed, Equals, true)
+		done <- struct{}{}
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	container, err := job.getContainer()
+	c.Assert(err, IsNil)
+	s.server.MutateContainer(container.ID, docker.State{Running: false, ExitCode: 1})
+
+	<-done
 }
 
 func (s *SuiteRunJob) TestRunWithEntrypoint(c *C) {
