@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/netresearch/ofelia/core"
 	logging "github.com/op/go-logging"
@@ -39,7 +40,7 @@ func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string) (*DockerHandler, error) {
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string, interval time.Duration) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 
@@ -69,7 +70,7 @@ func (s *DaemonBootSuite) TestBootLogsConfigErrorSuppressed(c *C) {
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string) (*DockerHandler, error) {
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string, interval time.Duration) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 

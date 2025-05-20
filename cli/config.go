@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"time"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
 
@@ -73,7 +75,7 @@ func (c *Config) InitializeApp() error {
 	c.buildSchedulerMiddlewares(c.sh)
 
 	var err error
-	c.dockerHandler, err = newDockerHandler(c, c.logger, c.Docker.Filters)
+	c.dockerHandler, err = newDockerHandler(c, c.logger, c.Docker.Filters, c.Docker.PollInterval)
 	if err != nil {
 		return err
 	}
@@ -344,5 +346,6 @@ func (c *RunServiceConfig) buildMiddlewares() {
 }
 
 type DockerConfig struct {
-	Filters []string `mapstructure:"filters"`
+	Filters      []string      `mapstructure:"filters"`
+	PollInterval time.Duration `gcfg:"poll-interval" mapstructure:"poll-interval" default:"10s"`
 }

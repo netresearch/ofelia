@@ -16,6 +16,7 @@ type DockerHandler struct {
 	dockerClient *docker.Client
 	notifier     dockerLabelsUpdate
 	logger       core.Logger
+	pollInterval time.Duration
 }
 
 type dockerLabelsUpdate interface {
@@ -41,11 +42,12 @@ func (c *DockerHandler) buildDockerClient() (*docker.Client, error) {
 	return client, nil
 }
 
-func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, filters []string) (*DockerHandler, error) {
+func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, filters []string, interval time.Duration) (*DockerHandler, error) {
 	c := &DockerHandler{
-		filters:  filters,
-		notifier: notifier,
-		logger:   logger,
+		filters:      filters,
+		notifier:     notifier,
+		logger:       logger,
+		pollInterval: interval,
 	}
 
 	var err error
@@ -65,10 +67,11 @@ func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, filters [
 
 func (c *DockerHandler) watch() {
 	// Poll for changes
-	tick := time.Tick(10000 * time.Millisecond)
+	ticker := time.NewTicker(c.pollInterval)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-tick:
+		case <-ticker.C:
 			labels, err := c.GetDockerLabels()
 			// Do not print or care if there is no container up right now
 			if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
