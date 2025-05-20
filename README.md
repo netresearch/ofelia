@@ -135,6 +135,8 @@ docker run -it --rm \
 
 **Ofelia** reads labels of all Docker containers for configuration by default. To apply on a subset of containers only, use the flag `--docker-filter` (or `-f`) similar to the [filtering for `docker ps`](https://docs.docker.com/engine/reference/commandline/ps/#filter). E.g. to apply to current docker compose project only using `label` filter:
 
+You can also configure how often Ofelia polls Docker for label changes. The default interval is `10s`. Override it with `--docker-poll-interval` or the `poll-interval` option in the `[docker]` section of the config file.
+
 ```yaml
 version: "3"
 services:

@@ -7,17 +7,19 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/netresearch/ofelia/core"
 )
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile    string   `long:"config" description:"configuration file" default:"/etc/ofelia.conf"`
-	DockerFilters []string `short:"f" long:"docker-filter" description:"Filter for docker containers"`
-	LogLevel      string   `long:"log-level" description:"Set log level"`
-	EnablePprof   bool     `long:"enable-pprof" description:"Enable the pprof HTTP server"`
-	PprofAddr     string   `long:"pprof-address" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
+	ConfigFile         string        `long:"config" description:"configuration file" default:"/etc/ofelia.conf"`
+	DockerFilters      []string      `short:"f" long:"docker-filter" description:"Filter for docker containers"`
+	DockerPollInterval time.Duration `long:"docker-poll-interval" description:"Interval for polling docker events"`
+	LogLevel           string        `long:"log-level" description:"Set log level"`
+	EnablePprof        bool          `long:"enable-pprof" description:"Enable the pprof HTTP server"`
+	PprofAddr          string        `long:"pprof-address" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
 
 	scheduler  *core.Scheduler
 	signals    chan os.Signal
@@ -55,6 +57,9 @@ func (c *DaemonCommand) boot() (err error) {
 		c.Logger.Debugf("Error loading config file %v: %v", c.ConfigFile, err)
 	}
 	config.Docker.Filters = c.DockerFilters
+	if c.DockerPollInterval != 0 {
+		config.Docker.PollInterval = c.DockerPollInterval
+	}
 
 	if c.LogLevel == "" {
 		ApplyLogLevel(config.Global.LogLevel)
