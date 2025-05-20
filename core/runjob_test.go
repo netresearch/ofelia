@@ -65,6 +65,7 @@ func (s *SuiteRunJob) TestRun(c *C) {
 	c.Assert(container.Config.Cmd, DeepEquals, []string{"echo", "-a", "foo bar"})
 	c.Assert(container.Config.User, Equals, job.User)
 	c.Assert(container.Config.Image, Equals, job.Image)
+	c.Assert(container.Name, Equals, job.Name)
 	c.Assert(container.State.Running, Equals, true)
 	c.Assert(container.Config.Env, DeepEquals, job.Environment)
 

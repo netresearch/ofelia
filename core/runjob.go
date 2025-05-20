@@ -21,6 +21,11 @@ type RunJob struct {
 	Client  *docker.Client `json:"-"`
 	User    string         `default:"root"`
 
+	// ContainerName specifies the name of the container to be created. If
+	// nil, the job name will be used. If set to an empty string, Docker
+	// will assign a random name.
+	ContainerName *string `gcfg:"container-name" mapstructure:"container-name"`
+
 	TTY bool `default:"false"`
 
 	// do not use bool values with "default:true" because if
@@ -177,7 +182,12 @@ func (j *RunJob) pullImage() error {
 }
 
 func (j *RunJob) buildContainer() (*docker.Container, error) {
+	name := j.Name
+	if j.ContainerName != nil {
+		name = *j.ContainerName
+	}
 	c, err := j.Client.CreateContainer(docker.CreateContainerOptions{
+		Name: name,
 		Config: &docker.Config{
 			Image:        j.Image,
 			AttachStdin:  false,
