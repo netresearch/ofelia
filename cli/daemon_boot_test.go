@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/netresearch/ofelia/core"
 	logging "github.com/op/go-logging"
