@@ -52,6 +52,8 @@ docker run -it --rm \
         nginx
 ```
 
+When specifying exec jobs via labels, Ofelia adds the container name as a prefix to the job name. This prevents jobs from different containers with the same label from clashing. In the example above, the job will be called `nginx.flush-nginx-logs`.
+
 ## `run`
 
 This job can be used in 2 situations:
