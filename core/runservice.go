@@ -108,8 +108,6 @@ const (
 	timeoutError = -998
 )
 
-var svcChecker = time.NewTicker(watchDuration)
-
 func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 	exitCode := swarmError
 
@@ -122,21 +120,22 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 
 	startTime := time.Now()
 
-	// On every tick, check if all the services have completed, or have error out
+	ticker := time.NewTicker(watchDuration)
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	go func() {
-		defer wg.Done()
-		for range svcChecker.C {
-
+		defer func() {
+			ticker.Stop()
+			wg.Done()
+		}()
+		for range ticker.C {
 			if time.Since(startTime) > maxProcessDuration {
 				err = ErrMaxTimeRunning
 				return
 			}
 
 			taskExitCode, found := j.findtaskstatus(ctx, svc.ID)
-
 			if found {
 				exitCode = taskExitCode
 				return
