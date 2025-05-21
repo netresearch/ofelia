@@ -27,3 +27,21 @@ func (s *SuiteBareJob) TestNotifyStartStop(c *C) {
 	job.NotifyStop()
 	c.Assert(job.Running(), Equals, int32(0))
 }
+
+func (s *SuiteBareJob) TestHistoryTruncation(c *C) {
+	job := &BareJob{HistoryLimit: 2}
+	e1, e2, e3 := &Execution{}, &Execution{}, &Execution{}
+	job.SetLastRun(e1)
+	job.SetLastRun(e2)
+	job.SetLastRun(e3)
+	c.Assert(len(job.history), Equals, 2)
+	c.Assert(job.history[0], Equals, e2)
+	c.Assert(job.history[1], Equals, e3)
+}
+
+func (s *SuiteBareJob) TestHistoryUnlimited(c *C) {
+	job := &BareJob{}
+	job.SetLastRun(&Execution{})
+	job.SetLastRun(&Execution{})
+	c.Assert(len(job.history), Equals, 2)
+}

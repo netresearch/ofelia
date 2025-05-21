@@ -7,9 +7,10 @@ import (
 )
 
 type BareJob struct {
-	Schedule string `hash:"true"`
-	Name     string `hash:"true"`
-	Command  string `hash:"true"`
+	Schedule     string `hash:"true"`
+	Name         string `hash:"true"`
+	Command      string `hash:"true"`
+	HistoryLimit int    `default:"10"`
 
 	middlewareContainer
 	running int32
@@ -64,6 +65,9 @@ func (j *BareJob) SetLastRun(e *Execution) {
 	defer j.lock.Unlock()
 	j.lastRun = e
 	j.history = append(j.history, e)
+	if j.HistoryLimit > 0 && len(j.history) > j.HistoryLimit {
+		j.history = j.history[len(j.history)-j.HistoryLimit:]
+	}
 }
 
 // GetLastRun returns the last execution of the job, if any.
