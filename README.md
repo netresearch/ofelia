@@ -46,6 +46,7 @@ You can configure four different kinds of jobs:
 - `job-service-run`: runs the command inside a new "run-once" service, for running inside a swarm
 
 See [Jobs reference documentation](docs/jobs.md) for all available parameters.
+See [Architecture overview](docs/architecture.md) for details about the scheduler, job types and middleware.
 
 ### Logging
 
@@ -216,3 +217,7 @@ gofmt -l $(git ls-files '*.go')
 ```
 
 The pipeline fails if any file is not properly formatted or if `go vet` reports issues.
+
+### Testing
+
+See [running tests](docs/tests.md) for Docker requirements and how to run `go test`.
