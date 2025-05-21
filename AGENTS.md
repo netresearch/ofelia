@@ -10,3 +10,9 @@ This repository is written in Go. Follow these rules when contributing:
 
 ## Documentation
 - Update `README.md` or files in `docs/` when you change user-facing behavior.
+
+## Commits
+- Use semantic commit messages following the Conventional Commits style (e.g.,
+  `feat:`, `fix:`, `docs:`) for all commits.
+- Write a comprehensive commit message body that thoroughly describes every
+  change introduced.
