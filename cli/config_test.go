@@ -286,11 +286,11 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 			},
 			ExpectedConfig: Config{
 				ExecJobs: map[string]*ExecJobConfig{
-					"job1": &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{
+					"some.job1": &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{
 						Schedule: "schedule1",
 						Command:  "command1",
 					}}},
-					"job2": &ExecJobConfig{ExecJob: core.ExecJob{
+					"other.job2": &ExecJobConfig{ExecJob: core.ExecJob{
 						BareJob: core.BareJob{
 							Schedule: "schedule2",
 							Command:  "command2",
@@ -313,7 +313,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 			},
 			ExpectedConfig: Config{
 				ExecJobs: map[string]*ExecJobConfig{
-					"job1": &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{
+					"some.job1": &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{
 						Schedule: "schedule1",
 						Command:  "command1",
 					}},

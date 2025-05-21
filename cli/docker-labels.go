@@ -43,17 +43,21 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 			}
 
 			jobType, jobName, jopParam := parts[1], parts[2], parts[3]
+			scopedJobName := jobName
+			if jobType == jobExec {
+				scopedJobName = c + "." + jobName
+			}
 			switch {
 			case jobType == jobExec: // only job exec can be provided on the non-service container
-				if _, ok := execJobs[jobName]; !ok {
-					execJobs[jobName] = make(map[string]interface{})
+				if _, ok := execJobs[scopedJobName]; !ok {
+					execJobs[scopedJobName] = make(map[string]interface{})
 				}
 
-				setJobParam(execJobs[jobName], jopParam, v)
+				setJobParam(execJobs[scopedJobName], jopParam, v)
 				// since this label was placed not on the service container
 				// this means we need to `exec` command in this container
 				if !isServiceContainer {
-					execJobs[jobName]["container"] = c
+					execJobs[scopedJobName]["container"] = c
 				}
 			case jobType == jobLocal && isServiceContainer:
 				if _, ok := localJobs[jobName]; !ok {

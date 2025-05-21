@@ -121,6 +121,7 @@ docker run -it --rm \
 
 Labels format: `ofelia.<JOB_TYPE>.<JOB_NAME>.<JOB_PARAMETER>=<PARAMETER_VALUE>`.
 This type of configuration supports all the capabilities provided by INI files, including the global logging options.
+For `job-exec` labels, Ofelia automatically prefixes the container name to the job name to avoid collisions. A label `ofelia.job-exec.optimize` on a container named `gitlab` will result in a job called `gitlab.optimize`.
 
 Also, it is possible to configure `job-exec` by setting labels configurations on the target container. To do that, additional label `ofelia.enabled=true` need to be present on the target container.
 

@@ -69,7 +69,7 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 	}
 	cfg.dockerLabelsUpdate(labelsAdd)
 	c.Assert(len(cfg.ExecJobs), Equals, 1)
-	j := cfg.ExecJobs["foo"]
+	j := cfg.ExecJobs["container1.foo"]
 	// Verify schedule and command set
 	c.Assert(j.GetSchedule(), Equals, "@every 5s")
 	c.Assert(j.GetCommand(), Equals, "echo foo")
@@ -87,7 +87,7 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 	}
 	cfg.dockerLabelsUpdate(labelsChange)
 	c.Assert(len(cfg.ExecJobs), Equals, 1)
-	j2 := cfg.ExecJobs["foo"]
+	j2 := cfg.ExecJobs["container1.foo"]
 	c.Assert(j2.GetSchedule(), Equals, "@every 10s")
 	entries = cfg.sh.Entries()
 	c.Assert(len(entries), Equals, 1)
