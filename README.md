@@ -164,6 +164,13 @@ docker run -it --rm \
         nginx
 ```
 
+### Example Compose setup
+
+See the [example](example/) directory for a ready-made `compose.yml` that
+demonstrates the different job types. It starts an `nginx` container with an
+`exec` job label and configures additional `run`, `local` and `service-run` jobs
+via `ofelia.ini`.
+
 **Ofelia** reads labels of all Docker containers for configuration by default. To apply on a subset of containers only, use the flag `--docker-filter` (or `-f`) similar to the [filtering for `docker ps`](https://docs.docker.com/engine/reference/commandline/ps/#filter). E.g. to apply only to the current Docker Compose project using a `label` filter:
 
 You can also configure how often Ofelia polls Docker for label changes. The default interval is `10s`. Override it with `--docker-poll-interval` or the `poll-interval` option in the `[docker]` section of the config file.
