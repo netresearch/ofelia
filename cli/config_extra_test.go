@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
-	"time"
 
 	"github.com/netresearch/ofelia/core"
 
@@ -41,7 +40,7 @@ func (s *SuiteConfig) TestInitializeAppErrorDockerHandler(c *C) {
 	// Override newDockerHandler to simulate factory error
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string, interval time.Duration) (*DockerHandler, error) {
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig) (*DockerHandler, error) {
 		return nil, errors.New("factory error")
 	}
 
