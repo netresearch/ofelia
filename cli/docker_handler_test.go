@@ -54,7 +54,7 @@ func (s *DockerHandlerSuite) TestNewDockerHandlerErrorInfo(c *C) {
 	os.Setenv("DOCKER_HOST", "tcp://127.0.0.1:0")
 
 	notifier := &dummyNotifier{}
-	handler, err := NewDockerHandler(notifier, &TestLogger{}, &DockerConfig{})
+	handler, err := NewDockerHandler(notifier, &TestLogger{}, &DockerConfig{}, nil)
 	c.Assert(handler, IsNil)
 	c.Assert(err, NotNil)
 }
@@ -145,7 +145,7 @@ func (s *DockerHandlerSuite) TestPollingDisabled(c *C) {
 	defer os.Unsetenv("DOCKER_HOST")
 
 	cfg := &DockerConfig{Filters: []string{}, PollInterval: time.Millisecond * 50, UseEvents: false, DisablePolling: true}
-	_, err = NewDockerHandler(notifier, &TestLogger{}, cfg)
+	_, err = NewDockerHandler(notifier, &TestLogger{}, cfg, nil)
 	c.Assert(err, IsNil)
 
 	select {

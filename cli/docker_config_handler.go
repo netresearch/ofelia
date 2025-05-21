@@ -11,9 +11,16 @@ import (
 
 var ErrNoContainerWithOfeliaEnabled = errors.New("Couldn't find containers with label 'ofelia.enabled=true'")
 
+// dockerClient defines the Docker client methods used by DockerHandler.
+type dockerClient interface {
+	Info() (*docker.DockerInfo, error)
+	ListContainers(opts docker.ListContainersOptions) ([]docker.APIContainers, error)
+	AddEventListenerWithOptions(opts docker.EventsOptions, listener chan<- *docker.APIEvents) error
+}
+
 type DockerHandler struct {
 	filters        []string
-	dockerClient   *docker.Client
+	dockerClient   dockerClient
 	notifier       dockerLabelsUpdate
 	logger         core.Logger
 	pollInterval   time.Duration
@@ -27,10 +34,13 @@ type dockerLabelsUpdate interface {
 
 // TODO: Implement an interface so the code does not have to use third parties directly
 func (c *DockerHandler) GetInternalDockerClient() *docker.Client {
-	return c.dockerClient
+	if client, ok := c.dockerClient.(*docker.Client); ok {
+		return client
+	}
+	return nil
 }
 
-func (c *DockerHandler) buildDockerClient() (*docker.Client, error) {
+func (c *DockerHandler) buildDockerClient() (dockerClient, error) {
 	client, err := docker.NewClientFromEnv()
 	if err != nil {
 		return nil, err
@@ -44,7 +54,7 @@ func (c *DockerHandler) buildDockerClient() (*docker.Client, error) {
 	return client, nil
 }
 
-func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig) (*DockerHandler, error) {
+func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, client dockerClient) (*DockerHandler, error) {
 	c := &DockerHandler{
 		filters:        cfg.Filters,
 		notifier:       notifier,
@@ -55,9 +65,13 @@ func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, cfg *Dock
 	}
 
 	var err error
-	c.dockerClient, err = c.buildDockerClient()
-	if err != nil {
-		return nil, err
+	if client == nil {
+		c.dockerClient, err = c.buildDockerClient()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		c.dockerClient = client
 	}
 
 	// Do a sanity check on docker

@@ -40,7 +40,7 @@ func (s *SuiteConfig) TestInitializeAppErrorDockerHandler(c *C) {
 	// Override newDockerHandler to simulate factory error
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig) (*DockerHandler, error) {
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
 		return nil, errors.New("factory error")
 	}
 
