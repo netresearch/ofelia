@@ -89,6 +89,11 @@ func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, cfg *Dock
 }
 
 func (c *DockerHandler) watch() {
+	if c.pollInterval <= 0 {
+		// Skip polling when interval is not positive
+		return
+	}
+
 	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()
 	for range ticker.C {

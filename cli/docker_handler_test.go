@@ -154,3 +154,35 @@ func (s *DockerHandlerSuite) TestPollingDisabled(c *C) {
 	case <-time.After(time.Millisecond * 150):
 	}
 }
+
+// TestWatchInvalidInterval verifies that watch exits immediately when
+// PollInterval is zero or negative.
+func (s *DockerHandlerSuite) TestWatchInvalidInterval(c *C) {
+	h := &DockerHandler{pollInterval: 0, notifier: &dummyNotifier{}, logger: &TestLogger{}}
+	done := make(chan struct{})
+	go func() {
+		h.watch()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// ok
+	case <-time.After(time.Millisecond * 50):
+		c.Error("watch did not return for zero interval")
+	}
+
+	h = &DockerHandler{pollInterval: -time.Second, notifier: &dummyNotifier{}, logger: &TestLogger{}}
+	done = make(chan struct{})
+	go func() {
+		h.watch()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// ok
+	case <-time.After(time.Millisecond * 50):
+		c.Error("watch did not return for negative interval")
+	}
+}
