@@ -6,6 +6,19 @@
 
 Ofelia makes it easy to schedule jobs by just adding labels to your containers.
 
+## Features
+
+- **Job types** for running commands in running containers, new containers,
+  on the host or as one-off swarm services.
+- **Logging middlewares** integrate with systems like Slack or StatsD to report
+  job output and status.
+- **Dynamic Docker detection** polls containers at an interval controlled by
+  `--docker-poll-interval` or listens for events with `--docker-events`.
+- **Config validation** via the `validate` command to check your configuration
+  before running.
+- **Optional pprof server** enabled with `--enable-pprof` and bound via
+  `--pprof-address` for profiling and debugging.
+
 This fork is based off of [mcuadros/ofelia](https://github.com/mcuadros/ofelia).
 
 ## Using it
