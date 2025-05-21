@@ -1,0 +1,16 @@
+services:
+  ofelia:
+    image: ghcr.io/netresearch/ofelia:latest
+    command: daemon --config /etc/ofelia/config.ini
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ofelia.ini:/etc/ofelia/config.ini:ro
+      - ./data:/tmp
+    depends_on:
+      - nginx
+  nginx:
+    image: nginx
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.flush-logs.schedule: "@hourly"
+      ofelia.job-exec.flush-logs.command: "echo 'flush nginx logs'"
