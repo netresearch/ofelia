@@ -130,6 +130,10 @@ func (w *jobWrapper) start(ctx *Context) {
 func (w *jobWrapper) stop(ctx *Context, err error) {
 	ctx.Stop(err)
 
+	if l, ok := ctx.Job.(interface{ SetLastRun(*Execution) }); ok {
+		l.SetLastRun(ctx.Execution)
+	}
+
 	errText := "none"
 	if ctx.Execution.Error != nil {
 		errText = ctx.Execution.Error.Error()

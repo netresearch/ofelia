@@ -55,3 +55,20 @@ func (s *SuiteScheduler) TestMergeMiddlewaresSame(c *C) {
 	c.Assert(m, HasLen, 1)
 	c.Assert(m[0], Equals, mB)
 }
+
+func (s *SuiteScheduler) TestLastRunRecorded(c *C) {
+	job := &TestJob{}
+	job.Schedule = "@every 1s"
+
+	sc := NewScheduler(&TestLogger{})
+	err := sc.AddJob(job)
+	c.Assert(err, IsNil)
+
+	sc.Start()
+	time.Sleep(time.Second * 2)
+	sc.Stop()
+
+	lr := job.GetLastRun()
+	c.Assert(lr, NotNil)
+	c.Assert(lr.Duration > 0, Equals, true)
+}
