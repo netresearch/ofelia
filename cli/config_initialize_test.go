@@ -33,7 +33,7 @@ func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
 	// Override newDockerHandler to use the test server
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig) (*DockerHandler, error) {
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
 		client, err := docker.NewClient(ts.URL)
 		if err != nil {
 			return nil, err
