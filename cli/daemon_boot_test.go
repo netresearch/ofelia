@@ -39,7 +39,7 @@ func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string) (*DockerHandler, error) {
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 
@@ -69,7 +69,7 @@ func (s *DaemonBootSuite) TestBootLogsConfigErrorSuppressed(c *C) {
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string) (*DockerHandler, error) {
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 

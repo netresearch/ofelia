@@ -1,12 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"io/ioutil"
 	"os"
-	"errors"
-	
+
 	"github.com/netresearch/ofelia/core"
-	
+
 	. "gopkg.in/check.v1"
 )
 
@@ -40,7 +40,7 @@ func (s *SuiteConfig) TestInitializeAppErrorDockerHandler(c *C) {
 	// Override newDockerHandler to simulate factory error
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string) (*DockerHandler, error) {
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig) (*DockerHandler, error) {
 		return nil, errors.New("factory error")
 	}
 
@@ -55,7 +55,7 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 	// Prepare initial Config
 	cfg := NewConfig(&TestLogger{})
 	cfg.logger = &TestLogger{}
-		cfg.dockerHandler = &DockerHandler{}
+	cfg.dockerHandler = &DockerHandler{}
 	cfg.sh = core.NewScheduler(&TestLogger{})
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 	cfg.ExecJobs = make(map[string]*ExecJobConfig)
