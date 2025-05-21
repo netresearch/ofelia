@@ -28,6 +28,8 @@ This job is executed inside a running container, similar to `docker exec`.
     - **Labels config**: multiple environment variables has to be provided as JSON array: `["FOO=bar", "BAZ=qux"]`
 - `no-overlap`: boolean = `false`
   - Prevent that the job runs concurrently
+- `history-limit`: integer = `10`
+  - Number of past executions kept in memory
 
 ### INI-file example
 
@@ -100,6 +102,8 @@ This job can be used in 2 situations:
     - **Labels config**: multiple environment variables has to be provided as JSON array: `["FOO=bar", "BAZ=qux"]`
 - `no-overlap`: boolean = `false`
   - Prevent that the job runs concurrently
+- `history-limit`: integer = `10`
+  - Number of past executions kept in memory
 
 ### INI-file example
 
@@ -150,6 +154,8 @@ Runs the command on the host running Ofelia.
     - **Labels config**: multiple environment variables has to be provided as JSON array: `["FOO=bar", "BAZ=qux"]`
 - `no-overlap`: boolean = `false`
   - Prevent that the job runs concurrently
+- `history-limit`: integer = `10`
+  - Number of past executions kept in memory
 
 ### INI-file example
 
@@ -185,6 +191,8 @@ This job can be used to:
   - Allocate a pseudo-tty, similar to `docker exec -t`. See this [Stack Overflow answer](https://stackoverflow.com/questions/30137135/confused-about-docker-t-option-to-allocate-a-pseudo-tty) for more info.
 - `no-overlap`: boolean = `false`
   - Prevent that the job runs concurrently
+- `history-limit`: integer = `10`
+  - Number of past executions kept in memory
 
 ### INI-file example
 
