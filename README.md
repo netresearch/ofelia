@@ -6,6 +6,14 @@
 
 Ofelia makes it easy to schedule jobs by just adding labels to your containers.
 
+## Table of Contents
+
+- [Features](#features)
+- [Using it](#using-it)
+- [Configuration](#configuration)
+- [Development](#development)
+- [License](#license)
+
 ## Features
 
 - **Job types** for running commands in running containers, new containers,
@@ -255,3 +263,7 @@ The pipeline fails if any file is not properly formatted or if `go vet` reports 
 ### Testing
 
 See [running tests](docs/tests.md) for Docker requirements and how to run `go test`.
+
+## License
+
+This project is released under the [MIT License](LICENSE).
