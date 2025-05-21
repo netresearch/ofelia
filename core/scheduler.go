@@ -61,29 +61,30 @@ func (s *Scheduler) RemoveJob(j Job) error {
 }
 
 func (s *Scheduler) Start() error {
-        s.mu.Lock()
-        s.isRunning = true
-        s.mu.Unlock()
-        s.Logger.Debugf("Starting scheduler")
-        s.cron.Start()
-        return nil
+	s.mu.Lock()
+	s.isRunning = true
+	s.mu.Unlock()
+	s.Logger.Debugf("Starting scheduler")
+	s.cron.Start()
+	return nil
 }
 
 func (s *Scheduler) Stop() error {
-        s.cron.Stop() // Stop cron first to prevent new jobs
+	s.cron.Stop() // Stop cron first to prevent new jobs
 
-        s.mu.Lock()
-        s.isRunning = false
-        s.mu.Unlock()
+	s.mu.Lock()
+	s.isRunning = false
+	s.mu.Unlock()
 
-        s.wg.Wait() // Then wait for existing jobs
-        return nil
+	s.wg.Wait() // Then wait for existing jobs
+	return nil
 }
 
 // Entries returns all scheduled cron entries.
 func (s *Scheduler) Entries() []cron.Entry {
-        return s.cron.Entries()
+	return s.cron.Entries()
 }
+
 // jobWrapper wraps a Job to manage running and waiting via the Scheduler.
 
 // IsRunning returns true if the scheduler is active.
@@ -92,11 +93,11 @@ func (s *Scheduler) IsRunning() bool {
 	defer s.mu.RUnlock()
 	return s.isRunning
 }
-type jobWrapper struct {
-	 s *Scheduler
-	 j Job
-}
 
+type jobWrapper struct {
+	s *Scheduler
+	j Job
+}
 
 func (w *jobWrapper) Run() {
 	w.s.mu.Lock()

@@ -202,3 +202,16 @@ docker run -it --rm \
     --label ofelia.job-exec.test-exec-job.command="uname -a" \
         nginx
 ```
+
+## Development
+
+### Linting
+
+The CI workflow runs `go vet` and checks code formatting with `gofmt`. Run these checks locally with:
+
+```sh
+go vet ./...
+gofmt -l $(git ls-files '*.go')
+```
+
+The pipeline fails if any file is not properly formatted or if `go vet` reports issues.

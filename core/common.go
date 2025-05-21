@@ -254,11 +254,11 @@ func buildPullOptions(image string) (docker.PullImageOptions, docker.AuthConfigu
 	repository, tag := docker.ParseRepositoryTag(image)
 
 	registry := parseRegistry(repository)
-    // Override registry for two-part repository names (e.g., "repo/name" -> registry "repo")
-    parts := strings.Split(repository, "/")
-    if registry == "" && len(parts) > 1 {
-        registry = parts[0]
-    }
+	// Override registry for two-part repository names (e.g., "repo/name" -> registry "repo")
+	parts := strings.Split(repository, "/")
+	if registry == "" && len(parts) > 1 {
+		registry = parts[0]
+	}
 
 	if tag == "" {
 		tag = "latest"

@@ -34,5 +34,17 @@ jobs:
       - name: Confirm Docker
         run: docker info
 
+      - name: Vet
+        run: go vet ./...
+
+      - name: Format check
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
       - name: Test
         run: go test ./...
