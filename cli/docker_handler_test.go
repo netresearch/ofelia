@@ -12,6 +12,7 @@ import (
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/fsouza/go-dockerclient/testing"
 	. "gopkg.in/check.v1"
 )
 
@@ -19,6 +20,15 @@ import (
 type dummyNotifier struct{}
 
 func (d *dummyNotifier) dockerLabelsUpdate(labels map[string]map[string]string) {}
+
+type chanNotifier struct{ ch chan struct{} }
+
+func (d *chanNotifier) dockerLabelsUpdate(labels map[string]map[string]string) {
+	select {
+	case d.ch <- struct{}{}:
+	default:
+	}
+}
 
 // DockerHandlerSuite contains tests for DockerHandler methods
 type DockerHandlerSuite struct{}
@@ -44,31 +54,9 @@ func (s *DockerHandlerSuite) TestNewDockerHandlerErrorInfo(c *C) {
 	os.Setenv("DOCKER_HOST", "tcp://127.0.0.1:0")
 
 	notifier := &dummyNotifier{}
-	handler, err := NewDockerHandler(notifier, &TestLogger{}, nil, time.Second)
+	handler, err := NewDockerHandler(notifier, &TestLogger{}, &DockerConfig{})
 	c.Assert(handler, IsNil)
 	c.Assert(err, NotNil)
-}
-
-// TestNewDockerHandlerInterval verifies that the poll interval is stored
-func (s *DockerHandlerSuite) TestNewDockerHandlerInterval(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/info" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte("{}"))
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer ts.Close()
-
-	orig := os.Getenv("DOCKER_HOST")
-	defer os.Setenv("DOCKER_HOST", orig)
-	os.Setenv("DOCKER_HOST", ts.URL)
-
-	notifier := &dummyNotifier{}
-	handler, err := NewDockerHandler(notifier, &TestLogger{}, nil, 2*time.Second)
-	c.Assert(err, IsNil)
-	c.Assert(handler.pollInterval, Equals, 2*time.Second)
 }
 
 // TestGetDockerLabelsInvalidFilter verifies that GetDockerLabels returns an error on invalid filter strings
@@ -137,4 +125,32 @@ func (s *DockerHandlerSuite) TestGetDockerLabelsValid(c *C) {
 		},
 	}
 	c.Assert(labels, DeepEquals, expected)
+}
+
+// TestPollingDisabled ensures no updates are triggered when polling is disabled and no events occur
+func (s *DockerHandlerSuite) TestPollingDisabled(c *C) {
+	ch := make(chan struct{}, 1)
+	notifier := &chanNotifier{ch: ch}
+
+	server, err := testing.NewServer("127.0.0.1:0", nil, nil)
+	c.Assert(err, IsNil)
+	defer server.Stop()
+	server.CustomHandler("/containers/json", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `[{"Names":["/cont"],"Labels":{"ofelia.enabled":"true"}}]`)
+	}))
+	tsURL := server.URL()
+
+	os.Setenv("DOCKER_HOST", "tcp://"+strings.TrimPrefix(tsURL, "http://"))
+	defer os.Unsetenv("DOCKER_HOST")
+
+	cfg := &DockerConfig{Filters: []string{}, PollInterval: time.Millisecond * 50, UseEvents: false, DisablePolling: true}
+	_, err = NewDockerHandler(notifier, &TestLogger{}, cfg)
+	c.Assert(err, IsNil)
+
+	select {
+	case <-ch:
+		c.Error("unexpected update")
+	case <-time.After(time.Millisecond * 150):
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/netresearch/ofelia/core"
@@ -34,17 +33,19 @@ func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
 	// Override newDockerHandler to use the test server
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, filters []string, interval time.Duration) (*DockerHandler, error) {
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig) (*DockerHandler, error) {
 		client, err := docker.NewClient(ts.URL)
 		if err != nil {
 			return nil, err
 		}
 		return &DockerHandler{
-			filters:      filters,
-			notifier:     notifier,
-			logger:       logger,
-			dockerClient: client,
-			pollInterval: interval,
+			filters:        cfg.Filters,
+			notifier:       notifier,
+			logger:         logger,
+			dockerClient:   client,
+			pollInterval:   cfg.PollInterval,
+			useEvents:      cfg.UseEvents,
+			disablePolling: cfg.DisablePolling,
 		}, nil
 	}
 
@@ -54,5 +55,4 @@ func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(cfg.sh, NotNil)
 	c.Assert(cfg.dockerHandler, NotNil)
-	c.Assert(cfg.dockerHandler.pollInterval, Equals, cfg.Docker.PollInterval)
 }

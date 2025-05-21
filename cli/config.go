@@ -75,7 +75,7 @@ func (c *Config) InitializeApp() error {
 	c.buildSchedulerMiddlewares(c.sh)
 
 	var err error
-	c.dockerHandler, err = newDockerHandler(c, c.logger, c.Docker.Filters, c.Docker.PollInterval)
+	c.dockerHandler, err = newDockerHandler(c, c.logger, &c.Docker)
 	if err != nil {
 		return err
 	}
@@ -346,6 +346,8 @@ func (c *RunServiceConfig) buildMiddlewares() {
 }
 
 type DockerConfig struct {
-	Filters      []string      `mapstructure:"filters"`
-	PollInterval time.Duration `gcfg:"poll-interval" mapstructure:"poll-interval" default:"10s"`
+	Filters        []string      `mapstructure:"filters"`
+	PollInterval   time.Duration `mapstructure:"poll-interval" default:"10s"`
+	UseEvents      bool          `mapstructure:"events" default:"false"`
+	DisablePolling bool          `mapstructure:"no-poll" default:"false"`
 }

@@ -12,11 +12,13 @@ import (
 var ErrNoContainerWithOfeliaEnabled = errors.New("Couldn't find containers with label 'ofelia.enabled=true'")
 
 type DockerHandler struct {
-	filters      []string
-	dockerClient *docker.Client
-	notifier     dockerLabelsUpdate
-	logger       core.Logger
-	pollInterval time.Duration
+	filters        []string
+	dockerClient   *docker.Client
+	notifier       dockerLabelsUpdate
+	logger         core.Logger
+	pollInterval   time.Duration
+	useEvents      bool
+	disablePolling bool
 }
 
 type dockerLabelsUpdate interface {
@@ -42,12 +44,14 @@ func (c *DockerHandler) buildDockerClient() (*docker.Client, error) {
 	return client, nil
 }
 
-func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, filters []string, interval time.Duration) (*DockerHandler, error) {
+func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig) (*DockerHandler, error) {
 	c := &DockerHandler{
-		filters:      filters,
-		notifier:     notifier,
-		logger:       logger,
-		pollInterval: interval,
+		filters:        cfg.Filters,
+		notifier:       notifier,
+		logger:         logger,
+		pollInterval:   cfg.PollInterval,
+		useEvents:      cfg.UseEvents,
+		disablePolling: cfg.DisablePolling,
 	}
 
 	var err error
@@ -61,24 +65,24 @@ func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, filters [
 		return nil, err
 	}
 
-	go c.watch()
+	if !c.disablePolling {
+		go c.watch()
+	}
+	if c.useEvents {
+		go c.watchEvents()
+	}
 	return c, nil
 }
 
 func (c *DockerHandler) watch() {
-	// Poll for changes
 	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			labels, err := c.GetDockerLabels()
-			// Do not print or care if there is no container up right now
-			if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
-				c.logger.Debugf("%v", err)
-			}
-			c.notifier.dockerLabelsUpdate(labels)
+	for range ticker.C {
+		labels, err := c.GetDockerLabels()
+		if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
+			c.logger.Debugf("%v", err)
 		}
+		c.notifier.dockerLabelsUpdate(labels)
 	}
 }
 
@@ -129,4 +133,21 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 	}
 
 	return labels, nil
+}
+
+func (c *DockerHandler) watchEvents() {
+	ch := make(chan *docker.APIEvents)
+	if err := c.dockerClient.AddEventListenerWithOptions(docker.EventsOptions{
+		Filters: map[string][]string{"type": {"container"}},
+	}, ch); err != nil {
+		c.logger.Debugf("%v", err)
+		return
+	}
+	for range ch {
+		labels, err := c.GetDockerLabels()
+		if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
+			c.logger.Debugf("%v", err)
+		}
+		c.notifier.dockerLabelsUpdate(labels)
+	}
 }

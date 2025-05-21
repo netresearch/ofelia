@@ -16,7 +16,9 @@ import (
 type DaemonCommand struct {
 	ConfigFile         string        `long:"config" description:"configuration file" default:"/etc/ofelia.conf"`
 	DockerFilters      []string      `short:"f" long:"docker-filter" description:"Filter for docker containers"`
-	DockerPollInterval time.Duration `long:"docker-poll-interval" description:"Interval for polling docker events"`
+	DockerPollInterval time.Duration `long:"docker-poll-interval" description:"Interval for docker polling" default:"10s"`
+	DockerUseEvents    bool          `long:"docker-events" description:"Use docker events instead of polling"`
+	DockerNoPoll       bool          `long:"docker-no-poll" description:"Disable polling docker for labels"`
 	LogLevel           string        `long:"log-level" description:"Set log level"`
 	EnablePprof        bool          `long:"enable-pprof" description:"Enable the pprof HTTP server"`
 	PprofAddr          string        `long:"pprof-address" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
@@ -57,9 +59,9 @@ func (c *DaemonCommand) boot() (err error) {
 		c.Logger.Debugf("Error loading config file %v: %v", c.ConfigFile, err)
 	}
 	config.Docker.Filters = c.DockerFilters
-	if c.DockerPollInterval != 0 {
-		config.Docker.PollInterval = c.DockerPollInterval
-	}
+	config.Docker.PollInterval = c.DockerPollInterval
+	config.Docker.UseEvents = c.DockerUseEvents
+	config.Docker.DisablePolling = c.DockerNoPoll
 
 	if c.LogLevel == "" {
 		ApplyLogLevel(config.Global.LogLevel)
