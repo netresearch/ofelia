@@ -1,6 +1,7 @@
 .vscode
 ofelia
 debug
-build
-bin
+build/
+bin/
+coverage.txt
 *coverage*
