@@ -225,7 +225,13 @@ Ofelia polls Docker every 10 seconds to detect label changes and reload the INI
 file. The interval can be adjusted using `--docker-poll-interval`. Event-based
 updates can be enabled with `--docker-events`; when enabled, polling can be
 disabled entirely with `--docker-no-poll`. Setting the interval to `0` also
-disables both label polling and INI reloads.
+disables both label polling and INI reloads. Polling can also be disabled in
+`ofelia.ini` by adding `no-poll = true` under the `[docker]` section:
+
+```ini
+[docker]
+no-poll = true
+```
 
 ### Dynamic Docker configuration
 
