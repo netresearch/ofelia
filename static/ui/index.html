@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Ofelia Jobs</title>
+  <style>
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #ccc; padding: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Scheduled Jobs</h1>
+  <table id="jobs">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Schedule</th>
+        <th>Command</th>
+        <th>Last Status</th>
+        <th>Run Time</th>
+        <th>Duration</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <script>
+    async function loadJobs() {
+      const resp = await fetch('/api/jobs');
+      const jobs = await resp.json();
+      const tbody = document.querySelector('#jobs tbody');
+      tbody.innerHTML = '';
+      jobs.forEach(j => {
+        const tr = document.createElement('tr');
+        const status = j.last_run ? (j.last_run.failed ? 'Failed' : 'Success') : 'never';
+        const time = j.last_run ? new Date(j.last_run.date).toLocaleString() : '';
+        const duration = j.last_run ? j.last_run.duration : '';
+        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+    loadJobs();
+    setInterval(loadJobs, 5000);
+  </script>
+</body>
+</html>

@@ -15,6 +15,7 @@ type BareJob struct {
 	running int32
 	lock    sync.Mutex
 	history []*Execution
+	lastRun *Execution
 	cronID  int
 }
 
@@ -55,4 +56,19 @@ func (j *BareJob) Hash() string {
 	var hash string
 	getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &hash)
 	return hash
+}
+
+// SetLastRun stores the last executed run for the job.
+func (j *BareJob) SetLastRun(e *Execution) {
+	j.lock.Lock()
+	defer j.lock.Unlock()
+	j.lastRun = e
+	j.history = append(j.history, e)
+}
+
+// GetLastRun returns the last execution of the job, if any.
+func (j *BareJob) GetLastRun() *Execution {
+	j.lock.Lock()
+	defer j.lock.Unlock()
+	return j.lastRun
 }
