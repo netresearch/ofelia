@@ -79,7 +79,7 @@ func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, cfg *Dock
 		return nil, err
 	}
 
-	if !c.disablePolling {
+	if !c.disablePolling && c.pollInterval > 0 {
 		go c.watch()
 	}
 	if c.useEvents {
@@ -97,6 +97,11 @@ func (c *DockerHandler) watch() {
 			c.logger.Debugf("%v", err)
 		}
 		c.notifier.dockerLabelsUpdate(labels)
+		if cfg, ok := c.notifier.(*Config); ok {
+			if err := cfg.iniConfigUpdate(); err != nil {
+				c.logger.Debugf("%v", err)
+			}
+		}
 	}
 }
 
