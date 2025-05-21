@@ -37,6 +37,20 @@ If you don't want to run **Ofelia** using our (Docker) container image, you can 
 
     wget https://github.com/netresearch/ofelia/releases/latest
 
+### Commands
+
+Use `ofelia daemon` to run the scheduler with a configuration file and
+`ofelia validate` to check the configuration without starting the daemon:
+
+```sh
+ofelia daemon --config=/path/to/config.ini
+ofelia validate --config=/path/to/config.ini
+```
+
+When `--enable-pprof` is specified, the daemon starts a Go pprof HTTP
+server for profiling. Use `--pprof-address` to set the listening address
+(default `127.0.0.1:8080`).
+
 ## Configuration
 
 ### Jobs
