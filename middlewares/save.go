@@ -3,7 +3,7 @@ package middlewares
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	"github.com/netresearch/ofelia/core"
@@ -86,5 +86,5 @@ func (m *Save) saveContextToDisk(ctx *core.Context, filename string) error {
 }
 
 func (m *Save) writeFile(data []byte, filename string) error {
-	return ioutil.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0644)
 }
