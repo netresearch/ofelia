@@ -31,6 +31,7 @@ type Config struct {
 	ServiceJobs   map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
 	LocalJobs     map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
 	Docker        DockerConfig
+	configPath    string
 	sh            *core.Scheduler
 	dockerHandler *DockerHandler
 	logger        core.Logger
@@ -53,6 +54,7 @@ func NewConfig(logger core.Logger) *Config {
 func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
 	err := gcfg.ReadFileInto(c, filename)
+	c.configPath = filename
 	return c, err
 }
 
@@ -280,6 +282,137 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	if !hasIterated {
 		c.logger.Debugf("no new run jobs")
 	}
+}
+
+func (c *Config) iniConfigUpdate() error {
+	if c.configPath == "" {
+		return nil
+	}
+
+	parsed, err := BuildFromFile(c.configPath, c.logger)
+	if err != nil {
+		return err
+	}
+
+	// Exec jobs
+	for name, j := range c.ExecJobs {
+		newJob, ok := parsed.ExecJobs[name]
+		if !ok {
+			c.sh.RemoveJob(j)
+			delete(c.ExecJobs, name)
+			continue
+		}
+		defaults.SetDefaults(newJob)
+		newJob.Client = c.dockerHandler.GetInternalDockerClient()
+		newJob.Name = name
+		if newJob.Hash() != j.Hash() {
+			c.sh.RemoveJob(j)
+			newJob.buildMiddlewares()
+			c.sh.AddJob(newJob)
+			c.ExecJobs[name] = newJob
+		}
+	}
+
+	for name, j := range parsed.ExecJobs {
+		if _, ok := c.ExecJobs[name]; !ok {
+			defaults.SetDefaults(j)
+			j.Client = c.dockerHandler.GetInternalDockerClient()
+			j.Name = name
+			j.buildMiddlewares()
+			c.sh.AddJob(j)
+			c.ExecJobs[name] = j
+		}
+	}
+
+	// Run jobs
+	for name, j := range c.RunJobs {
+		newJob, ok := parsed.RunJobs[name]
+		if !ok {
+			c.sh.RemoveJob(j)
+			delete(c.RunJobs, name)
+			continue
+		}
+		defaults.SetDefaults(newJob)
+		newJob.Client = c.dockerHandler.GetInternalDockerClient()
+		newJob.Name = name
+		if newJob.Hash() != j.Hash() {
+			c.sh.RemoveJob(j)
+			newJob.buildMiddlewares()
+			c.sh.AddJob(newJob)
+			c.RunJobs[name] = newJob
+		}
+	}
+
+	for name, j := range parsed.RunJobs {
+		if _, ok := c.RunJobs[name]; !ok {
+			defaults.SetDefaults(j)
+			j.Client = c.dockerHandler.GetInternalDockerClient()
+			j.Name = name
+			j.buildMiddlewares()
+			c.sh.AddJob(j)
+			c.RunJobs[name] = j
+		}
+	}
+
+	// Local jobs
+	for name, j := range c.LocalJobs {
+		newJob, ok := parsed.LocalJobs[name]
+		if !ok {
+			c.sh.RemoveJob(j)
+			delete(c.LocalJobs, name)
+			continue
+		}
+		defaults.SetDefaults(newJob)
+		newJob.Name = name
+		if newJob.Hash() != j.Hash() {
+			c.sh.RemoveJob(j)
+			newJob.buildMiddlewares()
+			c.sh.AddJob(newJob)
+			c.LocalJobs[name] = newJob
+		}
+	}
+
+	for name, j := range parsed.LocalJobs {
+		if _, ok := c.LocalJobs[name]; !ok {
+			defaults.SetDefaults(j)
+			j.Name = name
+			j.buildMiddlewares()
+			c.sh.AddJob(j)
+			c.LocalJobs[name] = j
+		}
+	}
+
+	// Service jobs
+	for name, j := range c.ServiceJobs {
+		newJob, ok := parsed.ServiceJobs[name]
+		if !ok {
+			c.sh.RemoveJob(j)
+			delete(c.ServiceJobs, name)
+			continue
+		}
+		defaults.SetDefaults(newJob)
+		newJob.Client = c.dockerHandler.GetInternalDockerClient()
+		newJob.Name = name
+		if newJob.Hash() != j.Hash() {
+			c.sh.RemoveJob(j)
+			newJob.buildMiddlewares()
+			c.sh.AddJob(newJob)
+			c.ServiceJobs[name] = newJob
+		}
+	}
+
+	for name, j := range parsed.ServiceJobs {
+		if _, ok := c.ServiceJobs[name]; !ok {
+			defaults.SetDefaults(j)
+			j.Client = c.dockerHandler.GetInternalDockerClient()
+			j.Name = name
+			j.buildMiddlewares()
+			c.sh.AddJob(j)
+			c.ServiceJobs[name] = j
+		}
+	}
+
+	return nil
 }
 
 // ExecJobConfig contains all configuration params needed to build a ExecJob

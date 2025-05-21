@@ -17,7 +17,7 @@ import (
 type DaemonCommand struct {
 	ConfigFile         string        `long:"config" description:"configuration file" default:"/etc/ofelia.conf"`
 	DockerFilters      []string      `short:"f" long:"docker-filter" description:"Filter for docker containers"`
-	DockerPollInterval time.Duration `long:"docker-poll-interval" description:"Interval for docker polling" default:"10s"`
+	DockerPollInterval time.Duration `long:"docker-poll-interval" description:"Interval for docker polling and INI reload (0 disables)" default:"10s"`
 	DockerUseEvents    bool          `long:"docker-events" description:"Use docker events instead of polling"`
 	DockerNoPoll       bool          `long:"docker-no-poll" description:"Disable polling docker for labels"`
 	LogLevel           string        `long:"log-level" description:"Set log level"`
