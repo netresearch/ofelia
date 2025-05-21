@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/netresearch/ofelia/core"
 )
@@ -25,7 +26,10 @@ type SlackConfig struct {
 func NewSlack(c *SlackConfig) core.Middleware {
 	var m core.Middleware
 	if !IsEmpty(c) {
-		m = &Slack{*c}
+		m = &Slack{
+			SlackConfig: *c,
+			Client:      &http.Client{Timeout: 5 * time.Second},
+		}
 	}
 
 	return m
@@ -34,6 +38,7 @@ func NewSlack(c *SlackConfig) core.Middleware {
 // Slack middleware calls to a Slack input-hook after every execution of a job
 type Slack struct {
 	SlackConfig
+	Client *http.Client
 }
 
 // ContinueOnStop always returns true; we always want to report the final status
@@ -59,7 +64,11 @@ func (m *Slack) pushMessage(ctx *core.Context) {
 	content, _ := json.Marshal(m.buildMessage(ctx))
 	values.Add(slackPayloadVar, string(content))
 
-	r, err := http.PostForm(m.SlackWebhook, values)
+	if m.Client == nil {
+		m.Client = &http.Client{Timeout: 5 * time.Second}
+	}
+
+	r, err := m.Client.PostForm(m.SlackWebhook, values)
 	if err != nil {
 		ctx.Logger.Errorf("Slack error calling %q error: %q", m.SlackWebhook, err)
 	} else {

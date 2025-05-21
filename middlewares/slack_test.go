@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	. "gopkg.in/check.v1"
 )
@@ -62,5 +63,25 @@ func (s *SuiteSlack) TestRunSuccessOnError(c *C) {
 	s.ctx.Stop(nil)
 
 	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL, SlackOnlyOnError: true})
+	c.Assert(m.Run(s.ctx), IsNil)
+}
+
+func (s *SuiteSlack) TestCustomHTTPClient(c *C) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m slackMessage
+		json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
+		c.Assert(m.Attachments[0].Title, Equals, "Execution successful")
+	}))
+
+	defer ts.Close()
+
+	s.ctx.Start()
+	s.ctx.Stop(nil)
+
+	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL}).(*Slack)
+	custom := ts.Client()
+	custom.Timeout = 2 * time.Second
+	m.Client = custom
+
 	c.Assert(m.Run(s.ctx), IsNil)
 }
