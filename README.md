@@ -2,9 +2,9 @@
 
 <img src="https://weirdspace.dk/FranciscoIbanez/Graphics/Ofelia.gif" align="right" width="180px" height="300px" vspace="20" />
 
-**Ofelia** is a modern and low footprint job scheduler for container (Docker) environments, built on Go. Ofelia aims to be a replacement for the old fashioned [cron](https://en.wikipedia.org/wiki/Cron).
+**Ofelia** orchestrates container tasks with minimal overhead, offering a sleek alternative to cron.
 
-Ofelia makes it easy to schedule jobs by just adding labels to your containers.
+Label your Docker containers and let this Go-powered daemon handle the schedule.
 
 ## Table of Contents
 
@@ -44,6 +44,15 @@ The image exposes a Docker health check so you can use `depends_on.condition: se
 If you don't want to run **Ofelia** using our (Docker) container image, you can download a binary from [our releases page](https://github.com/netresearch/ofelia/releases).
 
     wget https://github.com/netresearch/ofelia/releases/latest
+
+Alternatively, you can build Ofelia from source:
+
+```sh
+make packages  # build packages under ./bin
+# or
+go build .
+```
+
 
 ### Commands
 
