@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	defaults "github.com/mcuadros/go-defaults"
+	defaults "github.com/creasty/defaults"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
 	. "gopkg.in/check.v1"
@@ -54,7 +54,7 @@ func (s *SuiteConfig) TestJobDefaultsSet(c *C) {
 	j := &RunJobConfig{}
 	j.Pull = "false"
 
-	defaults.SetDefaults(j)
+	defaults.Set(j)
 
 	c.Assert(j.Pull, Equals, "false")
 }
@@ -62,7 +62,7 @@ func (s *SuiteConfig) TestJobDefaultsSet(c *C) {
 func (s *SuiteConfig) TestJobDefaultsNotSet(c *C) {
 	j := &RunJobConfig{}
 
-	defaults.SetDefaults(j)
+	defaults.Set(j)
 
 	c.Assert(j.Pull, Equals, "true")
 }
