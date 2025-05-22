@@ -1,7 +1,7 @@
 services:
   ofelia:
     image: ghcr.io/netresearch/ofelia:latest
-    command: daemon --config /etc/ofelia/config.ini
+    command: ["daemon", "--config=/etc/ofelia/config.ini"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./ofelia.ini:/etc/ofelia/config.ini:ro
