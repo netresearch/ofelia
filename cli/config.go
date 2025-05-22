@@ -6,7 +6,7 @@ import (
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
 
-	defaults "github.com/mcuadros/go-defaults"
+	defaults "github.com/creasty/defaults"
 	gcfg "gopkg.in/gcfg.v1"
 )
 
@@ -46,7 +46,7 @@ func NewConfig(logger core.Logger) *Config {
 		logger:      logger,
 	}
 
-	defaults.SetDefaults(c)
+	defaults.Set(c)
 	return c
 }
 
@@ -103,7 +103,7 @@ func (c *Config) InitializeApp() error {
 	}
 
 	for name, j := range c.ExecJobs {
-		defaults.SetDefaults(j)
+		defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
@@ -111,7 +111,7 @@ func (c *Config) InitializeApp() error {
 	}
 
 	for name, j := range c.RunJobs {
-		defaults.SetDefaults(j)
+		defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
@@ -119,14 +119,14 @@ func (c *Config) InitializeApp() error {
 	}
 
 	for name, j := range c.LocalJobs {
-		defaults.SetDefaults(j)
+		defaults.Set(j)
 		j.Name = name
 		j.buildMiddlewares()
 		c.sh.AddJob(j)
 	}
 
 	for name, j := range c.ServiceJobs {
-		defaults.SetDefaults(j)
+		defaults.Set(j)
 		j.Name = name
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.buildMiddlewares()
@@ -167,7 +167,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				// There is a slight race condition were a job can be canceled / restarted with different params
 				// so, lets take care of it by simply restarting
 				// For the hash to work properly, we must fill the fields before calling it
-				defaults.SetDefaults(newJob)
+				defaults.Set(newJob)
 				newJob.Client = c.dockerHandler.GetInternalDockerClient()
 				newJob.Name = newJobsName
 				if newJob.Hash() != j.Hash() {
@@ -207,7 +207,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 			}
 		}
 		if !found {
-			defaults.SetDefaults(newJob)
+			defaults.Set(newJob)
 			newJob.Client = c.dockerHandler.GetInternalDockerClient()
 			newJob.Name = newJobsName
 			newJob.buildMiddlewares()
@@ -231,7 +231,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				// There is a slight race condition were a job can be canceled / restarted with different params
 				// so, lets take care of it by simply restarting
 				// For the hash to work properly, we must fill the fields before calling it
-				defaults.SetDefaults(newJob)
+				defaults.Set(newJob)
 				newJob.Client = c.dockerHandler.GetInternalDockerClient()
 				newJob.Name = newJobsName
 				if newJob.Hash() != j.Hash() {
@@ -271,7 +271,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 			}
 		}
 		if !found {
-			defaults.SetDefaults(newJob)
+			defaults.Set(newJob)
 			newJob.Client = c.dockerHandler.GetInternalDockerClient()
 			newJob.Name = newJobsName
 			newJob.buildMiddlewares()
@@ -302,7 +302,7 @@ func (c *Config) iniConfigUpdate() error {
 			delete(c.ExecJobs, name)
 			continue
 		}
-		defaults.SetDefaults(newJob)
+		defaults.Set(newJob)
 		newJob.Client = c.dockerHandler.GetInternalDockerClient()
 		newJob.Name = name
 		if newJob.Hash() != j.Hash() {
@@ -315,7 +315,7 @@ func (c *Config) iniConfigUpdate() error {
 
 	for name, j := range parsed.ExecJobs {
 		if _, ok := c.ExecJobs[name]; !ok {
-			defaults.SetDefaults(j)
+			defaults.Set(j)
 			j.Client = c.dockerHandler.GetInternalDockerClient()
 			j.Name = name
 			j.buildMiddlewares()
@@ -332,7 +332,7 @@ func (c *Config) iniConfigUpdate() error {
 			delete(c.RunJobs, name)
 			continue
 		}
-		defaults.SetDefaults(newJob)
+		defaults.Set(newJob)
 		newJob.Client = c.dockerHandler.GetInternalDockerClient()
 		newJob.Name = name
 		if newJob.Hash() != j.Hash() {
@@ -345,7 +345,7 @@ func (c *Config) iniConfigUpdate() error {
 
 	for name, j := range parsed.RunJobs {
 		if _, ok := c.RunJobs[name]; !ok {
-			defaults.SetDefaults(j)
+			defaults.Set(j)
 			j.Client = c.dockerHandler.GetInternalDockerClient()
 			j.Name = name
 			j.buildMiddlewares()
@@ -362,7 +362,7 @@ func (c *Config) iniConfigUpdate() error {
 			delete(c.LocalJobs, name)
 			continue
 		}
-		defaults.SetDefaults(newJob)
+		defaults.Set(newJob)
 		newJob.Name = name
 		if newJob.Hash() != j.Hash() {
 			c.sh.RemoveJob(j)
@@ -374,7 +374,7 @@ func (c *Config) iniConfigUpdate() error {
 
 	for name, j := range parsed.LocalJobs {
 		if _, ok := c.LocalJobs[name]; !ok {
-			defaults.SetDefaults(j)
+			defaults.Set(j)
 			j.Name = name
 			j.buildMiddlewares()
 			c.sh.AddJob(j)
@@ -390,7 +390,7 @@ func (c *Config) iniConfigUpdate() error {
 			delete(c.ServiceJobs, name)
 			continue
 		}
-		defaults.SetDefaults(newJob)
+		defaults.Set(newJob)
 		newJob.Client = c.dockerHandler.GetInternalDockerClient()
 		newJob.Name = name
 		if newJob.Hash() != j.Hash() {
@@ -403,7 +403,7 @@ func (c *Config) iniConfigUpdate() error {
 
 	for name, j := range parsed.ServiceJobs {
 		if _, ok := c.ServiceJobs[name]; !ok {
-			defaults.SetDefaults(j)
+			defaults.Set(j)
 			j.Client = c.dockerHandler.GetInternalDockerClient()
 			j.Name = name
 			j.buildMiddlewares()

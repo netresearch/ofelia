@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	defaults "github.com/mcuadros/go-defaults"
+	defaults "github.com/creasty/defaults"
 	"github.com/netresearch/ofelia/core"
 
 	. "gopkg.in/check.v1"
@@ -120,7 +120,7 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 
 	// register initial jobs
 	for name, j := range cfg.RunJobs {
-		defaults.SetDefaults(j)
+		defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
