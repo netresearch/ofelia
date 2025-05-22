@@ -7,6 +7,7 @@ require (
 	github.com/bradfitz/go-smtpd v0.0.0-20170404230938-deb6d6237625
 	github.com/docker/docker v28.1.1+incompatible
 	github.com/fsouza/go-dockerclient v1.12.1
+	github.com/go-mail/mail/v2 v2.0.0-20160411212932-81ebce5c23df
 	github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/mcuadros/go-defaults v1.2.0
@@ -15,8 +16,8 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/gcfg.v1 v1.2.3
-	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 )
+
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
@@ -44,5 +45,4 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

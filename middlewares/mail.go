@@ -11,7 +11,7 @@ import (
 
 	"crypto/tls"
 
-	"gopkg.in/gomail.v2"
+	mail "github.com/go-mail/mail/v2"
 
 	"github.com/netresearch/ofelia/core"
 )
@@ -65,24 +65,24 @@ func (m *Mail) Run(ctx *core.Context) error {
 }
 
 func (m *Mail) sendMail(ctx *core.Context) error {
-	msg := gomail.NewMessage()
+	msg := mail.NewMessage()
 	msg.SetHeader("From", m.from())
 	msg.SetHeader("To", strings.Split(m.EmailTo, ",")...)
 	msg.SetHeader("Subject", m.subject(ctx))
 	msg.SetBody("text/html", m.body(ctx))
 
 	base := fmt.Sprintf("%s_%s", ctx.Job.GetName(), ctx.Execution.ID)
-	msg.Attach(base+".stdout.log", gomail.SetCopyFunc(func(w io.Writer) error {
+	msg.Attach(base+".stdout.log", mail.SetCopyFunc(func(w io.Writer) error {
 		_, err := w.Write(ctx.Execution.OutputStream.Bytes())
 		return err
 	}))
 
-	msg.Attach(base+".stderr.log", gomail.SetCopyFunc(func(w io.Writer) error {
+	msg.Attach(base+".stderr.log", mail.SetCopyFunc(func(w io.Writer) error {
 		_, err := w.Write(ctx.Execution.ErrorStream.Bytes())
 		return err
 	}))
 
-	msg.Attach(base+".stderr.json", gomail.SetCopyFunc(func(w io.Writer) error {
+	msg.Attach(base+".stderr.json", mail.SetCopyFunc(func(w io.Writer) error {
 		js, _ := json.MarshalIndent(map[string]interface{}{
 			"Job":       ctx.Job,
 			"Execution": ctx.Execution,
@@ -92,7 +92,7 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 		return err
 	}))
 
-	d := gomail.NewPlainDialer(m.SMTPHost, m.SMTPPort, m.SMTPUser, m.SMTPPassword)
+	d := mail.NewDialer(m.SMTPHost, m.SMTPPort, m.SMTPUser, m.SMTPPassword)
 	// When TLSConfig.InsecureSkipVerify is true, mail server certificate authority is not validated
 	if m.SMTPTLSSkipVerify {
 		d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
