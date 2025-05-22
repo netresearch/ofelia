@@ -200,6 +200,10 @@ the INI configuration. The default interval is `10s`. Override it with
 `--docker-poll-interval` or the `poll-interval` option in the `[docker]` section
 of the config file. Set it to `0` to disable both polling and automatic reloads.
 
+Because the Docker image defines an `ENTRYPOINT`, pass the scheduler
+arguments as a list in `command:` so Compose does not treat them as a single
+string.
+
 ```yaml
 version: "3"
 services:
@@ -207,7 +211,7 @@ services:
     image: ghcr.io/netresearch/ofelia:latest
     depends_on:
       - nginx
-    command: daemon -f label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}
+    command: ["daemon", "-f", "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
