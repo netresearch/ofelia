@@ -16,3 +16,8 @@ This repository is written in Go. Follow these rules when contributing:
   `feat:`, `fix:`, `docs:`) for all commits.
 - Write a comprehensive commit message body that thoroughly describes every
   change introduced.
+
+## Repository Hygiene
+- Manage dependencies exclusively with Go modules.
+- Do **not** vendor or commit downloaded modules. Avoid running `go mod vendor`.
+- Ensure the `vendor/` directory is ignored via `.gitignore`.
