@@ -15,7 +15,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/gcfg.v1 v1.2.3
-	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
+       github.com/go-mail/mail/v2 v2.7.1
 )
 
 require (
