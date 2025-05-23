@@ -111,3 +111,33 @@ func (s *DaemonBootSuite) TestBootLogsMissingConfig(c *C) {
 	}
 	c.Assert(warnMsg, Equals, true)
 }
+
+func (s *DaemonBootSuite) TestBootLogsMissingConfigIncludesFilename(c *C) {
+	tmpFile, err := os.CreateTemp("", "ofelia_missing_*.ini")
+	c.Assert(err, IsNil)
+	path := tmpFile.Name()
+	tmpFile.Close()
+	os.Remove(path)
+
+	backend, logger := newMemoryLogger(logging.DEBUG)
+	defer logging.Reset()
+	cmd := &DaemonCommand{ConfigFile: path, Logger: logger, LogLevel: "DEBUG"}
+
+	orig := newDockerHandler
+	defer func() { newDockerHandler = orig }()
+	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+		return nil, errors.New("docker unavailable")
+	}
+
+	_ = cmd.boot()
+
+	var warnMsg bool
+	for n := backend.Head(); n != nil; n = n.Next() {
+		if n.Record.Level == logging.WARNING &&
+			strings.Contains(n.Record.Message(), "Could not load config file") &&
+			strings.Contains(n.Record.Message(), path) {
+			warnMsg = true
+		}
+	}
+	c.Assert(warnMsg, Equals, true)
+}
