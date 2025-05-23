@@ -8,6 +8,7 @@ import (
 	"github.com/netresearch/ofelia/cli"
 	"github.com/netresearch/ofelia/core"
 	"github.com/op/go-logging"
+	gcfg "gopkg.in/gcfg.v1"
 )
 
 var version string
@@ -31,16 +32,38 @@ func buildLogger(level string) core.Logger {
 func main() {
 	// Pre-parse log-level flag to configure logger early
 	var pre struct {
-		LogLevel string `long:"log-level"`
+		LogLevel   string `long:"log-level"`
+		ConfigFile string `long:"config" default:"/etc/ofelia.conf"`
 	}
 	preParser := flags.NewParser(&pre, flags.IgnoreUnknown)
 	remainingArgs, _ := preParser.ParseArgs(os.Args[1:])
 
+	if pre.LogLevel == "" {
+		var levelConfig struct {
+			Global struct {
+				LogLevel string `gcfg:"log-level"`
+			}
+		}
+		if err := gcfg.ReadFileInto(&levelConfig, pre.ConfigFile); err == nil {
+			pre.LogLevel = levelConfig.Global.LogLevel
+		}
+	}
+
 	logger := buildLogger(pre.LogLevel)
 
 	parser := flags.NewNamedParser("ofelia", flags.Default)
-	parser.AddCommand("daemon", "daemon process", "", &cli.DaemonCommand{Logger: logger, LogLevel: pre.LogLevel})
-	parser.AddCommand("validate", "validates the config file", "", &cli.ValidateCommand{Logger: logger, LogLevel: pre.LogLevel})
+	parser.AddCommand(
+		"daemon",
+		"daemon process",
+		"",
+		&cli.DaemonCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
+	)
+	parser.AddCommand(
+		"validate",
+		"validates the config file",
+		"",
+		&cli.ValidateCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
+	)
 
 	if _, err := parser.ParseArgs(remainingArgs); err != nil {
 		if flagErr, ok := err.(*flags.Error); ok {

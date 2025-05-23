@@ -20,7 +20,7 @@ type DaemonCommand struct {
 	DockerPollInterval time.Duration `long:"docker-poll-interval" description:"Interval for docker polling and INI reload (0 disables)" default:"10s"`
 	DockerUseEvents    bool          `long:"docker-events" description:"Use docker events instead of polling"`
 	DockerNoPoll       bool          `long:"docker-no-poll" description:"Disable polling docker for labels"`
-	LogLevel           string        `long:"log-level" description:"Set log level"`
+	LogLevel           string        `long:"log-level" description:"Set log level (overrides config)"`
 	EnablePprof        bool          `long:"enable-pprof" description:"Enable the pprof HTTP server"`
 	PprofAddr          string        `long:"pprof-address" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
 	EnableWeb          bool          `long:"enable-web" description:"Enable the web UI"`
