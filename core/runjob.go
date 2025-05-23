@@ -83,7 +83,7 @@ func (j *RunJob) Run(ctx *Context) error {
 			// if Pull option "true"
 			// try pulling image first
 			if pull {
-				if pullError = j.pullImage(); pullError == nil {
+				if pullError = pullImage(j.Client, j.Image); pullError == nil {
 					ctx.Log("Pulled image " + j.Image)
 					return nil
 				}
@@ -99,7 +99,7 @@ func (j *RunJob) Run(ctx *Context) error {
 
 			// if couldn't find image locally, still try to pull
 			if !pull && searchErr == ErrLocalImageNotFound {
-				if pullError = j.pullImage(); pullError == nil {
+				if pullError = pullImage(j.Client, j.Image); pullError == nil {
 					ctx.Log("Pulled image " + j.Image)
 					return nil
 				}
@@ -175,15 +175,6 @@ func (j *RunJob) searchLocalImage() error {
 
 	if len(imgs) != 1 {
 		return ErrLocalImageNotFound
-	}
-
-	return nil
-}
-
-func (j *RunJob) pullImage() error {
-	o, a := buildPullOptions(j.Image)
-	if err := j.Client.PullImage(o, a); err != nil {
-		return fmt.Errorf("error pulling image %q: %s", j.Image, err)
 	}
 
 	return nil

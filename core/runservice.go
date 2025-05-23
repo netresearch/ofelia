@@ -32,7 +32,7 @@ func NewRunServiceJob(c *docker.Client) *RunServiceJob {
 }
 
 func (j *RunServiceJob) Run(ctx *Context) error {
-	if err := j.pullImage(); err != nil {
+	if err := pullImage(j.Client, j.Image); err != nil {
 		return err
 	}
 
@@ -49,15 +49,6 @@ func (j *RunServiceJob) Run(ctx *Context) error {
 	}
 
 	return j.deleteService(ctx, svc.ID)
-}
-
-func (j *RunServiceJob) pullImage() error {
-	o, a := buildPullOptions(j.Image)
-	if err := j.Client.PullImage(o, a); err != nil {
-		return fmt.Errorf("error pulling image %q: %s", j.Image, err)
-	}
-
-	return nil
 }
 
 func (j *RunServiceJob) buildService() (*swarm.Service, error) {
