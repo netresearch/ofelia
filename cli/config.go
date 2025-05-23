@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -87,7 +88,7 @@ func (c *Config) InitializeApp() error {
 	c.buildSchedulerMiddlewares(c.sh)
 
 	var err error
-	c.dockerHandler, err = newDockerHandler(c, c.logger, &c.Docker, nil)
+	c.dockerHandler, err = newDockerHandler(context.Background(), c, c.logger, &c.Docker, nil)
 	if err != nil {
 		return err
 	}

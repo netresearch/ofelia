@@ -26,12 +26,13 @@ type DaemonCommand struct {
 	EnableWeb          bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB" description:"Enable the web UI"`
 	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" description:"Address for the web UI HTTP server to listen on" default:":8081"`
 
-	scheduler   *core.Scheduler
-	signals     chan os.Signal
-	pprofServer *http.Server
-	webServer   *web.Server
-	done        chan struct{}
-	Logger      core.Logger
+	scheduler     *core.Scheduler
+	signals       chan os.Signal
+	pprofServer   *http.Server
+	webServer     *web.Server
+	dockerHandler *DockerHandler
+	done          chan struct{}
+	Logger        core.Logger
 }
 
 // Execute runs the daemon
@@ -89,6 +90,7 @@ func (c *DaemonCommand) boot() (err error) {
 	// Re-apply CLI/environment options so they override Docker labels
 	c.applyOptions(config)
 	c.scheduler = config.sh
+	c.dockerHandler = config.dockerHandler
 	if c.EnableWeb {
 		c.webServer = web.NewServer(c.WebAddr, c.scheduler)
 	}
@@ -157,6 +159,11 @@ func (c *DaemonCommand) shutdown() error {
 		if err := c.webServer.Shutdown(context.Background()); err != nil {
 			c.Logger.Warningf("Error stopping web server: %v", err)
 		}
+	}
+
+	if c.dockerHandler != nil {
+		c.Logger.Warningf("Stopping docker handler")
+		_ = c.dockerHandler.Shutdown(context.Background())
 	}
 
 	if !c.scheduler.IsRunning() {
