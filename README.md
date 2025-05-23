@@ -11,6 +11,7 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 - [Features](#features)
 - [Using it](#using-it)
 - [Environment variables](#environment-variables)
+- [Configuration precedence](#configuration-precedence)
 - [Configuration](#configuration)
 - [Development](#development)
 - [License](#license)
@@ -94,6 +95,18 @@ they override values from the config file and Docker labels.
 | `OFELIA_PPROF_ADDRESS` | `--pprof-address` | Address for the pprof server |
 | `OFELIA_ENABLE_WEB` | `--enable-web` | Enable the web UI |
 | `OFELIA_WEB_ADDRESS` | `--web-address` | Address for the web UI server |
+
+### Configuration precedence
+
+Ofelia merges options from multiple sources in the following order. Values from later sources override earlier ones:
+
+1. Built-in defaults
+2. `config.ini`
+3. Docker labels
+4. Command-line flags
+5. Environment variables (when implemented)
+
+The daemon watches `config.ini` and reloads it automatically when the file changes.
 
 ## Configuration
 
