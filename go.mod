@@ -11,11 +11,11 @@ require (
 	github.com/go-mail/mail/v2 v2.3.0
 	github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93
 	github.com/jessevdk/go-flags v1.6.1
-       github.com/mitchellh/mapstructure v1.5.0
-       github.com/robfig/cron/v3 v3.0.1
-       github.com/sirupsen/logrus v1.9.3
-       gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
-       gopkg.in/gcfg.v1 v1.2.3
+	github.com/mitchellh/mapstructure v1.5.0
+	github.com/robfig/cron/v3 v3.0.1
+	github.com/sirupsen/logrus v1.9.3
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
+	gopkg.in/ini.v1 v1.67.0
 )
 
 require (
@@ -43,5 +43,4 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/mail.v2 v2.3.1 // indirect
-	gopkg.in/warnings.v0 v0.1.2 // indirect
 )

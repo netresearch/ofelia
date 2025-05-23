@@ -10,7 +10,6 @@ import (
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
 	. "gopkg.in/check.v1"
-	gcfg "gopkg.in/gcfg.v1"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -159,8 +158,7 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 	}
 
 	for _, t := range testcases {
-		conf := Config{}
-		err := gcfg.ReadStringInto(&conf, t.Ini)
+		conf, err := BuildFromString(t.Ini, &TestLogger{})
 		c.Assert(err, IsNil)
 		if !c.Check(conf, DeepEquals, t.ExpectedConfig) {
 			c.Errorf("Test %q\nExpected %s, but got %s", t.Comment, toJSON(t.ExpectedConfig), toJSON(conf))
