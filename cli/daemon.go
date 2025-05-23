@@ -64,7 +64,7 @@ func (c *DaemonCommand) boot() (err error) {
 		if errors.Is(err, os.ErrNotExist) {
 			c.Logger.Warningf("Config file %v not found: %v", c.ConfigFile, err)
 		} else {
-			c.Logger.Debugf("Error loading config file %v: %v", c.ConfigFile, err)
+			c.Logger.Warningf("Error loading config file %v: %v", c.ConfigFile, err)
 		}
 	}
 	config.Docker.Filters = c.DockerFilters

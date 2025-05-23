@@ -45,13 +45,13 @@ func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 
 	_ = cmd.boot()
 
-	var debugMsg bool
+	var warnMsg bool
 	for n := backend.Head(); n != nil; n = n.Next() {
-		if n.Record.Level == logging.DEBUG && strings.Contains(n.Record.Message(), "no-overlap") {
-			debugMsg = true
+		if n.Record.Level == logging.WARNING && strings.Contains(n.Record.Message(), "Could not load config file") {
+			warnMsg = true
 		}
 	}
-	c.Assert(debugMsg, Equals, true)
+	c.Assert(warnMsg, Equals, true)
 }
 
 func (s *DaemonBootSuite) TestBootLogsConfigErrorSuppressed(c *C) {
