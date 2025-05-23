@@ -3,13 +3,15 @@ package cli
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
 
 	defaults "github.com/creasty/defaults"
-	gcfg "gopkg.in/gcfg.v1"
+	"github.com/mitchellh/mapstructure"
+	ini "gopkg.in/ini.v1"
 )
 
 const (
@@ -60,13 +62,19 @@ func NewConfig(logger core.Logger) *Config {
 // BuildFromFile builds a scheduler using the config from a file
 func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
-	err := gcfg.ReadFileInto(c, filename)
+	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true}, filename)
+	if err != nil {
+		return nil, err
+	}
+	if err := parseIni(cfg, c); err != nil {
+		return nil, err
+	}
 	c.configPath = filename
 	if info, statErr := os.Stat(filename); statErr == nil {
 		c.configModTime = info.ModTime()
 	}
 	logger.Debugf("loaded config file %s", filename)
-	return c, err
+	return c, nil
 }
 
 // BuildFromString builds a scheduler using the config from a string
@@ -76,7 +84,11 @@ var newDockerHandler = NewDockerHandler
 
 func BuildFromString(config string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
-	if err := gcfg.ReadStringInto(c, config); err != nil {
+	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true}, []byte(config))
+	if err != nil {
+		return nil, err
+	}
+	if err := parseIni(cfg, c); err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -508,4 +520,73 @@ type DockerConfig struct {
 	PollInterval   time.Duration `mapstructure:"poll-interval" default:"10s"`
 	UseEvents      bool          `mapstructure:"events" default:"false"`
 	DisablePolling bool          `mapstructure:"no-poll" default:"false"`
+}
+
+func parseIni(cfg *ini.File, c *Config) error {
+	if sec, err := cfg.GetSection("global"); err == nil {
+		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Global); err != nil {
+			return err
+		}
+	}
+	if sec, err := cfg.GetSection("docker"); err == nil {
+		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Docker); err != nil {
+			return err
+		}
+	}
+
+	for _, section := range cfg.Sections() {
+		name := section.Name()
+		switch {
+		case strings.HasPrefix(name, jobExec):
+			jobName := parseJobName(name, jobExec)
+			job := &ExecJobConfig{}
+			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+				return err
+			}
+			c.ExecJobs[jobName] = job
+		case strings.HasPrefix(name, jobRun):
+			jobName := parseJobName(name, jobRun)
+			job := &RunJobConfig{}
+			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+				return err
+			}
+			c.RunJobs[jobName] = job
+		case strings.HasPrefix(name, jobServiceRun):
+			jobName := parseJobName(name, jobServiceRun)
+			job := &RunServiceConfig{}
+			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+				return err
+			}
+			c.ServiceJobs[jobName] = job
+		case strings.HasPrefix(name, jobLocal):
+			jobName := parseJobName(name, jobLocal)
+			job := &LocalJobConfig{}
+			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+				return err
+			}
+			c.LocalJobs[jobName] = job
+		}
+	}
+	return nil
+}
+
+func parseJobName(section, prefix string) string {
+	s := strings.TrimPrefix(section, prefix)
+	s = strings.TrimSpace(s)
+	return strings.Trim(s, "\"")
+}
+
+func sectionToMap(section *ini.Section) map[string]interface{} {
+	m := make(map[string]interface{})
+	for _, key := range section.Keys() {
+		vals := key.ValueWithShadows()
+		if len(vals) > 1 {
+			cp := make([]string, len(vals))
+			copy(cp, vals)
+			m[key.Name()] = cp
+		} else {
+			m[key.Name()] = vals[0]
+		}
+	}
+	return m
 }

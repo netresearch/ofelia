@@ -11,7 +11,7 @@ import (
 	"github.com/netresearch/ofelia/cli"
 	"github.com/netresearch/ofelia/core"
 	"github.com/sirupsen/logrus"
-	gcfg "gopkg.in/gcfg.v1"
+	ini "gopkg.in/ini.v1"
 )
 
 var version string
@@ -49,13 +49,11 @@ func main() {
 	remainingArgs, _ := preParser.ParseArgs(os.Args[1:])
 
 	if pre.LogLevel == "" {
-		var levelConfig struct {
-			Global struct {
-				LogLevel string `gcfg:"log-level"`
+		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true}, pre.ConfigFile)
+		if err == nil {
+			if sec, err := cfg.GetSection("global"); err == nil {
+				pre.LogLevel = sec.Key("log-level").String()
 			}
-		}
-		if err := gcfg.ReadFileInto(&levelConfig, pre.ConfigFile); err == nil {
-			pre.LogLevel = levelConfig.Global.LogLevel
 		}
 	}
 
