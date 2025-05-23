@@ -19,3 +19,20 @@ Jobs implement a common interface and can be executed in several ways:
 
 Middleware hooks are executed around every job. Ofelia provides built-in middleware for logging via mail, saving execution reports and sending Slack messages. Custom middleware can be added by implementing the interface in `core` and attaching it to the scheduler or to individual jobs.
 
+## HTTP interfaces
+
+Ofelia can optionally expose a small web UI and Go's `pprof` debug server. Both
+servers are configured in the `[global]` section of the INI file or through
+Docker labels on the service container:
+
+```ini
+[global]
+enable-web = true
+web-address = :8081
+enable-pprof = true
+pprof-address = 127.0.0.1:8080
+```
+
+The equivalent labels are `ofelia.enable-web`, `ofelia.web-address`,
+`ofelia.enable-pprof` and `ofelia.pprof-address`.
+

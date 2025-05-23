@@ -26,6 +26,10 @@ type Config struct {
 		middlewares.SaveConfig  `mapstructure:",squash"`
 		middlewares.MailConfig  `mapstructure:",squash"`
 		LogLevel                string `gcfg:"log-level" mapstructure:"log-level"`
+		EnableWeb               bool   `gcfg:"enable-web" mapstructure:"enable-web" default:"false"`
+		WebAddr                 string `gcfg:"web-address" mapstructure:"web-address" default:":8081"`
+		EnablePprof             bool   `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
+		PprofAddr               string `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
 	}
 	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
