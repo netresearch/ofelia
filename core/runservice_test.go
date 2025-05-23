@@ -55,7 +55,10 @@ func (s *SuiteRunServiceJob) TestRun(c *C) {
 	job.Delete = "true"
 	job.Network = "foo"
 
-	e := NewExecution()
+	e, err := NewExecution()
+	if err != nil {
+		c.Fatal(err)
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -81,7 +84,7 @@ func (s *SuiteRunServiceJob) TestRun(c *C) {
 		wg.Done()
 	}()
 
-	err := job.Run(&Context{Execution: e, Logger: logger})
+	err = job.Run(&Context{Execution: e, Logger: logger})
 	c.Assert(err, IsNil)
 	wg.Wait()
 

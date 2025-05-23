@@ -37,7 +37,8 @@ func (s *SuiteSave) SetUpTest(c *C) {
 	s.job = &job.TestJob
 
 	sh := core.NewScheduler(&TestLogger{})
-	e := core.NewExecution()
+	e, err := core.NewExecution()
+	c.Assert(err, IsNil)
 
 	s.ctx = core.NewContext(sh, job, e)
 }

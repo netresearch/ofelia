@@ -20,7 +20,8 @@ func (s *SuiteCommon) TestNewContext(c *C) {
 	j := &TestJob{}
 	j.Use(&TestMiddleware{})
 
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 
 	ctx := NewContext(h, j, e)
 	c.Assert(ctx.Scheduler, DeepEquals, h)
@@ -38,13 +39,14 @@ func (s *SuiteCommon) TestContextNextError(c *C) {
 	j := &TestJob{}
 	j.Use(mA, mB, mC)
 
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 
 	h := NewScheduler(&TestLogger{})
 	ctx := NewContext(h, j, e)
 	ctx.Start()
 
-	err := ctx.Next()
+	err = ctx.Next()
 	c.Assert(err, IsNil)
 	c.Assert(mA.Called, Equals, 1)
 	c.Assert(mB.Called, Equals, 0)
@@ -78,13 +80,14 @@ func (s *SuiteCommon) TestContextNextNested(c *C) {
 	j := &TestJob{}
 	j.Use(mA, mB, mC)
 
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 
 	h := NewScheduler(&TestLogger{})
 	ctx := NewContext(h, j, e)
 	ctx.Start()
 
-	err := ctx.Next()
+	err = ctx.Next()
 	c.Assert(err, IsNil)
 	c.Assert(mA.Called, Equals, 1)
 	c.Assert(mB.Called, Equals, 1)
@@ -102,13 +105,14 @@ func (s *SuiteCommon) TestContextNextNestedError(c *C) {
 	j := &TestJob{}
 	j.Use(mA, mB, mC)
 
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 
 	h := NewScheduler(&TestLogger{})
 	ctx := NewContext(h, j, e)
 	ctx.Start()
 
-	err := ctx.Next()
+	err = ctx.Next()
 	c.Assert(err, IsNil)
 	c.Assert(mA.Called, Equals, 1)
 	c.Assert(mB.Called, Equals, 0)
@@ -127,13 +131,14 @@ func (s *SuiteCommon) TestContextNextContinueOnStop(c *C) {
 	j := &TestJob{}
 	j.Use(mA, mB, mC)
 
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 
 	h := NewScheduler(&TestLogger{})
 	ctx := NewContext(h, j, e)
 	ctx.Start()
 
-	err := ctx.Next()
+	err = ctx.Next()
 	c.Assert(err, IsNil)
 	c.Assert(mA.Called, Equals, 1)
 	c.Assert(mB.Called, Equals, 0)
@@ -149,13 +154,14 @@ func (s *SuiteCommon) TestContextNext(c *C) {
 	j := &TestJob{}
 	j.Use(mA, mB, mC)
 
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 
 	h := NewScheduler(&TestLogger{})
 	ctx := NewContext(h, j, e)
 	ctx.Start()
 
-	err := ctx.Next()
+	err = ctx.Next()
 	c.Assert(err, IsNil)
 	c.Assert(mA.Called, Equals, 1)
 	c.Assert(mB.Called, Equals, 0)
