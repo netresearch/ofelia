@@ -60,7 +60,7 @@ func (c *DaemonCommand) boot() (err error) {
 	// Always try to read the config file, as there are options such as globals or some tasks that can be specified there and not in docker
 	config, err := BuildFromFile(c.ConfigFile, c.Logger)
 	if err != nil {
-		c.Logger.Debugf("Error loading config file %v: %v", c.ConfigFile, err)
+		c.Logger.Warningf("Could not load config file %q: %v", c.ConfigFile, err)
 	}
 	config.Docker.Filters = c.DockerFilters
 	config.Docker.PollInterval = c.DockerPollInterval
