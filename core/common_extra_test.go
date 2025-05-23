@@ -7,7 +7,10 @@ import (
 
 // TestNewExecutionInitial tests the initial state of a new Execution.
 func TestNewExecutionInitial(t *testing.T) {
-	e := NewExecution()
+	e, err := NewExecution()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if e == nil {
 		t.Error("expected NewExecution to return non-nil")
 	}

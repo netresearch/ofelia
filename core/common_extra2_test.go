@@ -67,7 +67,10 @@ func TestParseRegistryVarious(t *testing.T) {
 
 // TestExecutionLifecycle tests Execution.Start and Stop with no error.
 func TestExecutionLifecycle(t *testing.T) {
-	e := NewExecution()
+	e, err := NewExecution()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	// Ensure initial state
 	if e.IsRunning {
 		t.Error("expected IsRunning false before start")
@@ -99,7 +102,10 @@ func TestExecutionLifecycle(t *testing.T) {
 
 // TestExecutionStopError tests Execution.Stop with a regular error.
 func TestExecutionStopError(t *testing.T) {
-	e := NewExecution()
+	e, err := NewExecution()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	e.Start()
 	errIn := errors.New("fail")
 	e.Stop(errIn)
@@ -119,7 +125,10 @@ func TestExecutionStopError(t *testing.T) {
 
 // TestExecutionStopSkipped tests Execution.Stop with ErrSkippedExecution.
 func TestExecutionStopSkipped(t *testing.T) {
-	e := NewExecution()
+	e, err := NewExecution()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	e.Start()
 	e.Stop(ErrSkippedExecution)
 	if e.IsRunning {

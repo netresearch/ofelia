@@ -45,7 +45,11 @@ func (s *SuiteRunJob) TestRun(c *C) {
 	job.Environment = []string{"test_Key1=value1", "test_Key2=value2"}
 	job.Volume = []string{"/test/tmp:/test/tmp:ro", "/test/tmp:/test/tmp:rw"}
 
-	ctx := &Context{Job: job, Execution: NewExecution()}
+	exec, err := NewExecution()
+	if err != nil {
+		c.Fatal(err)
+	}
+	ctx := &Context{Job: job, Execution: exec}
 	logger := logrus.New()
 	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
 	ctx.Logger = &LogrusAdapter{Logger: logger}
@@ -93,7 +97,11 @@ func (s *SuiteRunJob) TestRunFailed(c *C) {
 	job.Delete = "true"
 	job.Name = "fail"
 
-	ctx := &Context{Job: job, Execution: NewExecution()}
+	exec, err := NewExecution()
+	if err != nil {
+		c.Fatal(err)
+	}
+	ctx := &Context{Job: job, Execution: exec}
 	logger := logrus.New()
 	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
 	ctx.Logger = &LogrusAdapter{Logger: logger}
@@ -125,8 +133,12 @@ func (s *SuiteRunJob) TestRunWithEntrypoint(c *C) {
 	job.Name = "test-ep"
 	job.Delete = "true"
 
+	exec, err := NewExecution()
+	if err != nil {
+		c.Fatal(err)
+	}
 	ctx := &Context{}
-	ctx.Execution = NewExecution()
+	ctx.Execution = exec
 	logger := logrus.New()
 	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
 	ctx.Logger = &LogrusAdapter{Logger: logger}

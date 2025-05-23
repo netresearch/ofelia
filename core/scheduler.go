@@ -114,11 +114,15 @@ func (w *jobWrapper) Run() {
 		w.s.mu.Unlock()
 	}()
 
-	e := NewExecution()
+	e, err := NewExecution()
+	if err != nil {
+		w.s.Logger.Errorf("failed to create execution: %v", err)
+		return
+	}
 	ctx := NewContext(w.s, w.j, e)
 
 	w.start(ctx)
-	err := ctx.Next()
+	err = ctx.Next()
 	w.stop(ctx, err)
 }
 

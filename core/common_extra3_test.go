@@ -6,7 +6,10 @@ import (
 
 // TestRandomIDLength verifies that randomID produces a string of length 12.
 func TestRandomIDLength(t *testing.T) {
-	id := randomID()
+	id, err := randomID()
+	if err != nil {
+		t.Fatalf("randomID error: %v", err)
+	}
 	if len(id) != 12 {
 		t.Errorf("expected ID length 12, got %d", len(id))
 	}
@@ -16,7 +19,10 @@ func TestRandomIDLength(t *testing.T) {
 func TestRandomIDUniqueness(t *testing.T) {
 	ids := make(map[string]bool)
 	for i := 0; i < 100; i++ {
-		id := randomID()
+		id, err := randomID()
+		if err != nil {
+			t.Fatalf("randomID error: %v", err)
+		}
 		if ids[id] {
 			t.Errorf("duplicate ID found: %s", id)
 		}
@@ -33,7 +39,10 @@ func TestBareJobHashValue(t *testing.T) {
 	}
 	// Expect "schednamecmd"
 	want := "schednamecmd"
-	got := job.Hash()
+	got, err := job.Hash()
+	if err != nil {
+		t.Fatalf("hash error: %v", err)
+	}
 	if got != want {
 		t.Errorf("expected hash %q, got %q", want, got)
 	}
@@ -43,8 +52,16 @@ func TestBareJobHashValue(t *testing.T) {
 func TestBareJobHashConsistency(t *testing.T) {
 	job1 := &BareJob{Schedule: "s", Name: "n", Command: "c"}
 	job2 := &BareJob{Schedule: "s", Name: "n", Command: "c"}
-	if job1.Hash() != job2.Hash() {
-		t.Errorf("expected identical hashes, got %s and %s", job1.Hash(), job2.Hash())
+	h1, err := job1.Hash()
+	if err != nil {
+		t.Fatalf("hash error: %v", err)
+	}
+	h2, err := job2.Hash()
+	if err != nil {
+		t.Fatalf("hash error: %v", err)
+	}
+	if h1 != h2 {
+		t.Errorf("expected identical hashes, got %s and %s", h1, h2)
 	}
 }
 
@@ -52,7 +69,15 @@ func TestBareJobHashConsistency(t *testing.T) {
 func TestBareJobHashDifference(t *testing.T) {
 	job1 := &BareJob{Schedule: "s1", Name: "n", Command: "c"}
 	job2 := &BareJob{Schedule: "s2", Name: "n", Command: "c"}
-	if job1.Hash() == job2.Hash() {
-		t.Errorf("expected different hashes, both %s", job1.Hash())
+	h1, err := job1.Hash()
+	if err != nil {
+		t.Fatalf("hash error: %v", err)
+	}
+	h2, err := job2.Hash()
+	if err != nil {
+		t.Fatalf("hash error: %v", err)
+	}
+	if h1 == h2 {
+		t.Errorf("expected different hashes, both %s", h1)
 	}
 }
