@@ -121,7 +121,7 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 
 - `slack-webhook` - URL of the slack webhook.
 - `slack-only-on-error` - only send a slack message if the execution was not successful.
-- `log-level` - logging level (DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL).
+- `log-level` - logging level (DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL). When set in the config file this level is applied from startup unless `--log-level` is provided.
 
 ### INI-style configuration
 
