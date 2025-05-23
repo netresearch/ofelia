@@ -3,7 +3,7 @@ package cli
 import (
 	"strings"
 
-	logging "github.com/op/go-logging"
+	"github.com/sirupsen/logrus"
 )
 
 // ApplyLogLevel sets the global logging level if level is valid.
@@ -11,9 +11,9 @@ func ApplyLogLevel(level string) {
 	if level == "" {
 		return
 	}
-	lvl, err := logging.LogLevel(strings.ToUpper(level))
+	lvl, err := logrus.ParseLevel(strings.ToLower(level))
 	if err != nil {
 		return
 	}
-	logging.SetLevel(lvl, "")
+	logrus.SetLevel(lvl)
 }

@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/jessevdk/go-flags"
 	"github.com/netresearch/ofelia/cli"
 	"github.com/netresearch/ofelia/core"
-	"github.com/op/go-logging"
+	"github.com/sirupsen/logrus"
 	gcfg "gopkg.in/gcfg.v1"
 )
 
@@ -17,16 +18,20 @@ var build string
 const logFormat = "%{time} %{color} %{shortfile} ▶ %{level} %{color:reset} %{message}"
 
 func buildLogger(level string) core.Logger {
-	stdout := logging.NewLogBackend(os.Stdout, "", 0)
-	leveled := logging.AddModuleLevel(stdout)
-	lvl := logging.INFO
-	if l, err := logging.LogLevel(level); err == nil {
-		lvl = l
+	logrus.SetOutput(os.Stdout)
+	logrus.SetReportCaller(true)
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp:   true,
+		ForceColors:     true,
+		DisableQuote:    true,
+		TimestampFormat: "2006-01-02 15:04:05",
+	})
+	lvl, err := logrus.ParseLevel(strings.ToLower(level))
+	if err != nil {
+		lvl = logrus.InfoLevel
 	}
-	leveled.SetLevel(lvl, "")
-	logging.SetBackend(leveled)
-	logging.SetFormatter(logging.MustStringFormatter(logFormat))
-	return logging.MustGetLogger("ofelia")
+	logrus.SetLevel(lvl)
+	return &core.LogrusAdapter{Logger: logrus.StandardLogger()}
 }
 
 func main() {

@@ -7,7 +7,7 @@ import (
 
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/fsouza/go-dockerclient/testing"
-	logging "github.com/op/go-logging"
+	"github.com/sirupsen/logrus"
 	. "gopkg.in/check.v1"
 )
 
@@ -46,8 +46,9 @@ func (s *SuiteRunJob) TestRun(c *C) {
 	job.Volume = []string{"/test/tmp:/test/tmp:ro", "/test/tmp:/test/tmp:rw"}
 
 	ctx := &Context{Job: job, Execution: NewExecution()}
-	logging.SetFormatter(logging.MustStringFormatter(logFormat))
-	ctx.Logger = logging.MustGetLogger("ofelia")
+	logger := logrus.New()
+	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
+	ctx.Logger = &LogrusAdapter{Logger: logger}
 
 	go func() {
 		// Docker Test Server doesn't actually start container
@@ -93,8 +94,9 @@ func (s *SuiteRunJob) TestRunFailed(c *C) {
 	job.Name = "fail"
 
 	ctx := &Context{Job: job, Execution: NewExecution()}
-	logging.SetFormatter(logging.MustStringFormatter(logFormat))
-	ctx.Logger = logging.MustGetLogger("ofelia")
+	logger := logrus.New()
+	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
+	ctx.Logger = &LogrusAdapter{Logger: logger}
 
 	done := make(chan struct{})
 	go func() {
@@ -125,8 +127,9 @@ func (s *SuiteRunJob) TestRunWithEntrypoint(c *C) {
 
 	ctx := &Context{}
 	ctx.Execution = NewExecution()
-	logging.SetFormatter(logging.MustStringFormatter(logFormat))
-	ctx.Logger = logging.MustGetLogger("ofelia")
+	logger := logrus.New()
+	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
+	ctx.Logger = &LogrusAdapter{Logger: logger}
 	ctx.Job = job
 
 	go func() {
