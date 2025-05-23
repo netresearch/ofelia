@@ -45,8 +45,9 @@ func main() {
 		LogLevel   string `long:"log-level"`
 		ConfigFile string `long:"config" default:"/etc/ofelia/config.ini"`
 	}
+	args := os.Args[1:]
 	preParser := flags.NewParser(&pre, flags.IgnoreUnknown)
-	remainingArgs, _ := preParser.ParseArgs(os.Args[1:])
+	_, _ = preParser.ParseArgs(args)
 
 	if pre.LogLevel == "" {
 		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, pre.ConfigFile)
@@ -73,7 +74,7 @@ func main() {
 		&cli.ValidateCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
 	)
 
-	if _, err := parser.ParseArgs(remainingArgs); err != nil {
+	if _, err := parser.ParseArgs(args); err != nil {
 		if flagErr, ok := err.(*flags.Error); ok {
 			if flagErr.Type == flags.ErrHelp {
 				return
