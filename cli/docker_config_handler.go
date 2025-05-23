@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
@@ -17,6 +18,7 @@ type dockerClient interface {
 	Info() (*docker.DockerInfo, error)
 	ListContainers(opts docker.ListContainersOptions) ([]docker.APIContainers, error)
 	AddEventListenerWithOptions(opts docker.EventsOptions, listener chan<- *docker.APIEvents) error
+	RemoveEventListener(listener chan *docker.APIEvents) error
 }
 
 type DockerHandler struct {
@@ -27,6 +29,8 @@ type DockerHandler struct {
 	pollInterval   time.Duration
 	useEvents      bool
 	disablePolling bool
+	ctx            context.Context
+	cancel         context.CancelFunc
 }
 
 type dockerLabelsUpdate interface {
@@ -65,6 +69,8 @@ func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, cfg *Dock
 		disablePolling: cfg.DisablePolling,
 	}
 
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+
 	var err error
 	if client == nil {
 		c.dockerClient, err = c.buildDockerClient()
@@ -89,6 +95,13 @@ func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, cfg *Dock
 	return c, nil
 }
 
+// Stop stops background goroutines associated with the DockerHandler.
+func (c *DockerHandler) Stop() {
+	if c.cancel != nil {
+		c.cancel()
+	}
+}
+
 func (c *DockerHandler) watch() {
 	if c.pollInterval <= 0 {
 		// Skip polling when interval is not positive
@@ -97,7 +110,13 @@ func (c *DockerHandler) watch() {
 
 	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()
-	for range ticker.C {
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
 		labels, err := c.GetDockerLabels()
 		if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
 			c.logger.Debugf("%v", err)
@@ -171,7 +190,23 @@ func (c *DockerHandler) watchEvents() {
 		c.logger.Debugf("%v", err)
 		return
 	}
-	for range ch {
+	defer func() {
+		if err := c.dockerClient.RemoveEventListener(ch); err != nil {
+			c.logger.Debugf("%v", err)
+		}
+		close(ch)
+	}()
+
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case _, ok := <-ch:
+			if !ok {
+				return
+			}
+		}
+
 		labels, err := c.GetDockerLabels()
 		if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
 			c.logger.Debugf("%v", err)
