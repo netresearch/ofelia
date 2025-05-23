@@ -103,8 +103,9 @@ func (c *DockerHandler) watch() {
 		}
 		c.notifier.dockerLabelsUpdate(labels)
 		if cfg, ok := c.notifier.(*Config); ok {
+			cfg.logger.Debugf("reloading config file %s", cfg.configPath)
 			if err := cfg.iniConfigUpdate(); err != nil {
-				c.logger.Debugf("%v", err)
+				c.logger.Warningf("%v", err)
 			}
 		}
 	}

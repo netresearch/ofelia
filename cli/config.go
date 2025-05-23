@@ -289,6 +289,8 @@ func (c *Config) iniConfigUpdate() error {
 		return nil
 	}
 
+	c.logger.Debugf("reloading config from %s", c.configPath)
+
 	parsed, err := BuildFromFile(c.configPath, c.logger)
 	if err != nil {
 		return err
