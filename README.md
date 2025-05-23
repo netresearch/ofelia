@@ -68,6 +68,8 @@ ofelia daemon --config=/path/to/config.ini
 ofelia validate --config=/path/to/config.ini
 ```
 
+If `--config` is omitted, Ofelia looks for `/etc/ofelia/config.ini`.
+
 When `--enable-pprof` is specified, the daemon starts a Go pprof HTTP
 server for profiling. Use `--pprof-address` to set the listening address
 (default `127.0.0.1:8080`).
