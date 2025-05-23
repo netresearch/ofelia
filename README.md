@@ -10,6 +10,7 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 
 - [Features](#features)
 - [Using it](#using-it)
+- [Environment variables](#environment-variables)
 - [Configuration](#configuration)
 - [Development](#development)
 - [License](#license)
@@ -75,6 +76,24 @@ server for profiling. Use `--pprof-address` to set the listening address
 (default `127.0.0.1:8080`).
 When `--enable-web` is specified, the daemon serves a small web UI at
 `--web-address` (default `:8081`) to inspect job status.
+
+### Environment variables
+
+You can configure the same options with environment variables. When set,
+they override values from the config file and Docker labels.
+
+| Variable | Corresponding flag | Description |
+| --- | --- | --- |
+| `OFELIA_CONFIG` | `--config` | Path to the configuration file |
+| `OFELIA_DOCKER_FILTER` | `--docker-filter` | Docker container filter (comma separated for multiple) |
+| `OFELIA_POLL_INTERVAL` | `--docker-poll-interval` | Interval for Docker polling and config reload |
+| `OFELIA_DOCKER_EVENTS` | `--docker-events` | Use Docker events instead of polling |
+| `OFELIA_DOCKER_NO_POLL` | `--docker-no-poll` | Disable polling Docker for labels |
+| `OFELIA_LOG_LEVEL` | `--log-level` | Set the log level |
+| `OFELIA_ENABLE_PPROF` | `--enable-pprof` | Enable the pprof HTTP server |
+| `OFELIA_PPROF_ADDRESS` | `--pprof-address` | Address for the pprof server |
+| `OFELIA_ENABLE_WEB` | `--enable-web` | Enable the web UI |
+| `OFELIA_WEB_ADDRESS` | `--web-address` | Address for the web UI server |
 
 ## Configuration
 
