@@ -15,16 +15,16 @@ import (
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile         string        `long:"config" description:"configuration file" default:"/etc/ofelia/config.ini"`
-	DockerFilters      []string      `short:"f" long:"docker-filter" description:"Filter for docker containers"`
-	DockerPollInterval time.Duration `long:"docker-poll-interval" description:"Interval for docker polling and INI reload (0 disables)" default:"10s"`
-	DockerUseEvents    bool          `long:"docker-events" description:"Use docker events instead of polling"`
-	DockerNoPoll       bool          `long:"docker-no-poll" description:"Disable polling docker for labels"`
-	LogLevel           string        `long:"log-level" description:"Set log level (overrides config)"`
-	EnablePprof        bool          `long:"enable-pprof" description:"Enable the pprof HTTP server"`
-	PprofAddr          string        `long:"pprof-address" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
-	EnableWeb          bool          `long:"enable-web" description:"Enable the web UI"`
-	WebAddr            string        `long:"web-address" description:"Address for the web UI HTTP server to listen on" default:":8081"`
+	ConfigFile         string         `long:"config" description:"configuration file" default:"/etc/ofelia/config.ini"`
+	DockerFilters      []string       `short:"f" long:"docker-filter" description:"Filter for docker containers"`
+	DockerPollInterval *time.Duration `long:"docker-poll-interval" description:"Interval for docker polling and INI reload (0 disables)"`
+	DockerUseEvents    *bool          `long:"docker-events" description:"Use docker events instead of polling"`
+	DockerNoPoll       *bool          `long:"docker-no-poll" description:"Disable polling docker for labels"`
+	LogLevel           string         `long:"log-level" description:"Set log level (overrides config)"`
+	EnablePprof        bool           `long:"enable-pprof" description:"Enable the pprof HTTP server"`
+	PprofAddr          string         `long:"pprof-address" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
+	EnableWeb          bool           `long:"enable-web" description:"Enable the web UI"`
+	WebAddr            string         `long:"web-address" description:"Address for the web UI HTTP server to listen on" default:":8081"`
 
 	scheduler   *core.Scheduler
 	signals     chan os.Signal
@@ -60,10 +60,18 @@ func (c *DaemonCommand) boot() (err error) {
 	if err != nil {
 		c.Logger.Warningf("Could not load config file %q: %v", c.ConfigFile, err)
 	}
-	config.Docker.Filters = c.DockerFilters
-	config.Docker.PollInterval = c.DockerPollInterval
-	config.Docker.UseEvents = c.DockerUseEvents
-	config.Docker.DisablePolling = c.DockerNoPoll
+	if len(c.DockerFilters) > 0 {
+		config.Docker.Filters = c.DockerFilters
+	}
+	if c.DockerPollInterval != nil {
+		config.Docker.PollInterval = *c.DockerPollInterval
+	}
+	if c.DockerUseEvents != nil {
+		config.Docker.UseEvents = *c.DockerUseEvents
+	}
+	if c.DockerNoPoll != nil {
+		config.Docker.DisablePolling = *c.DockerNoPoll
+	}
 
 	// Apply global settings from config if flags were not provided
 	if !c.EnableWeb {
