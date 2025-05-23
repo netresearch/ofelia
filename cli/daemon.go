@@ -90,21 +90,27 @@ func (c *DaemonCommand) start() error {
 	}
 
 	if c.EnablePprof {
+		c.Logger.Noticef("Starting pprof server on %s", c.PprofAddr)
 		go func() {
 			if err := c.pprofServer.ListenAndServe(); err != http.ErrServerClosed {
 				c.Logger.Errorf("Error starting HTTP server: %v", err)
 				close(c.done)
 			}
 		}()
+	} else {
+		c.Logger.Noticef("pprof server disabled")
 	}
 
 	if c.EnableWeb {
+		c.Logger.Noticef("Starting web server on %s", c.WebAddr)
 		go func() {
 			if err := c.webServer.Start(); err != nil {
 				c.Logger.Errorf("Error starting web server: %v", err)
 				close(c.done)
 			}
 		}()
+	} else {
+		c.Logger.Noticef("web server disabled")
 	}
 
 	return nil
