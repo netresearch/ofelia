@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/netresearch/ofelia/core"
-	logging "github.com/op/go-logging"
+	"github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	. "gopkg.in/check.v1"
 )
 
@@ -17,11 +18,12 @@ type DaemonBootSuite struct{}
 
 var _ = Suite(&DaemonBootSuite{})
 
-func newMemoryLogger(level logging.Level) (*logging.MemoryBackend, core.Logger) {
-	backend := logging.InitForTesting(level)
-	logging.SetFormatter(logging.MustStringFormatter(logFormat))
-	logger := logging.MustGetLogger("ofelia")
-	return backend, logger
+func newMemoryLogger(level logrus.Level) (*logtest.Hook, core.Logger) {
+	logger := logrus.New()
+	logger.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
+	logger.SetLevel(level)
+	hook := logtest.NewLocal(logger)
+	return hook, &core.LogrusAdapter{Logger: logger}
 }
 
 func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
@@ -33,8 +35,7 @@ func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 	c.Assert(err, IsNil)
 	tmpFile.Close()
 
-	backend, logger := newMemoryLogger(logging.DEBUG)
-	defer logging.Reset()
+	backend, logger := newMemoryLogger(logrus.DebugLevel)
 	cmd := &DaemonCommand{ConfigFile: tmpFile.Name(), Logger: logger, LogLevel: "DEBUG"}
 
 	orig := newDockerHandler
@@ -46,8 +47,8 @@ func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 	_ = cmd.boot()
 
 	var warnMsg bool
-	for n := backend.Head(); n != nil; n = n.Next() {
-		if n.Record.Level == logging.WARNING && strings.Contains(n.Record.Message(), "Could not load config file") {
+	for _, e := range backend.AllEntries() {
+		if e.Level == logrus.WarnLevel && strings.Contains(e.Message, "Could not load config file") {
 			warnMsg = true
 		}
 	}
@@ -63,8 +64,7 @@ func (s *DaemonBootSuite) TestBootLogsConfigErrorSuppressed(c *C) {
 	c.Assert(err, IsNil)
 	tmpFile.Close()
 
-	backend, logger := newMemoryLogger(logging.INFO)
-	defer logging.Reset()
+	backend, logger := newMemoryLogger(logrus.InfoLevel)
 	cmd := &DaemonCommand{ConfigFile: tmpFile.Name(), Logger: logger, LogLevel: "INFO"}
 
 	orig := newDockerHandler
@@ -76,8 +76,8 @@ func (s *DaemonBootSuite) TestBootLogsConfigErrorSuppressed(c *C) {
 	_ = cmd.boot()
 
 	var debugMsg bool
-	for n := backend.Head(); n != nil; n = n.Next() {
-		if n.Record.Level == logging.DEBUG {
+	for _, e := range backend.AllEntries() {
+		if e.Level == logrus.DebugLevel {
 			debugMsg = true
 		}
 	}
@@ -91,8 +91,7 @@ func (s *DaemonBootSuite) TestBootLogsMissingConfig(c *C) {
 	tmpFile.Close()
 	os.Remove(path)
 
-	backend, logger := newMemoryLogger(logging.DEBUG)
-	defer logging.Reset()
+	backend, logger := newMemoryLogger(logrus.DebugLevel)
 	cmd := &DaemonCommand{ConfigFile: path, Logger: logger, LogLevel: "DEBUG"}
 
 	orig := newDockerHandler
@@ -104,8 +103,8 @@ func (s *DaemonBootSuite) TestBootLogsMissingConfig(c *C) {
 	_ = cmd.boot()
 
 	var warnMsg bool
-	for n := backend.Head(); n != nil; n = n.Next() {
-		if n.Record.Level == logging.WARNING && strings.Contains(n.Record.Message(), "Could not load config file") {
+	for _, e := range backend.AllEntries() {
+		if e.Level == logrus.WarnLevel && strings.Contains(e.Message, "Could not load config file") {
 			warnMsg = true
 		}
 	}
@@ -119,8 +118,7 @@ func (s *DaemonBootSuite) TestBootLogsMissingConfigIncludesFilename(c *C) {
 	tmpFile.Close()
 	os.Remove(path)
 
-	backend, logger := newMemoryLogger(logging.DEBUG)
-	defer logging.Reset()
+	backend, logger := newMemoryLogger(logrus.DebugLevel)
 	cmd := &DaemonCommand{ConfigFile: path, Logger: logger, LogLevel: "DEBUG"}
 
 	orig := newDockerHandler
@@ -132,10 +130,10 @@ func (s *DaemonBootSuite) TestBootLogsMissingConfigIncludesFilename(c *C) {
 	_ = cmd.boot()
 
 	var warnMsg bool
-	for n := backend.Head(); n != nil; n = n.Next() {
-		if n.Record.Level == logging.WARNING &&
-			strings.Contains(n.Record.Message(), "Could not load config file") &&
-			strings.Contains(n.Record.Message(), path) {
+	for _, e := range backend.AllEntries() {
+		if e.Level == logrus.WarnLevel &&
+			strings.Contains(e.Message, "Could not load config file") &&
+			strings.Contains(e.Message, path) {
 			warnMsg = true
 		}
 	}
