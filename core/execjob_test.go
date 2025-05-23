@@ -66,9 +66,10 @@ func (s *SuiteExecJob) TestRun(c *C) {
 	job.User = "foo"
 	job.TTY = true
 
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 
-	err := job.Run(&Context{Execution: e})
+	err = job.Run(&Context{Execution: e})
 	c.Assert(err, IsNil)
 	c.Assert(executed, Equals, true)
 
@@ -93,11 +94,12 @@ func (s *SuiteExecJob) TestRunStartExecError(c *C) {
 	job.Container = ContainerFixture
 	job.Command = "echo foo"
 
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 	ctx := &Context{Execution: e, Job: job}
 
 	ctx.Start()
-	err := job.Run(ctx)
+	err = job.Run(ctx)
 	ctx.Stop(err)
 
 	c.Assert(err, NotNil)

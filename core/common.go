@@ -148,14 +148,18 @@ type Execution struct {
 }
 
 // NewExecution returns a new Execution, with a random ID
-func NewExecution() *Execution {
+func NewExecution() (*Execution, error) {
 	bufOut, _ := circbuf.NewBuffer(maxStreamSize)
 	bufErr, _ := circbuf.NewBuffer(maxStreamSize)
+	id, err := randomID()
+	if err != nil {
+		return nil, err
+	}
 	return &Execution{
-		ID:           randomID(),
+		ID:           id,
 		OutputStream: bufOut,
 		ErrorStream:  bufErr,
-	}
+	}, nil
 }
 
 // Start starts the execution, initializes the running flags and the start date.
@@ -233,13 +237,13 @@ type Logger interface {
 	Warningf(format string, args ...interface{})
 }
 
-func randomID() string {
+func randomID() (string, error) {
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {
-		panic(err)
+		return "", err
 	}
 
-	return fmt.Sprintf("%x", b)
+	return fmt.Sprintf("%x", b), nil
 }
 
 func buildFindLocalImageOptions(image string) docker.ListImagesOptions {
@@ -321,14 +325,16 @@ func buildAuthConfiguration(registry string) docker.AuthConfiguration {
 
 const HashmeTagName = "hash"
 
-func getHash(t reflect.Type, v reflect.Value, hash *string) {
+func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		fieldv := v.Field(i)
 		kind := field.Type.Kind()
 
 		if kind == reflect.Struct {
-			getHash(field.Type, fieldv, hash)
+			if err := getHash(field.Type, fieldv, hash); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -341,8 +347,10 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) {
 			} else if kind == reflect.Bool {
 				*hash += strconv.FormatBool(fieldv.Bool())
 			} else {
-				panic("Unsupported field type")
+				return fmt.Errorf("unsupported field type")
 			}
 		}
 	}
+
+	return nil
 }

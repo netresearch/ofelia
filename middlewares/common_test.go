@@ -35,7 +35,8 @@ type BaseSuite struct {
 func (s *BaseSuite) SetUpTest(c *C) {
 	s.job = &TestJob{}
 	sh := core.NewScheduler(&TestLogger{})
-	e := core.NewExecution()
+	e, err := core.NewExecution()
+	c.Assert(err, IsNil)
 
 	s.ctx = core.NewContext(sh, s.job, e)
 }

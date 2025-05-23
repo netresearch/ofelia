@@ -17,10 +17,11 @@ func (s *SuiteLocalJob) TestRun(c *C) {
 	job.Command = `echo "foo bar"`
 
 	b, _ := circbuf.NewBuffer(1000)
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 	e.OutputStream = b
 
-	err := job.Run(&Context{Execution: e})
+	err = job.Run(&Context{Execution: e})
 	c.Assert(err, IsNil)
 	c.Assert(b.String(), Equals, "foo bar\n")
 }
@@ -32,10 +33,11 @@ func (s *SuiteLocalJob) TestEnvironment(c *C) {
 	job.Environment = env
 
 	b, _ := circbuf.NewBuffer(1000)
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 	e.OutputStream = b
 
-	err := job.Run(&Context{Execution: e})
+	err = job.Run(&Context{Execution: e})
 	c.Assert(err, IsNil)
 
 	// check that expected keys are present in the system env
@@ -55,11 +57,12 @@ func (s *SuiteLocalJob) TestRunFailed(c *C) {
 	job := &LocalJob{}
 	job.Command = "false"
 
-	e := NewExecution()
+	e, err := NewExecution()
+	c.Assert(err, IsNil)
 	ctx := &Context{Execution: e, Job: job}
 
 	ctx.Start()
-	err := job.Run(ctx)
+	err = job.Run(ctx)
 	ctx.Stop(err)
 
 	c.Assert(err, NotNil)

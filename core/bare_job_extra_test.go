@@ -21,8 +21,14 @@ func TestHash(t *testing.T) {
 	// Two jobs with identical fields should have identical hashes
 	job1 := &BareJob{Schedule: "sched", Name: "name", Command: "cmd"}
 	job2 := &BareJob{Schedule: "sched", Name: "name", Command: "cmd"}
-	h1 := job1.Hash()
-	h2 := job2.Hash()
+	h1, err := job1.Hash()
+	if err != nil {
+		t.Fatalf("hash error: %v", err)
+	}
+	h2, err := job2.Hash()
+	if err != nil {
+		t.Fatalf("hash error: %v", err)
+	}
 	if h1 == "" {
 		t.Errorf("expected non-empty hash, got empty string")
 	}
@@ -32,7 +38,10 @@ func TestHash(t *testing.T) {
 
 	// Changing one field should change the hash
 	job2.Command = "other"
-	h3 := job2.Hash()
+	h3, err := job2.Hash()
+	if err != nil {
+		t.Fatalf("hash error: %v", err)
+	}
 	if h3 == h1 {
 		t.Errorf("expected different hash after modifying Command, got %q", h3)
 	}

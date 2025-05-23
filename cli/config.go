@@ -193,7 +193,17 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				defaults.Set(newJob)
 				newJob.Client = c.dockerHandler.GetInternalDockerClient()
 				newJob.Name = newJobsName
-				if newJob.Hash() != j.Hash() {
+				newHash, err1 := newJob.Hash()
+				if err1 != nil {
+					c.logger.Errorf("hash calculation failed: %v", err1)
+					break
+				}
+				oldHash, err2 := j.Hash()
+				if err2 != nil {
+					c.logger.Errorf("hash calculation failed: %v", err2)
+					break
+				}
+				if newHash != oldHash {
 					// Remove from the scheduler
 					c.sh.RemoveJob(j)
 					// Add the job back to the scheduler
@@ -257,7 +267,17 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				defaults.Set(newJob)
 				newJob.Client = c.dockerHandler.GetInternalDockerClient()
 				newJob.Name = newJobsName
-				if newJob.Hash() != j.Hash() {
+				newHash, err1 := newJob.Hash()
+				if err1 != nil {
+					c.logger.Errorf("hash calculation failed: %v", err1)
+					break
+				}
+				oldHash, err2 := j.Hash()
+				if err2 != nil {
+					c.logger.Errorf("hash calculation failed: %v", err2)
+					break
+				}
+				if newHash != oldHash {
 					// Remove from the scheduler
 					c.sh.RemoveJob(j)
 					// Add the job back to the scheduler
@@ -342,7 +362,15 @@ func (c *Config) iniConfigUpdate() error {
 		defaults.Set(newJob)
 		newJob.Client = c.dockerHandler.GetInternalDockerClient()
 		newJob.Name = name
-		if newJob.Hash() != j.Hash() {
+		newHash, err1 := newJob.Hash()
+		if err1 != nil {
+			return err1
+		}
+		oldHash, err2 := j.Hash()
+		if err2 != nil {
+			return err2
+		}
+		if newHash != oldHash {
 			c.sh.RemoveJob(j)
 			newJob.buildMiddlewares()
 			c.sh.AddJob(newJob)
@@ -372,7 +400,15 @@ func (c *Config) iniConfigUpdate() error {
 		defaults.Set(newJob)
 		newJob.Client = c.dockerHandler.GetInternalDockerClient()
 		newJob.Name = name
-		if newJob.Hash() != j.Hash() {
+		newHash, err1 := newJob.Hash()
+		if err1 != nil {
+			return err1
+		}
+		oldHash, err2 := j.Hash()
+		if err2 != nil {
+			return err2
+		}
+		if newHash != oldHash {
 			c.sh.RemoveJob(j)
 			newJob.buildMiddlewares()
 			c.sh.AddJob(newJob)
@@ -401,7 +437,15 @@ func (c *Config) iniConfigUpdate() error {
 		}
 		defaults.Set(newJob)
 		newJob.Name = name
-		if newJob.Hash() != j.Hash() {
+		newHash, err1 := newJob.Hash()
+		if err1 != nil {
+			return err1
+		}
+		oldHash, err2 := j.Hash()
+		if err2 != nil {
+			return err2
+		}
+		if newHash != oldHash {
 			c.sh.RemoveJob(j)
 			newJob.buildMiddlewares()
 			c.sh.AddJob(newJob)
@@ -430,7 +474,15 @@ func (c *Config) iniConfigUpdate() error {
 		defaults.Set(newJob)
 		newJob.Client = c.dockerHandler.GetInternalDockerClient()
 		newJob.Name = name
-		if newJob.Hash() != j.Hash() {
+		newHash, err1 := newJob.Hash()
+		if err1 != nil {
+			return err1
+		}
+		oldHash, err2 := j.Hash()
+		if err2 != nil {
+			return err2
+		}
+		if newHash != oldHash {
 			c.sh.RemoveJob(j)
 			newJob.buildMiddlewares()
 			c.sh.AddJob(newJob)

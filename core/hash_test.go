@@ -14,7 +14,9 @@ func TestGetHashSimple(t *testing.T) {
 	}
 	val := S{A: "foo", B: 42, C: true}
 	var h string
-	getHash(reflect.TypeOf(val), reflect.ValueOf(val), &h)
+	if err := getHash(reflect.TypeOf(val), reflect.ValueOf(val), &h); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	want := "foo42true"
 	if h != want {
 		t.Errorf("expected hash %q, got %q", want, h)
@@ -31,7 +33,9 @@ func TestGetHashNested(t *testing.T) {
 	}
 	val := Outer{Inner: Inner{X: "bar"}}
 	var h string
-	getHash(reflect.TypeOf(val), reflect.ValueOf(val), &h)
+	if err := getHash(reflect.TypeOf(val), reflect.ValueOf(val), &h); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	want := "bar"
 	if h != want {
 		t.Errorf("expected nested hash %q, got %q", want, h)
@@ -39,17 +43,13 @@ func TestGetHashNested(t *testing.T) {
 }
 
 // TestGetHashPanicUnsupported tests that getHash panics on unsupported field types.
-func TestGetHashPanicUnsupported(t *testing.T) {
+func TestGetHashUnsupported(t *testing.T) {
 	type Bad struct {
 		F float64 `hash:"true"`
 	}
 	val := Bad{F: 3.14}
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("expected panic on unsupported type, but did not panic")
-		}
-	}()
-	// This should panic
 	var h string
-	getHash(reflect.TypeOf(val), reflect.ValueOf(val), &h)
+	if err := getHash(reflect.TypeOf(val), reflect.ValueOf(val), &h); err == nil {
+		t.Errorf("expected error on unsupported type")
+	}
 }
