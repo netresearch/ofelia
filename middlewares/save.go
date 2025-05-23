@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/netresearch/ofelia/core"
 )
@@ -52,9 +53,15 @@ func (m *Save) Run(ctx *core.Context) error {
 }
 
 func (m *Save) saveToDisk(ctx *core.Context) error {
+	if err := os.MkdirAll(m.SaveFolder, 0o755); err != nil {
+		return err
+	}
+
+	safeName := strings.NewReplacer("/", "_", "\\", "_").Replace(ctx.Job.GetName())
+
 	root := filepath.Join(m.SaveFolder, fmt.Sprintf(
 		"%s_%s",
-		ctx.Execution.Date.Format("20060102_150405"), ctx.Job.GetName(),
+		ctx.Execution.Date.Format("20060102_150405"), safeName,
 	))
 
 	e := ctx.Execution
