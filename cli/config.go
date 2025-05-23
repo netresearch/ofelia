@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"time"
 
 	"github.com/netresearch/ofelia/core"
@@ -32,6 +33,7 @@ type Config struct {
 	LocalJobs     map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
 	Docker        DockerConfig
 	configPath    string
+	configModTime time.Time
 	sh            *core.Scheduler
 	dockerHandler *DockerHandler
 	logger        core.Logger
@@ -54,6 +56,10 @@ func NewConfig(logger core.Logger) *Config {
 func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
 	err := gcfg.ReadFileInto(c, filename)
+	info, statErr := os.Stat(filename)
+	if statErr == nil {
+		c.configModTime = info.ModTime()
+	}
 	c.configPath = filename
 	return c, err
 }
@@ -289,12 +295,24 @@ func (c *Config) iniConfigUpdate() error {
 		return nil
 	}
 
+	info, err := os.Stat(c.configPath)
+	if err != nil {
+		return err
+	}
+
+	if info.ModTime().Equal(c.configModTime) {
+		c.logger.Debugf("checked config file %s for changes: none", c.configPath)
+		return nil
+	}
+
 	c.logger.Debugf("reloading config from %s", c.configPath)
 
 	parsed, err := BuildFromFile(c.configPath, c.logger)
 	if err != nil {
 		return err
 	}
+
+	c.configModTime = info.ModTime()
 
 	// Exec jobs
 	for name, j := range c.ExecJobs {

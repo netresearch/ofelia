@@ -22,7 +22,8 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
   job output and status.
 - **Dynamic Docker detection** polls containers at an interval controlled by
   `--docker-poll-interval` or listens for events with `--docker-events`. The same
-  interval also controls automatic reloads of `ofelia.ini`.
+  interval also triggers a check for modifications to `ofelia.ini` and reloads it
+  when changes are detected.
 - **Config validation** via the `validate` command to check your configuration
   before running.
 - **Optional pprof server** enabled with `--enable-pprof` and bound via
@@ -211,10 +212,11 @@ flag.
 
 **Ofelia** reads labels of all Docker containers for configuration by default. To apply on a subset of containers only, use the flag `--docker-filter` (or `-f`) similar to the [filtering for `docker ps`](https://docs.docker.com/engine/reference/commandline/ps/#filter). E.g. to apply only to the current Docker Compose project using a `label` filter:
 
-You can also configure how often Ofelia polls Docker for label changes and reloads
-the INI configuration. The default interval is `10s`. Override it with
-`--docker-poll-interval` or the `poll-interval` option in the `[docker]` section
-of the config file. Set it to `0` to disable both polling and automatic reloads.
+You can also configure how often Ofelia polls Docker for label changes and checks
+for modifications to the INI configuration. The default interval is `10s`.
+Override it with `--docker-poll-interval` or the `poll-interval` option in the
+`[docker]` section of the config file. Set it to `0` to disable both polling and
+automatic reloads.
 
 Because the Docker image defines an `ENTRYPOINT`, pass the scheduler
 arguments as a list in `command:` so Compose does not treat them as a single
@@ -242,7 +244,7 @@ services:
 ```
 
 Ofelia polls Docker every 10 seconds to detect label changes and reload the INI
-file. The interval can be adjusted using `--docker-poll-interval`. Event-based
+file when it has changed. The interval can be adjusted using `--docker-poll-interval`. Event-based
 updates can be enabled with `--docker-events`; when enabled, polling can be
 disabled entirely with `--docker-no-poll`. Setting the interval to `0` also
 disables both label polling and INI reloads. Polling can also be disabled in
