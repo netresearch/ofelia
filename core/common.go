@@ -271,6 +271,17 @@ func buildPullOptions(image string) (docker.PullImageOptions, docker.AuthConfigu
 	}, buildAuthConfiguration(registry)
 }
 
+// pullImage downloads a Docker image if it is not available locally.
+// It uses the provided client to fetch the image with authentication
+// details from the Docker configuration file.
+func pullImage(client *docker.Client, image string) error {
+	opts, auth := buildPullOptions(image)
+	if err := client.PullImage(opts, auth); err != nil {
+		return fmt.Errorf("error pulling image %q: %s", image, err)
+	}
+	return nil
+}
+
 func parseRegistry(repository string) string {
 	parts := strings.Split(repository, "/")
 	if len(parts) < 2 {
