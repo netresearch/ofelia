@@ -232,7 +232,8 @@ You can also configure how often Ofelia polls Docker for label changes and reloa
 the INI configuration when the file has changed. The default interval is `10s`.
 Override it with `--docker-poll-interval` or the `poll-interval` option in the
 `[docker]` section of the config file. Set it to `0` to disable both polling and
-automatic reloads.
+automatic reloads. Command-line values only override the configuration when the
+flags are explicitly provided.
 
 Because the Docker image defines an `ENTRYPOINT`, pass the scheduler
 arguments as a list in `command:` so Compose does not treat them as a single
