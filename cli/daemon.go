@@ -15,16 +15,16 @@ import (
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile         string         `long:"config" description:"configuration file" default:"/etc/ofelia/config.ini"`
-	DockerFilters      []string       `short:"f" long:"docker-filter" description:"Filter for docker containers"`
-	DockerPollInterval *time.Duration `long:"docker-poll-interval" description:"Interval for docker polling and INI reload (0 disables)"`
-	DockerUseEvents    *bool          `long:"docker-events" description:"Use docker events instead of polling"`
-	DockerNoPoll       *bool          `long:"docker-no-poll" description:"Disable polling docker for labels"`
-	LogLevel           string         `long:"log-level" description:"Set log level (overrides config)"`
-	EnablePprof        bool           `long:"enable-pprof" description:"Enable the pprof HTTP server"`
-	PprofAddr          string         `long:"pprof-address" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
-	EnableWeb          bool           `long:"enable-web" description:"Enable the web UI"`
-	WebAddr            string         `long:"web-address" description:"Address for the web UI HTTP server to listen on" default:":8081"`
+	ConfigFile         string         `long:"config" env:"OFELIA_CONFIG" description:"configuration file" default:"/etc/ofelia/config.ini"`
+	DockerFilters      []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER" description:"Filter for docker containers"`
+	DockerPollInterval *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL" description:"Interval for docker polling and INI reload (0 disables)"`
+	DockerUseEvents    *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS" description:"Use docker events instead of polling"`
+	DockerNoPoll       *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL" description:"Disable polling docker for labels"`
+	LogLevel           string         `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (overrides config)"`
+	EnablePprof        bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF" description:"Enable the pprof HTTP server"`
+	PprofAddr          string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
+	EnableWeb          bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB" description:"Enable the web UI"`
+	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" description:"Address for the web UI HTTP server to listen on" default:":8081"`
 
 	scheduler   *core.Scheduler
 	signals     chan os.Signal
@@ -60,18 +60,7 @@ func (c *DaemonCommand) boot() (err error) {
 	if err != nil {
 		c.Logger.Warningf("Could not load config file %q: %v", c.ConfigFile, err)
 	}
-	if len(c.DockerFilters) > 0 {
-		config.Docker.Filters = c.DockerFilters
-	}
-	if c.DockerPollInterval != nil {
-		config.Docker.PollInterval = *c.DockerPollInterval
-	}
-	if c.DockerUseEvents != nil {
-		config.Docker.UseEvents = *c.DockerUseEvents
-	}
-	if c.DockerNoPoll != nil {
-		config.Docker.DisablePolling = *c.DockerNoPoll
-	}
+	c.applyOptions(config)
 
 	// Apply global settings from config if flags were not provided
 	if !c.EnableWeb {
@@ -97,6 +86,8 @@ func (c *DaemonCommand) boot() (err error) {
 	if err != nil {
 		c.Logger.Criticalf("Can't start the app: %v", err)
 	}
+	// Re-apply CLI/environment options so they override Docker labels
+	c.applyOptions(config)
 	c.scheduler = config.sh
 	if c.EnableWeb {
 		c.webServer = web.NewServer(c.WebAddr, c.scheduler)
@@ -174,4 +165,35 @@ func (c *DaemonCommand) shutdown() error {
 
 	c.Logger.Warningf("Waiting running jobs.")
 	return c.scheduler.Stop()
+}
+
+func (c *DaemonCommand) applyOptions(config *Config) {
+	if len(c.DockerFilters) > 0 {
+		config.Docker.Filters = c.DockerFilters
+	}
+	if c.DockerPollInterval != nil {
+		config.Docker.PollInterval = *c.DockerPollInterval
+	}
+	if c.DockerUseEvents != nil {
+		config.Docker.UseEvents = *c.DockerUseEvents
+	}
+	if c.DockerNoPoll != nil {
+		config.Docker.DisablePolling = *c.DockerNoPoll
+	}
+
+	if c.EnableWeb {
+		config.Global.EnableWeb = true
+	}
+	if c.WebAddr != ":8081" {
+		config.Global.WebAddr = c.WebAddr
+	}
+	if c.EnablePprof {
+		config.Global.EnablePprof = true
+	}
+	if c.PprofAddr != "127.0.0.1:8080" {
+		config.Global.PprofAddr = c.PprofAddr
+	}
+	if c.LogLevel != "" {
+		config.Global.LogLevel = c.LogLevel
+	}
 }
