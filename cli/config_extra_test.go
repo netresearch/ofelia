@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"time"
 
 	defaults "github.com/creasty/defaults"
 	"github.com/netresearch/ofelia/core"
@@ -131,6 +132,7 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 5s")
 
 	// modify ini: change schedule and add new job
+	time.Sleep(time.Second)
 	content2 := "[job-run \"foo\"]\nschedule = @every 10s\nimage = busybox\ncommand = echo foo\n[job-run \"bar\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo bar\n"
 	err = os.WriteFile(tmp.Name(), []byte(content2), 0o644)
 	c.Assert(err, IsNil)
@@ -141,6 +143,7 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 10s")
 
 	// modify ini: remove foo
+	time.Sleep(time.Second)
 	content3 := "[job-run \"bar\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo bar\n"
 	err = os.WriteFile(tmp.Name(), []byte(content3), 0o644)
 	c.Assert(err, IsNil)
@@ -150,4 +153,38 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	c.Assert(len(cfg.RunJobs), Equals, 1)
 	_, ok := cfg.RunJobs["foo"]
 	c.Assert(ok, Equals, false)
+}
+
+// Test iniConfigUpdate does nothing when the INI file did not change
+func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
+	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	c.Assert(err, IsNil)
+	defer os.Remove(tmp.Name())
+
+	content := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
+	_, err = tmp.WriteString(content)
+	c.Assert(err, IsNil)
+	tmp.Close()
+
+	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	c.Assert(err, IsNil)
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+
+	for name, j := range cfg.RunJobs {
+		defaults.Set(j)
+		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Name = name
+		j.buildMiddlewares()
+		cfg.sh.AddJob(j)
+	}
+
+	// call iniConfigUpdate without modifying the file
+	oldTime := cfg.configModTime
+	err = cfg.iniConfigUpdate()
+	c.Assert(err, IsNil)
+	c.Assert(cfg.configModTime, Equals, oldTime)
+	c.Assert(len(cfg.RunJobs), Equals, 1)
 }
