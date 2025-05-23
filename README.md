@@ -193,6 +193,21 @@ demonstrates the different job types. It starts an `nginx` container with an
 `exec` job label and configures additional `run`, `local` and `service-run` jobs
 via `ofelia.ini`.
 
+The container image runs `daemon --config /etc/ofelia/config.ini` by default.
+Mount a configuration file at that path to keep the default command:
+
+```yaml
+services:
+  ofelia:
+    image: ghcr.io/netresearch/ofelia:latest
+    volumes:
+      - ./ofelia.ini:/etc/ofelia/config.ini:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+```
+
+Use a different path only if you also update `--config` to match the mount
+point.
+
 **Ofelia** reads labels of all Docker containers for configuration by default. To apply on a subset of containers only, use the flag `--docker-filter` (or `-f`) similar to the [filtering for `docker ps`](https://docs.docker.com/engine/reference/commandline/ps/#filter). E.g. to apply only to the current Docker Compose project using a `label` filter:
 
 You can also configure how often Ofelia polls Docker for label changes and reloads
