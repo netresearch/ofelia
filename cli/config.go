@@ -165,166 +165,74 @@ func (c *Config) buildSchedulerMiddlewares(sh *core.Scheduler) {
 	sh.Use(middlewares.NewMail(&c.Global.MailConfig))
 }
 
+// jobConfig is implemented by all job configuration types that can be
+// scheduled. It allows handling job maps in a generic way.
+type jobConfig interface {
+	core.Job
+	buildMiddlewares()
+	Hash() (string, error)
+}
+
+// syncJobMap updates the scheduler and the provided job map based on the parsed
+// configuration. The prep function is called on each job before comparison or
+// registration to set fields such as Name or Client and apply defaults.
+func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]J, prep func(string, J)) {
+	for name, j := range current {
+		newJob, ok := parsed[name]
+		if !ok {
+			c.sh.RemoveJob(j)
+			delete(current, name)
+			continue
+		}
+		prep(name, newJob)
+		newHash, err1 := newJob.Hash()
+		if err1 != nil {
+			c.logger.Errorf("hash calculation failed: %v", err1)
+			continue
+		}
+		oldHash, err2 := j.Hash()
+		if err2 != nil {
+			c.logger.Errorf("hash calculation failed: %v", err2)
+			continue
+		}
+		if newHash != oldHash {
+			c.sh.RemoveJob(j)
+			newJob.buildMiddlewares()
+			c.sh.AddJob(newJob)
+			current[name] = newJob
+		}
+	}
+
+	for name, j := range parsed {
+		if _, ok := current[name]; ok {
+			continue
+		}
+		prep(name, j)
+		j.buildMiddlewares()
+		c.sh.AddJob(j)
+		current[name] = j
+	}
+}
+
 func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
-	// log start of func
 	c.logger.Debugf("dockerLabelsUpdate started")
 
-	// Get the current labels
 	var parsedLabelConfig Config
 	parsedLabelConfig.buildFromDockerLabels(labels)
-	c.logger.Debugf("dockerLabelsUpdate labels: %v", labels)
 
-	var hasIterated bool
+	execPrep := func(name string, j *ExecJobConfig) {
+		defaults.Set(j)
+		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Name = name
+	}
+	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep)
 
-	// Calculate the delta execJobs
-	hasIterated = false
-	for name, j := range c.ExecJobs {
-		hasIterated = true
-		c.logger.Debugf("checking exec job %s for changes", name)
-		found := false
-		for newJobsName, newJob := range parsedLabelConfig.ExecJobs {
-			c.logger.Debugf("checking exec job %s vs %s", name, newJobsName)
-			// Check if the schedule has changed
-			if name == newJobsName {
-				found = true
-				// There is a slight race condition were a job can be canceled / restarted with different params
-				// so, lets take care of it by simply restarting
-				// For the hash to work properly, we must fill the fields before calling it
-				defaults.Set(newJob)
-				newJob.Client = c.dockerHandler.GetInternalDockerClient()
-				newJob.Name = newJobsName
-				newHash, err1 := newJob.Hash()
-				if err1 != nil {
-					c.logger.Errorf("hash calculation failed: %v", err1)
-					break
-				}
-				oldHash, err2 := j.Hash()
-				if err2 != nil {
-					c.logger.Errorf("hash calculation failed: %v", err2)
-					break
-				}
-				if newHash != oldHash {
-					// Remove from the scheduler
-					c.sh.RemoveJob(j)
-					// Add the job back to the scheduler
-					newJob.buildMiddlewares()
-					c.sh.AddJob(newJob)
-					// Update the job config
-					c.ExecJobs[name] = newJob
-				}
-				break
-			}
-		}
-		if !found {
-			// Remove from the scheduler
-			c.sh.RemoveJob(j)
-			// Remove the job from the ExecJobs map
-			delete(c.ExecJobs, name)
-			c.logger.Debugf("removing exec job %s", name)
-		}
+	runPrep := func(name string, j *RunJobConfig) {
+		defaults.Set(j)
+		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Name = name
 	}
-	if !hasIterated {
-		c.logger.Debugf("no exec jobs to update")
-	}
-
-	// Check for additions
-	hasIterated = false
-	for newJobsName, newJob := range parsedLabelConfig.ExecJobs {
-		hasIterated = true
-		c.logger.Debugf("checking exec job %s if new", newJobsName)
-		found := false
-		for name := range c.ExecJobs {
-			if name == newJobsName {
-				found = true
-				break
-			}
-		}
-		if !found {
-			defaults.Set(newJob)
-			newJob.Client = c.dockerHandler.GetInternalDockerClient()
-			newJob.Name = newJobsName
-			newJob.buildMiddlewares()
-			c.sh.AddJob(newJob)
-			c.ExecJobs[newJobsName] = newJob
-		}
-	}
-	if !hasIterated {
-		c.logger.Debugf("no new exec jobs")
-	}
-
-	hasIterated = false
-	for name, j := range c.RunJobs {
-		hasIterated = true
-		c.logger.Debugf("checking run job %s for changes", name)
-		found := false
-		for newJobsName, newJob := range parsedLabelConfig.RunJobs {
-			// Check if the schedule has changed
-			if name == newJobsName {
-				found = true
-				// There is a slight race condition were a job can be canceled / restarted with different params
-				// so, lets take care of it by simply restarting
-				// For the hash to work properly, we must fill the fields before calling it
-				defaults.Set(newJob)
-				newJob.Client = c.dockerHandler.GetInternalDockerClient()
-				newJob.Name = newJobsName
-				newHash, err1 := newJob.Hash()
-				if err1 != nil {
-					c.logger.Errorf("hash calculation failed: %v", err1)
-					break
-				}
-				oldHash, err2 := j.Hash()
-				if err2 != nil {
-					c.logger.Errorf("hash calculation failed: %v", err2)
-					break
-				}
-				if newHash != oldHash {
-					// Remove from the scheduler
-					c.sh.RemoveJob(j)
-					// Add the job back to the scheduler
-					newJob.buildMiddlewares()
-					c.sh.AddJob(newJob)
-					// Update the job config
-					c.RunJobs[name] = newJob
-				}
-				break
-			}
-		}
-		if !found {
-			// Remove from the scheduler
-			c.sh.RemoveJob(j)
-			// Remove the job from the RunJobs map
-			delete(c.RunJobs, name)
-			c.logger.Debugf("removing run job %s", name)
-		}
-	}
-	if !hasIterated {
-		c.logger.Debugf("no run jobs to update")
-	}
-
-	// Check for additions
-	hasIterated = false
-	for newJobsName, newJob := range parsedLabelConfig.RunJobs {
-		hasIterated = true
-		c.logger.Debugf("checking run job %s if new", newJobsName)
-		found := false
-		for name := range c.RunJobs {
-			if name == newJobsName {
-				found = true
-				break
-			}
-		}
-		if !found {
-			defaults.Set(newJob)
-			newJob.Client = c.dockerHandler.GetInternalDockerClient()
-			newJob.Name = newJobsName
-			newJob.buildMiddlewares()
-			c.sh.AddJob(newJob)
-			c.RunJobs[newJobsName] = newJob
-		}
-	}
-	if !hasIterated {
-		c.logger.Debugf("no new run jobs")
-	}
+	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep)
 }
 
 func (c *Config) iniConfigUpdate() error {
@@ -351,155 +259,32 @@ func (c *Config) iniConfigUpdate() error {
 	c.configModTime = info.ModTime()
 	c.logger.Debugf("applied config from %s", c.configPath)
 
-	// Exec jobs
-	for name, j := range c.ExecJobs {
-		newJob, ok := parsed.ExecJobs[name]
-		if !ok {
-			c.sh.RemoveJob(j)
-			delete(c.ExecJobs, name)
-			continue
-		}
-		defaults.Set(newJob)
-		newJob.Client = c.dockerHandler.GetInternalDockerClient()
-		newJob.Name = name
-		newHash, err1 := newJob.Hash()
-		if err1 != nil {
-			return err1
-		}
-		oldHash, err2 := j.Hash()
-		if err2 != nil {
-			return err2
-		}
-		if newHash != oldHash {
-			c.sh.RemoveJob(j)
-			newJob.buildMiddlewares()
-			c.sh.AddJob(newJob)
-			c.ExecJobs[name] = newJob
-		}
+	execPrep := func(name string, j *ExecJobConfig) {
+		defaults.Set(j)
+		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Name = name
 	}
+	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep)
 
-	for name, j := range parsed.ExecJobs {
-		if _, ok := c.ExecJobs[name]; !ok {
-			defaults.Set(j)
-			j.Client = c.dockerHandler.GetInternalDockerClient()
-			j.Name = name
-			j.buildMiddlewares()
-			c.sh.AddJob(j)
-			c.ExecJobs[name] = j
-		}
+	runPrep := func(name string, j *RunJobConfig) {
+		defaults.Set(j)
+		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Name = name
 	}
+	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep)
 
-	// Run jobs
-	for name, j := range c.RunJobs {
-		newJob, ok := parsed.RunJobs[name]
-		if !ok {
-			c.sh.RemoveJob(j)
-			delete(c.RunJobs, name)
-			continue
-		}
-		defaults.Set(newJob)
-		newJob.Client = c.dockerHandler.GetInternalDockerClient()
-		newJob.Name = name
-		newHash, err1 := newJob.Hash()
-		if err1 != nil {
-			return err1
-		}
-		oldHash, err2 := j.Hash()
-		if err2 != nil {
-			return err2
-		}
-		if newHash != oldHash {
-			c.sh.RemoveJob(j)
-			newJob.buildMiddlewares()
-			c.sh.AddJob(newJob)
-			c.RunJobs[name] = newJob
-		}
+	localPrep := func(name string, j *LocalJobConfig) {
+		defaults.Set(j)
+		j.Name = name
 	}
+	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, localPrep)
 
-	for name, j := range parsed.RunJobs {
-		if _, ok := c.RunJobs[name]; !ok {
-			defaults.Set(j)
-			j.Client = c.dockerHandler.GetInternalDockerClient()
-			j.Name = name
-			j.buildMiddlewares()
-			c.sh.AddJob(j)
-			c.RunJobs[name] = j
-		}
+	svcPrep := func(name string, j *RunServiceConfig) {
+		defaults.Set(j)
+		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Name = name
 	}
-
-	// Local jobs
-	for name, j := range c.LocalJobs {
-		newJob, ok := parsed.LocalJobs[name]
-		if !ok {
-			c.sh.RemoveJob(j)
-			delete(c.LocalJobs, name)
-			continue
-		}
-		defaults.Set(newJob)
-		newJob.Name = name
-		newHash, err1 := newJob.Hash()
-		if err1 != nil {
-			return err1
-		}
-		oldHash, err2 := j.Hash()
-		if err2 != nil {
-			return err2
-		}
-		if newHash != oldHash {
-			c.sh.RemoveJob(j)
-			newJob.buildMiddlewares()
-			c.sh.AddJob(newJob)
-			c.LocalJobs[name] = newJob
-		}
-	}
-
-	for name, j := range parsed.LocalJobs {
-		if _, ok := c.LocalJobs[name]; !ok {
-			defaults.Set(j)
-			j.Name = name
-			j.buildMiddlewares()
-			c.sh.AddJob(j)
-			c.LocalJobs[name] = j
-		}
-	}
-
-	// Service jobs
-	for name, j := range c.ServiceJobs {
-		newJob, ok := parsed.ServiceJobs[name]
-		if !ok {
-			c.sh.RemoveJob(j)
-			delete(c.ServiceJobs, name)
-			continue
-		}
-		defaults.Set(newJob)
-		newJob.Client = c.dockerHandler.GetInternalDockerClient()
-		newJob.Name = name
-		newHash, err1 := newJob.Hash()
-		if err1 != nil {
-			return err1
-		}
-		oldHash, err2 := j.Hash()
-		if err2 != nil {
-			return err2
-		}
-		if newHash != oldHash {
-			c.sh.RemoveJob(j)
-			newJob.buildMiddlewares()
-			c.sh.AddJob(newJob)
-			c.ServiceJobs[name] = newJob
-		}
-	}
-
-	for name, j := range parsed.ServiceJobs {
-		if _, ok := c.ServiceJobs[name]; !ok {
-			defaults.Set(j)
-			j.Client = c.dockerHandler.GetInternalDockerClient()
-			j.Name = name
-			j.buildMiddlewares()
-			c.sh.AddJob(j)
-			c.ServiceJobs[name] = j
-		}
-	}
+	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep)
 
 	return nil
 }
