@@ -52,8 +52,6 @@ func (c *DaemonCommand) Execute(args []string) error {
 }
 
 func (c *DaemonCommand) boot() (err error) {
-	c.pprofServer = &http.Server{Addr: c.PprofAddr}
-
 	// Apply CLI log level before reading config
 	ApplyLogLevel(c.LogLevel)
 
@@ -66,6 +64,22 @@ func (c *DaemonCommand) boot() (err error) {
 	config.Docker.PollInterval = c.DockerPollInterval
 	config.Docker.UseEvents = c.DockerUseEvents
 	config.Docker.DisablePolling = c.DockerNoPoll
+
+	// Apply global settings from config if flags were not provided
+	if !c.EnableWeb {
+		c.EnableWeb = config.Global.EnableWeb
+	}
+	if c.WebAddr == ":8081" && config.Global.WebAddr != "" {
+		c.WebAddr = config.Global.WebAddr
+	}
+	if !c.EnablePprof {
+		c.EnablePprof = config.Global.EnablePprof
+	}
+	if c.PprofAddr == "127.0.0.1:8080" && config.Global.PprofAddr != "" {
+		c.PprofAddr = config.Global.PprofAddr
+	}
+
+	c.pprofServer = &http.Server{Addr: c.PprofAddr}
 
 	if c.LogLevel == "" {
 		ApplyLogLevel(config.Global.LogLevel)
