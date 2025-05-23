@@ -10,7 +10,7 @@ import (
 type LocalJob struct {
 	BareJob     `mapstructure:",squash"`
 	Dir         string
-	Environment []string
+	Environment []string `mapstructure:"environment"`
 }
 
 func NewLocalJob() *LocalJob {

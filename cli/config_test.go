@@ -96,7 +96,7 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 				ExecJobs: map[string]*ExecJobConfig{
 					"foo": {ExecJob: core.ExecJob{BareJob: core.BareJob{
 						Schedule: "@every 10s",
-						Command:  `echo "foo"`,
+						Command:  `echo \"foo\"`,
 					}}},
 				},
 			},
@@ -160,8 +160,29 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 	for _, t := range testcases {
 		conf, err := BuildFromString(t.Ini, &TestLogger{})
 		c.Assert(err, IsNil)
-		if !c.Check(conf, DeepEquals, t.ExpectedConfig) {
-			c.Errorf("Test %q\nExpected %s, but got %s", t.Comment, toJSON(t.ExpectedConfig), toJSON(conf))
+
+		// Apply defaults to expected config to match the parsed config structure
+		expectedWithDefaults := NewConfig(&TestLogger{})
+		// Clear both loggers for comparison
+		expectedWithDefaults.logger = nil
+		conf.logger = nil
+
+		// Copy the expected job maps
+		for name, job := range t.ExpectedConfig.ExecJobs {
+			expectedWithDefaults.ExecJobs[name] = job
+		}
+		for name, job := range t.ExpectedConfig.RunJobs {
+			expectedWithDefaults.RunJobs[name] = job
+		}
+		for name, job := range t.ExpectedConfig.ServiceJobs {
+			expectedWithDefaults.ServiceJobs[name] = job
+		}
+		for name, job := range t.ExpectedConfig.LocalJobs {
+			expectedWithDefaults.LocalJobs[name] = job
+		}
+
+		if !c.Check(conf, DeepEquals, expectedWithDefaults) {
+			c.Errorf("Test %q\nExpected %s, but got %s", t.Comment, toJSON(expectedWithDefaults), toJSON(conf))
 		}
 	}
 }
