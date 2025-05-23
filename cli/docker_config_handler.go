@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"time"
 
@@ -105,7 +106,9 @@ func (c *DockerHandler) watch() {
 		if cfg, ok := c.notifier.(*Config); ok {
 			cfg.logger.Debugf("reloading config file %s", cfg.configPath)
 			if err := cfg.iniConfigUpdate(); err != nil {
-				c.logger.Warningf("%v", err)
+				if !errors.Is(err, os.ErrNotExist) {
+					c.logger.Warningf("%v", err)
+				}
 			}
 		}
 	}
