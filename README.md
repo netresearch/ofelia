@@ -124,6 +124,8 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `slack-only-on-error` - only send a slack message if the execution was not successful.
 - `log-level` - logging level (DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL). When set in the config file this level is applied from startup unless `--log-level` is provided.
 
+Log output now includes the original file and line of the logging call instead of the adapter location.
+
 ### INI-style configuration
 
 Run with `ofelia daemon --config=/path/to/config.ini`

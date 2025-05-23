@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/jessevdk/go-flags"
@@ -25,6 +27,9 @@ func buildLogger(level string) core.Logger {
 		ForceColors:     true,
 		DisableQuote:    true,
 		TimestampFormat: "2006-01-02 15:04:05",
+		CallerPrettyfier: func(frame *runtime.Frame) (string, string) {
+			return "", fmt.Sprintf("%s:%d", filepath.Base(frame.File), frame.Line)
+		},
 	})
 	lvl, err := logrus.ParseLevel(strings.ToLower(level))
 	if err != nil {
