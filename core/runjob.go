@@ -42,7 +42,7 @@ type RunJob struct {
 	Container   string
 	Volume      []string
 	VolumesFrom []string `gcfg:"volumes-from" mapstructure:"volumes-from,"`
-	Environment []string
+	Environment []string `mapstructure:"environment"`
 
 	containerID string
 	mu          sync.RWMutex // Protect containerID access
