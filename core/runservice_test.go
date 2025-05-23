@@ -11,7 +11,7 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/fsouza/go-dockerclient/testing"
-	logging "github.com/op/go-logging"
+	"github.com/sirupsen/logrus"
 
 	. "gopkg.in/check.v1"
 )
@@ -32,9 +32,9 @@ var logger Logger
 func (s *SuiteRunServiceJob) SetUpTest(c *C) {
 	var err error
 
-	logging.SetFormatter(logging.MustStringFormatter(logFormat))
-
-	logger = logging.MustGetLogger("ofelia")
+	l := logrus.New()
+	l.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
+	logger = &LogrusAdapter{Logger: l}
 	s.server, err = testing.NewServer("127.0.0.1:0", nil, nil)
 	c.Assert(err, IsNil)
 
