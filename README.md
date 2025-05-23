@@ -123,6 +123,10 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `slack-webhook` - URL of the slack webhook.
 - `slack-only-on-error` - only send a slack message if the execution was not successful.
 - `log-level` - logging level (DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL). When set in the config file this level is applied from startup unless `--log-level` is provided.
+- `enable-web` - enable the built-in web UI.
+- `web-address` - address for the web UI server (default `:8081`).
+- `enable-pprof` - enable the pprof debug server.
+- `pprof-address` - address for the pprof server (default `127.0.0.1:8080`).
 
 ### INI-style configuration
 
@@ -133,6 +137,10 @@ Run with `ofelia daemon --config=/path/to/config.ini`
 save-folder = /var/log/ofelia_reports
 save-only-on-error = true
 log-level = INFO
+enable-web = true
+web-address = :8081
+enable-pprof = true
+pprof-address = 127.0.0.1:8080
 
 [job-exec "job-executed-on-running-container"]
 schedule = @hourly
@@ -167,6 +175,10 @@ docker run -it --rm \
     --label ofelia.save-folder="/var/log/ofelia_reports" \
     --label ofelia.save-only-on-error="true" \
     --label ofelia.log-level="INFO" \
+    --label ofelia.enable-web="true" \
+    --label ofelia.web-address=":8081" \
+    --label ofelia.enable-pprof="true" \
+    --label ofelia.pprof-address="127.0.0.1:8080" \
         ghcr.io/netresearch/ofelia:latest daemon
 ```
 
