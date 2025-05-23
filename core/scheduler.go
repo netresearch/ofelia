@@ -50,6 +50,7 @@ func (s *Scheduler) AddJob(j Job) error {
 	}
 	j.SetCronJobID(int(id)) // Cast to int in order to avoid pushing cron external to common
 	j.Use(s.Middlewares()...)
+	s.Jobs = append(s.Jobs, j)
 	s.Logger.Noticef("New job registered %q - %q - %q - ID: %v", j.GetName(), j.GetCommand(), j.GetSchedule(), id)
 	return nil
 }
@@ -57,6 +58,12 @@ func (s *Scheduler) AddJob(j Job) error {
 func (s *Scheduler) RemoveJob(j Job) error {
 	s.Logger.Noticef("Job deregistered (will not fire again) %q - %q - %q - ID: %v", j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID())
 	s.cron.Remove(cron.EntryID(j.GetCronJobID()))
+	for i, job := range s.Jobs {
+		if job == j || job.GetCronJobID() == j.GetCronJobID() {
+			s.Jobs = append(s.Jobs[:i], s.Jobs[i+1:]...)
+			break
+		}
+	}
 	return nil
 }
 
