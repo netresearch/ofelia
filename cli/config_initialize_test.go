@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -33,12 +34,13 @@ func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
 	// Override newDockerHandler to use the test server
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
 		client, err := docker.NewClient(ts.URL)
 		if err != nil {
 			return nil, err
 		}
 		return &DockerHandler{
+			ctx:            ctx,
 			filters:        cfg.Filters,
 			notifier:       notifier,
 			logger:         logger,

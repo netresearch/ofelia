@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"io/ioutil"
 	"os"
@@ -42,7 +43,7 @@ func (s *SuiteConfig) TestInitializeAppErrorDockerHandler(c *C) {
 	// Override newDockerHandler to simulate factory error
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
 		return nil, errors.New("factory error")
 	}
 

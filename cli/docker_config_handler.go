@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
@@ -20,6 +21,8 @@ type dockerClient interface {
 }
 
 type DockerHandler struct {
+	ctx            context.Context
+	cancel         context.CancelFunc
 	filters        []string
 	dockerClient   dockerClient
 	notifier       dockerLabelsUpdate
@@ -55,8 +58,15 @@ func (c *DockerHandler) buildDockerClient() (dockerClient, error) {
 	return client, nil
 }
 
-func NewDockerHandler(notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, client dockerClient) (*DockerHandler, error) {
+func NewDockerHandler(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, client dockerClient) (*DockerHandler, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(ctx)
+
 	c := &DockerHandler{
+		ctx:            ctx,
+		cancel:         cancel,
 		filters:        cfg.Filters,
 		notifier:       notifier,
 		logger:         logger,
@@ -97,17 +107,22 @@ func (c *DockerHandler) watch() {
 
 	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()
-	for range ticker.C {
-		labels, err := c.GetDockerLabels()
-		if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
-			c.logger.Debugf("%v", err)
-		}
-		c.notifier.dockerLabelsUpdate(labels)
-		if cfg, ok := c.notifier.(*Config); ok {
-			cfg.logger.Debugf("checking config file %s", cfg.configPath)
-			if err := cfg.iniConfigUpdate(); err != nil {
-				if !errors.Is(err, os.ErrNotExist) {
-					c.logger.Warningf("%v", err)
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-ticker.C:
+			labels, err := c.GetDockerLabels()
+			if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
+				c.logger.Debugf("%v", err)
+			}
+			c.notifier.dockerLabelsUpdate(labels)
+			if cfg, ok := c.notifier.(*Config); ok {
+				cfg.logger.Debugf("checking config file %s", cfg.configPath)
+				if err := cfg.iniConfigUpdate(); err != nil {
+					if !errors.Is(err, os.ErrNotExist) {
+						c.logger.Warningf("%v", err)
+					}
 				}
 			}
 		}
@@ -171,11 +186,23 @@ func (c *DockerHandler) watchEvents() {
 		c.logger.Debugf("%v", err)
 		return
 	}
-	for range ch {
-		labels, err := c.GetDockerLabels()
-		if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
-			c.logger.Debugf("%v", err)
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-ch:
+			labels, err := c.GetDockerLabels()
+			if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
+				c.logger.Debugf("%v", err)
+			}
+			c.notifier.dockerLabelsUpdate(labels)
 		}
-		c.notifier.dockerLabelsUpdate(labels)
 	}
+}
+
+func (c *DockerHandler) Shutdown(ctx context.Context) error {
+	if c.cancel != nil {
+		c.cancel()
+	}
+	return nil
 }
