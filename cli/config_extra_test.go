@@ -151,3 +151,29 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	_, ok := cfg.RunJobs["foo"]
 	c.Assert(ok, Equals, false)
 }
+
+// Test iniConfigUpdate skips reload when the file has not changed
+func (s *SuiteConfig) TestIniConfigUpdateNoChange(c *C) {
+	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	c.Assert(err, IsNil)
+	defer os.Remove(tmp.Name())
+
+	content := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
+	_, err = tmp.WriteString(content)
+	c.Assert(err, IsNil)
+	tmp.Close()
+
+	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	c.Assert(err, IsNil)
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+
+	modTime := cfg.configModTime
+	err = cfg.iniConfigUpdate()
+	c.Assert(err, IsNil)
+	c.Assert(cfg.configModTime, Equals, modTime)
+	c.Assert(len(cfg.RunJobs), Equals, 1)
+	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 5s")
+}
