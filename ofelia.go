@@ -49,7 +49,7 @@ func main() {
 	remainingArgs, _ := preParser.ParseArgs(os.Args[1:])
 
 	if pre.LogLevel == "" {
-		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true}, pre.ConfigFile)
+		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, pre.ConfigFile)
 		if err == nil {
 			if sec, err := cfg.GetSection("global"); err == nil {
 				pre.LogLevel = sec.Key("log-level").String()

@@ -32,7 +32,7 @@ func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 	c.Assert(err, IsNil)
 	defer os.Remove(tmpFile.Name())
 
-	_, err = tmpFile.WriteString("[global]\nno-overlap = true\n")
+	_, err = tmpFile.WriteString("[global\nno-overlap = true\n")
 	c.Assert(err, IsNil)
 	tmpFile.Close()
 
@@ -61,7 +61,7 @@ func (s *DaemonBootSuite) TestBootLogsConfigErrorSuppressed(c *C) {
 	c.Assert(err, IsNil)
 	defer os.Remove(tmpFile.Name())
 
-	_, err = tmpFile.WriteString("[global]\nno-overlap = true\n")
+	_, err = tmpFile.WriteString("[global\nno-overlap = true\n")
 	c.Assert(err, IsNil)
 	tmpFile.Close()
 

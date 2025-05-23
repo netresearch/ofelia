@@ -62,7 +62,7 @@ func NewConfig(logger core.Logger) *Config {
 // BuildFromFile builds a scheduler using the config from a file
 func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true}, filename)
+	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, filename)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ var newDockerHandler = NewDockerHandler
 
 func BuildFromString(config string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true}, []byte(config))
+	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, []byte(config))
 	if err != nil {
 		return nil, err
 	}
@@ -535,7 +535,7 @@ func parseIni(cfg *ini.File, c *Config) error {
 	}
 
 	for _, section := range cfg.Sections() {
-		name := section.Name()
+		name := strings.TrimSpace(section.Name())
 		switch {
 		case strings.HasPrefix(name, jobExec):
 			jobName := parseJobName(name, jobExec)
@@ -584,8 +584,11 @@ func sectionToMap(section *ini.Section) map[string]interface{} {
 			cp := make([]string, len(vals))
 			copy(cp, vals)
 			m[key.Name()] = cp
-		} else {
+		} else if len(vals) == 1 {
 			m[key.Name()] = vals[0]
+		} else {
+			// Handle empty values
+			m[key.Name()] = ""
 		}
 	}
 	return m

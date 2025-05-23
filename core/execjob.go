@@ -13,7 +13,7 @@ type ExecJob struct {
 	Container   string         `hash:"true"`
 	User        string         `default:"root" hash:"true"`
 	TTY         bool           `default:"false" hash:"true"`
-	Environment []string
+	Environment []string       `mapstructure:"environment"`
 
 	execID string
 }

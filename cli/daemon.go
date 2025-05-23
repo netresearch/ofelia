@@ -60,6 +60,8 @@ func (c *DaemonCommand) boot() (err error) {
 	config, err := BuildFromFile(c.ConfigFile, c.Logger)
 	if err != nil {
 		c.Logger.Warningf("Could not load config file %q: %v", c.ConfigFile, err)
+		// Create an empty config if loading failed
+		config = NewConfig(c.Logger)
 	}
 	c.applyOptions(config)
 
@@ -175,6 +177,9 @@ func (c *DaemonCommand) shutdown() error {
 }
 
 func (c *DaemonCommand) applyOptions(config *Config) {
+	if config == nil {
+		return
+	}
 	if len(c.DockerFilters) > 0 {
 		config.Docker.Filters = c.DockerFilters
 	}
