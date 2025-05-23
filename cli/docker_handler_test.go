@@ -9,12 +9,15 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"testing"
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
-	"github.com/fsouza/go-dockerclient/testing"
+	dockertest "github.com/fsouza/go-dockerclient/testing"
 	. "gopkg.in/check.v1"
 )
+
+func TestDockerHandler(t *testing.T) { TestingT(t) }
 
 // dummyNotifier implements dockerLabelsUpdate
 type dummyNotifier struct{}
@@ -132,7 +135,7 @@ func (s *DockerHandlerSuite) TestPollingDisabled(c *C) {
 	ch := make(chan struct{}, 1)
 	notifier := &chanNotifier{ch: ch}
 
-	server, err := testing.NewServer("127.0.0.1:0", nil, nil)
+	server, err := dockertest.NewServer("127.0.0.1:0", nil, nil)
 	c.Assert(err, IsNil)
 	defer server.Stop()
 	server.CustomHandler("/containers/json", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -185,4 +188,42 @@ func (s *DockerHandlerSuite) TestWatchInvalidInterval(c *C) {
 	case <-time.After(time.Millisecond * 50):
 		c.Error("watch did not return for negative interval")
 	}
+}
+
+type dummyEventClient struct {
+	listener     chan<- *docker.APIEvents
+	removeCalled bool
+}
+
+func (d *dummyEventClient) Info() (*docker.DockerInfo, error) { return &docker.DockerInfo{}, nil }
+func (d *dummyEventClient) ListContainers(opts docker.ListContainersOptions) ([]docker.APIContainers, error) {
+	return []docker.APIContainers{{Names: []string{"/cont"}, Labels: map[string]string{"ofelia.enabled": "true"}}}, nil
+}
+func (d *dummyEventClient) AddEventListenerWithOptions(opts docker.EventsOptions, ch chan<- *docker.APIEvents) error {
+	d.listener = ch
+	return nil
+}
+func (d *dummyEventClient) RemoveEventListener(ch chan *docker.APIEvents) error {
+	if d.listener == ch {
+		d.removeCalled = true
+		d.listener = nil
+	}
+	return nil
+}
+
+// TestWatchEventsStop verifies that watchEvents cleans up when the handler stops.
+func (s *DockerHandlerSuite) TestWatchEventsStop(c *C) {
+	client := &dummyEventClient{}
+	ch := make(chan struct{}, 1)
+	notifier := &chanNotifier{ch: ch}
+	cfg := &DockerConfig{UseEvents: true, DisablePolling: true}
+	h, err := NewDockerHandler(notifier, &TestLogger{}, cfg, client)
+	c.Assert(err, IsNil)
+
+	client.listener <- &docker.APIEvents{}
+	<-ch
+
+	h.Stop()
+	time.Sleep(time.Millisecond * 50)
+	c.Assert(client.removeCalled, Equals, true)
 }
