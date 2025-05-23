@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"encoding/json"
+	"io"
 	"os"
 	"testing"
 
@@ -31,9 +33,24 @@ command = echo "foo"
 	c.Assert(err, IsNil)
 	file.Close()
 
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = oldStdout }()
+
 	cmd := ValidateCommand{ConfigFile: file.Name(), Logger: &TestLogger{}}
 	err = cmd.Execute(nil)
 	c.Assert(err, IsNil)
+
+	w.Close()
+	out, _ := io.ReadAll(r)
+
+	var conf Config
+	err = json.Unmarshal(out, &conf)
+	c.Assert(err, IsNil)
+	job, ok := conf.ExecJobs["foo"]
+	c.Assert(ok, Equals, true)
+	c.Assert(job.HistoryLimit, Equals, 10)
 }
 
 // TestExecuteInvalidFile verifies that Execute returns an error for malformed config file.

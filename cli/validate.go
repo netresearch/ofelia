@@ -1,6 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
+	"fmt"
+
+	defaults "github.com/creasty/defaults"
 	"github.com/netresearch/ofelia/core"
 )
 
@@ -23,6 +27,29 @@ func (c *ValidateCommand) Execute(args []string) error {
 	if c.LogLevel == "" {
 		ApplyLogLevel(conf.Global.LogLevel)
 	}
+
+	applyConfigDefaults(conf)
+	out, err := json.MarshalIndent(conf, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(out))
+
 	c.Logger.Debugf("OK")
 	return nil
+}
+
+func applyConfigDefaults(conf *Config) {
+	for _, j := range conf.ExecJobs {
+		defaults.Set(j)
+	}
+	for _, j := range conf.RunJobs {
+		defaults.Set(j)
+	}
+	for _, j := range conf.LocalJobs {
+		defaults.Set(j)
+	}
+	for _, j := range conf.ServiceJobs {
+		defaults.Set(j)
+	}
 }
