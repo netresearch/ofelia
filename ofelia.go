@@ -43,7 +43,7 @@ func main() {
 	// Pre-parse log-level flag to configure logger early
 	var pre struct {
 		LogLevel   string `long:"log-level"`
-		ConfigFile string `long:"config" default:"/etc/ofelia.conf"`
+		ConfigFile string `long:"config" default:"/etc/ofelia/config.ini"`
 	}
 	preParser := flags.NewParser(&pre, flags.IgnoreUnknown)
 	remainingArgs, _ := preParser.ParseArgs(os.Args[1:])
