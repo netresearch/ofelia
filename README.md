@@ -137,7 +137,7 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 **Ofelia** comes with three different logging drivers that can be configured in the `[global]` section or as top-level Docker labels:
 
 - `mail` to send mails
-- `save` to save structured execution reports to a directory. The destination folder is created automatically.
+- `save` to save structured execution reports to a directory. The destination folder is created automatically if it doesn't exist.
 - `slack` to send messages via a slack webhook
 
 ### Global Options
@@ -151,7 +151,7 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `email-from` - mail address of the sender of the mail.
 - `mail-only-on-error` - only send a mail if the execution was not successful.
 
-- `save-folder` - directory in which the reports shall be written. The folder is created automatically if it does not exist.
+- `save-folder` - directory in which the reports shall be written. The folder is created automatically if it doesn't exist using an equivalent of `mkdir -p`.
 - `save-only-on-error` - only save a report if the execution was not successful.
 
 - `slack-webhook` - URL of the slack webhook.
