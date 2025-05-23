@@ -60,7 +60,8 @@ go build .
 ### Commands
 
 Use `ofelia daemon` to run the scheduler with a configuration file and
-`ofelia validate` to check the configuration without starting the daemon:
+`ofelia validate` to check the configuration without starting the daemon. The
+`validate` command prints the complete configuration including applied defaults:
 
 ```sh
 ofelia daemon --config=/path/to/config.ini
