@@ -72,7 +72,7 @@ func (s *ValidateSuite) TestExecuteInvalidFile(c *C) {
 
 // TestExecuteMissingFile verifies that Execute returns an error when file does not exist.
 func (s *ValidateSuite) TestExecuteMissingFile(c *C) {
-	cmd := ValidateCommand{ConfigFile: "/nonexistent/ofelia.conf", Logger: &TestLogger{}}
+	cmd := ValidateCommand{ConfigFile: "/nonexistent/ofelia/config.ini", Logger: &TestLogger{}}
 	err := cmd.Execute(nil)
 	c.Assert(err, NotNil)
 }

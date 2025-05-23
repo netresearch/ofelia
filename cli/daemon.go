@@ -15,7 +15,7 @@ import (
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile         string        `long:"config" description:"configuration file" default:"/etc/ofelia.conf"`
+	ConfigFile         string        `long:"config" description:"configuration file" default:"/etc/ofelia/config.ini"`
 	DockerFilters      []string      `short:"f" long:"docker-filter" description:"Filter for docker containers"`
 	DockerPollInterval time.Duration `long:"docker-poll-interval" description:"Interval for docker polling and INI reload (0 disables)" default:"10s"`
 	DockerUseEvents    bool          `long:"docker-events" description:"Use docker events instead of polling"`
