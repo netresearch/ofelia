@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -60,7 +61,11 @@ func (c *DaemonCommand) boot() (err error) {
 	// Always try to read the config file, as there are options such as globals or some tasks that can be specified there and not in docker
 	config, err := BuildFromFile(c.ConfigFile, c.Logger)
 	if err != nil {
-		c.Logger.Debugf("Error loading config file %v: %v", c.ConfigFile, err)
+		if errors.Is(err, os.ErrNotExist) {
+			c.Logger.Warningf("Config file %v not found: %v", c.ConfigFile, err)
+		} else {
+			c.Logger.Debugf("Error loading config file %v: %v", c.ConfigFile, err)
+		}
 	}
 	config.Docker.Filters = c.DockerFilters
 	config.Docker.PollInterval = c.DockerPollInterval
