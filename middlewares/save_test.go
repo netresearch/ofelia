@@ -126,3 +126,42 @@ func (s *SuiteSave) TestSensitiveData(c *C) {
 		}
 	}
 }
+
+func (s *SuiteSave) TestCreatesSaveFolder(c *C) {
+	dir, err := ioutil.TempDir("/tmp", "save")
+	c.Assert(err, IsNil)
+	os.RemoveAll(dir)
+	defer os.RemoveAll(dir)
+
+	s.ctx.Start()
+	s.ctx.Stop(nil)
+
+	s.job.Name = "foo"
+	s.ctx.Execution.Date = time.Time{}
+
+	m := NewSave(&SaveConfig{SaveFolder: dir})
+	c.Assert(m.Run(s.ctx), IsNil)
+
+	fi, err := os.Stat(dir)
+	c.Assert(err, IsNil)
+	c.Assert(fi.IsDir(), Equals, true)
+}
+
+func (s *SuiteSave) TestSafeFilename(c *C) {
+	dir, err := ioutil.TempDir("/tmp", "save")
+	c.Assert(err, IsNil)
+	defer os.RemoveAll(dir)
+
+	s.ctx.Start()
+	s.ctx.Stop(nil)
+
+	s.job.Name = "foo/bar\\baz"
+	s.ctx.Execution.Date = time.Time{}
+
+	m := NewSave(&SaveConfig{SaveFolder: dir})
+	c.Assert(m.Run(s.ctx), IsNil)
+
+	safe := strings.NewReplacer("/", "_", "\\", "_").Replace(s.job.Name)
+	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+safe+".stdout.log"))
+	c.Assert(err, IsNil)
+}
