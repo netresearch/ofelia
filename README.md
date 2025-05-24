@@ -31,6 +31,8 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
   `--pprof-address` for profiling and debugging.
 - **Optional web UI** enabled with `--enable-web` and bound via
   `--web-address` to view job status.
+- **HTTP API** exposing `/api/jobs` and `/api/jobs/{name}/history` for inspecting
+  job metadata and execution logs.
 
 This fork is based off of [mcuadros/ofelia](https://github.com/mcuadros/ofelia).
 
@@ -76,7 +78,8 @@ When `--enable-pprof` is specified, the daemon starts a Go pprof HTTP
 server for profiling. Use `--pprof-address` to set the listening address
 (default `127.0.0.1:8080`).
 When `--enable-web` is specified, the daemon serves a small web UI at
-`--web-address` (default `:8081`) to inspect job status.
+`--web-address` (default `:8081`) to inspect job status. The UI relies on the
+JSON API endpoints mentioned above to list jobs and show execution history.
 
 ### Environment variables
 

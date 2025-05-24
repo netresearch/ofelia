@@ -45,3 +45,16 @@ func (s *SuiteBareJob) TestHistoryUnlimited(c *C) {
 	job.SetLastRun(&Execution{})
 	c.Assert(len(job.history), Equals, 2)
 }
+
+func (s *SuiteBareJob) TestGetHistory(c *C) {
+	job := &BareJob{}
+	e1 := &Execution{}
+	e2 := &Execution{}
+	job.SetLastRun(e1)
+	job.SetLastRun(e2)
+
+	hist := job.GetHistory()
+	c.Assert(len(hist), Equals, 2)
+	c.Assert(hist[0], Equals, e1)
+	c.Assert(hist[1], Equals, e2)
+}

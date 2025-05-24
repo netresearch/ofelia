@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Job History</title>
+  <style>
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #ccc; padding: 4px; }
+    pre { margin: 0; }
+  </style>
+</head>
+<body>
+  <h1>History for <span id="job-name"></span></h1>
+  <table id="history">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Duration</th>
+        <th>Status</th>
+        <th>Stdout</th>
+        <th>Stderr</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+<script>
+  const params = new URLSearchParams(location.search);
+  const job = params.get('job');
+  document.getElementById('job-name').textContent = job;
+
+  async function loadHistory() {
+    const resp = await fetch(`/api/jobs/${encodeURIComponent(job)}/history`);
+    const entries = await resp.json();
+    const tbody = document.querySelector('#history tbody');
+    tbody.innerHTML = '';
+    entries.forEach(e => {
+      const tr = document.createElement('tr');
+      const status = e.failed ? 'Failed' : (e.skipped ? 'Skipped' : 'Success');
+      const date = new Date(e.date).toLocaleString();
+      tr.innerHTML = `<td>${date}</td><td>${e.duration}</td><td>${status}</td>` +
+        `<td><details><summary>stdout</summary><pre>${e.stdout}</pre></details></td>` +
+        `<td><details><summary>stderr</summary><pre>${e.stderr}</pre></details></td>`;
+      tbody.appendChild(tr);
+    });
+  }
+  loadHistory();
+</script>
+</body>
+</html>

@@ -78,3 +78,11 @@ func (j *BareJob) GetLastRun() *Execution {
 	defer j.lock.Unlock()
 	return j.lastRun
 }
+
+// GetHistory returns the slice containing past executions of the job.
+// The returned slice is not a copy; callers should not modify it.
+func (j *BareJob) GetHistory() []*Execution {
+	j.lock.Lock()
+	defer j.lock.Unlock()
+	return j.history
+}

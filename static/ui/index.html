@@ -19,6 +19,7 @@
         <th>Last Status</th>
         <th>Run Time</th>
         <th>Duration</th>
+        <th>History</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -34,7 +35,8 @@
         const status = j.last_run ? (j.last_run.failed ? 'Failed' : 'Success') : 'never';
         const time = j.last_run ? new Date(j.last_run.date).toLocaleString() : '';
         const duration = j.last_run ? j.last_run.duration : '';
-        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td>`;
+        const link = `<a href="history.html?job=${encodeURIComponent(j.name)}">view</a>`;
+        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td><td>${link}</td>`;
         tbody.appendChild(tr);
       });
     }

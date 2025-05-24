@@ -36,3 +36,14 @@ pprof-address = 127.0.0.1:8080
 The equivalent labels are `ofelia.enable-web`, `ofelia.web-address`,
 `ofelia.enable-pprof` and `ofelia.pprof-address`.
 
+When the web server is enabled, Ofelia exposes a small HTTP API used by the UI.
+Two endpoints are currently available:
+
+* `/api/jobs` returns all configured jobs including metadata and the last
+  execution.
+* `/api/jobs/{name}/history` returns the full execution history for the given
+  job, including captured stdout and stderr streams.
+
+The static pages under `static/ui/` consume this API to present job status and
+previous runs.
+
