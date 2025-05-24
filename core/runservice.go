@@ -106,7 +106,7 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 
 	svc, err := j.Client.InspectService(svcID)
 	if err != nil {
-		return fmt.Errorf("Failed to inspect service %s: %s", svcID, err.Error())
+		return fmt.Errorf("failed to inspect service %s: %w", svcID, err)
 	}
 
 	startTime := time.Now()
