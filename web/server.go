@@ -12,14 +12,16 @@ import (
 type Server struct {
 	addr      string
 	scheduler *core.Scheduler
+	config    interface{}
 	srv       *http.Server
 }
 
-func NewServer(addr string, s *core.Scheduler) *Server {
-	server := &Server{addr: addr, scheduler: s}
+func NewServer(addr string, s *core.Scheduler, cfg interface{}) *Server {
+	server := &Server{addr: addr, scheduler: s, config: cfg}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/jobs", server.jobsHandler)
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
+	mux.HandleFunc("/api/config", server.configHandler)
 	mux.Handle("/", http.FileServer(http.Dir("static/ui")))
 	server.srv = &http.Server{Addr: addr, Handler: mux}
 	return server
@@ -112,4 +114,9 @@ func (s *Server) removedJobsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jobs)
+}
+
+func (s *Server) configHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.config)
 }
