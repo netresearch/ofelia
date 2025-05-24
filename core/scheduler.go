@@ -14,14 +14,15 @@ var (
 )
 
 type Scheduler struct {
-	Jobs   []Job
-	Logger Logger
+	Jobs    []Job
+	Removed []Job
+	Logger  Logger
 
 	middlewareContainer
 	cron      *cron.Cron
 	wg        sync.WaitGroup
 	isRunning bool
-	mu        sync.RWMutex // Protect isRunning and wg operations
+	mu        sync.RWMutex // Protect isRunning and wg/removed operations
 }
 
 func NewScheduler(l Logger) *Scheduler {
@@ -64,6 +65,9 @@ func (s *Scheduler) RemoveJob(j Job) error {
 			break
 		}
 	}
+	s.mu.Lock()
+	s.Removed = append(s.Removed, j)
+	s.mu.Unlock()
 	return nil
 }
 
@@ -90,6 +94,15 @@ func (s *Scheduler) Stop() error {
 // Entries returns all scheduled cron entries.
 func (s *Scheduler) Entries() []cron.Entry {
 	return s.cron.Entries()
+}
+
+// GetRemovedJobs returns a copy of all jobs that were removed from the scheduler.
+func (s *Scheduler) GetRemovedJobs() []Job {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	jobs := make([]Job, len(s.Removed))
+	copy(jobs, s.Removed)
+	return jobs
 }
 
 // jobWrapper wraps a Job to manage running and waiting via the Scheduler.

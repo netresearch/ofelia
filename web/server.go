@@ -21,6 +21,7 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/jobs", server.jobsHandler)
 	mux.HandleFunc("/api/config", server.configHandler)
+	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
 	mux.Handle("/", http.FileServer(http.Dir("static/ui")))
 	server.srv = &http.Server{Addr: addr, Handler: mux}
 	return server
@@ -86,4 +87,36 @@ func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) configHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.config)
+}
+
+func (s *Server) removedJobsHandler(w http.ResponseWriter, r *http.Request) {
+	removed := s.scheduler.GetRemovedJobs()
+	jobs := make([]apiJob, 0, len(removed))
+	for _, job := range removed {
+		var execInfo *apiExecution
+		if lrGetter, ok := job.(interface{ GetLastRun() *core.Execution }); ok {
+			if lr := lrGetter.GetLastRun(); lr != nil {
+				errStr := ""
+				if lr.Error != nil {
+					errStr = lr.Error.Error()
+				}
+				execInfo = &apiExecution{
+					Date:     lr.Date,
+					Duration: lr.Duration,
+					Failed:   lr.Failed,
+					Skipped:  lr.Skipped,
+					Error:    errStr,
+				}
+			}
+		}
+		jobs = append(jobs, apiJob{
+			Name:     job.GetName(),
+			Schedule: job.GetSchedule(),
+			Command:  job.GetCommand(),
+			LastRun:  execInfo,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(jobs)
 }
