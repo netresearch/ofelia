@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 
@@ -28,6 +29,8 @@ func TestHistoryEndpoint(t *testing.T) {
 	e, _ := core.NewExecution()
 	e.OutputStream.Write([]byte("out"))
 	e.ErrorStream.Write([]byte("err"))
+	e.Error = fmt.Errorf("boom")
+	e.Failed = true
 	job.SetLastRun(e)
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
 	srv := NewServer("", sched, nil)
@@ -45,7 +48,7 @@ func TestHistoryEndpoint(t *testing.T) {
 	if len(data) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(data))
 	}
-	if data[0].Stdout != "out" || data[0].Stderr != "err" {
+	if data[0].Stdout != "out" || data[0].Stderr != "err" || data[0].Error != "boom" {
 		t.Fatalf("unexpected output %v", data[0])
 	}
 }
@@ -58,6 +61,8 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 	e, _ := core.NewExecution()
 	e.OutputStream.Write([]byte("out"))
 	e.ErrorStream.Write([]byte("err"))
+	e.Error = fmt.Errorf("boom")
+	e.Failed = true
 	job.SetLastRun(e)
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
 	srv := NewServer("", sched, nil)
@@ -75,7 +80,7 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 	if len(jobs) != 1 || jobs[0].LastRun == nil {
 		t.Fatalf("unexpected jobs %v", jobs)
 	}
-	if jobs[0].LastRun.Stdout != "out" || jobs[0].LastRun.Stderr != "err" {
-		t.Fatalf("stdout/stderr not included")
+	if jobs[0].LastRun.Stdout != "out" || jobs[0].LastRun.Stderr != "err" || jobs[0].LastRun.Error != "boom" {
+		t.Fatalf("stdout/stderr/error not included")
 	}
 }
