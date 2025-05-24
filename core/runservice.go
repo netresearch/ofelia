@@ -126,7 +126,7 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 				return
 			}
 
-			taskExitCode, found := j.findtaskstatus(ctx, svc.ID)
+			taskExitCode, found := j.findTaskStatus(ctx, svc.ID)
 			if found {
 				exitCode = taskExitCode
 				return
@@ -140,7 +140,7 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 	return err
 }
 
-func (j *RunServiceJob) findtaskstatus(ctx *Context, taskID string) (int, bool) {
+func (j *RunServiceJob) findTaskStatus(ctx *Context, taskID string) (int, bool) {
 	taskFilters := make(map[string][]string)
 	taskFilters["service"] = []string{taskID}
 
