@@ -78,3 +78,12 @@ func (j *BareJob) GetLastRun() *Execution {
 	defer j.lock.Unlock()
 	return j.lastRun
 }
+
+// GetHistory returns a copy of the job's execution history.
+func (j *BareJob) GetHistory() []*Execution {
+	j.lock.Lock()
+	defer j.lock.Unlock()
+	hist := make([]*Execution, len(j.history))
+	copy(hist, j.history)
+	return hist
+}

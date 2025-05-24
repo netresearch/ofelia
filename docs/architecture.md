@@ -37,6 +37,7 @@ The equivalent labels are `ofelia.enable-web`, `ofelia.web-address`,
 `ofelia.enable-pprof` and `ofelia.pprof-address`.
 
 The web UI exposes `/api/jobs` for active jobs, `/api/jobs/removed` for those
-that have been deregistered and `/api/config` with the currently active
-configuration.
+that have been deregistered and `/api/jobs/{name}/history` with the execution
+history of a specific job, including stdout and stderr for each run.
+`/api/config` returns the currently active configuration.
 
