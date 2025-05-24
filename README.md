@@ -78,7 +78,8 @@ server for profiling. Use `--pprof-address` to set the listening address
 (default `127.0.0.1:8080`).
 When `--enable-web` is specified, the daemon serves a small web UI at
 `--web-address` (default `:8081`) to inspect job status. A second table lists
-jobs removed from the configuration via `/api/jobs/removed`.
+jobs removed from the configuration via `/api/jobs/removed`. The endpoint
+`/api/config` returns the active configuration as JSON.
 
 ### Environment variables
 

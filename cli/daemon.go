@@ -31,6 +31,7 @@ type DaemonCommand struct {
 	pprofServer   *http.Server
 	webServer     *web.Server
 	dockerHandler *DockerHandler
+	config        *Config
 	done          chan struct{}
 	Logger        core.Logger
 }
@@ -93,8 +94,9 @@ func (c *DaemonCommand) boot() (err error) {
 	c.applyOptions(config)
 	c.scheduler = config.sh
 	c.dockerHandler = config.dockerHandler
+	c.config = config
 	if c.EnableWeb {
-		c.webServer = web.NewServer(c.WebAddr, c.scheduler)
+		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config)
 	}
 
 	return err
@@ -208,4 +210,9 @@ func (c *DaemonCommand) applyOptions(config *Config) {
 	if c.LogLevel != "" {
 		config.Global.LogLevel = c.LogLevel
 	}
+}
+
+// Config returns the active configuration used by the daemon.
+func (c *DaemonCommand) Config() *Config {
+	return c.config
 }
