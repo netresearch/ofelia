@@ -11,6 +11,7 @@ import (
 	"github.com/netresearch/ofelia/cli"
 	"github.com/netresearch/ofelia/core"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/term"
 	ini "gopkg.in/ini.v1"
 )
 
@@ -22,9 +23,13 @@ const logFormat = "%{time} %{color} %{shortfile} ▶ %{level} %{color:reset} %{m
 func buildLogger(level string) core.Logger {
 	logrus.SetOutput(os.Stdout)
 	logrus.SetReportCaller(true)
+	forceColors := false
+	if term.IsTerminal(int(os.Stdout.Fd())) && os.Getenv("TERM") != "dumb" && os.Getenv("NO_COLOR") == "" {
+		forceColors = true
+	}
 	logrus.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp:   true,
-		ForceColors:     true,
+		ForceColors:     forceColors,
 		DisableQuote:    true,
 		TimestampFormat: "2006-01-02 15:04:05",
 		CallerPrettyfier: func(frame *runtime.Frame) (string, string) {
