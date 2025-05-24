@@ -23,6 +23,8 @@
     </thead>
     <tbody></tbody>
   </table>
+  <h2>Configuration</h2>
+  <pre id="config"></pre>
   <script>
     async function loadJobs() {
       const resp = await fetch('/api/jobs');
@@ -38,8 +40,15 @@
         tbody.appendChild(tr);
       });
     }
+    async function loadConfig() {
+      const resp = await fetch('/api/config');
+      const cfg = await resp.json();
+      document.getElementById('config').textContent = JSON.stringify(cfg, null, 2);
+    }
     loadJobs();
+    loadConfig();
     setInterval(loadJobs, 5000);
+    setInterval(loadConfig, 5000);
   </script>
 </body>
 </html>

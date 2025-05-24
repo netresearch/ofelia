@@ -36,3 +36,11 @@ pprof-address = 127.0.0.1:8080
 The equivalent labels are `ofelia.enable-web`, `ofelia.web-address`,
 `ofelia.enable-pprof` and `ofelia.pprof-address`.
 
+When the web UI is enabled, the daemon exposes two JSON endpoints:
+
+- `/api/jobs` – list of all scheduled jobs and their last execution.
+- `/api/config` – the currently active configuration.
+
+The static interface polls these endpoints periodically to display live
+information.
+

@@ -33,6 +33,7 @@ type DaemonCommand struct {
 	dockerHandler *DockerHandler
 	done          chan struct{}
 	Logger        core.Logger
+	config        *Config
 }
 
 // Execute runs the daemon
@@ -93,8 +94,9 @@ func (c *DaemonCommand) boot() (err error) {
 	c.applyOptions(config)
 	c.scheduler = config.sh
 	c.dockerHandler = config.dockerHandler
+	c.config = config
 	if c.EnableWeb {
-		c.webServer = web.NewServer(c.WebAddr, c.scheduler)
+		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config)
 	}
 
 	return err
@@ -174,6 +176,11 @@ func (c *DaemonCommand) shutdown() error {
 
 	c.Logger.Warningf("Waiting running jobs.")
 	return c.scheduler.Stop()
+}
+
+// Config returns the currently active configuration.
+func (c *DaemonCommand) Config() *Config {
+	return c.config
 }
 
 func (c *DaemonCommand) applyOptions(config *Config) {
