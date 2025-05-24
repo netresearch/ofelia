@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/netresearch/ofelia/core"
@@ -19,8 +20,9 @@ type Server struct {
 func NewServer(addr string, s *core.Scheduler, cfg interface{}) *Server {
 	server := &Server{addr: addr, scheduler: s, config: cfg}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/jobs", server.jobsHandler)
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
+	mux.HandleFunc("/api/jobs/", server.historyHandler)
+	mux.HandleFunc("/api/jobs", server.jobsHandler)
 	mux.HandleFunc("/api/config", server.configHandler)
 	mux.Handle("/", http.FileServer(http.Dir("static/ui")))
 	server.srv = &http.Server{Addr: addr, Handler: mux}
@@ -44,6 +46,8 @@ type apiExecution struct {
 	Failed   bool          `json:"failed"`
 	Skipped  bool          `json:"skipped"`
 	Error    string        `json:"error,omitempty"`
+	Stdout   string        `json:"stdout"`
+	Stderr   string        `json:"stderr"`
 }
 
 type apiJob struct {
@@ -69,6 +73,8 @@ func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
 					Failed:   lr.Failed,
 					Skipped:  lr.Skipped,
 					Error:    errStr,
+					Stdout:   lr.OutputStream.String(),
+					Stderr:   lr.ErrorStream.String(),
 				}
 			}
 		}
@@ -101,6 +107,8 @@ func (s *Server) removedJobsHandler(w http.ResponseWriter, r *http.Request) {
 					Failed:   lr.Failed,
 					Skipped:  lr.Skipped,
 					Error:    errStr,
+					Stdout:   lr.OutputStream.String(),
+					Stderr:   lr.ErrorStream.String(),
 				}
 			}
 		}
@@ -119,4 +127,47 @@ func (s *Server) removedJobsHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) configHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.config)
+}
+
+func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasSuffix(r.URL.Path, "/history") {
+		http.NotFound(w, r)
+		return
+	}
+	name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/jobs/"), "/history")
+	var target core.Job
+	for _, job := range s.scheduler.Jobs {
+		if job.GetName() == name {
+			target = job
+			break
+		}
+	}
+	if target == nil {
+		http.NotFound(w, r)
+		return
+	}
+	hJob, ok := target.(interface{ GetHistory() []*core.Execution })
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	hist := hJob.GetHistory()
+	out := make([]apiExecution, 0, len(hist))
+	for _, e := range hist {
+		errStr := ""
+		if e.Error != nil {
+			errStr = e.Error.Error()
+		}
+		out = append(out, apiExecution{
+			Date:     e.Date,
+			Duration: e.Duration,
+			Failed:   e.Failed,
+			Skipped:  e.Skipped,
+			Error:    errStr,
+			Stdout:   e.OutputStream.String(),
+			Stderr:   e.ErrorStream.String(),
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }

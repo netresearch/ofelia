@@ -24,6 +24,20 @@
     <tbody></tbody>
   </table>
 
+  <h1>Job History for <span id="historyJob"></span></h1>
+  <table id="history">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Duration</th>
+        <th>Status</th>
+        <th>Stdout</th>
+        <th>Stderr</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
   <h1>Removed Jobs</h1>
   <table id="removedJobs">
     <thead>
@@ -52,8 +66,26 @@
         const time = j.last_run ? new Date(j.last_run.date).toLocaleString() : '';
         const duration = j.last_run ? j.last_run.duration : '';
         tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td>`;
-      tbody.appendChild(tr);
-    });
+        tr.addEventListener('click', () => loadHistory(j.name));
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadHistory(name) {
+      document.getElementById('historyJob').textContent = name;
+      const resp = await fetch(`/api/jobs/${name}/history`);
+      const hist = await resp.json();
+      const tbody = document.querySelector('#history tbody');
+      tbody.innerHTML = '';
+      hist.forEach(e => {
+        const row = document.createElement('tr');
+        const status = e.failed ? 'Failed' : (e.skipped ? 'Skipped' : 'Success');
+        const time = new Date(e.date).toLocaleString();
+        row.innerHTML = `<td>${time}</td><td>${e.duration}</td><td>${status}</td>` +
+          `<td><details><summary>stdout</summary><pre>${e.stdout}</pre></details></td>` +
+          `<td><details><summary>stderr</summary><pre>${e.stderr}</pre></details></td>`;
+        tbody.appendChild(row);
+      });
     }
     async function loadRemoved() {
       const resp = await fetch('/api/jobs/removed');

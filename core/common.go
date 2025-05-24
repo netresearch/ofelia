@@ -40,6 +40,7 @@ type Job interface {
 	NotifyStop()
 	GetCronJobID() int
 	SetCronJobID(int)
+	GetHistory() []*Execution
 }
 
 type Context struct {
