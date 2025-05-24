@@ -42,7 +42,7 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 				continue
 			}
 
-			jobType, jobName, jopParam := parts[1], parts[2], parts[3]
+			jobType, jobName, jobParam := parts[1], parts[2], parts[3]
 			scopedJobName := jobName
 			if jobType == jobExec {
 				scopedJobName = c + "." + jobName
@@ -53,7 +53,7 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 					execJobs[scopedJobName] = make(map[string]interface{})
 				}
 
-				setJobParam(execJobs[scopedJobName], jopParam, v)
+				setJobParam(execJobs[scopedJobName], jobParam, v)
 				// since this label was placed not on the service container
 				// this means we need to `exec` command in this container
 				if !isServiceContainer {
@@ -63,17 +63,17 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 				if _, ok := localJobs[jobName]; !ok {
 					localJobs[jobName] = make(map[string]interface{})
 				}
-				setJobParam(localJobs[jobName], jopParam, v)
+				setJobParam(localJobs[jobName], jobParam, v)
 			case jobType == jobServiceRun && isServiceContainer:
 				if _, ok := serviceJobs[jobName]; !ok {
 					serviceJobs[jobName] = make(map[string]interface{})
 				}
-				setJobParam(serviceJobs[jobName], jopParam, v)
+				setJobParam(serviceJobs[jobName], jobParam, v)
 			case jobType == jobRun:
 				if _, ok := runJobs[jobName]; !ok {
 					runJobs[jobName] = make(map[string]interface{})
 				}
-				setJobParam(runJobs[jobName], jopParam, v)
+				setJobParam(runJobs[jobName], jobParam, v)
 			default:
 				// TODO: warn about unknown parameter
 			}
