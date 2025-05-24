@@ -36,3 +36,6 @@ pprof-address = 127.0.0.1:8080
 The equivalent labels are `ofelia.enable-web`, `ofelia.web-address`,
 `ofelia.enable-pprof` and `ofelia.pprof-address`.
 
+The web UI exposes `/api/jobs` for active jobs and `/api/jobs/removed` for
+those that have been deregistered.
+
