@@ -282,7 +282,7 @@ func buildPullOptions(image string) (docker.PullImageOptions, docker.AuthConfigu
 func pullImage(client *docker.Client, image string) error {
 	opts, auth := buildPullOptions(image)
 	if err := client.PullImage(opts, auth); err != nil {
-		return fmt.Errorf("error pulling image %q: %s", image, err)
+		return fmt.Errorf("error pulling image %q: %w", image, err)
 	}
 	return nil
 }

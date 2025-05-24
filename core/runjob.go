@@ -207,7 +207,7 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 	})
 
 	if err != nil {
-		return c, fmt.Errorf("error creating exec: %s", err)
+		return c, fmt.Errorf("error creating exec: %w", err)
 	}
 
 	if j.Network != "" {
@@ -219,7 +219,7 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 				if err := j.Client.ConnectNetwork(network.ID, docker.NetworkConnectionOptions{
 					Container: c.ID,
 				}); err != nil {
-					return c, fmt.Errorf("error connecting container to network: %s", err)
+					return c, fmt.Errorf("error connecting container to network: %w", err)
 				}
 			}
 		}
