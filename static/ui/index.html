@@ -31,6 +31,7 @@
         <th>Date</th>
         <th>Duration</th>
         <th>Status</th>
+        <th>Error</th>
         <th>Stdout</th>
         <th>Stderr</th>
       </tr>
@@ -81,7 +82,9 @@
         const row = document.createElement('tr');
         const status = e.failed ? 'Failed' : (e.skipped ? 'Skipped' : 'Success');
         const time = new Date(e.date).toLocaleString();
+        const err = e.error ? e.error : '';
         row.innerHTML = `<td>${time}</td><td>${e.duration}</td><td>${status}</td>` +
+          `<td>${err}</td>` +
           `<td><details><summary>stdout</summary><pre>${e.stdout}</pre></details></td>` +
           `<td><details><summary>stderr</summary><pre>${e.stderr}</pre></details></td>`;
         tbody.appendChild(row);
