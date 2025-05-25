@@ -19,10 +19,33 @@
         <th>Last Status</th>
         <th>Run Time</th>
         <th>Duration</th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
+
+  <h1>Disabled Jobs</h1>
+  <table id="disabledJobs">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Schedule</th>
+        <th>Command</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <h2>Create/Update Job</h2>
+  <form id="jobForm">
+    <label>Name <input id="jobName" required></label>
+    <label>Schedule <input id="jobSchedule" required></label>
+    <label>Command <input id="jobCommand" required></label>
+    <button type="submit">Save</button>
+  </form>
+  <button id="deleteBtn">Delete Job</button>
 
   <h1>Job History for <span id="historyJob"></span></h1>
   <table id="history">
@@ -66,8 +89,23 @@
         const status = j.last_run ? (j.last_run.failed ? 'Failed' : 'Success') : 'never';
         const time = j.last_run ? new Date(j.last_run.date).toLocaleString() : '';
         const duration = j.last_run ? j.last_run.duration : '';
-        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td>`;
+        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td>` +
+          `<td><button onclick="runJob('${j.name}')">Run</button>` +
+          `<button onclick="disableJob('${j.name}')">Disable</button></td>`;
         tr.addEventListener('click', () => loadHistory(j.name));
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadDisabled() {
+      const resp = await fetch('/api/jobs/disabled');
+      const jobs = await resp.json();
+      const tbody = document.querySelector('#disabledJobs tbody');
+      tbody.innerHTML = '';
+      jobs.forEach(j => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td>` +
+          `<td><button onclick="enableJob('${j.name}')">Enable</button></td>`;
         tbody.appendChild(tr);
       });
     }
@@ -109,8 +147,39 @@
       const cfg = await resp.json();
       document.getElementById('config').textContent = JSON.stringify(cfg, null, 2);
     }
+
+    async function runJob(name) {
+      await fetch('/api/jobs/run', {method: 'POST', body: JSON.stringify({name}), headers: {'Content-Type': 'application/json'}});
+      refresh();
+    }
+
+    async function disableJob(name) {
+      await fetch('/api/jobs/disable', {method: 'POST', body: JSON.stringify({name}), headers: {'Content-Type': 'application/json'}});
+      refresh();
+    }
+
+    async function enableJob(name) {
+      await fetch('/api/jobs/enable', {method: 'POST', body: JSON.stringify({name}), headers: {'Content-Type': 'application/json'}});
+      refresh();
+    }
+
+    document.getElementById('jobForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = document.getElementById('jobName').value;
+      const schedule = document.getElementById('jobSchedule').value;
+      const command = document.getElementById('jobCommand').value;
+      await fetch('/api/jobs/update', {method: 'POST', body: JSON.stringify({name, schedule, command}), headers: {'Content-Type': 'application/json'}});
+      refresh();
+    });
+
+    document.getElementById('deleteBtn').addEventListener('click', async () => {
+      const name = document.getElementById('jobName').value;
+      await fetch('/api/jobs/delete', {method: 'POST', body: JSON.stringify({name}), headers: {'Content-Type': 'application/json'}});
+      refresh();
+    });
     function refresh() {
       loadJobs();
+      loadDisabled();
       loadRemoved();
       loadConfig();
     }

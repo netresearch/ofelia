@@ -21,6 +21,13 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}) *Server {
 	server := &Server{addr: addr, scheduler: s, config: cfg}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
+	mux.HandleFunc("/api/jobs/disabled", server.disabledJobsHandler)
+	mux.HandleFunc("/api/jobs/run", server.runJobHandler)
+	mux.HandleFunc("/api/jobs/disable", server.disableJobHandler)
+	mux.HandleFunc("/api/jobs/enable", server.enableJobHandler)
+	mux.HandleFunc("/api/jobs/create", server.createJobHandler)
+	mux.HandleFunc("/api/jobs/update", server.updateJobHandler)
+	mux.HandleFunc("/api/jobs/delete", server.deleteJobHandler)
 	mux.HandleFunc("/api/jobs/", server.historyHandler)
 	mux.HandleFunc("/api/jobs", server.jobsHandler)
 	mux.HandleFunc("/api/config", server.configHandler)
@@ -122,6 +129,109 @@ func (s *Server) removedJobsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jobs)
+}
+
+func (s *Server) disabledJobsHandler(w http.ResponseWriter, r *http.Request) {
+	disabled := s.scheduler.GetDisabledJobs()
+	jobs := make([]apiJob, 0, len(disabled))
+	for _, job := range disabled {
+		jobs = append(jobs, apiJob{
+			Name:     job.GetName(),
+			Schedule: job.GetSchedule(),
+			Command:  job.GetCommand(),
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(jobs)
+}
+
+type jobRequest struct {
+	Name     string `json:"name"`
+	Schedule string `json:"schedule,omitempty"`
+	Command  string `json:"command,omitempty"`
+}
+
+func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
+	var req jobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.scheduler.RunJob(req.Name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) disableJobHandler(w http.ResponseWriter, r *http.Request) {
+	var req jobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.scheduler.DisableJob(req.Name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) enableJobHandler(w http.ResponseWriter, r *http.Request) {
+	var req jobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.scheduler.EnableJob(req.Name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
+	var req jobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command}}
+	if err := s.scheduler.AddJob(job); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
+	var req jobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_ = s.scheduler.DisableJob(req.Name)
+	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command}}
+	if err := s.scheduler.AddJob(job); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
+	var req jobRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	j := s.scheduler.GetJob(req.Name)
+	if j == nil {
+		http.Error(w, "job not found", http.StatusNotFound)
+		return
+	}
+	_ = s.scheduler.RemoveJob(j)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) configHandler(w http.ResponseWriter, r *http.Request) {

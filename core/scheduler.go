@@ -14,9 +14,10 @@ var (
 )
 
 type Scheduler struct {
-	Jobs    []Job
-	Removed []Job
-	Logger  Logger
+	Jobs     []Job
+	Removed  []Job
+	Disabled []Job
+	Logger   Logger
 
 	middlewareContainer
 	cron      *cron.Cron
@@ -103,6 +104,69 @@ func (s *Scheduler) GetRemovedJobs() []Job {
 	jobs := make([]Job, len(s.Removed))
 	copy(jobs, s.Removed)
 	return jobs
+}
+
+// GetDisabledJobs returns a copy of all disabled jobs.
+func (s *Scheduler) GetDisabledJobs() []Job {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	jobs := make([]Job, len(s.Disabled))
+	copy(jobs, s.Disabled)
+	return jobs
+}
+
+// getJob finds a job in the provided slice by name.
+func getJob(jobs []Job, name string) (Job, int) {
+	for i, j := range jobs {
+		if j.GetName() == name {
+			return j, i
+		}
+	}
+	return nil, -1
+}
+
+// GetJob returns an active job by name.
+func (s *Scheduler) GetJob(name string) Job {
+	j, _ := getJob(s.Jobs, name)
+	return j
+}
+
+// GetDisabledJob returns a disabled job by name.
+func (s *Scheduler) GetDisabledJob(name string) Job {
+	j, _ := getJob(s.Disabled, name)
+	return j
+}
+
+// RunJob manually executes a job by name.
+func (s *Scheduler) RunJob(name string) error {
+	j, _ := getJob(s.Jobs, name)
+	if j == nil {
+		return fmt.Errorf("job %q not found", name)
+	}
+	go (&jobWrapper{s: s, j: j}).Run()
+	return nil
+}
+
+// DisableJob stops scheduling the job but keeps it for later enabling.
+func (s *Scheduler) DisableJob(name string) error {
+	j, idx := getJob(s.Jobs, name)
+	if j == nil {
+		return fmt.Errorf("job %q not found", name)
+	}
+	s.cron.Remove(cron.EntryID(j.GetCronJobID()))
+	s.Jobs = append(s.Jobs[:idx], s.Jobs[idx+1:]...)
+	s.Disabled = append(s.Disabled, j)
+	return nil
+}
+
+// EnableJob schedules a previously disabled job.
+func (s *Scheduler) EnableJob(name string) error {
+	j, idx := getJob(s.Disabled, name)
+	if j == nil {
+		return fmt.Errorf("job %q not found", name)
+	}
+	s.Disabled = append(s.Disabled[:idx], s.Disabled[idx+1:]...)
+	return s.AddJob(j)
 }
 
 // jobWrapper wraps a Job to manage running and waiting via the Scheduler.
