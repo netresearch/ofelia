@@ -1,12 +1,21 @@
 # Running Tests
 
-The unit tests expect Go to be installed and a Docker daemon available. The CI pipeline starts Docker before running the test suite.
+Unit tests can be run without Docker. Integration tests require either a running
+Docker daemon or the Docker test server.
 
-1. Install Docker and make sure the daemon is running.
-2. Fetch dependencies and run the tests:
+## Unit tests
 
 ```sh
 go test ./...
 ```
 
-Some tests start a mocked Docker server and do not require network access, but Docker must be present so the client library works correctly.
+## Integration tests
+
+Start Docker and run the suite with the `integration` build tag:
+
+```sh
+go test -tags=integration ./...
+```
+
+The CI workflow executes unit tests first and runs the integration tests in a
+separate step.
