@@ -163,3 +163,108 @@ func TestJobsHandlerOrigin(t *testing.T) {
 		t.Fatalf("unexpected origins %v", m)
 	}
 }
+func TestRemovedJobsHandlerOrigin(t *testing.T) {
+	jobIni := &testJob{}
+	jobIni.Name = "job-ini"
+	jobIni.Schedule = "@daily"
+	jobIni.Command = "echo"
+
+	jobLabel := &testJob{}
+	jobLabel.Name = "job-label"
+	jobLabel.Schedule = "@hourly"
+	jobLabel.Command = "ls"
+
+	sched := core.NewScheduler(&stubLogger{})
+	_ = sched.AddJob(jobIni)
+	_ = sched.AddJob(jobLabel)
+	_ = sched.RemoveJob(jobIni)
+	_ = sched.RemoveJob(jobLabel)
+
+	type originConfig struct {
+		RunJobs      map[string]struct{}
+		LabelRunJobs map[string]struct{}
+	}
+	cfg := &originConfig{
+		RunJobs:      map[string]struct{}{"job-ini": {}},
+		LabelRunJobs: map[string]struct{}{"job-label": {}},
+	}
+
+	srv := webpkg.NewServer("", sched, cfg)
+
+	req := httptest.NewRequest("GET", "/api/jobs/removed", nil)
+	w := httptest.NewRecorder()
+	srvVal := reflect.ValueOf(srv).Elem()
+	httpSrv := reflect.NewAt(srvVal.FieldByName("srv").Type(), unsafe.Pointer(srvVal.FieldByName("srv").UnsafeAddr())).Elem().Interface().(*http.Server)
+	httpSrv.Handler.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("unexpected status %d", w.Code)
+	}
+
+	var jobs []apiJob
+	if err := json.NewDecoder(w.Body).Decode(&jobs); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(jobs))
+	}
+	m := map[string]string{}
+	for _, j := range jobs {
+		m[j.Name] = j.Origin
+	}
+	if m["job-ini"] != "ini" || m["job-label"] != "label" {
+		t.Fatalf("unexpected origins %v", m)
+	}
+}
+
+func TestDisabledJobsHandlerOrigin(t *testing.T) {
+	jobIni := &testJob{}
+	jobIni.Name = "job-ini"
+	jobIni.Schedule = "@daily"
+	jobIni.Command = "echo"
+
+	jobLabel := &testJob{}
+	jobLabel.Name = "job-label"
+	jobLabel.Schedule = "@hourly"
+	jobLabel.Command = "ls"
+
+	sched := core.NewScheduler(&stubLogger{})
+	_ = sched.AddJob(jobIni)
+	_ = sched.AddJob(jobLabel)
+	_ = sched.DisableJob("job-ini")
+	_ = sched.DisableJob("job-label")
+
+	type originConfig struct {
+		RunJobs      map[string]struct{}
+		LabelRunJobs map[string]struct{}
+	}
+	cfg := &originConfig{
+		RunJobs:      map[string]struct{}{"job-ini": {}},
+		LabelRunJobs: map[string]struct{}{"job-label": {}},
+	}
+
+	srv := webpkg.NewServer("", sched, cfg)
+
+	req := httptest.NewRequest("GET", "/api/jobs/disabled", nil)
+	w := httptest.NewRecorder()
+	srvVal := reflect.ValueOf(srv).Elem()
+	httpSrv := reflect.NewAt(srvVal.FieldByName("srv").Type(), unsafe.Pointer(srvVal.FieldByName("srv").UnsafeAddr())).Elem().Interface().(*http.Server)
+	httpSrv.Handler.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("unexpected status %d", w.Code)
+	}
+
+	var jobs []apiJob
+	if err := json.NewDecoder(w.Body).Decode(&jobs); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(jobs))
+	}
+	m := map[string]string{}
+	for _, j := range jobs {
+		m[j.Name] = j.Origin
+	}
+	if m["job-ini"] != "ini" || m["job-label"] != "label" {
+		t.Fatalf("unexpected origins %v", m)
+	}
+}
