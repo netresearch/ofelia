@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -62,6 +63,33 @@ type apiJob struct {
 	Schedule string        `json:"schedule"`
 	Command  string        `json:"command"`
 	LastRun  *apiExecution `json:"last_run,omitempty"`
+	Origin   string        `json:"origin"`
+}
+
+func jobOrigin(cfg interface{}, name string) string {
+	if cfg == nil {
+		return ""
+	}
+	v := reflect.ValueOf(cfg)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return ""
+	}
+	runJobs := v.FieldByName("RunJobs")
+	if runJobs.IsValid() && runJobs.Kind() == reflect.Map {
+		if runJobs.MapIndex(reflect.ValueOf(name)).IsValid() {
+			return "ini"
+		}
+	}
+	labelRunJobs := v.FieldByName("LabelRunJobs")
+	if labelRunJobs.IsValid() && labelRunJobs.Kind() == reflect.Map {
+		if labelRunJobs.MapIndex(reflect.ValueOf(name)).IsValid() {
+			return "label"
+		}
+	}
+	return ""
 }
 
 func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
@@ -85,11 +113,13 @@ func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		origin := jobOrigin(s.config, job.GetName())
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
 			LastRun:  execInfo,
+			Origin:   origin,
 		})
 	}
 
@@ -119,11 +149,13 @@ func (s *Server) removedJobsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		origin := jobOrigin(s.config, job.GetName())
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
 			LastRun:  execInfo,
+			Origin:   origin,
 		})
 	}
 
@@ -135,10 +167,12 @@ func (s *Server) disabledJobsHandler(w http.ResponseWriter, r *http.Request) {
 	disabled := s.scheduler.GetDisabledJobs()
 	jobs := make([]apiJob, 0, len(disabled))
 	for _, job := range disabled {
+		origin := jobOrigin(s.config, job.GetName())
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
+			Origin:   origin,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
