@@ -80,6 +80,8 @@ jobs:
         run: go test -tags=integration ./...
 
   codeql:
+    # skip merge queue branches as they disappear before the upload step
+    if: (github.event_name != 'push') || (!startsWith(github.ref, 'refs/heads/gh-readonly-queue/'))
     name: CodeQL Analysis
     runs-on: ubuntu-latest
     permissions:
