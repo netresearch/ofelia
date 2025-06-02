@@ -133,10 +133,7 @@ func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		origin := ""
-		if o, ok := job.(interface{ GetOrigin() string }); ok {
-			origin = o.GetOrigin()
-		}
+		origin := getJobOrigin(job)
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
 			Type:     jobType(job),
