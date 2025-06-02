@@ -1,12 +1,17 @@
-package web
+package web_test
 
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
+	"time"
+	"unsafe"
 
 	"github.com/netresearch/ofelia/core"
+	webpkg "github.com/netresearch/ofelia/web"
 )
 
 type stubLogger struct{}
@@ -21,6 +26,24 @@ type testJob struct{ core.BareJob }
 
 func (j *testJob) Run(*core.Context) error { return nil }
 
+type apiExecution struct {
+	Date     time.Time     `json:"date"`
+	Duration time.Duration `json:"duration"`
+	Failed   bool          `json:"failed"`
+	Skipped  bool          `json:"skipped"`
+	Error    string        `json:"error"`
+	Stdout   string        `json:"stdout"`
+	Stderr   string        `json:"stderr"`
+}
+
+type apiJob struct {
+	Name     string        `json:"name"`
+	Schedule string        `json:"schedule"`
+	Command  string        `json:"command"`
+	LastRun  *apiExecution `json:"last_run"`
+	Origin   string        `json:"origin"`
+}
+
 func TestHistoryEndpoint(t *testing.T) {
 	job := &testJob{}
 	job.Name = "job1"
@@ -33,11 +56,13 @@ func TestHistoryEndpoint(t *testing.T) {
 	e.Failed = true
 	job.SetLastRun(e)
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
-	srv := NewServer("", sched, nil)
+	srv := webpkg.NewServer("", sched, nil)
 
 	req := httptest.NewRequest("GET", "/api/jobs/job1/history", nil)
 	w := httptest.NewRecorder()
-	srv.srv.Handler.ServeHTTP(w, req)
+	srvVal := reflect.ValueOf(srv).Elem()
+	httpSrv := reflect.NewAt(srvVal.FieldByName("srv").Type(), unsafe.Pointer(srvVal.FieldByName("srv").UnsafeAddr())).Elem().Interface().(*http.Server)
+	httpSrv.Handler.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("unexpected status %d", w.Code)
 	}
@@ -65,11 +90,13 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 	e.Failed = true
 	job.SetLastRun(e)
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
-	srv := NewServer("", sched, nil)
+	srv := webpkg.NewServer("", sched, nil)
 
 	req := httptest.NewRequest("GET", "/api/jobs", nil)
 	w := httptest.NewRecorder()
-	srv.srv.Handler.ServeHTTP(w, req)
+	srvVal := reflect.ValueOf(srv).Elem()
+	httpSrv := reflect.NewAt(srvVal.FieldByName("srv").Type(), unsafe.Pointer(srvVal.FieldByName("srv").UnsafeAddr())).Elem().Interface().(*http.Server)
+	httpSrv.Handler.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("unexpected status %d", w.Code)
 	}
@@ -82,5 +109,57 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 	}
 	if jobs[0].LastRun.Stdout != "out" || jobs[0].LastRun.Stderr != "err" || jobs[0].LastRun.Error != "boom" {
 		t.Fatalf("stdout/stderr/error not included")
+	}
+}
+
+func TestJobsHandlerOrigin(t *testing.T) {
+	jobIni := &testJob{}
+	jobIni.Name = "job-ini"
+	jobIni.Schedule = "@daily"
+	jobIni.Command = "echo"
+
+	jobLabel := &testJob{}
+	jobLabel.Name = "job-label"
+	jobLabel.Schedule = "@hourly"
+	jobLabel.Command = "ls"
+
+	sched := &core.Scheduler{Jobs: []core.Job{jobIni, jobLabel}, Logger: &stubLogger{}}
+
+	type originConfig struct {
+		RunJobs      map[string]struct{}
+		LabelRunJobs map[string]struct{}
+	}
+	cfg := &originConfig{
+		RunJobs:      map[string]struct{}{"job-ini": {}},
+		LabelRunJobs: map[string]struct{}{"job-label": {}},
+	}
+
+	srv := webpkg.NewServer("", sched, cfg)
+
+	req := httptest.NewRequest("GET", "/api/jobs", nil)
+	w := httptest.NewRecorder()
+	srvVal := reflect.ValueOf(srv).Elem()
+	httpSrv := reflect.NewAt(srvVal.FieldByName("srv").Type(), unsafe.Pointer(srvVal.FieldByName("srv").UnsafeAddr())).Elem().Interface().(*http.Server)
+	httpSrv.Handler.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("unexpected status %d", w.Code)
+	}
+
+	var jobs []apiJob
+	if err := json.NewDecoder(w.Body).Decode(&jobs); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs")
+	}
+
+	m := map[string]string{}
+	for _, j := range jobs {
+		m[j.Name] = j.Origin
+	}
+
+	if m["job-ini"] != "ini" || m["job-label"] != "label" {
+		t.Fatalf("unexpected origins %v", m)
 	}
 }

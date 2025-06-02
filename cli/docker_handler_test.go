@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	defaults "github.com/creasty/defaults"
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/netresearch/ofelia/core"
 	. "gopkg.in/check.v1"
 )
 
@@ -157,4 +159,30 @@ func (s *DockerHandlerSuite) TestWatchInvalidInterval(c *C) {
 	case <-time.After(time.Millisecond * 50):
 		c.Error("watch did not return for negative interval")
 	}
+}
+
+// TestDockerLabelsUpdateKeepsIniRunJobs verifies that RunJobs defined via INI
+// remain when dockerLabelsUpdate receives no labeled containers.
+func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniRunJobs(c *C) {
+	cfg := NewConfig(&TestLogger{})
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+
+	cfg.RunJobs["ini-job"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}}
+
+	for name, j := range cfg.RunJobs {
+		defaults.Set(j)
+		j.Name = name
+		cfg.sh.AddJob(j)
+	}
+
+	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+
+	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+
+	c.Assert(len(cfg.RunJobs), Equals, 1)
+	c.Assert(len(cfg.LabelRunJobs), Equals, 0)
+	c.Assert(len(cfg.sh.Entries()), Equals, 1)
 }
