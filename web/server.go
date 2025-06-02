@@ -16,10 +16,11 @@ type Server struct {
 	scheduler *core.Scheduler
 	config    interface{}
 	srv       *http.Server
+	origins   map[string]string
 }
 
 func NewServer(addr string, s *core.Scheduler, cfg interface{}) *Server {
-	server := &Server{addr: addr, scheduler: s, config: cfg}
+	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
 	mux.HandleFunc("/api/jobs/disabled", server.disabledJobsHandler)
@@ -59,11 +60,13 @@ type apiExecution struct {
 }
 
 type apiJob struct {
-	Name     string        `json:"name"`
-	Schedule string        `json:"schedule"`
-	Command  string        `json:"command"`
-	LastRun  *apiExecution `json:"last_run,omitempty"`
-	Origin   string        `json:"origin"`
+	Name     string          `json:"name"`
+	Type     string          `json:"type"`
+	Schedule string          `json:"schedule"`
+	Command  string          `json:"command"`
+	LastRun  *apiExecution   `json:"last_run,omitempty"`
+	Origin   string          `json:"origin"`
+	Config   json.RawMessage `json:"config"`
 }
 
 func jobOrigin(cfg interface{}, name string) string {
@@ -92,6 +95,32 @@ func jobOrigin(cfg interface{}, name string) string {
 	return ""
 }
 
+func (s *Server) jobOrigin(name string) string {
+	if o, ok := s.origins[name]; ok {
+		return o
+	}
+	return jobOrigin(s.config, name)
+}
+
+func jobType(j core.Job) string {
+	switch j.(type) {
+	case *core.RunJob:
+		return "run"
+	case *core.ExecJob:
+		return "exec"
+	case *core.LocalJob:
+		return "local"
+	case *core.RunServiceJob:
+		return "service"
+	default:
+		t := reflect.TypeOf(j)
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+		return strings.ToLower(t.Name())
+	}
+}
+
 func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
 	jobs := make([]apiJob, 0, len(s.scheduler.Jobs))
 	for _, job := range s.scheduler.Jobs {
@@ -113,13 +142,16 @@ func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		origin := jobOrigin(s.config, job.GetName())
+		origin := s.jobOrigin(job.GetName())
+		cfgBytes, _ := json.Marshal(job)
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
+			Type:     jobType(job),
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
 			LastRun:  execInfo,
 			Origin:   origin,
+			Config:   cfgBytes,
 		})
 	}
 
@@ -149,13 +181,16 @@ func (s *Server) removedJobsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		origin := jobOrigin(s.config, job.GetName())
+		origin := s.jobOrigin(job.GetName())
+		cfgBytes, _ := json.Marshal(job)
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
+			Type:     jobType(job),
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
 			LastRun:  execInfo,
 			Origin:   origin,
+			Config:   cfgBytes,
 		})
 	}
 
@@ -167,12 +202,15 @@ func (s *Server) disabledJobsHandler(w http.ResponseWriter, r *http.Request) {
 	disabled := s.scheduler.GetDisabledJobs()
 	jobs := make([]apiJob, 0, len(disabled))
 	for _, job := range disabled {
-		origin := jobOrigin(s.config, job.GetName())
+		origin := s.jobOrigin(job.GetName())
+		cfgBytes, _ := json.Marshal(job)
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
+			Type:     jobType(job),
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
 			Origin:   origin,
+			Config:   cfgBytes,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -235,6 +273,11 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	origin := r.Header.Get("X-Origin")
+	if origin == "" {
+		origin = "api"
+	}
+	s.origins[req.Name] = origin
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -250,6 +293,11 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	origin := r.Header.Get("X-Origin")
+	if origin == "" {
+		origin = "api"
+	}
+	s.origins[req.Name] = origin
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -265,12 +313,43 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.scheduler.RemoveJob(j)
+	delete(s.origins, req.Name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) configHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(s.config)
+	cfg := stripJobs(s.config)
+	_ = json.NewEncoder(w).Encode(cfg)
+}
+
+func stripJobs(cfg interface{}) interface{} {
+	if cfg == nil {
+		return nil
+	}
+	v := reflect.ValueOf(cfg)
+	isPtr := false
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+		isPtr = true
+	}
+	if v.Kind() != reflect.Struct {
+		return cfg
+	}
+	out := reflect.New(v.Type()).Elem()
+	out.Set(v)
+	fields := []string{"RunJobs", "LabelRunJobs", "ExecJobs", "ServiceJobs", "LocalJobs"}
+	for _, f := range fields {
+		if fv := out.FieldByName(f); fv.IsValid() && fv.CanSet() {
+			fv.Set(reflect.Zero(fv.Type()))
+		}
+	}
+	if isPtr {
+		p := reflect.New(out.Type())
+		p.Elem().Set(out)
+		return p.Interface()
+	}
+	return out.Interface()
 }
 
 func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
