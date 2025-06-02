@@ -34,8 +34,9 @@ type Config struct {
 		EnablePprof             bool   `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
 		PprofAddr               string `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
 	}
-	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
-	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
+	ExecJobs      map[string]*ExecJobConfig `gcfg:"job-exec" mapstructure:"job-exec,squash"`
+	RunJobs       map[string]*RunJobConfig  `gcfg:"job-run" mapstructure:"job-run,squash"`
+	LabelRunJobs  map[string]*RunJobConfig
 	ServiceJobs   map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
 	LocalJobs     map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
 	Docker        DockerConfig
@@ -48,11 +49,12 @@ type Config struct {
 
 func NewConfig(logger core.Logger) *Config {
 	c := &Config{
-		ExecJobs:    make(map[string]*ExecJobConfig),
-		RunJobs:     make(map[string]*RunJobConfig),
-		ServiceJobs: make(map[string]*RunServiceConfig),
-		LocalJobs:   make(map[string]*LocalJobConfig),
-		logger:      logger,
+		ExecJobs:     make(map[string]*ExecJobConfig),
+		RunJobs:      make(map[string]*RunJobConfig),
+		LabelRunJobs: make(map[string]*RunJobConfig),
+		ServiceJobs:  make(map[string]*RunServiceConfig),
+		LocalJobs:    make(map[string]*LocalJobConfig),
+		logger:       logger,
 	}
 
 	defaults.Set(c)
@@ -113,7 +115,7 @@ func (c *Config) InitializeApp() error {
 
 		parsedLabelConfig.buildFromDockerLabels(dockerLabels)
 		for name, j := range parsedLabelConfig.RunJobs {
-			c.RunJobs[name] = j
+			c.LabelRunJobs[name] = j
 		}
 
 		for name, j := range parsedLabelConfig.LocalJobs {
@@ -134,6 +136,14 @@ func (c *Config) InitializeApp() error {
 	}
 
 	for name, j := range c.RunJobs {
+		defaults.Set(j)
+		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Name = name
+		j.buildMiddlewares()
+		c.sh.AddJob(j)
+	}
+
+	for name, j := range c.LabelRunJobs {
 		defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
@@ -232,7 +242,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep)
+	syncJobMap(c, c.LabelRunJobs, parsedLabelConfig.RunJobs, runPrep)
 }
 
 func (c *Config) iniConfigUpdate() error {
