@@ -267,9 +267,7 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command, Origin: req.Origin}}
-	if job.Origin == "" {
-		job.Origin = "api"
-	}
+	s.setDefaultOrigin(job)
 	if err := s.scheduler.AddJob(job); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
