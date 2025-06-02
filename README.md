@@ -32,6 +32,7 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 - **Optional web UI** enabled with `--enable-web` and bound via
   `--web-address` to view job status.
 - **Removed job history** keeps deregistered jobs in memory and shows them in the web UI.
+- **Enhanced web UI** allows editing and deleting jobs, shows job origin and type and displays each job's configuration.
 
 This fork is based off of [mcuadros/ofelia](https://github.com/mcuadros/ofelia).
 

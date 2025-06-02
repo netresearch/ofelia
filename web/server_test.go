@@ -37,11 +37,13 @@ type apiExecution struct {
 }
 
 type apiJob struct {
-	Name     string        `json:"name"`
-	Schedule string        `json:"schedule"`
-	Command  string        `json:"command"`
-	LastRun  *apiExecution `json:"last_run"`
-	Origin   string        `json:"origin"`
+	Name     string          `json:"name"`
+	Type     string          `json:"type"`
+	Schedule string          `json:"schedule"`
+	Command  string          `json:"command"`
+	LastRun  *apiExecution   `json:"last_run"`
+	Origin   string          `json:"origin"`
+	Config   json.RawMessage `json:"config"`
 }
 
 func TestHistoryEndpoint(t *testing.T) {
