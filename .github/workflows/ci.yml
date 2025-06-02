@@ -147,6 +147,7 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
+        id: push
         with:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
