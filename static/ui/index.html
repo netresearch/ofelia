@@ -16,6 +16,7 @@
         <th>Name</th>
         <th>Schedule</th>
         <th>Command</th>
+        <th>Origin</th>
         <th>Last Status</th>
         <th>Run Time</th>
         <th>Duration</th>
@@ -32,6 +33,7 @@
         <th>Name</th>
         <th>Schedule</th>
         <th>Command</th>
+        <th>Origin</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -69,6 +71,7 @@
         <th>Name</th>
         <th>Schedule</th>
         <th>Command</th>
+        <th>Origin</th>
         <th>Last Status</th>
         <th>Run Time</th>
         <th>Duration</th>
@@ -89,7 +92,7 @@
         const status = j.last_run ? (j.last_run.failed ? 'Failed' : 'Success') : 'never';
         const time = j.last_run ? new Date(j.last_run.date).toLocaleString() : '';
         const duration = j.last_run ? j.last_run.duration : '';
-        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td>` +
+        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${duration}</td>` +
           `<td><button onclick="runJob('${j.name}')">Run</button>` +
           `<button onclick="disableJob('${j.name}')">Disable</button></td>`;
         tr.addEventListener('click', () => loadHistory(j.name));
@@ -104,7 +107,7 @@
       tbody.innerHTML = '';
       jobs.forEach(j => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td>` +
+        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${j.origin}</td>` +
           `<td><button onclick="enableJob('${j.name}')">Enable</button></td>`;
         tbody.appendChild(tr);
       });
@@ -138,7 +141,7 @@
         const status = j.last_run ? (j.last_run.failed ? 'Failed' : 'Success') : 'never';
         const time = j.last_run ? new Date(j.last_run.date).toLocaleString() : '';
         const duration = j.last_run ? j.last_run.duration : '';
-        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td>`;
+        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${duration}</td>`;
         tbody.appendChild(tr);
       });
     }
