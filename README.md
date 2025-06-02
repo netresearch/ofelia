@@ -322,7 +322,7 @@ In order to achieve this, you simply have to use Docker containers with the labe
 ### Hybrid configuration (INI files + Docker)
 
 You can specify part of the configuration on the INI files, such as globals for the middlewares or even declare tasks in there but also merge them with Docker.
-The Docker labels will be parsed, added and removed on the fly but the config file can also be used.
+The Docker labels will be parsed, added and removed on the fly but the config file can also be used. Run jobs defined in the INI file remain active even when no labeled containers are found. Jobs detected via Docker labels are managed separately and can disappear when the corresponding container is removed.
 
 Use the INI file to:
 

@@ -18,6 +18,7 @@
         <th>Schedule</th>
         <th>Command</th>
         <th>Config</th>
+        <th>Origin</th>
         <th>Last Status</th>
         <th>Run Time</th>
         <th>Duration</th>
@@ -34,6 +35,7 @@
         <th>Name</th>
         <th>Schedule</th>
         <th>Command</th>
+        <th>Origin</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -70,6 +72,7 @@
         <th>Name</th>
         <th>Schedule</th>
         <th>Command</th>
+        <th>Origin</th>
         <th>Last Status</th>
         <th>Run Time</th>
         <th>Duration</th>
@@ -94,7 +97,7 @@
         const duration = j.last_run ? j.last_run.duration : '';
         const cfg = `<details><summary>config</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
         tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td>${j.schedule}</td><td>${j.command}</td>` +
-          `<td>${cfg}</td><td>${status}</td><td>${time}</td><td>${duration}</td>` +
+          `<td>${cfg}</td><td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${duration}</td>` +
           `<td><button onclick="runJob('${j.name}')">Run</button>` +
           `<button onclick="disableJob('${j.name}')">Disable</button>` +
           `<button onclick="editJob('${j.name}')">Edit</button>` +
@@ -111,7 +114,7 @@
       tbody.innerHTML = '';
       jobs.forEach(j => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td>` +
+        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${j.origin}</td>` +
           `<td><button onclick="enableJob('${j.name}')">Enable</button></td>`;
         tbody.appendChild(tr);
       });
@@ -145,7 +148,7 @@
         const status = j.last_run ? (j.last_run.failed ? 'Failed' : 'Success') : 'never';
         const time = j.last_run ? new Date(j.last_run.date).toLocaleString() : '';
         const duration = j.last_run ? j.last_run.duration : '';
-        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td>`;
+        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${duration}</td>`;
         tbody.appendChild(tr);
       });
     }
