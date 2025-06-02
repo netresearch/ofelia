@@ -7,7 +7,8 @@
     table { border-collapse: collapse; }
     th, td { border: 1px solid #ccc; padding: 4px; }
     .fixed { font-family: monospace; }
-    #config { font-family: monospace; max-height: 300px; overflow: auto; }
+    #configTable { border-collapse: collapse; font-family: monospace; }
+    #configTable th, #configTable td { border: 1px solid #ccc; padding: 4px; }
   </style>
 </head>
 <body>
@@ -51,7 +52,7 @@
     <label>Name <input id="jobName" required></label>
     <label>Schedule <input id="jobSchedule" required></label>
     <label>Command <input id="jobCommand" required></label>
-    <button type="submit">Save</button>
+    <button type="submit">💾</button>
   </form>
 
   <h1>Job History for <span id="historyJob"></span></h1>
@@ -87,8 +88,22 @@
     <tbody></tbody>
   </table>
   <h1>Configuration</h1>
-  <pre id="config"></pre>
+  <table id="configTable"><tbody></tbody></table>
   <script>
+    function formatDuration(ns) {
+      if (ns === null || ns === undefined || ns === '') return '';
+      ns = Number(ns);
+      if (ns >= 3600e9) {
+        const h = Math.floor(ns / 3600e9);
+        const m = Math.floor((ns % 3600e9) / 60e9);
+        return `${h}:${String(m).padStart(2,'0')}h`;
+      }
+      if (ns >= 1e9) return `${(ns / 1e9).toFixed(2)}s`;
+      if (ns >= 1e6) return `${(ns / 1e6).toFixed(2)}ms`;
+      if (ns >= 1e3) return `${(ns / 1e3).toFixed(2)}µs`;
+      return `${ns}ns`;
+    }
+
     let jobsData = {};
     async function loadJobs() {
       const resp = await fetch('/api/jobs');
@@ -104,13 +119,13 @@
         const status = `${symbol} ${statusText}`;
         const time = j.last_run ? new Date(j.last_run.date).toISOString().replace('T',' ').replace('Z','') : '';
         const duration = j.last_run ? j.last_run.duration : '';
-        const cfg = `<details><summary>config</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
+        const cfg = `<details><summary>⚙</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
         tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td class="fixed">${j.schedule}</td><td class="fixed">${j.command}</td>` +
-          `<td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${duration}</td><td>${cfg}</td>` +
+          `<td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${formatDuration(duration)}</td><td>${cfg}</td>` +
           `<td><button onclick="runJob('${j.name}')">▶</button>` +
           `<button onclick="editJob('${j.name}')">✎</button>` +
           `<button onclick="deleteJob('${j.name}')">🗑</button>` +
-          `<button onclick="disableJob('${j.name}')">✖</button></td>`;
+          `<button onclick="disableJob('${j.name}')">⏸</button></td>`;
         tr.addEventListener('click', () => loadHistory(j.name));
         tbody.appendChild(tr);
       });
@@ -123,9 +138,9 @@
       tbody.innerHTML = '';
       jobs.forEach(j => {
         const tr = document.createElement('tr');
-        const cfg = `<details><summary>config</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
+        const cfg = `<details><summary>⚙</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
         tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td class="fixed">${j.schedule}</td><td class="fixed">${j.command}</td><td>${j.origin}</td><td>${cfg}</td>` +
-          `<td><button onclick="enableJob('${j.name}')">✔</button></td>`;
+          `<td><button onclick="enableJob('${j.name}')">⏯</button></td>`;
         tbody.appendChild(tr);
       });
     }
@@ -143,7 +158,7 @@
         const status = `${symbol} ${statusText}`;
         const time = new Date(e.date).toISOString().replace('T',' ').replace('Z','');
         const err = e.error ? e.error : '';
-        row.innerHTML = `<td>${time}</td><td>${e.duration}</td><td>${status}</td>` +
+        row.innerHTML = `<td>${time}</td><td>${formatDuration(e.duration)}</td><td>${status}</td>` +
           `<td>${err}</td>` +
           `<td><details><summary>stdout</summary><pre>${e.stdout}</pre></details></td>` +
           `<td><details><summary>stderr</summary><pre>${e.stderr}</pre></details></td>`;
@@ -162,15 +177,37 @@
         const status = `${symbol} ${statusText}`;
         const time = j.last_run ? new Date(j.last_run.date).toISOString().replace('T',' ').replace('Z','') : '';
         const duration = j.last_run ? j.last_run.duration : '';
-        const cfg = `<details><summary>config</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
-        tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td class="fixed">${j.schedule}</td><td class="fixed">${j.command}</td><td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${duration}</td><td>${cfg}</td>`;
+        const cfg = `<details><summary>⚙</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
+        tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td class="fixed">${j.schedule}</td><td class="fixed">${j.command}</td><td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${formatDuration(duration)}</td><td>${cfg}</td>`;
         tbody.appendChild(tr);
       });
     }
+    function renderConfigTable(cfg) {
+      const tbody = document.querySelector('#configTable tbody');
+      tbody.innerHTML = '';
+      function addRow(k, v) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${k}</td><td>${v}</td>`;
+        tbody.appendChild(tr);
+      }
+      function traverse(o, prefix = '') {
+        for (const [k, v] of Object.entries(o)) {
+          if (['ExecJobs', 'RunJobs', 'LabelRunJobs', 'ServiceJobs', 'LocalJobs'].includes(k)) continue;
+          if (v === null || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0)) continue;
+          if (typeof v === 'object' && !Array.isArray(v)) {
+            traverse(v, prefix + k + '.');
+          } else {
+            addRow(prefix + k, v);
+          }
+        }
+      }
+      traverse(cfg);
+    }
+
     async function loadConfig() {
       const resp = await fetch('/api/config');
       const cfg = await resp.json();
-      document.getElementById('config').textContent = JSON.stringify(cfg, null, 2);
+      renderConfigTable(cfg);
     }
 
     async function runJob(name) {
