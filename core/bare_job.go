@@ -10,6 +10,7 @@ type BareJob struct {
 	Schedule     string `hash:"true"`
 	Name         string `hash:"true"`
 	Command      string `hash:"true"`
+	Origin       string `json:"origin,omitempty"`
 	HistoryLimit int    `default:"10"`
 
 	middlewareContainer
@@ -30,6 +31,14 @@ func (j *BareJob) GetSchedule() string {
 
 func (j *BareJob) GetCommand() string {
 	return j.Command
+}
+
+func (j *BareJob) GetOrigin() string {
+	return j.Origin
+}
+
+func (j *BareJob) SetOrigin(o string) {
+	j.Origin = o
 }
 
 func (j *BareJob) Running() int32 {

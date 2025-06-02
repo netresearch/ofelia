@@ -14,8 +14,10 @@
     <thead>
       <tr>
         <th>Name</th>
+        <th>Type</th>
         <th>Schedule</th>
         <th>Command</th>
+        <th>Config</th>
         <th>Last Status</th>
         <th>Run Time</th>
         <th>Duration</th>
@@ -45,7 +47,6 @@
     <label>Command <input id="jobCommand" required></label>
     <button type="submit">Save</button>
   </form>
-  <button id="deleteBtn">Delete Job</button>
 
   <h1>Job History for <span id="historyJob"></span></h1>
   <table id="history">
@@ -79,9 +80,11 @@
   <h1>Configuration</h1>
   <pre id="config"></pre>
   <script>
+    let jobsCache = [];
     async function loadJobs() {
       const resp = await fetch('/api/jobs');
       const jobs = await resp.json();
+      jobsCache = jobs;
       const tbody = document.querySelector('#jobs tbody');
       tbody.innerHTML = '';
       jobs.forEach(j => {
@@ -89,9 +92,13 @@
         const status = j.last_run ? (j.last_run.failed ? 'Failed' : 'Success') : 'never';
         const time = j.last_run ? new Date(j.last_run.date).toLocaleString() : '';
         const duration = j.last_run ? j.last_run.duration : '';
-        tr.innerHTML = `<td>${j.name}</td><td>${j.schedule}</td><td>${j.command}</td><td>${status}</td><td>${time}</td><td>${duration}</td>` +
+        const cfg = `<details><summary>config</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
+        tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td>${j.schedule}</td><td>${j.command}</td>` +
+          `<td>${cfg}</td><td>${status}</td><td>${time}</td><td>${duration}</td>` +
           `<td><button onclick="runJob('${j.name}')">Run</button>` +
-          `<button onclick="disableJob('${j.name}')">Disable</button></td>`;
+          `<button onclick="disableJob('${j.name}')">Disable</button>` +
+          `<button onclick="editJob('${j.name}')">Edit</button>` +
+          `<button onclick="deleteJob('${j.name}')">Delete</button></td>`;
         tr.addEventListener('click', () => loadHistory(j.name));
         tbody.appendChild(tr);
       });
@@ -168,15 +175,22 @@
       const name = document.getElementById('jobName').value;
       const schedule = document.getElementById('jobSchedule').value;
       const command = document.getElementById('jobCommand').value;
-      await fetch('/api/jobs/update', {method: 'POST', body: JSON.stringify({name, schedule, command}), headers: {'Content-Type': 'application/json'}});
+      await fetch('/api/jobs/update', {method: 'POST', body: JSON.stringify({name, schedule, command, origin: 'web'}), headers: {'Content-Type': 'application/json'}});
       refresh();
     });
 
-    document.getElementById('deleteBtn').addEventListener('click', async () => {
-      const name = document.getElementById('jobName').value;
+    async function deleteJob(name) {
       await fetch('/api/jobs/delete', {method: 'POST', body: JSON.stringify({name}), headers: {'Content-Type': 'application/json'}});
       refresh();
-    });
+    }
+
+    function editJob(name) {
+      const j = jobsCache.find(x => x.name === name);
+      if (!j) return;
+      document.getElementById('jobName').value = j.name;
+      document.getElementById('jobSchedule').value = j.schedule;
+      document.getElementById('jobCommand').value = j.command;
+    }
     function refresh() {
       loadJobs();
       loadDisabled();

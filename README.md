@@ -78,11 +78,14 @@ server for profiling. Use `--pprof-address` to set the listening address
 (default `127.0.0.1:8080`).
 When `--enable-web` is specified, the daemon serves a small web UI at
 `--web-address` (default `:8081`). Besides inspecting running and removed jobs,
-the UI allows starting jobs manually, disabling or enabling them and creating,
-updating or deleting local jobs. A second table lists jobs removed from the
-configuration via `/api/jobs/removed`. The endpoint `/api/jobs/{name}/history`
-exposes past runs including stdout, stderr and any error messages while
-`/api/config` returns the active configuration as JSON.
+the UI allows starting, editing or deleting jobs as well as disabling or
+enabling them. Each job row now shows the job type and a collapsible view of its
+full configuration. Jobs created through the UI are marked with origin `web`
+and `/api/config` returns the complete configuration including such jobs. A
+second table lists jobs removed from the configuration via `/api/jobs/removed`.
+The endpoint `/api/jobs/{name}/history` exposes past runs including stdout,
+stderr and any error messages while `/api/config` returns the active
+configuration as JSON.
 
 ### Environment variables
 

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -59,9 +60,28 @@ type apiExecution struct {
 
 type apiJob struct {
 	Name     string        `json:"name"`
+	Type     string        `json:"type"`
+	Origin   string        `json:"origin,omitempty"`
 	Schedule string        `json:"schedule"`
 	Command  string        `json:"command"`
+	Config   interface{}   `json:"config"`
 	LastRun  *apiExecution `json:"last_run,omitempty"`
+}
+
+func jobType(j core.Job) string {
+	t := fmt.Sprintf("%T", j)
+	switch {
+	case strings.Contains(t, "RunService"):
+		return "service-run"
+	case strings.Contains(t, "RunJob"):
+		return "run"
+	case strings.Contains(t, "ExecJob"):
+		return "exec"
+	case strings.Contains(t, "LocalJob"):
+		return "local"
+	default:
+		return "unknown"
+	}
 }
 
 func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
@@ -85,10 +105,17 @@ func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		origin := ""
+		if o, ok := job.(interface{ GetOrigin() string }); ok {
+			origin = o.GetOrigin()
+		}
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
+			Type:     jobType(job),
+			Origin:   origin,
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
+			Config:   job,
 			LastRun:  execInfo,
 		})
 	}
@@ -119,10 +146,17 @@ func (s *Server) removedJobsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		origin := ""
+		if o, ok := job.(interface{ GetOrigin() string }); ok {
+			origin = o.GetOrigin()
+		}
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
+			Type:     jobType(job),
+			Origin:   origin,
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
+			Config:   job,
 			LastRun:  execInfo,
 		})
 	}
@@ -135,10 +169,17 @@ func (s *Server) disabledJobsHandler(w http.ResponseWriter, r *http.Request) {
 	disabled := s.scheduler.GetDisabledJobs()
 	jobs := make([]apiJob, 0, len(disabled))
 	for _, job := range disabled {
+		origin := ""
+		if o, ok := job.(interface{ GetOrigin() string }); ok {
+			origin = o.GetOrigin()
+		}
 		jobs = append(jobs, apiJob{
 			Name:     job.GetName(),
+			Type:     jobType(job),
+			Origin:   origin,
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
+			Config:   job,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -149,6 +190,7 @@ type jobRequest struct {
 	Name     string `json:"name"`
 	Schedule string `json:"schedule,omitempty"`
 	Command  string `json:"command,omitempty"`
+	Origin   string `json:"origin,omitempty"`
 }
 
 func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
@@ -196,7 +238,10 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command}}
+	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command, Origin: req.Origin}}
+	if job.Origin == "" {
+		job.Origin = "api"
+	}
 	if err := s.scheduler.AddJob(job); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -211,7 +256,10 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.scheduler.DisableJob(req.Name)
-	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command}}
+	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command, Origin: req.Origin}}
+	if job.Origin == "" {
+		job.Origin = "api"
+	}
 	if err := s.scheduler.AddJob(job); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
