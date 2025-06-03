@@ -1,4 +1,6 @@
-# Ofelia - a job scheduler [![GitHub version](https://badge.fury.io/gh/netresearch%2Fofelia.svg)](https://github.com/netresearch/ofelia/releases) [![go test](https://github.com/netresearch/ofelia/actions/workflows/ci.yml/badge.svg)](https://github.com/netresearch/ofelia/actions/workflows/ci.yml)
+# Ofelia - a job scheduler
+[![CI](https://github.com/netresearch/ofelia/actions/workflows/ci.yml/badge.svg)](https://github.com/netresearch/ofelia/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/netresearch/ofelia/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/netresearch/ofelia/actions/workflows/github-code-scanning/codeql)
 
 <img src="https://weirdspace.dk/FranciscoIbanez/Graphics/Ofelia.gif" align="right" width="180px" height="300px" vspace="20" />
 
