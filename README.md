@@ -30,7 +30,8 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 - **Optional pprof server** enabled with `--enable-pprof` and bound via
   `--pprof-address` for profiling and debugging.
 - **Optional web UI** enabled with `--enable-web` and bound via
-  `--web-address` to view job status.
+  `--web-address` to view job status. Static files for the UI are embedded in
+  the binary.
 - **Removed job history** keeps deregistered jobs in memory and shows them in the web UI.
 - **Enhanced web UI** allows editing and deleting jobs, shows job origin and type, displays each job's configuration and renders the scheduler configuration in a table with empty job sections hidden. Action buttons now use clear icons.
 
