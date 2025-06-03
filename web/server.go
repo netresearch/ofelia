@@ -35,7 +35,10 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}) *Server {
 	mux.HandleFunc("/api/jobs/", server.historyHandler)
 	mux.HandleFunc("/api/jobs", server.jobsHandler)
 	mux.HandleFunc("/api/config", server.configHandler)
-	uiFS, _ := fs.Sub(static.UI, "ui")
+	uiFS, err := fs.Sub(static.UI, "ui")
+	if err != nil {
+		panic("failed to load UI subdirectory: " + err.Error())
+	}
 	mux.Handle("/", http.FileServer(http.FS(uiFS)))
 	server.srv = &http.Server{Addr: addr, Handler: mux}
 	return server
