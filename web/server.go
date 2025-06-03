@@ -3,12 +3,14 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/static"
 )
 
 type Server struct {
@@ -33,7 +35,11 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}) *Server {
 	mux.HandleFunc("/api/jobs/", server.historyHandler)
 	mux.HandleFunc("/api/jobs", server.jobsHandler)
 	mux.HandleFunc("/api/config", server.configHandler)
-	mux.Handle("/", http.FileServer(http.Dir("static/ui")))
+	uiFS, err := fs.Sub(static.UI, "ui")
+	if err != nil {
+		panic("failed to load UI subdirectory: " + err.Error())
+	}
+	mux.Handle("/", http.FileServer(http.FS(uiFS)))
 	server.srv = &http.Server{Addr: addr, Handler: mux}
 	return server
 }
