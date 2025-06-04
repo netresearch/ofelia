@@ -319,7 +319,7 @@ func (c *Config) iniConfigUpdate() error {
 		return nil
 	}
 
-	c.logger.Debugf("reloading config from %s", strings.Join(files, ", "))
+	c.logger.Debugf("reloading config files from %s", strings.Join(files, ", "))
 
 	parsed, err := BuildFromFile(c.configPath, c.logger)
 	if err != nil {
