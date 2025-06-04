@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	defaults "github.com/creasty/defaults"
@@ -189,4 +190,46 @@ func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(cfg.configModTime, Equals, oldTime)
 	c.Assert(len(cfg.RunJobs), Equals, 1)
+}
+
+// Test iniConfigUpdate reloads when any of the glob matched files change
+func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
+	dir, err := ioutil.TempDir("", "ofelia_glob_update")
+	c.Assert(err, IsNil)
+	defer os.RemoveAll(dir)
+
+	file1 := filepath.Join(dir, "a.ini")
+	err = os.WriteFile(file1, []byte("[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"), 0o644)
+	c.Assert(err, IsNil)
+
+	file2 := filepath.Join(dir, "b.ini")
+	err = os.WriteFile(file2, []byte("[job-run \"bar\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo bar\n"), 0o644)
+	c.Assert(err, IsNil)
+
+	cfg, err := BuildFromFile(filepath.Join(dir, "*.ini"), &TestLogger{})
+	c.Assert(err, IsNil)
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+
+	for name, j := range cfg.RunJobs {
+		defaults.Set(j)
+		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Name = name
+		j.buildMiddlewares()
+		cfg.sh.AddJob(j)
+	}
+
+	c.Assert(len(cfg.RunJobs), Equals, 2)
+	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 5s")
+
+	time.Sleep(time.Second)
+	err = os.WriteFile(file1, []byte("[job-run \"foo\"]\nschedule = @every 10s\nimage = busybox\ncommand = echo foo\n"), 0o644)
+	c.Assert(err, IsNil)
+
+	err = cfg.iniConfigUpdate()
+	c.Assert(err, IsNil)
+	c.Assert(len(cfg.RunJobs), Equals, 2)
+	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 10s")
 }

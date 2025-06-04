@@ -311,7 +311,9 @@ func (c *Config) iniConfigUpdate() error {
 		}
 	}
 
-	c.logger.Debugf("checking config file %s", c.configPath)
+	for _, f := range files {
+		c.logger.Debugf("checking config file %s", f)
+	}
 	if latest.Equal(c.configModTime) {
 		c.logger.Debugf("config not changed")
 		return nil
@@ -323,7 +325,7 @@ func (c *Config) iniConfigUpdate() error {
 	if err != nil {
 		return err
 	}
-	c.configFiles = parsed.configFiles
+	c.configFiles = files
 	c.configModTime = latest
 	c.logger.Debugf("applied config from %s", c.configPath)
 
