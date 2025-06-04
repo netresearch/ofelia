@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -42,6 +44,7 @@ type Config struct {
 	LocalJobs     map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
 	Docker        DockerConfig
 	configPath    string
+	configFiles   []string
 	configModTime time.Time
 	sh            *core.Scheduler
 	dockerHandler *DockerHandler
@@ -63,21 +66,49 @@ func NewConfig(logger core.Logger) *Config {
 	return c
 }
 
-// BuildFromFile builds a scheduler using the config from a file
-func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
-	c := NewConfig(logger)
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, filename)
+// resolveConfigFiles returns files matching the given pattern. If no file
+// matches, the pattern itself is treated as a literal path.
+func resolveConfigFiles(pattern string) ([]string, error) {
+	files, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, err
 	}
-	if err := parseIni(cfg, c); err != nil {
+	if len(files) == 0 {
+		files = []string{pattern}
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+// BuildFromFile builds a scheduler using the config from one or multiple files.
+// The filename may include glob patterns. When multiple files are matched,
+// they are parsed in lexical order and merged.
+func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
+	files, err := resolveConfigFiles(filename)
+	if err != nil {
 		return nil, err
 	}
-	c.configPath = filename
-	if info, statErr := os.Stat(filename); statErr == nil {
-		c.configModTime = info.ModTime()
+
+	c := NewConfig(logger)
+	var latest time.Time
+	for _, f := range files {
+		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, f)
+		if err != nil {
+			return nil, err
+		}
+		if err := parseIni(cfg, c); err != nil {
+			return nil, err
+		}
+		if info, statErr := os.Stat(f); statErr == nil {
+			if info.ModTime().After(latest) {
+				latest = info.ModTime()
+			}
+		}
+		logger.Debugf("loaded config file %s", f)
 	}
-	logger.Debugf("loaded config file %s", filename)
+	c.configPath = filename
+	c.configFiles = files
+	c.configModTime = latest
 	return c, nil
 }
 
@@ -264,12 +295,24 @@ func (c *Config) iniConfigUpdate() error {
 		return nil
 	}
 
-	info, err := os.Stat(c.configPath)
+	files, err := resolveConfigFiles(c.configPath)
 	if err != nil {
 		return err
 	}
+
+	var latest time.Time
+	for _, f := range files {
+		info, err := os.Stat(f)
+		if err != nil {
+			return err
+		}
+		if info.ModTime().After(latest) {
+			latest = info.ModTime()
+		}
+	}
+
 	c.logger.Debugf("checking config file %s", c.configPath)
-	if info.ModTime().Equal(c.configModTime) {
+	if latest.Equal(c.configModTime) {
 		c.logger.Debugf("config not changed")
 		return nil
 	}
@@ -280,7 +323,8 @@ func (c *Config) iniConfigUpdate() error {
 	if err != nil {
 		return err
 	}
-	c.configModTime = info.ModTime()
+	c.configFiles = parsed.configFiles
+	c.configModTime = latest
 	c.logger.Debugf("applied config from %s", c.configPath)
 
 	execPrep := func(name string, j *ExecJobConfig) {

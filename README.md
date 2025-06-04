@@ -75,6 +75,13 @@ ofelia daemon --config=/path/to/config.ini
 ofelia validate --config=/path/to/config.ini
 ```
 
+The `--config` flag also supports glob patterns so multiple INI files can be
+combined:
+
+```sh
+ofelia daemon --config=/etc/ofelia/conf.d/*.ini
+```
+
 If `--config` is omitted, Ofelia looks for `/etc/ofelia/config.ini`.
 
 When `--enable-pprof` is specified, the daemon starts a Go pprof HTTP
@@ -95,7 +102,7 @@ they override values from the config file and Docker labels.
 
 | Variable | Corresponding flag | Description |
 | --- | --- | --- |
-| `OFELIA_CONFIG` | `--config` | Path to the configuration file |
+| `OFELIA_CONFIG` | `--config` | Path or glob pattern to the configuration file(s) |
 | `OFELIA_DOCKER_FILTER` | `--docker-filter` | Docker container filter (comma separated for multiple) |
 | `OFELIA_POLL_INTERVAL` | `--docker-poll-interval` | Interval for Docker polling and config reload |
 | `OFELIA_DOCKER_EVENTS` | `--docker-events` | Use Docker events instead of polling |
@@ -176,7 +183,8 @@ Log output now includes the original file and line of the logging call instead o
 
 ### INI-style configuration
 
-Run with `ofelia daemon --config=/path/to/config.ini`
+Run with `ofelia daemon --config=/path/to/config.ini` or use a glob pattern like
+`/etc/ofelia/conf.d/*.ini` to load multiple files
 
 ```ini
 [global]
@@ -253,8 +261,9 @@ demonstrates the different job types. It starts an `nginx` container with an
 via `ofelia.ini`.
 
 The Docker image expects a configuration file at `/etc/ofelia/config.ini` and
-runs `daemon --config /etc/ofelia/config.ini` by default. Mount your file at
-that location so no `command:` override is required:
+runs `daemon --config /etc/ofelia/config.ini` by default. You can also mount a
+directory and use a glob pattern such as `/etc/ofelia/conf.d/*.ini`. Mount your
+file at the chosen location so no `command:` override is required:
 
 ```yaml
 services:

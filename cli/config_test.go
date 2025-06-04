@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 
 	defaults "github.com/creasty/defaults"
@@ -514,6 +515,29 @@ command = echo test123
 	c.Assert(ok, Equals, true)
 	c.Assert(job.Schedule, Equals, "@every 5s")
 	c.Assert(job.Command, Equals, "echo test123")
+}
+
+func (s *SuiteConfig) TestBuildFromFileGlob(c *C) {
+	dir, err := ioutil.TempDir("", "ofelia_glob")
+	c.Assert(err, IsNil)
+	defer os.RemoveAll(dir)
+
+	file1 := filepath.Join(dir, "a.ini")
+	err = os.WriteFile(file1, []byte("[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"), 0o644)
+	c.Assert(err, IsNil)
+
+	file2 := filepath.Join(dir, "b.ini")
+	err = os.WriteFile(file2, []byte("[job-exec \"bar\"]\nschedule = @every 10s\ncommand = echo bar\n"), 0o644)
+	c.Assert(err, IsNil)
+
+	conf, err := BuildFromFile(filepath.Join(dir, "*.ini"), &TestLogger{})
+	c.Assert(err, IsNil)
+	c.Assert(conf.RunJobs, HasLen, 1)
+	_, ok := conf.RunJobs["foo"]
+	c.Assert(ok, Equals, true)
+	c.Assert(conf.ExecJobs, HasLen, 1)
+	_, ok = conf.ExecJobs["bar"]
+	c.Assert(ok, Equals, true)
 }
 
 // Test NewConfig initializes empty maps and applies defaults
