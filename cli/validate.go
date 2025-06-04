@@ -43,7 +43,13 @@ func applyConfigDefaults(conf *Config) {
 	for _, j := range conf.ExecJobs {
 		defaults.Set(j)
 	}
+	for _, j := range conf.LabelExecJobs {
+		defaults.Set(j)
+	}
 	for _, j := range conf.RunJobs {
+		defaults.Set(j)
+	}
+	for _, j := range conf.LabelRunJobs {
 		defaults.Set(j)
 	}
 	for _, j := range conf.LocalJobs {

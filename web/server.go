@@ -98,6 +98,12 @@ func jobOrigin(cfg interface{}, name string) string {
 			return "label"
 		}
 	}
+	labelExecJobs := v.FieldByName("LabelExecJobs")
+	if labelExecJobs.IsValid() && labelExecJobs.Kind() == reflect.Map {
+		if labelExecJobs.MapIndex(reflect.ValueOf(name)).IsValid() {
+			return "label"
+		}
+	}
 	return ""
 }
 
@@ -344,7 +350,7 @@ func stripJobs(cfg interface{}) interface{} {
 	}
 	out := reflect.New(v.Type()).Elem()
 	out.Set(v)
-	fields := []string{"RunJobs", "LabelRunJobs", "ExecJobs", "ServiceJobs", "LocalJobs"}
+	fields := []string{"RunJobs", "LabelRunJobs", "LabelExecJobs", "ExecJobs", "ServiceJobs", "LocalJobs"}
 	for _, f := range fields {
 		if fv := out.FieldByName(f); fv.IsValid() && fv.CanSet() {
 			fv.Set(reflect.Zero(fv.Type()))

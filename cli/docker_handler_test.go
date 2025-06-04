@@ -186,3 +186,29 @@ func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniRunJobs(c *C) {
 	c.Assert(len(cfg.LabelRunJobs), Equals, 0)
 	c.Assert(len(cfg.sh.Entries()), Equals, 1)
 }
+
+// TestDockerLabelsUpdateKeepsIniExecJobs verifies that ExecJobs defined via INI
+// remain when dockerLabelsUpdate receives no labeled containers.
+func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniExecJobs(c *C) {
+	cfg := NewConfig(&TestLogger{})
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+
+	cfg.ExecJobs["ini-exec"] = &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}}
+
+	for name, j := range cfg.ExecJobs {
+		defaults.Set(j)
+		j.Name = name
+		cfg.sh.AddJob(j)
+	}
+
+	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+
+	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+
+	c.Assert(len(cfg.ExecJobs), Equals, 1)
+	c.Assert(len(cfg.LabelExecJobs), Equals, 0)
+	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+}
