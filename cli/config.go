@@ -319,7 +319,7 @@ func (c *Config) iniConfigUpdate() error {
 		return nil
 	}
 
-	c.logger.Debugf("reloading config from %s", c.configPath)
+	c.logger.Debugf("reloading config from %s", strings.Join(files, ", "))
 
 	parsed, err := BuildFromFile(c.configPath, c.logger)
 	if err != nil {
@@ -327,7 +327,7 @@ func (c *Config) iniConfigUpdate() error {
 	}
 	c.configFiles = files
 	c.configModTime = latest
-	c.logger.Debugf("applied config from %s", c.configPath)
+	c.logger.Debugf("applied config from %s", strings.Join(files, ", "))
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		defaults.Set(j)
