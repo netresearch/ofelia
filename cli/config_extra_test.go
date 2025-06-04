@@ -135,10 +135,11 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 5s")
 
 	// modify ini: change schedule and add new job
-	time.Sleep(time.Second)
+	oldTime := cfg.configModTime
 	content2 := "[job-run \"foo\"]\nschedule = @every 10s\nimage = busybox\ncommand = echo foo\n[job-run \"bar\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo bar\n"
 	err = os.WriteFile(tmp.Name(), []byte(content2), 0o644)
 	c.Assert(err, IsNil)
+	c.Assert(waitForModTimeChange(tmp.Name(), oldTime), IsNil)
 
 	err = cfg.iniConfigUpdate()
 	c.Assert(err, IsNil)
@@ -146,10 +147,11 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 10s")
 
 	// modify ini: remove foo
-	time.Sleep(time.Second)
+	oldTime = cfg.configModTime
 	content3 := "[job-run \"bar\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo bar\n"
 	err = os.WriteFile(tmp.Name(), []byte(content3), 0o644)
 	c.Assert(err, IsNil)
+	c.Assert(waitForModTimeChange(tmp.Name(), oldTime), IsNil)
 
 	err = cfg.iniConfigUpdate()
 	c.Assert(err, IsNil)
@@ -224,12 +226,25 @@ func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
 	c.Assert(len(cfg.RunJobs), Equals, 2)
 	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 5s")
 
-	time.Sleep(time.Second)
+	oldTime := cfg.configModTime
 	err = os.WriteFile(file1, []byte("[job-run \"foo\"]\nschedule = @every 10s\nimage = busybox\ncommand = echo foo\n"), 0o644)
 	c.Assert(err, IsNil)
+	c.Assert(waitForModTimeChange(file1, oldTime), IsNil)
 
 	err = cfg.iniConfigUpdate()
 	c.Assert(err, IsNil)
 	c.Assert(len(cfg.RunJobs), Equals, 2)
 	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 10s")
+}
+
+func waitForModTimeChange(path string, after time.Time) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if info.ModTime().After(after) {
+		return nil
+	}
+	newTime := after.Add(time.Second)
+	return os.Chtimes(path, newTime, newTime)
 }
