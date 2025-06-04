@@ -327,7 +327,7 @@ func (c *Config) iniConfigUpdate() error {
 	}
 	c.configFiles = files
 	c.configModTime = latest
-	c.logger.Debugf("applied config from %s", strings.Join(files, ", "))
+	c.logger.Debugf("applied config files from %s", strings.Join(files, ", "))
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		defaults.Set(j)
