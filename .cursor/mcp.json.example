@@ -1,0 +1,37 @@
+{
+    "mcpServers": {
+        "taskmaster-ai": {
+            "command": "npx",
+            "args": ["-y", "--package=task-master-ai@latest", "task-master-ai"],
+            "env": {
+                "OPENAI_API_KEY": "your_openai_api_key_here",
+                "OPENROUTER_API_KEY": "your_openrouter_api_key_here"
+            }
+        },
+        "directmcp-atlassian": {
+            "command": "docker",
+            "args": [
+                "run",
+                "--pull",
+                "always",
+                "-i",
+                "--rm",
+                "-e", "CONFLUENCE_URL",
+                "-e", "CONFLUENCE_USERNAME", 
+                "-e", "CONFLUENCE_API_TOKEN",
+                "-e", "JIRA_URL",
+                "-e", "JIRA_PERSONAL_TOKEN",
+                "-e", "JIRA_SSL_VERIFY",
+                "ghcr.io/sooperset/mcp-atlassian:latest"
+            ],
+            "env": {
+                "CONFLUENCE_URL": "https://your-org.atlassian.net/wiki",
+                "CONFLUENCE_USERNAME": "your.email@your-org.com",
+                "CONFLUENCE_API_TOKEN": "your_confluence_api_token_here",
+                "JIRA_URL": "https://jira.your-org.com",
+                "JIRA_SSL_VERIFY": "true",
+                "JIRA_PERSONAL_TOKEN": "your_jira_personal_token_here"
+            }
+        }
+    }
+} 
