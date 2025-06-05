@@ -145,6 +145,7 @@ You can configure four different kinds of jobs:
 - `job-run`: runs a command inside of a new container, using a specific image.
 - `job-local`: runs the command inside of the host running ofelia.
 - `job-service-run`: runs the command inside a new "run-once" service, for running inside a swarm
+- `job-compose`: runs a command using `docker compose run` or `docker compose exec` based on a compose file
 
 See [Jobs reference documentation](docs/jobs.md) for all available parameters.
 See [Architecture overview](docs/architecture.md) for details about the scheduler, job types and middleware.
@@ -257,8 +258,16 @@ docker run -it --rm \
 
 See the [example](example/) directory for a ready-made `compose.yml` that
 demonstrates the different job types. It starts an `nginx` container with an
-`exec` job label and configures additional `run`, `local` and `service-run` jobs
-via `ofelia.ini`.
+`exec` job label and configures additional `run`, `local`, `service-run` and
+`compose` jobs via `ofelia.ini`.
+
+Compose jobs help address feature requests such as
+[#359](https://github.com/mcuadros/ofelia/issues/359),
+[#358](https://github.com/mcuadros/ofelia/issues/358),
+[#333](https://github.com/mcuadros/ofelia/issues/333),
+[#318](https://github.com/mcuadros/ofelia/issues/318),
+[#290](https://github.com/mcuadros/ofelia/issues/290) and
+[#247](https://github.com/mcuadros/ofelia/issues/247).
 
 The Docker image expects a configuration file at `/etc/ofelia/config.ini` and
 runs `daemon --config /etc/ofelia/config.ini` by default. You can also mount a
