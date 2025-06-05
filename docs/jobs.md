@@ -4,6 +4,7 @@
 - [`run`](#run)
 - [`local`](#local)
 - [`service-run`](#service-run)
+- [`compose`](#compose)
 
 ## `exec`
 
@@ -202,4 +203,33 @@ schedule = 0,20,40 * * * *
 image = ubuntu
 network = swarm_network
 command =  touch /tmp/example
+```
+
+## `compose`
+
+This job triggers commands via Docker Compose. Set `exec = true` to run commands
+in an existing service container using `docker compose exec`. By default, a new
+container is started with `docker compose run --rm`.
+
+### Parameters
+
+- **`schedule`: string**
+  - When the job should be executed. E.g. every 10 seconds or every night at 1 AM.
+- **`file`: string**
+  - Path to the compose file, defaults to `compose.yml`.
+- **`service`: string**
+  - Service name to run or exec.
+- `exec`: boolean = `false`
+  - Use `docker compose exec` instead of `run`.
+- `command`: string
+  - Command passed to the service (optional).
+
+### INI-file example
+
+```ini
+[job-compose "backup"]
+schedule = @daily
+file = docker-compose.yml
+service = db
+command = pg_dumpall -U postgres
 ```
