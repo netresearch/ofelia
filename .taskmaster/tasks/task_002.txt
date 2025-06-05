@@ -1,0 +1,11 @@
+# Task ID: 2
+# Title: Implement Core Scheduler Engine
+# Status: pending
+# Dependencies: 1
+# Priority: high
+# Description: Develop the core scheduling engine using the robfig/cron library to handle job scheduling based on cron expressions.
+# Details:
+Integrate the robfig/cron library (v3.0.0) to create a scheduling engine. Implement job scheduling logic that can parse cron expressions and manage job execution timing. Ensure robust error handling and logging for job execution failures.
+
+# Test Strategy:
+Create unit tests for scheduling logic, ensuring jobs are triggered at the correct times and handle errors gracefully.
