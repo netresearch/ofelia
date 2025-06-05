@@ -22,6 +22,7 @@ const (
 	jobRun        = "job-run"
 	jobServiceRun = "job-service-run"
 	jobLocal      = "job-local"
+	jobCompose    = "job-compose"
 )
 
 // Config contains the configuration
@@ -42,6 +43,7 @@ type Config struct {
 	LabelRunJobs  map[string]*RunJobConfig
 	ServiceJobs   map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
 	LocalJobs     map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
+	ComposeJobs   map[string]*ComposeJobConfig `gcfg:"job-compose" mapstructure:"job-compose,squash"`
 	Docker        DockerConfig
 	configPath    string
 	configFiles   []string
@@ -59,6 +61,7 @@ func NewConfig(logger core.Logger) *Config {
 		LabelRunJobs:  make(map[string]*RunJobConfig),
 		ServiceJobs:   make(map[string]*RunServiceConfig),
 		LocalJobs:     make(map[string]*LocalJobConfig),
+		ComposeJobs:   make(map[string]*ComposeJobConfig),
 		logger:        logger,
 	}
 
@@ -211,6 +214,13 @@ func (c *Config) InitializeApp() error {
 		c.sh.AddJob(j)
 	}
 
+	for name, j := range c.ComposeJobs {
+		defaults.Set(j)
+		j.Name = name
+		j.buildMiddlewares()
+		c.sh.AddJob(j)
+	}
+
 	return nil
 }
 
@@ -288,6 +298,12 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Name = name
 	}
 	syncJobMap(c, c.LabelRunJobs, parsedLabelConfig.RunJobs, runPrep)
+
+	composePrep := func(name string, j *ComposeJobConfig) {
+		defaults.Set(j)
+		j.Name = name
+	}
+	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep)
 }
 
 func (c *Config) iniConfigUpdate() error {
@@ -356,6 +372,12 @@ func (c *Config) iniConfigUpdate() error {
 	}
 	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep)
 
+	composePrep := func(name string, j *ComposeJobConfig) {
+		defaults.Set(j)
+		j.Name = name
+	}
+	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep)
+
 	return nil
 }
 
@@ -408,11 +430,26 @@ type LocalJobConfig struct {
 	middlewares.MailConfig    `mapstructure:",squash"`
 }
 
+type ComposeJobConfig struct {
+	core.ComposeJob           `mapstructure:",squash"`
+	middlewares.OverlapConfig `mapstructure:",squash"`
+	middlewares.SlackConfig   `mapstructure:",squash"`
+	middlewares.SaveConfig    `mapstructure:",squash"`
+	middlewares.MailConfig    `mapstructure:",squash"`
+}
+
 func (c *LocalJobConfig) buildMiddlewares() {
 	c.LocalJob.Use(middlewares.NewOverlap(&c.OverlapConfig))
 	c.LocalJob.Use(middlewares.NewSlack(&c.SlackConfig))
 	c.LocalJob.Use(middlewares.NewSave(&c.SaveConfig))
 	c.LocalJob.Use(middlewares.NewMail(&c.MailConfig))
+}
+
+func (c *ComposeJobConfig) buildMiddlewares() {
+	c.ComposeJob.Use(middlewares.NewOverlap(&c.OverlapConfig))
+	c.ComposeJob.Use(middlewares.NewSlack(&c.SlackConfig))
+	c.ComposeJob.Use(middlewares.NewSave(&c.SaveConfig))
+	c.ComposeJob.Use(middlewares.NewMail(&c.MailConfig))
 }
 
 func (c *RunServiceConfig) buildMiddlewares() {
@@ -472,6 +509,13 @@ func parseIni(cfg *ini.File, c *Config) error {
 				return err
 			}
 			c.LocalJobs[jobName] = job
+		case strings.HasPrefix(name, jobCompose):
+			jobName := parseJobName(name, jobCompose)
+			job := &ComposeJobConfig{}
+			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+				return err
+			}
+			c.ComposeJobs[jobName] = job
 		}
 	}
 	return nil

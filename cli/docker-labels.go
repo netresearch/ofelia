@@ -20,6 +20,7 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 	localJobs := make(map[string]map[string]interface{})
 	runJobs := make(map[string]map[string]interface{})
 	serviceJobs := make(map[string]map[string]interface{})
+	composeJobs := make(map[string]map[string]interface{})
 	globalConfigs := make(map[string]interface{})
 
 	for c, l := range labels {
@@ -74,6 +75,11 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 					runJobs[jobName] = make(map[string]interface{})
 				}
 				setJobParam(runJobs[jobName], jobParam, v)
+			case jobType == jobCompose:
+				if _, ok := composeJobs[jobName]; !ok {
+					composeJobs[jobName] = make(map[string]interface{})
+				}
+				setJobParam(composeJobs[jobName], jobParam, v)
 			default:
 				// TODO: warn about unknown parameter
 			}
@@ -106,6 +112,12 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 
 	if len(runJobs) > 0 {
 		if err := mapstructure.WeakDecode(runJobs, &c.RunJobs); err != nil {
+			return err
+		}
+	}
+
+	if len(composeJobs) > 0 {
+		if err := mapstructure.WeakDecode(composeJobs, &c.ComposeJobs); err != nil {
 			return err
 		}
 	}
