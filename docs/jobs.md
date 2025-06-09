@@ -199,6 +199,8 @@ This job can be used to:
 - `max-runtime`: duration = `24h`
   - Maximum time the service task may run before it is removed
 
+### INI-file example
+
 ```ini
 [job-service-run "service-executed-on-new-container"]
 schedule = 0,20,40 * * * *
