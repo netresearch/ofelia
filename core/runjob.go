@@ -44,6 +44,8 @@ type RunJob struct {
 	VolumesFrom []string `gcfg:"volumes-from" mapstructure:"volumes-from,"`
 	Environment []string `mapstructure:"environment"`
 
+	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
+
 	containerID string
 	mu          sync.RWMutex // Protect containerID access
 }
@@ -242,8 +244,7 @@ func (j *RunJob) getContainer() (*docker.Container, error) {
 }
 
 const (
-	watchDuration      = time.Millisecond * 100
-	maxProcessDuration = time.Hour * 24
+	watchDuration = time.Millisecond * 100
 )
 
 func (j *RunJob) watchContainer() error {
@@ -253,7 +254,7 @@ func (j *RunJob) watchContainer() error {
 		time.Sleep(watchDuration)
 		r += watchDuration
 
-		if r > maxProcessDuration {
+		if j.MaxRuntime > 0 && r > j.MaxRuntime {
 			return ErrMaxTimeRunning
 		}
 
