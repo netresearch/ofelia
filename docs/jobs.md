@@ -31,6 +31,8 @@ This job is executed inside a running container, similar to `docker exec`.
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
   - Number of past executions kept in memory
+- `max-runtime`: duration = `24h`
+  - Maximum time the container is allowed to run before it is killed
 
 ### INI-file example
 
@@ -105,6 +107,8 @@ This job can be used in 2 situations:
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
   - Number of past executions kept in memory
+- `max-runtime`: duration = `24h`
+  - Maximum time the container is allowed to run before it is killed
 
 ### INI-file example
 
@@ -194,9 +198,8 @@ This job can be used to:
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
   - Number of past executions kept in memory
-
-### INI-file example
-
+- `max-runtime`: duration = `24h`
+  - Maximum time the service task may run before it is removed
 ```ini
 [job-service-run "service-executed-on-new-container"]
 schedule = 0,20,40 * * * *
