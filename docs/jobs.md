@@ -105,6 +105,8 @@ This job can be used in 2 situations:
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
   - Number of past executions kept in memory
+- `max-runtime`: duration = `24h`
+  - Maximum time the container is allowed to run before it is killed
 
 ### INI-file example
 
@@ -194,6 +196,8 @@ This job can be used to:
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
   - Number of past executions kept in memory
+- `max-runtime`: duration = `24h`
+  - Maximum time the service task may run before it is removed
 
 ### INI-file example
 

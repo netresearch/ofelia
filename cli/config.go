@@ -31,11 +31,12 @@ type Config struct {
 		middlewares.SlackConfig `mapstructure:",squash"`
 		middlewares.SaveConfig  `mapstructure:",squash"`
 		middlewares.MailConfig  `mapstructure:",squash"`
-		LogLevel                string `gcfg:"log-level" mapstructure:"log-level"`
-		EnableWeb               bool   `gcfg:"enable-web" mapstructure:"enable-web" default:"false"`
-		WebAddr                 string `gcfg:"web-address" mapstructure:"web-address" default:":8081"`
-		EnablePprof             bool   `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
-		PprofAddr               string `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
+		LogLevel                string        `gcfg:"log-level" mapstructure:"log-level"`
+		EnableWeb               bool          `gcfg:"enable-web" mapstructure:"enable-web" default:"false"`
+		WebAddr                 string        `gcfg:"web-address" mapstructure:"web-address" default:":8081"`
+		EnablePprof             bool          `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
+		PprofAddr               string        `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
+		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`
 	}
 	ExecJobs      map[string]*ExecJobConfig `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	LabelExecJobs map[string]*ExecJobConfig
@@ -185,6 +186,9 @@ func (c *Config) InitializeApp() error {
 
 	for name, j := range c.RunJobs {
 		defaults.Set(j)
+		if j.MaxRuntime == 0 {
+			j.MaxRuntime = c.Global.MaxRuntime
+		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
@@ -193,6 +197,9 @@ func (c *Config) InitializeApp() error {
 
 	for name, j := range c.LabelRunJobs {
 		defaults.Set(j)
+		if j.MaxRuntime == 0 {
+			j.MaxRuntime = c.Global.MaxRuntime
+		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
@@ -208,6 +215,9 @@ func (c *Config) InitializeApp() error {
 
 	for name, j := range c.ServiceJobs {
 		defaults.Set(j)
+		if j.MaxRuntime == 0 {
+			j.MaxRuntime = c.Global.MaxRuntime
+		}
 		j.Name = name
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.buildMiddlewares()
@@ -294,6 +304,9 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 
 	runPrep := func(name string, j *RunJobConfig) {
 		defaults.Set(j)
+		if j.MaxRuntime == 0 {
+			j.MaxRuntime = c.Global.MaxRuntime
+		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
@@ -354,6 +367,9 @@ func (c *Config) iniConfigUpdate() error {
 
 	runPrep := func(name string, j *RunJobConfig) {
 		defaults.Set(j)
+		if j.MaxRuntime == 0 {
+			j.MaxRuntime = c.Global.MaxRuntime
+		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
@@ -367,6 +383,9 @@ func (c *Config) iniConfigUpdate() error {
 
 	svcPrep := func(name string, j *RunServiceConfig) {
 		defaults.Set(j)
+		if j.MaxRuntime == 0 {
+			j.MaxRuntime = c.Global.MaxRuntime
+		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}

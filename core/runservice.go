@@ -22,9 +22,10 @@ type RunServiceJob struct {
 	// user would set it to "false" explicitly, it still will be
 	// changed to "true" https://github.com/netresearch/ofelia/issues/135
 	// so lets use strings here as workaround
-	Delete  string `default:"true"`
-	Image   string
-	Network string
+	Delete     string `default:"true"`
+	Image      string
+	Network    string
+	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 }
 
 func NewRunServiceJob(c *docker.Client) *RunServiceJob {
@@ -121,7 +122,7 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 			wg.Done()
 		}()
 		for range ticker.C {
-			if time.Since(startTime) > maxProcessDuration {
+			if j.MaxRuntime > 0 && time.Since(startTime) > j.MaxRuntime {
 				err = ErrMaxTimeRunning
 				return
 			}
