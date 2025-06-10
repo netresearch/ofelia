@@ -179,6 +179,7 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `web-address` - address for the web UI server (default `:8081`).
 - `enable-pprof` - enable the pprof debug server.
 - `pprof-address` - address for the pprof server (default `127.0.0.1:8080`).
+- `max-runtime` - default maximum duration a run or service job may run (default `24h`).
 
 Log output now includes the original file and line of the logging call instead of the adapter location.
 
