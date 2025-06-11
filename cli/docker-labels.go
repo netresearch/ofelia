@@ -96,11 +96,17 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 		if err := mapstructure.WeakDecode(execJobs, &c.ExecJobs); err != nil {
 			return err
 		}
+		for _, j := range c.ExecJobs {
+			j.JobSource = JobSourceLabel
+		}
 	}
 
 	if len(localJobs) > 0 {
 		if err := mapstructure.WeakDecode(localJobs, &c.LocalJobs); err != nil {
 			return err
+		}
+		for _, j := range c.LocalJobs {
+			j.JobSource = JobSourceLabel
 		}
 	}
 
@@ -108,17 +114,26 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 		if err := mapstructure.WeakDecode(serviceJobs, &c.ServiceJobs); err != nil {
 			return err
 		}
+		for _, j := range c.ServiceJobs {
+			j.JobSource = JobSourceLabel
+		}
 	}
 
 	if len(runJobs) > 0 {
 		if err := mapstructure.WeakDecode(runJobs, &c.RunJobs); err != nil {
 			return err
 		}
+		for _, j := range c.RunJobs {
+			j.JobSource = JobSourceLabel
+		}
 	}
 
 	if len(composeJobs) > 0 {
 		if err := mapstructure.WeakDecode(composeJobs, &c.ComposeJobs); err != nil {
 			return err
+		}
+		for _, j := range c.ComposeJobs {
+			j.JobSource = JobSourceLabel
 		}
 	}
 

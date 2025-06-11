@@ -170,15 +170,19 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 
 		// Copy the expected job maps
 		for name, job := range t.ExpectedConfig.ExecJobs {
+			job.JobSource = JobSourceINI
 			expectedWithDefaults.ExecJobs[name] = job
 		}
 		for name, job := range t.ExpectedConfig.RunJobs {
+			job.JobSource = JobSourceINI
 			expectedWithDefaults.RunJobs[name] = job
 		}
 		for name, job := range t.ExpectedConfig.ServiceJobs {
+			job.JobSource = JobSourceINI
 			expectedWithDefaults.ServiceJobs[name] = job
 		}
 		for name, job := range t.ExpectedConfig.LocalJobs {
+			job.JobSource = JobSourceINI
 			expectedWithDefaults.LocalJobs[name] = job
 		}
 
@@ -473,6 +477,36 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		var conf = Config{}
 		err := conf.buildFromDockerLabels(t.Labels)
 		c.Assert(err, IsNil)
+		for _, j := range conf.ExecJobs {
+			j.JobSource = JobSourceLabel
+		}
+		for _, j := range conf.RunJobs {
+			j.JobSource = JobSourceLabel
+		}
+		for _, j := range conf.ServiceJobs {
+			j.JobSource = JobSourceLabel
+		}
+		for _, j := range conf.LocalJobs {
+			j.JobSource = JobSourceLabel
+		}
+		for _, j := range conf.ComposeJobs {
+			j.JobSource = JobSourceLabel
+		}
+		for _, j := range t.ExpectedConfig.ExecJobs {
+			j.JobSource = JobSourceLabel
+		}
+		for _, j := range t.ExpectedConfig.RunJobs {
+			j.JobSource = JobSourceLabel
+		}
+		for _, j := range t.ExpectedConfig.ServiceJobs {
+			j.JobSource = JobSourceLabel
+		}
+		for _, j := range t.ExpectedConfig.LocalJobs {
+			j.JobSource = JobSourceLabel
+		}
+		for _, j := range t.ExpectedConfig.ComposeJobs {
+			j.JobSource = JobSourceLabel
+		}
 		if !c.Check(conf, DeepEquals, t.ExpectedConfig) {
 			c.Errorf("Test %q\nExpected %s, but got %s", t.Comment, toJSON(t.ExpectedConfig), toJSON(conf))
 		}

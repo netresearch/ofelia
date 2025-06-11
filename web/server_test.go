@@ -10,6 +10,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/netresearch/ofelia/cli"
 	"github.com/netresearch/ofelia/core"
 	webpkg "github.com/netresearch/ofelia/web"
 )
@@ -128,12 +129,13 @@ func TestJobsHandlerOrigin(t *testing.T) {
 	sched := &core.Scheduler{Jobs: []core.Job{jobIni, jobLabel}, Logger: &stubLogger{}}
 
 	type originConfig struct {
-		RunJobs      map[string]struct{}
-		LabelRunJobs map[string]struct{}
+		RunJobs map[string]*struct{ JobSource cli.JobSource }
 	}
 	cfg := &originConfig{
-		RunJobs:      map[string]struct{}{"job-ini": {}},
-		LabelRunJobs: map[string]struct{}{"job-label": {}},
+		RunJobs: map[string]*struct{ JobSource cli.JobSource }{
+			"job-ini":   {JobSource: cli.JobSourceINI},
+			"job-label": {JobSource: cli.JobSourceLabel},
+		},
 	}
 
 	srv := webpkg.NewServer("", sched, cfg)
@@ -183,12 +185,13 @@ func TestRemovedJobsHandlerOrigin(t *testing.T) {
 	_ = sched.RemoveJob(jobLabel)
 
 	type originConfig struct {
-		RunJobs      map[string]struct{}
-		LabelRunJobs map[string]struct{}
+		RunJobs map[string]*struct{ JobSource cli.JobSource }
 	}
 	cfg := &originConfig{
-		RunJobs:      map[string]struct{}{"job-ini": {}},
-		LabelRunJobs: map[string]struct{}{"job-label": {}},
+		RunJobs: map[string]*struct{ JobSource cli.JobSource }{
+			"job-ini":   {JobSource: cli.JobSourceINI},
+			"job-label": {JobSource: cli.JobSourceLabel},
+		},
 	}
 
 	srv := webpkg.NewServer("", sched, cfg)
@@ -236,12 +239,13 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 	_ = sched.DisableJob("job-label")
 
 	type originConfig struct {
-		RunJobs      map[string]struct{}
-		LabelRunJobs map[string]struct{}
+		RunJobs map[string]*struct{ JobSource cli.JobSource }
 	}
 	cfg := &originConfig{
-		RunJobs:      map[string]struct{}{"job-ini": {}},
-		LabelRunJobs: map[string]struct{}{"job-label": {}},
+		RunJobs: map[string]*struct{ JobSource cli.JobSource }{
+			"job-ini":   {JobSource: cli.JobSourceINI},
+			"job-label": {JobSource: cli.JobSourceLabel},
+		},
 	}
 
 	srv := webpkg.NewServer("", sched, cfg)

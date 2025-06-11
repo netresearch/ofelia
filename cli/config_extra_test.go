@@ -63,7 +63,6 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 	cfg.sh = core.NewScheduler(&TestLogger{})
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 	cfg.ExecJobs = make(map[string]*ExecJobConfig)
-	cfg.LabelExecJobs = make(map[string]*ExecJobConfig)
 
 	// 1) Addition of new job
 	labelsAdd := map[string]map[string]string{
@@ -73,8 +72,9 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 		},
 	}
 	cfg.dockerLabelsUpdate(labelsAdd)
-	c.Assert(len(cfg.LabelExecJobs), Equals, 1)
-	j := cfg.LabelExecJobs["container1.foo"]
+	c.Assert(len(cfg.ExecJobs), Equals, 1)
+	j := cfg.ExecJobs["container1.foo"]
+	c.Assert(j.JobSource, Equals, JobSourceLabel)
 	// Verify schedule and command set
 	c.Assert(j.GetSchedule(), Equals, "@every 5s")
 	c.Assert(j.GetCommand(), Equals, "echo foo")
@@ -91,15 +91,15 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 		},
 	}
 	cfg.dockerLabelsUpdate(labelsChange)
-	c.Assert(len(cfg.LabelExecJobs), Equals, 1)
-	j2 := cfg.LabelExecJobs["container1.foo"]
+	c.Assert(len(cfg.ExecJobs), Equals, 1)
+	j2 := cfg.ExecJobs["container1.foo"]
 	c.Assert(j2.GetSchedule(), Equals, "@every 10s")
 	entries = cfg.sh.Entries()
 	c.Assert(len(entries), Equals, 1)
 
 	// 3) Removal of job
 	cfg.dockerLabelsUpdate(map[string]map[string]string{})
-	c.Assert(len(cfg.LabelExecJobs), Equals, 0)
+	c.Assert(len(cfg.ExecJobs), Equals, 0)
 	entries = cfg.sh.Entries()
 	c.Assert(len(entries), Equals, 0)
 }

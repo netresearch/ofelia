@@ -169,5 +169,20 @@
       "status": "pending",
       "subtasks": []
     }
+
+    ,{
+      "id": 13,
+      "title": "Refactor Config Parsing to Unify INI and Label Sources",
+      "description": "Simplify the configuration layer so INI and Docker label jobs share the same structs and maps.",
+      "details": "Follow the design in docs/config-refactor.md. Introduce a JobSource field and store all jobs in unified maps. Extend update logic to remove label-based jobs when containers disappear while keeping INI jobs persistent. Keep ExecJob and RunJob implementations separate but extract shared logic where useful.",
+      "testStrategy": "Add unit tests to verify that jobs from both INI files and labels populate the same maps and that label-based jobs are cleaned up correctly when their containers go away.",
+      "priority": "medium",
+      "dependencies": [
+        4,
+        5
+      ],
+      "status": "pending",
+      "subtasks": []
+    }
   ]
 }

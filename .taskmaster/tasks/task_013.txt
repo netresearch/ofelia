@@ -1,0 +1,10 @@
+# Task ID: 13
+# Title: Refactor Config Parsing to Unify INI and Label Sources
+# Status: pending
+# Dependencies: 4, 5
+# Priority: medium
+# Description: Simplify the configuration layer so INI and Docker label jobs share the same structs and maps.
+# Details:
+Follow the design in `docs/config-refactor.md`. Introduce a `JobSource` field to tag each job with its origin. Merge `ExecJobs` and `LabelExecJobs` (and the equivalents for other job types) into single maps. Extend job update logic to respect `JobSource` so label-based jobs are removed when containers disappear. Keep `ExecJob` and `RunJob` implementations separate but extract shared logic where possible.
+# Test Strategy:
+Write unit tests to verify that jobs from both INI files and labels are parsed into the unified maps and that removing a container cleans up label-based jobs without affecting INI jobs.
