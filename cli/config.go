@@ -156,18 +156,34 @@ func (c *Config) InitializeApp() error {
 
 		parsedLabelConfig.buildFromDockerLabels(dockerLabels)
 		for name, j := range parsedLabelConfig.ExecJobs {
+			if existing, ok := c.ExecJobs[name]; ok && existing.JobSource == JobSourceINI {
+				c.logger.Warningf("ignoring label-defined exec job %q because an INI job with the same name exists", name)
+				continue
+			}
 			c.ExecJobs[name] = j
 		}
 
 		for name, j := range parsedLabelConfig.RunJobs {
+			if existing, ok := c.RunJobs[name]; ok && existing.JobSource == JobSourceINI {
+				c.logger.Warningf("ignoring label-defined run job %q because an INI job with the same name exists", name)
+				continue
+			}
 			c.RunJobs[name] = j
 		}
 
 		for name, j := range parsedLabelConfig.LocalJobs {
+			if existing, ok := c.LocalJobs[name]; ok && existing.JobSource == JobSourceINI {
+				c.logger.Warningf("ignoring label-defined local job %q because an INI job with the same name exists", name)
+				continue
+			}
 			c.LocalJobs[name] = j
 		}
 
 		for name, j := range parsedLabelConfig.ServiceJobs {
+			if existing, ok := c.ServiceJobs[name]; ok && existing.JobSource == JobSourceINI {
+				c.logger.Warningf("ignoring label-defined service job %q because an INI job with the same name exists", name)
+				continue
+			}
 			c.ServiceJobs[name] = j
 		}
 	}
