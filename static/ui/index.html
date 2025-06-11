@@ -50,8 +50,21 @@
   <h2>Create/Update Job</h2>
   <form id="jobForm">
     <label>Name <input id="jobName" required></label>
+    <label>Type
+      <select id="jobType">
+        <option value="local">local</option>
+        <option value="run">run</option>
+        <option value="exec">exec</option>
+        <option value="compose">compose</option>
+      </select>
+    </label>
     <label>Schedule <input id="jobSchedule" required></label>
-    <label>Command <input id="jobCommand" required></label>
+    <label>Command <input id="jobCommand"></label>
+    <label>Image <input id="jobImage"></label>
+    <label>Container <input id="jobContainer"></label>
+    <label>Compose File <input id="jobFile"></label>
+    <label>Service <input id="jobService"></label>
+    <label>Exec <input type="checkbox" id="jobExec"></label>
     <button type="submit">💾</button>
   </form>
 
@@ -228,9 +241,15 @@
     document.getElementById('jobForm').addEventListener('submit', async e => {
       e.preventDefault();
       const name = document.getElementById('jobName').value;
+      const type = document.getElementById('jobType').value;
       const schedule = document.getElementById('jobSchedule').value;
       const command = document.getElementById('jobCommand').value;
-      await fetch('/api/jobs/update', {method: 'POST', body: JSON.stringify({name, schedule, command}), headers: {'Content-Type': 'application/json','X-Origin':'web'}});
+      const image = document.getElementById('jobImage').value;
+      const container = document.getElementById('jobContainer').value;
+      const file = document.getElementById('jobFile').value;
+      const service = document.getElementById('jobService').value;
+      const exec = document.getElementById('jobExec').checked;
+      await fetch('/api/jobs/update', {method: 'POST', body: JSON.stringify({name, type, schedule, command, image, container, file, service, exec}), headers: {'Content-Type': 'application/json','X-Origin':'web'}});
       refresh();
     });
 
@@ -238,8 +257,14 @@
       const j = jobsData[name];
       if (!j) return;
       document.getElementById('jobName').value = j.name;
+      document.getElementById('jobType').value = j.type;
       document.getElementById('jobSchedule').value = j.schedule;
       document.getElementById('jobCommand').value = j.command;
+      document.getElementById('jobImage').value = j.config.image || '';
+      document.getElementById('jobContainer').value = j.config.container || '';
+      document.getElementById('jobFile').value = j.config.file || '';
+      document.getElementById('jobService').value = j.config.service || '';
+      document.getElementById('jobExec').checked = j.config.exec || false;
     }
 
     async function deleteJob(name) {

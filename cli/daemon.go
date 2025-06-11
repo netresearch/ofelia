@@ -96,7 +96,7 @@ func (c *DaemonCommand) boot() (err error) {
 	c.dockerHandler = config.dockerHandler
 	c.config = config
 	if c.EnableWeb {
-		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config)
+		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, c.dockerHandler.GetInternalDockerClient())
 	}
 
 	return err
