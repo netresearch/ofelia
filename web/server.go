@@ -3,12 +3,14 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"reflect"
 	"strings"
 	"time"
 
+	docker "github.com/fsouza/go-dockerclient"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/static"
 )
@@ -19,10 +21,11 @@ type Server struct {
 	config    interface{}
 	srv       *http.Server
 	origins   map[string]string
+	client    *docker.Client
 }
 
-func NewServer(addr string, s *core.Scheduler, cfg interface{}) *Server {
-	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string)}
+func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *docker.Client) *Server {
+	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), client: client}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
 	mux.HandleFunc("/api/jobs/disabled", server.disabledJobsHandler)
@@ -228,9 +231,15 @@ func (s *Server) disabledJobsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type jobRequest struct {
-	Name     string `json:"name"`
-	Schedule string `json:"schedule,omitempty"`
-	Command  string `json:"command,omitempty"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Schedule  string `json:"schedule,omitempty"`
+	Command   string `json:"command,omitempty"`
+	Image     string `json:"image,omitempty"`
+	Container string `json:"container,omitempty"`
+	File      string `json:"file,omitempty"`
+	Service   string `json:"service,omitempty"`
+	Exec      bool   `json:"exec,omitempty"`
 }
 
 func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
@@ -278,7 +287,11 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command}}
+	job, err := s.jobFromRequest(&req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := s.scheduler.AddJob(job); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -298,7 +311,11 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.scheduler.DisableJob(req.Name)
-	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command}}
+	job, err := s.jobFromRequest(&req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := s.scheduler.AddJob(job); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -309,6 +326,43 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.origins[req.Name] = origin
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
+	switch req.Type {
+	case "run":
+		j := &core.RunJob{Client: s.client}
+		j.Name = req.Name
+		j.Schedule = req.Schedule
+		j.Command = req.Command
+		j.Image = req.Image
+		j.Container = req.Container
+		return j, nil
+	case "exec":
+		j := &core.ExecJob{Client: s.client}
+		j.Name = req.Name
+		j.Schedule = req.Schedule
+		j.Command = req.Command
+		j.Container = req.Container
+		return j, nil
+	case "compose":
+		j := &core.ComposeJob{}
+		j.Name = req.Name
+		j.Schedule = req.Schedule
+		j.Command = req.Command
+		j.File = req.File
+		j.Service = req.Service
+		j.Exec = req.Exec
+		return j, nil
+	case "", "local":
+		j := &core.LocalJob{}
+		j.Name = req.Name
+		j.Schedule = req.Schedule
+		j.Command = req.Command
+		return j, nil
+	default:
+		return nil, fmt.Errorf("unknown job type %q", req.Type)
+	}
 }
 
 func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {

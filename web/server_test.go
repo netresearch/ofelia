@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -59,7 +60,7 @@ func TestHistoryEndpoint(t *testing.T) {
 	e.Failed = true
 	job.SetLastRun(e)
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
-	srv := webpkg.NewServer("", sched, nil)
+	srv := webpkg.NewServer("", sched, nil, nil)
 
 	req := httptest.NewRequest("GET", "/api/jobs/job1/history", nil)
 	w := httptest.NewRecorder()
@@ -93,7 +94,7 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 	e.Failed = true
 	job.SetLastRun(e)
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
-	srv := webpkg.NewServer("", sched, nil)
+	srv := webpkg.NewServer("", sched, nil, nil)
 
 	req := httptest.NewRequest("GET", "/api/jobs", nil)
 	w := httptest.NewRecorder()
@@ -138,7 +139,7 @@ func TestJobsHandlerOrigin(t *testing.T) {
 		},
 	}
 
-	srv := webpkg.NewServer("", sched, cfg)
+	srv := webpkg.NewServer("", sched, cfg, nil)
 
 	req := httptest.NewRequest("GET", "/api/jobs", nil)
 	w := httptest.NewRecorder()
@@ -194,7 +195,7 @@ func TestRemovedJobsHandlerOrigin(t *testing.T) {
 		},
 	}
 
-	srv := webpkg.NewServer("", sched, cfg)
+	srv := webpkg.NewServer("", sched, cfg, nil)
 
 	req := httptest.NewRequest("GET", "/api/jobs/removed", nil)
 	w := httptest.NewRecorder()
@@ -248,7 +249,7 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 		},
 	}
 
-	srv := webpkg.NewServer("", sched, cfg)
+	srv := webpkg.NewServer("", sched, cfg, nil)
 
 	req := httptest.NewRequest("GET", "/api/jobs/disabled", nil)
 	w := httptest.NewRecorder()
@@ -272,5 +273,37 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 	}
 	if m["job-ini"] != "ini" || m["job-label"] != "label" {
 		t.Fatalf("unexpected origins %v", m)
+	}
+}
+
+func TestCreateJobTypes(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+	srv := webpkg.NewServer("", sched, nil, nil)
+	srvVal := reflect.ValueOf(srv).Elem()
+	httpSrv := reflect.NewAt(srvVal.FieldByName("srv").Type(), unsafe.Pointer(srvVal.FieldByName("srv").UnsafeAddr())).Elem().Interface().(*http.Server)
+
+	cases := []struct {
+		name  string
+		body  string
+		check func(core.Job) bool
+	}{
+		{"run1", `{"name":"run1","type":"run","schedule":"@hourly","image":"busybox"}`, func(j core.Job) bool { _, ok := j.(*core.RunJob); return ok }},
+		{"exec1", `{"name":"exec1","type":"exec","schedule":"@hourly","container":"c1"}`, func(j core.Job) bool { _, ok := j.(*core.ExecJob); return ok }},
+		{"comp1", `{"name":"comp1","type":"compose","schedule":"@hourly","service":"db"}`, func(j core.Job) bool { _, ok := j.(*core.ComposeJob); return ok }},
+	}
+
+	for _, c := range cases {
+		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(c.body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("%s: unexpected status %d", c.name, w.Code)
+		}
+		j := sched.GetJob(c.name)
+		if j == nil || !c.check(j) {
+			t.Fatalf("%s: wrong job type %T", c.name, j)
+		}
+		_ = sched.RemoveJob(j)
 	}
 }
