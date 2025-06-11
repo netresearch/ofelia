@@ -22,6 +22,9 @@ different maps today (`ExecJobs` vs `LabelExecJobs`, `RunJobs` vs
   disappears while INI jobs stay persistent.
 * `Config.BuildFromFile` and `buildFromDockerLabels` would populate these maps
   in the same way; the only difference is the value of `JobSource`.
+* When merging label-based jobs during startup, INI-defined jobs take
+  precedence. If a label reuses an existing job name, the label job is skipped
+  and a warning is logged.
 
 This approach removes a large portion of repeated code and simplifies the update
 path in `iniConfigUpdate` and `dockerLabelsUpdate`.
