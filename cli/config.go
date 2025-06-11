@@ -25,6 +25,14 @@ const (
 	jobCompose    = "job-compose"
 )
 
+// JobSource indicates where a job configuration originated from.
+type JobSource string
+
+const (
+	JobSourceINI   JobSource = "ini"
+	JobSourceLabel JobSource = "label"
+)
+
 // Config contains the configuration
 type Config struct {
 	Global struct {
@@ -38,10 +46,8 @@ type Config struct {
 		PprofAddr               string        `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
 		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`
 	}
-	ExecJobs      map[string]*ExecJobConfig `gcfg:"job-exec" mapstructure:"job-exec,squash"`
-	LabelExecJobs map[string]*ExecJobConfig
-	RunJobs       map[string]*RunJobConfig `gcfg:"job-run" mapstructure:"job-run,squash"`
-	LabelRunJobs  map[string]*RunJobConfig
+	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
+	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
 	ServiceJobs   map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
 	LocalJobs     map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
 	ComposeJobs   map[string]*ComposeJobConfig `gcfg:"job-compose" mapstructure:"job-compose,squash"`
@@ -56,14 +62,12 @@ type Config struct {
 
 func NewConfig(logger core.Logger) *Config {
 	c := &Config{
-		ExecJobs:      make(map[string]*ExecJobConfig),
-		LabelExecJobs: make(map[string]*ExecJobConfig),
-		RunJobs:       make(map[string]*RunJobConfig),
-		LabelRunJobs:  make(map[string]*RunJobConfig),
-		ServiceJobs:   make(map[string]*RunServiceConfig),
-		LocalJobs:     make(map[string]*LocalJobConfig),
-		ComposeJobs:   make(map[string]*ComposeJobConfig),
-		logger:        logger,
+		ExecJobs:    make(map[string]*ExecJobConfig),
+		RunJobs:     make(map[string]*RunJobConfig),
+		ServiceJobs: make(map[string]*RunServiceConfig),
+		LocalJobs:   make(map[string]*LocalJobConfig),
+		ComposeJobs: make(map[string]*ComposeJobConfig),
+		logger:      logger,
 	}
 
 	defaults.Set(c)
@@ -152,11 +156,11 @@ func (c *Config) InitializeApp() error {
 
 		parsedLabelConfig.buildFromDockerLabels(dockerLabels)
 		for name, j := range parsedLabelConfig.ExecJobs {
-			c.LabelExecJobs[name] = j
+			c.ExecJobs[name] = j
 		}
 
 		for name, j := range parsedLabelConfig.RunJobs {
-			c.LabelRunJobs[name] = j
+			c.RunJobs[name] = j
 		}
 
 		for name, j := range parsedLabelConfig.LocalJobs {
@@ -176,26 +180,7 @@ func (c *Config) InitializeApp() error {
 		c.sh.AddJob(j)
 	}
 
-	for name, j := range c.LabelExecJobs {
-		defaults.Set(j)
-		j.Client = c.dockerHandler.GetInternalDockerClient()
-		j.Name = name
-		j.buildMiddlewares()
-		c.sh.AddJob(j)
-	}
-
 	for name, j := range c.RunJobs {
-		defaults.Set(j)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
-		j.Client = c.dockerHandler.GetInternalDockerClient()
-		j.Name = name
-		j.buildMiddlewares()
-		c.sh.AddJob(j)
-	}
-
-	for name, j := range c.LabelRunJobs {
 		defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
@@ -246,13 +231,18 @@ type jobConfig interface {
 	core.Job
 	buildMiddlewares()
 	Hash() (string, error)
+	GetJobSource() JobSource
+	SetJobSource(JobSource)
 }
 
 // syncJobMap updates the scheduler and the provided job map based on the parsed
 // configuration. The prep function is called on each job before comparison or
 // registration to set fields such as Name or Client and apply defaults.
-func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]J, prep func(string, J)) {
+func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]J, prep func(string, J), source JobSource) {
 	for name, j := range current {
+		if source != "" && j.GetJobSource() != source {
+			continue
+		}
 		newJob, ok := parsed[name]
 		if !ok {
 			c.sh.RemoveJob(j)
@@ -260,6 +250,7 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 			continue
 		}
 		prep(name, newJob)
+		newJob.SetJobSource(source)
 		newHash, err1 := newJob.Hash()
 		if err1 != nil {
 			c.logger.Errorf("hash calculation failed: %v", err1)
@@ -282,6 +273,9 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 		if _, ok := current[name]; ok {
 			continue
 		}
+		if source != "" {
+			j.SetJobSource(source)
+		}
 		prep(name, j)
 		j.buildMiddlewares()
 		c.sh.AddJob(j)
@@ -300,7 +294,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.LabelExecJobs, parsedLabelConfig.ExecJobs, execPrep)
+	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep, JobSourceLabel)
 
 	runPrep := func(name string, j *RunJobConfig) {
 		defaults.Set(j)
@@ -310,13 +304,13 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.LabelRunJobs, parsedLabelConfig.RunJobs, runPrep)
+	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel)
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		defaults.Set(j)
 		j.Name = name
 	}
-	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep)
+	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel)
 }
 
 func (c *Config) iniConfigUpdate() error {
@@ -363,7 +357,7 @@ func (c *Config) iniConfigUpdate() error {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep)
+	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep, JobSourceINI)
 
 	runPrep := func(name string, j *RunJobConfig) {
 		defaults.Set(j)
@@ -373,13 +367,13 @@ func (c *Config) iniConfigUpdate() error {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep)
+	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI)
 
 	localPrep := func(name string, j *LocalJobConfig) {
 		defaults.Set(j)
 		j.Name = name
 	}
-	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, localPrep)
+	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, localPrep, JobSourceINI)
 
 	svcPrep := func(name string, j *RunServiceConfig) {
 		defaults.Set(j)
@@ -389,13 +383,13 @@ func (c *Config) iniConfigUpdate() error {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep)
+	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep, JobSourceINI)
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		defaults.Set(j)
 		j.Name = name
 	}
-	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep)
+	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep, JobSourceINI)
 
 	return nil
 }
@@ -407,6 +401,7 @@ type ExecJobConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
 func (c *ExecJobConfig) buildMiddlewares() {
@@ -416,6 +411,9 @@ func (c *ExecJobConfig) buildMiddlewares() {
 	c.ExecJob.Use(middlewares.NewMail(&c.MailConfig))
 }
 
+func (c *ExecJobConfig) GetJobSource() JobSource  { return c.JobSource }
+func (c *ExecJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
+
 // RunServiceConfig contains all configuration params needed to build a RunJob
 type RunServiceConfig struct {
 	core.RunServiceJob        `mapstructure:",squash"`
@@ -423,7 +421,11 @@ type RunServiceConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
+
+func (c *RunServiceConfig) GetJobSource() JobSource  { return c.JobSource }
+func (c *RunServiceConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
 type RunJobConfig struct {
 	core.RunJob               `mapstructure:",squash"`
@@ -431,6 +433,7 @@ type RunJobConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
 func (c *RunJobConfig) buildMiddlewares() {
@@ -440,6 +443,9 @@ func (c *RunJobConfig) buildMiddlewares() {
 	c.RunJob.Use(middlewares.NewMail(&c.MailConfig))
 }
 
+func (c *RunJobConfig) GetJobSource() JobSource  { return c.JobSource }
+func (c *RunJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
+
 // LocalJobConfig contains all configuration params needed to build a RunJob
 type LocalJobConfig struct {
 	core.LocalJob             `mapstructure:",squash"`
@@ -447,7 +453,11 @@ type LocalJobConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
+
+func (c *LocalJobConfig) GetJobSource() JobSource  { return c.JobSource }
+func (c *LocalJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
 type ComposeJobConfig struct {
 	core.ComposeJob           `mapstructure:",squash"`
@@ -455,7 +465,11 @@ type ComposeJobConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
+
+func (c *ComposeJobConfig) GetJobSource() JobSource  { return c.JobSource }
+func (c *ComposeJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
 func (c *LocalJobConfig) buildMiddlewares() {
 	c.LocalJob.Use(middlewares.NewOverlap(&c.OverlapConfig))
@@ -502,35 +516,35 @@ func parseIni(cfg *ini.File, c *Config) error {
 		switch {
 		case strings.HasPrefix(name, jobExec):
 			jobName := parseJobName(name, jobExec)
-			job := &ExecJobConfig{}
+			job := &ExecJobConfig{JobSource: JobSourceINI}
 			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
 				return err
 			}
 			c.ExecJobs[jobName] = job
 		case strings.HasPrefix(name, jobRun):
 			jobName := parseJobName(name, jobRun)
-			job := &RunJobConfig{}
+			job := &RunJobConfig{JobSource: JobSourceINI}
 			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
 				return err
 			}
 			c.RunJobs[jobName] = job
 		case strings.HasPrefix(name, jobServiceRun):
 			jobName := parseJobName(name, jobServiceRun)
-			job := &RunServiceConfig{}
+			job := &RunServiceConfig{JobSource: JobSourceINI}
 			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
 				return err
 			}
 			c.ServiceJobs[jobName] = job
 		case strings.HasPrefix(name, jobLocal):
 			jobName := parseJobName(name, jobLocal)
-			job := &LocalJobConfig{}
+			job := &LocalJobConfig{JobSource: JobSourceINI}
 			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
 				return err
 			}
 			c.LocalJobs[jobName] = job
 		case strings.HasPrefix(name, jobCompose):
 			jobName := parseJobName(name, jobCompose)
-			job := &ComposeJobConfig{}
+			job := &ComposeJobConfig{JobSource: JobSourceINI}
 			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
 				return err
 			}

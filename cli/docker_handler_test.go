@@ -183,7 +183,6 @@ func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniRunJobs(c *C) {
 	cfg.dockerLabelsUpdate(map[string]map[string]string{})
 
 	c.Assert(len(cfg.RunJobs), Equals, 1)
-	c.Assert(len(cfg.LabelRunJobs), Equals, 0)
 	c.Assert(len(cfg.sh.Entries()), Equals, 1)
 }
 
@@ -209,6 +208,5 @@ func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniExecJobs(c *C) {
 	cfg.dockerLabelsUpdate(map[string]map[string]string{})
 
 	c.Assert(len(cfg.ExecJobs), Equals, 1)
-	c.Assert(len(cfg.LabelExecJobs), Equals, 0)
 	c.Assert(len(cfg.sh.Entries()), Equals, 1)
 }
