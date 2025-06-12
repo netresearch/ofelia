@@ -25,6 +25,7 @@ different maps today (`ExecJobs` vs `LabelExecJobs`, `RunJobs` vs
 * When merging label-based jobs during startup, INI-defined jobs take
   precedence. If a label reuses an existing job name, the label job is skipped
   and a warning is logged.
+  This applies to all job types including `compose` jobs.
 
 This approach removes a large portion of repeated code and simplifies the update
 path in `iniConfigUpdate` and `dockerLabelsUpdate`.
