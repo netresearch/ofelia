@@ -20,11 +20,14 @@ different maps today (`ExecJobs` vs `LabelExecJobs`, `RunJobs` vs
 * Extend the existing update logic (`syncJobMap`) to respect the `JobSource`
   flag so jobs originating from labels can be removed when the container
   disappears while INI jobs stay persistent.
+  This cleanup now also covers `local` and `service-run` jobs so stale
+  entries are removed when their containers vanish.
 * `Config.BuildFromFile` and `buildFromDockerLabels` would populate these maps
   in the same way; the only difference is the value of `JobSource`.
 * When merging label-based jobs during startup, INI-defined jobs take
   precedence. If a label reuses an existing job name, the label job is skipped
-  and a warning is logged.
+  and a warning is logged. Runtime reloads use the same precedence: an updated
+  INI job replaces any label job with the same name.
   This applies to all job types including `compose` jobs.
 
 This approach removes a large portion of repeated code and simplifies the update

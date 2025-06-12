@@ -104,6 +104,35 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 	c.Assert(len(entries), Equals, 0)
 }
 
+// Test dockerLabelsUpdate removes local and service jobs when containers disappear.
+func (s *SuiteConfig) TestDockerLabelsUpdateStaleJobs(c *C) {
+	cfg := NewConfig(&TestLogger{})
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+	cfg.LocalJobs = make(map[string]*LocalJobConfig)
+	cfg.ServiceJobs = make(map[string]*RunServiceConfig)
+
+	labels := map[string]map[string]string{
+		"cont1": {
+			requiredLabel:                               "true",
+			serviceLabel:                                "true",
+			labelPrefix + ".job-local.l.schedule":       "@daily",
+			labelPrefix + ".job-local.l.command":        "echo loc",
+			labelPrefix + ".job-service-run.s.schedule": "@hourly",
+			labelPrefix + ".job-service-run.s.command":  "echo svc",
+		},
+	}
+	cfg.dockerLabelsUpdate(labels)
+	c.Assert(cfg.LocalJobs, HasLen, 1)
+	c.Assert(cfg.ServiceJobs, HasLen, 1)
+
+	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+	c.Assert(cfg.LocalJobs, HasLen, 0)
+	c.Assert(cfg.ServiceJobs, HasLen, 0)
+}
+
 // Test iniConfigUpdate reloads jobs from the INI file
 func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
@@ -192,6 +221,46 @@ func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(cfg.configModTime, Equals, oldTime)
 	c.Assert(len(cfg.RunJobs), Equals, 1)
+}
+
+// TestIniConfigUpdateLabelConflict verifies INI jobs override label jobs on reload.
+func (s *SuiteConfig) TestIniConfigUpdateLabelConflict(c *C) {
+	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	c.Assert(err, IsNil)
+	defer os.Remove(tmp.Name())
+
+	_, err = tmp.WriteString("")
+	c.Assert(err, IsNil)
+	tmp.Close()
+
+	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	c.Assert(err, IsNil)
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+
+	cfg.RunJobs["foo"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo lbl"}}, JobSource: JobSourceLabel}
+	for name, j := range cfg.RunJobs {
+		defaults.Set(j)
+		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Name = name
+		j.buildMiddlewares()
+		cfg.sh.AddJob(j)
+	}
+
+	oldTime := cfg.configModTime
+	iniStr := "[job-run \"foo\"]\nschedule = @daily\nimage = busybox\ncommand = echo ini\n"
+	err = os.WriteFile(tmp.Name(), []byte(iniStr), 0o644)
+	c.Assert(err, IsNil)
+	c.Assert(waitForModTimeChange(tmp.Name(), oldTime), IsNil)
+
+	err = cfg.iniConfigUpdate()
+	c.Assert(err, IsNil)
+	j, ok := cfg.RunJobs["foo"]
+	c.Assert(ok, Equals, true)
+	c.Assert(j.JobSource, Equals, JobSourceINI)
+	c.Assert(j.Command, Equals, "echo ini")
 }
 
 // Test iniConfigUpdate reloads when any of the glob matched files change

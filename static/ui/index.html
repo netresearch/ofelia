@@ -49,7 +49,7 @@
 
   <h2>Create/Update Job</h2>
   <form id="jobForm">
-    <label>Name <input id="jobName" required></label>
+    <label>Name <input id="jobName" required placeholder="unique name"></label>
     <label>Type
       <select id="jobType">
         <option value="local">local</option>
@@ -58,12 +58,12 @@
         <option value="compose">compose</option>
       </select>
     </label>
-    <label>Schedule <input id="jobSchedule" required></label>
-    <label>Command <input id="jobCommand"></label>
-    <label>Image <input id="jobImage"></label>
-    <label>Container <input id="jobContainer"></label>
-    <label>Compose File <input id="jobFile"></label>
-    <label>Service <input id="jobService"></label>
+    <label>Schedule <input id="jobSchedule" required placeholder="cron expression"></label>
+    <label>Command <input id="jobCommand" placeholder="command or arguments"></label>
+    <label>Image <input id="jobImage" placeholder="docker image"></label>
+    <label>Container <input id="jobContainer" placeholder="target container"></label>
+    <label>Compose File <input id="jobFile" placeholder="compose file path"></label>
+    <label>Service <input id="jobService" placeholder="swarm service"></label>
     <label>Exec <input type="checkbox" id="jobExec"></label>
     <button type="submit">💾</button>
   </form>
