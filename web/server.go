@@ -333,6 +333,9 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 	switch req.Type {
 	case "run":
+		if s.client == nil {
+			return nil, fmt.Errorf("docker client unavailable for run job")
+		}
 		j := &core.RunJob{Client: s.client}
 		j.Name = req.Name
 		j.Schedule = req.Schedule
@@ -341,6 +344,9 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 		j.Container = req.Container
 		return j, nil
 	case "exec":
+		if s.client == nil {
+			return nil, fmt.Errorf("docker client unavailable for exec job")
+		}
 		j := &core.ExecJob{Client: s.client}
 		j.Name = req.Name
 		j.Schedule = req.Schedule

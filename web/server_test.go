@@ -285,13 +285,14 @@ func TestCreateJobTypes(t *testing.T) {
 	httpSrv := getHTTPServer(srv)
 
 	cases := []struct {
-		name  string
-		body  string
-		check func(core.Job) bool
+		name   string
+		body   string
+		status int
+		check  func(core.Job) bool
 	}{
-		{"run1", `{"name":"run1","type":"run","schedule":"@hourly","image":"busybox"}`, func(j core.Job) bool { _, ok := j.(*core.RunJob); return ok }},
-		{"exec1", `{"name":"exec1","type":"exec","schedule":"@hourly","container":"c1"}`, func(j core.Job) bool { _, ok := j.(*core.ExecJob); return ok }},
-		{"comp1", `{"name":"comp1","type":"compose","schedule":"@hourly","service":"db"}`, func(j core.Job) bool { _, ok := j.(*core.ComposeJob); return ok }},
+		{"run1", `{"name":"run1","type":"run","schedule":"@hourly","image":"busybox"}`, http.StatusBadRequest, func(j core.Job) bool { return j == nil }},
+		{"exec1", `{"name":"exec1","type":"exec","schedule":"@hourly","container":"c1"}`, http.StatusBadRequest, func(j core.Job) bool { return j == nil }},
+		{"comp1", `{"name":"comp1","type":"compose","schedule":"@hourly","service":"db"}`, http.StatusCreated, func(j core.Job) bool { _, ok := j.(*core.ComposeJob); return ok }},
 	}
 
 	for _, c := range cases {
@@ -299,13 +300,15 @@ func TestCreateJobTypes(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
-		if w.Code != http.StatusCreated {
+		if w.Code != c.status {
 			t.Fatalf("%s: unexpected status %d", c.name, w.Code)
 		}
 		j := sched.GetJob(c.name)
-		if j == nil || !c.check(j) {
-			t.Fatalf("%s: wrong job type %T", c.name, j)
+		if !c.check(j) {
+			t.Fatalf("%s: job check failed: %T", c.name, j)
 		}
-		_ = sched.RemoveJob(j)
+		if j != nil {
+			_ = sched.RemoveJob(j)
+		}
 	}
 }
