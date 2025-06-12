@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
+	dockerclient "github.com/fsouza/go-dockerclient"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/static"
 )
@@ -21,10 +21,16 @@ type Server struct {
 	config    interface{}
 	srv       *http.Server
 	origins   map[string]string
-	client    *docker.Client
+	client    *dockerclient.Client
 }
 
-func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *docker.Client) *Server {
+// HTTPServer returns the underlying http.Server used by the web interface. It
+// is exposed for tests and may change if the Server struct evolves.
+func (s *Server) HTTPServer() *http.Server {
+	return s.srv
+}
+
+func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockerclient.Client) *Server {
 	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), client: client}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
@@ -241,7 +247,7 @@ type jobRequest struct {
 	Container string `json:"container,omitempty"`
 	File      string `json:"file,omitempty"`
 	Service   string `json:"service,omitempty"`
-	Exec      bool   `json:"exec,omitempty"`
+	ExecFlag  bool   `json:"exec,omitempty"`
 }
 
 func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
@@ -360,7 +366,7 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 		j.Command = req.Command
 		j.File = req.File
 		j.Service = req.Service
-		j.Exec = req.Exec
+		j.Exec = req.ExecFlag
 		return j, nil
 	case "", "local":
 		j := &core.LocalJob{}

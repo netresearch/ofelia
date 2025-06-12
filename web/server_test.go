@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/netresearch/ofelia/cli"
 	"github.com/netresearch/ofelia/core"
@@ -48,14 +46,6 @@ type apiJob struct {
 	Config   json.RawMessage `json:"config"`
 }
 
-// getHTTPServer retrieves the http.Server stored inside web.Server.
-// The field is unexported, so tests use reflection and unsafe pointers.
-// This may need updates if the Server struct changes in the future.
-func getHTTPServer(s *webpkg.Server) *http.Server {
-	srvVal := reflect.ValueOf(s).Elem()
-	return reflect.NewAt(srvVal.FieldByName("srv").Type(), unsafe.Pointer(srvVal.FieldByName("srv").UnsafeAddr())).Elem().Interface().(*http.Server)
-}
-
 func TestHistoryEndpoint(t *testing.T) {
 	job := &testJob{}
 	job.Name = "job1"
@@ -72,7 +62,7 @@ func TestHistoryEndpoint(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/jobs/job1/history", nil)
 	w := httptest.NewRecorder()
-	httpSrv := getHTTPServer(srv)
+	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("unexpected status %d", w.Code)
@@ -105,7 +95,7 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/jobs", nil)
 	w := httptest.NewRecorder()
-	httpSrv := getHTTPServer(srv)
+	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("unexpected status %d", w.Code)
@@ -149,7 +139,7 @@ func TestJobsHandlerOrigin(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/jobs", nil)
 	w := httptest.NewRecorder()
-	httpSrv := getHTTPServer(srv)
+	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("unexpected status %d", w.Code)
@@ -204,7 +194,7 @@ func TestRemovedJobsHandlerOrigin(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/jobs/removed", nil)
 	w := httptest.NewRecorder()
-	httpSrv := getHTTPServer(srv)
+	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("unexpected status %d", w.Code)
@@ -257,7 +247,7 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/jobs/disabled", nil)
 	w := httptest.NewRecorder()
-	httpSrv := getHTTPServer(srv)
+	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
 	if w.Code != 200 {
 		t.Fatalf("unexpected status %d", w.Code)
@@ -282,7 +272,7 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 func TestCreateJobTypes(t *testing.T) {
 	sched := core.NewScheduler(&stubLogger{})
 	srv := webpkg.NewServer("", sched, nil, nil)
-	httpSrv := getHTTPServer(srv)
+	httpSrv := srv.HTTPServer()
 
 	cases := []struct {
 		name   string
@@ -293,6 +283,7 @@ func TestCreateJobTypes(t *testing.T) {
 		{"run1", `{"name":"run1","type":"run","schedule":"@hourly","image":"busybox"}`, http.StatusBadRequest, func(j core.Job) bool { return j == nil }},
 		{"exec1", `{"name":"exec1","type":"exec","schedule":"@hourly","container":"c1"}`, http.StatusBadRequest, func(j core.Job) bool { return j == nil }},
 		{"comp1", `{"name":"comp1","type":"compose","schedule":"@hourly","service":"db"}`, http.StatusCreated, func(j core.Job) bool { _, ok := j.(*core.ComposeJob); return ok }},
+		{"local1", `{"name":"local1","type":"local","schedule":"@hourly"}`, http.StatusCreated, func(j core.Job) bool { _, ok := j.(*core.LocalJob); return ok }},
 	}
 
 	for _, c := range cases {
