@@ -90,10 +90,12 @@ server for profiling. Use `--pprof-address` to set the listening address
 When `--enable-web` is specified, the daemon serves a small web UI at
 `--web-address` (default `:8081`). Besides inspecting running and removed jobs,
 the UI allows starting jobs manually, disabling or enabling them and creating,
-updating or deleting local jobs. A second table lists jobs removed from the
-configuration via `/api/jobs/removed`. The endpoint `/api/jobs/{name}/history`
+updating or deleting jobs of all types. A second table lists jobs removed from
+the configuration via `/api/jobs/removed`. The endpoint `/api/jobs/{name}/history`
 exposes past runs including stdout, stderr and any error messages while
 `/api/config` returns the active configuration as JSON.
+Creating `run` or `exec` jobs requires Ofelia to run with Docker access; the
+server rejects such requests if no Docker client is available.
 
 ### Environment variables
 

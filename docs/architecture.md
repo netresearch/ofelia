@@ -44,4 +44,6 @@ Jobs can also be created, updated or deleted via `/api/jobs/create`,
 `/api/jobs/update` and `/api/jobs/delete`. The request body accepts the job
 `name`, `type` (`local`, `run`, `exec` or `compose`), `schedule`, `command` and
 any additional options such as `image`, `container`, `file` or `service`.
+`run` and `exec` jobs require the server to be started with a Docker client.
+Attempts to create them without a Docker client will return an error.
 
