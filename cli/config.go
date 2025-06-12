@@ -186,6 +186,14 @@ func (c *Config) InitializeApp() error {
 			}
 			c.ServiceJobs[name] = j
 		}
+
+		for name, j := range parsedLabelConfig.ComposeJobs {
+			if existing, ok := c.ComposeJobs[name]; ok && existing.JobSource == JobSourceINI {
+				c.logger.Warningf("ignoring label-defined compose job %q because an INI job with the same name exists", name)
+				continue
+			}
+			c.ComposeJobs[name] = j
+		}
 	}
 
 	for name, j := range c.ExecJobs {

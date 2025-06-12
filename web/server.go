@@ -125,6 +125,8 @@ func jobType(j core.Job) string {
 		return "local"
 	case *core.RunServiceJob:
 		return "service"
+	case *core.ComposeJob:
+		return "compose"
 	default:
 		t := reflect.TypeOf(j)
 		if t.Kind() == reflect.Ptr {
