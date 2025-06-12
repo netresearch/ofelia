@@ -170,7 +170,7 @@ func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniRunJobs(c *C) {
 	cfg.sh = core.NewScheduler(&TestLogger{})
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
-	cfg.RunJobs["ini-job"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}}
+	cfg.RunJobs["ini-job"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}
 
 	for name, j := range cfg.RunJobs {
 		defaults.Set(j)
@@ -195,7 +195,7 @@ func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniExecJobs(c *C) {
 	cfg.sh = core.NewScheduler(&TestLogger{})
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
-	cfg.ExecJobs["ini-exec"] = &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}}
+	cfg.ExecJobs["ini-exec"] = &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}
 
 	for name, j := range cfg.ExecJobs {
 		defaults.Set(j)

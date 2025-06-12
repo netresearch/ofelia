@@ -262,9 +262,9 @@ type jobConfig interface {
 // syncJobMap updates the scheduler and the provided job map based on the parsed
 // configuration. The prep function is called on each job before comparison or
 // registration to set fields such as Name or Client and apply defaults.
-func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]J, prep func(string, J), source JobSource) {
+func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]J, prep func(string, J), source JobSource, t string) {
 	for name, j := range current {
-		if source != "" && j.GetJobSource() != source {
+		if source != "" && j.GetJobSource() != source && j.GetJobSource() != "" {
 			continue
 		}
 		newJob, ok := parsed[name]
@@ -294,8 +294,20 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 	}
 
 	for name, j := range parsed {
-		if _, ok := current[name]; ok {
-			continue
+		if cur, ok := current[name]; ok {
+			if cur.GetJobSource() != source {
+				if source == JobSourceINI && cur.GetJobSource() == JobSourceLabel {
+					c.logger.Warningf("overriding label-defined %s job %q with INI job", t, name)
+					c.sh.RemoveJob(cur)
+				} else if source == JobSourceLabel && cur.GetJobSource() == JobSourceINI {
+					c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", t, name)
+					continue
+				} else {
+					continue
+				}
+			} else {
+				continue
+			}
 		}
 		if source != "" {
 			j.SetJobSource(source)
@@ -318,7 +330,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep, JobSourceLabel)
+	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep, JobSourceLabel, "exec")
 
 	runPrep := func(name string, j *RunJobConfig) {
 		defaults.Set(j)
@@ -328,13 +340,29 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel)
+	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel, "run")
+
+	localPrep := func(name string, j *LocalJobConfig) {
+		defaults.Set(j)
+		j.Name = name
+	}
+	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
+
+	servicePrep := func(name string, j *RunServiceConfig) {
+		defaults.Set(j)
+		if j.MaxRuntime == 0 {
+			j.MaxRuntime = c.Global.MaxRuntime
+		}
+		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Name = name
+	}
+	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, servicePrep, JobSourceLabel, "service")
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		defaults.Set(j)
 		j.Name = name
 	}
-	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel)
+	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
 }
 
 func (c *Config) iniConfigUpdate() error {
@@ -381,7 +409,7 @@ func (c *Config) iniConfigUpdate() error {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep, JobSourceINI)
+	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep, JobSourceINI, "exec")
 
 	runPrep := func(name string, j *RunJobConfig) {
 		defaults.Set(j)
@@ -391,13 +419,13 @@ func (c *Config) iniConfigUpdate() error {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI)
+	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI, "run")
 
 	localPrep := func(name string, j *LocalJobConfig) {
 		defaults.Set(j)
 		j.Name = name
 	}
-	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, localPrep, JobSourceINI)
+	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, localPrep, JobSourceINI, "local")
 
 	svcPrep := func(name string, j *RunServiceConfig) {
 		defaults.Set(j)
@@ -407,13 +435,13 @@ func (c *Config) iniConfigUpdate() error {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep, JobSourceINI)
+	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep, JobSourceINI, "service")
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		defaults.Set(j)
 		j.Name = name
 	}
-	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep, JobSourceINI)
+	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep, JobSourceINI, "compose")
 
 	return nil
 }
