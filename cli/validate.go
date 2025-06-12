@@ -52,4 +52,7 @@ func applyConfigDefaults(conf *Config) {
 	for _, j := range conf.ServiceJobs {
 		defaults.Set(j)
 	}
+	for _, j := range conf.ComposeJobs {
+		defaults.Set(j)
+	}
 }

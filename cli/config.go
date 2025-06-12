@@ -262,7 +262,7 @@ type jobConfig interface {
 // syncJobMap updates the scheduler and the provided job map based on the parsed
 // configuration. The prep function is called on each job before comparison or
 // registration to set fields such as Name or Client and apply defaults.
-func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]J, prep func(string, J), source JobSource, t string) {
+func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]J, prep func(string, J), source JobSource, jobKind string) {
 	for name, j := range current {
 		if source != "" && j.GetJobSource() != source && j.GetJobSource() != "" {
 			continue
@@ -297,10 +297,10 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 		if cur, ok := current[name]; ok {
 			if cur.GetJobSource() != source {
 				if source == JobSourceINI && cur.GetJobSource() == JobSourceLabel {
-					c.logger.Warningf("overriding label-defined %s job %q with INI job", t, name)
+					c.logger.Warningf("overriding label-defined %s job %q with INI job", jobKind, name)
 					c.sh.RemoveJob(cur)
 				} else if source == JobSourceLabel && cur.GetJobSource() == JobSourceINI {
-					c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", t, name)
+					c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name)
 					continue
 				} else {
 					continue
