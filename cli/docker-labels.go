@@ -131,6 +131,9 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 }
 
 // markJobSource assigns the provided source to all jobs in the map.
+//
+// The generic type J must implement SetJobSource(JobSource) so the function can
+// uniformly tag any job configuration with its origin.
 func markJobSource[J interface{ SetJobSource(JobSource) }](m map[string]J, src JobSource) {
 	for _, j := range m {
 		j.SetJobSource(src)
