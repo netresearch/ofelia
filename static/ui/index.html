@@ -260,7 +260,9 @@
       const j = jobsData[name];
       if (!j) return;
       document.getElementById('jobName').value = j.name;
-      document.getElementById('jobType').value = j.type;
+      const typeSel = document.getElementById('jobType');
+      const opts = Array.from(typeSel.options).map(o => o.value);
+      typeSel.value = opts.includes(j.type) ? j.type : 'local';
       document.getElementById('jobSchedule').value = j.schedule;
       document.getElementById('jobCommand').value = j.command;
       document.getElementById('jobImage').value = j.config.image || '';

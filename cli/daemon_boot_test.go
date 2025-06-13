@@ -140,3 +140,17 @@ func (s *DaemonBootSuite) TestBootLogsMissingConfigIncludesFilename(c *C) {
 	}
 	c.Assert(warnMsg, Equals, true)
 }
+
+func (s *DaemonBootSuite) TestBootWebWithoutDocker(c *C) {
+	_, logger := newMemoryLogger(logrus.InfoLevel)
+	cmd := &DaemonCommand{Logger: logger, EnableWeb: true}
+
+	orig := newDockerHandler
+	defer func() { newDockerHandler = orig }()
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+		return nil, errors.New("docker unavailable")
+	}
+
+	_ = cmd.boot()
+	c.Assert(cmd.webServer, NotNil)
+}
