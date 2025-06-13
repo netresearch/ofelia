@@ -63,7 +63,6 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 	cfg.sh = core.NewScheduler(&TestLogger{})
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 	cfg.ExecJobs = make(map[string]*ExecJobConfig)
-	cfg.LabelExecJobs = make(map[string]*ExecJobConfig)
 
 	// 1) Addition of new job
 	labelsAdd := map[string]map[string]string{
@@ -73,8 +72,9 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 		},
 	}
 	cfg.dockerLabelsUpdate(labelsAdd)
-	c.Assert(len(cfg.LabelExecJobs), Equals, 1)
-	j := cfg.LabelExecJobs["container1.foo"]
+	c.Assert(len(cfg.ExecJobs), Equals, 1)
+	j := cfg.ExecJobs["container1.foo"]
+	c.Assert(j.JobSource, Equals, JobSourceLabel)
 	// Verify schedule and command set
 	c.Assert(j.GetSchedule(), Equals, "@every 5s")
 	c.Assert(j.GetCommand(), Equals, "echo foo")
@@ -91,17 +91,46 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 		},
 	}
 	cfg.dockerLabelsUpdate(labelsChange)
-	c.Assert(len(cfg.LabelExecJobs), Equals, 1)
-	j2 := cfg.LabelExecJobs["container1.foo"]
+	c.Assert(len(cfg.ExecJobs), Equals, 1)
+	j2 := cfg.ExecJobs["container1.foo"]
 	c.Assert(j2.GetSchedule(), Equals, "@every 10s")
 	entries = cfg.sh.Entries()
 	c.Assert(len(entries), Equals, 1)
 
 	// 3) Removal of job
 	cfg.dockerLabelsUpdate(map[string]map[string]string{})
-	c.Assert(len(cfg.LabelExecJobs), Equals, 0)
+	c.Assert(len(cfg.ExecJobs), Equals, 0)
 	entries = cfg.sh.Entries()
 	c.Assert(len(entries), Equals, 0)
+}
+
+// Test dockerLabelsUpdate removes local and service jobs when containers disappear.
+func (s *SuiteConfig) TestDockerLabelsUpdateStaleJobs(c *C) {
+	cfg := NewConfig(&TestLogger{})
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+	cfg.LocalJobs = make(map[string]*LocalJobConfig)
+	cfg.ServiceJobs = make(map[string]*RunServiceConfig)
+
+	labels := map[string]map[string]string{
+		"cont1": {
+			requiredLabel:                               "true",
+			serviceLabel:                                "true",
+			labelPrefix + ".job-local.l.schedule":       "@daily",
+			labelPrefix + ".job-local.l.command":        "echo loc",
+			labelPrefix + ".job-service-run.s.schedule": "@hourly",
+			labelPrefix + ".job-service-run.s.command":  "echo svc",
+		},
+	}
+	cfg.dockerLabelsUpdate(labels)
+	c.Assert(cfg.LocalJobs, HasLen, 1)
+	c.Assert(cfg.ServiceJobs, HasLen, 1)
+
+	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+	c.Assert(cfg.LocalJobs, HasLen, 0)
+	c.Assert(cfg.ServiceJobs, HasLen, 0)
 }
 
 // Test iniConfigUpdate reloads jobs from the INI file
@@ -192,6 +221,46 @@ func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(cfg.configModTime, Equals, oldTime)
 	c.Assert(len(cfg.RunJobs), Equals, 1)
+}
+
+// TestIniConfigUpdateLabelConflict verifies INI jobs override label jobs on reload.
+func (s *SuiteConfig) TestIniConfigUpdateLabelConflict(c *C) {
+	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	c.Assert(err, IsNil)
+	defer os.Remove(tmp.Name())
+
+	_, err = tmp.WriteString("")
+	c.Assert(err, IsNil)
+	tmp.Close()
+
+	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	c.Assert(err, IsNil)
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+
+	cfg.RunJobs["foo"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo lbl"}}, JobSource: JobSourceLabel}
+	for name, j := range cfg.RunJobs {
+		defaults.Set(j)
+		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Name = name
+		j.buildMiddlewares()
+		cfg.sh.AddJob(j)
+	}
+
+	oldTime := cfg.configModTime
+	iniStr := "[job-run \"foo\"]\nschedule = @daily\nimage = busybox\ncommand = echo ini\n"
+	err = os.WriteFile(tmp.Name(), []byte(iniStr), 0o644)
+	c.Assert(err, IsNil)
+	c.Assert(waitForModTimeChange(tmp.Name(), oldTime), IsNil)
+
+	err = cfg.iniConfigUpdate()
+	c.Assert(err, IsNil)
+	j, ok := cfg.RunJobs["foo"]
+	c.Assert(ok, Equals, true)
+	c.Assert(j.JobSource, Equals, JobSourceINI)
+	c.Assert(j.Command, Equals, "echo ini")
 }
 
 // Test iniConfigUpdate reloads when any of the glob matched files change

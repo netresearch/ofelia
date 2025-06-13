@@ -96,33 +96,48 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 		if err := mapstructure.WeakDecode(execJobs, &c.ExecJobs); err != nil {
 			return err
 		}
+		markJobSource(c.ExecJobs, JobSourceLabel)
 	}
 
 	if len(localJobs) > 0 {
 		if err := mapstructure.WeakDecode(localJobs, &c.LocalJobs); err != nil {
 			return err
 		}
+		markJobSource(c.LocalJobs, JobSourceLabel)
 	}
 
 	if len(serviceJobs) > 0 {
 		if err := mapstructure.WeakDecode(serviceJobs, &c.ServiceJobs); err != nil {
 			return err
 		}
+		markJobSource(c.ServiceJobs, JobSourceLabel)
 	}
 
 	if len(runJobs) > 0 {
 		if err := mapstructure.WeakDecode(runJobs, &c.RunJobs); err != nil {
 			return err
 		}
+		markJobSource(c.RunJobs, JobSourceLabel)
 	}
 
 	if len(composeJobs) > 0 {
 		if err := mapstructure.WeakDecode(composeJobs, &c.ComposeJobs); err != nil {
 			return err
 		}
+		markJobSource(c.ComposeJobs, JobSourceLabel)
 	}
 
 	return nil
+}
+
+// markJobSource assigns the provided source to all jobs in the map.
+//
+// The generic type J must implement SetJobSource(JobSource) so the function can
+// uniformly tag any job configuration with its origin.
+func markJobSource[J interface{ SetJobSource(JobSource) }](m map[string]J, src JobSource) {
+	for _, j := range m {
+		j.SetJobSource(src)
+	}
 }
 
 func setJobParam(params map[string]interface{}, paramName, paramVal string) {
