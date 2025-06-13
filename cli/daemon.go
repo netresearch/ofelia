@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	dockerclient "github.com/fsouza/go-dockerclient"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/web"
 )
@@ -96,7 +97,11 @@ func (c *DaemonCommand) boot() (err error) {
 	c.dockerHandler = config.dockerHandler
 	c.config = config
 	if c.EnableWeb {
-		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config)
+		var client *dockerclient.Client
+		if c.dockerHandler != nil {
+			client = c.dockerHandler.GetInternalDockerClient()
+		}
+		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, client)
 	}
 
 	return err

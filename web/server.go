@@ -3,12 +3,14 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"reflect"
 	"strings"
 	"time"
 
+	dockerclient "github.com/fsouza/go-dockerclient"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/static"
 )
@@ -19,10 +21,17 @@ type Server struct {
 	config    interface{}
 	srv       *http.Server
 	origins   map[string]string
+	client    *dockerclient.Client
 }
 
-func NewServer(addr string, s *core.Scheduler, cfg interface{}) *Server {
-	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string)}
+// HTTPServer returns the underlying http.Server used by the web interface. It
+// is exposed for tests and may change if the Server struct evolves.
+func (s *Server) HTTPServer() *http.Server {
+	return s.srv
+}
+
+func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockerclient.Client) *Server {
+	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), client: client}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
 	mux.HandleFunc("/api/jobs/disabled", server.disabledJobsHandler)
@@ -86,22 +95,20 @@ func jobOrigin(cfg interface{}, name string) string {
 	if v.Kind() != reflect.Struct {
 		return ""
 	}
-	runJobs := v.FieldByName("RunJobs")
-	if runJobs.IsValid() && runJobs.Kind() == reflect.Map {
-		if runJobs.MapIndex(reflect.ValueOf(name)).IsValid() {
-			return "ini"
-		}
-	}
-	labelRunJobs := v.FieldByName("LabelRunJobs")
-	if labelRunJobs.IsValid() && labelRunJobs.Kind() == reflect.Map {
-		if labelRunJobs.MapIndex(reflect.ValueOf(name)).IsValid() {
-			return "label"
-		}
-	}
-	labelExecJobs := v.FieldByName("LabelExecJobs")
-	if labelExecJobs.IsValid() && labelExecJobs.Kind() == reflect.Map {
-		if labelExecJobs.MapIndex(reflect.ValueOf(name)).IsValid() {
-			return "label"
+	fields := []string{"RunJobs", "ExecJobs", "ServiceJobs", "LocalJobs", "ComposeJobs"}
+	for _, f := range fields {
+		m := v.FieldByName(f)
+		if m.IsValid() && m.Kind() == reflect.Map {
+			jv := m.MapIndex(reflect.ValueOf(name))
+			if jv.IsValid() {
+				if jv.Kind() == reflect.Ptr {
+					jv = jv.Elem()
+				}
+				src := jv.FieldByName("JobSource")
+				if src.IsValid() {
+					return src.String()
+				}
+			}
 		}
 	}
 	return ""
@@ -124,6 +131,8 @@ func jobType(j core.Job) string {
 		return "local"
 	case *core.RunServiceJob:
 		return "service"
+	case *core.ComposeJob:
+		return "compose"
 	default:
 		t := reflect.TypeOf(j)
 		if t.Kind() == reflect.Ptr {
@@ -230,9 +239,15 @@ func (s *Server) disabledJobsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type jobRequest struct {
-	Name     string `json:"name"`
-	Schedule string `json:"schedule,omitempty"`
-	Command  string `json:"command,omitempty"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Schedule  string `json:"schedule,omitempty"`
+	Command   string `json:"command,omitempty"`
+	Image     string `json:"image,omitempty"`
+	Container string `json:"container,omitempty"`
+	File      string `json:"file,omitempty"`
+	Service   string `json:"service,omitempty"`
+	ExecFlag  bool   `json:"exec,omitempty"`
 }
 
 func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +295,11 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command}}
+	job, err := s.jobFromRequest(&req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := s.scheduler.AddJob(job); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -300,7 +319,11 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.scheduler.DisableJob(req.Name)
-	job := &core.LocalJob{BareJob: core.BareJob{Schedule: req.Schedule, Name: req.Name, Command: req.Command}}
+	job, err := s.jobFromRequest(&req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := s.scheduler.AddJob(job); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -311,6 +334,49 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.origins[req.Name] = origin
 	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
+	switch req.Type {
+	case "run":
+		if s.client == nil {
+			return nil, fmt.Errorf("docker client unavailable for run job")
+		}
+		j := &core.RunJob{Client: s.client}
+		j.Name = req.Name
+		j.Schedule = req.Schedule
+		j.Command = req.Command
+		j.Image = req.Image
+		j.Container = req.Container
+		return j, nil
+	case "exec":
+		if s.client == nil {
+			return nil, fmt.Errorf("docker client unavailable for exec job")
+		}
+		j := &core.ExecJob{Client: s.client}
+		j.Name = req.Name
+		j.Schedule = req.Schedule
+		j.Command = req.Command
+		j.Container = req.Container
+		return j, nil
+	case "compose":
+		j := &core.ComposeJob{}
+		j.Name = req.Name
+		j.Schedule = req.Schedule
+		j.Command = req.Command
+		j.File = req.File
+		j.Service = req.Service
+		j.Exec = req.ExecFlag
+		return j, nil
+	case "", "local":
+		j := &core.LocalJob{}
+		j.Name = req.Name
+		j.Schedule = req.Schedule
+		j.Command = req.Command
+		return j, nil
+	default:
+		return nil, fmt.Errorf("unknown job type %q", req.Type)
+	}
 }
 
 func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
@@ -350,7 +416,7 @@ func stripJobs(cfg interface{}) interface{} {
 	}
 	out := reflect.New(v.Type()).Elem()
 	out.Set(v)
-	fields := []string{"RunJobs", "LabelRunJobs", "LabelExecJobs", "ExecJobs", "ServiceJobs", "LocalJobs"}
+	fields := []string{"RunJobs", "ExecJobs", "ServiceJobs", "LocalJobs", "ComposeJobs"}
 	for _, f := range fields {
 		if fv := out.FieldByName(f); fv.IsValid() && fv.CanSet() {
 			fv.Set(reflect.Zero(fv.Type()))

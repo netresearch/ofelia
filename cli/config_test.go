@@ -181,6 +181,7 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 		for name, job := range t.ExpectedConfig.LocalJobs {
 			expectedWithDefaults.LocalJobs[name] = job
 		}
+		setJobSource(expectedWithDefaults, JobSourceINI)
 
 		if !c.Check(conf, DeepEquals, expectedWithDefaults) {
 			c.Errorf("Test %q\nExpected %s, but got %s", t.Comment, toJSON(expectedWithDefaults), toJSON(conf))
@@ -473,6 +474,8 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		var conf = Config{}
 		err := conf.buildFromDockerLabels(t.Labels)
 		c.Assert(err, IsNil)
+		setJobSource(&conf, JobSourceLabel)
+		setJobSource(&t.ExpectedConfig, JobSourceLabel)
 		if !c.Check(conf, DeepEquals, t.ExpectedConfig) {
 			c.Errorf("Test %q\nExpected %s, but got %s", t.Comment, toJSON(t.ExpectedConfig), toJSON(conf))
 		}
