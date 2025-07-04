@@ -53,3 +53,29 @@ func TestGetHashUnsupported(t *testing.T) {
 		t.Errorf("expected error on unsupported type")
 	}
 }
+
+// TestGetHashStringSlice ensures string slices are hashed with length prefixes
+// to avoid ambiguities.
+func TestGetHashStringSlice(t *testing.T) {
+	type S struct {
+		Items []string `hash:"true"`
+	}
+	val1 := S{Items: []string{"a", "bc"}}
+	var h1 string
+	if err := getHash(reflect.TypeOf(val1), reflect.ValueOf(val1), &h1); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "1:a,2:bc,"
+	if h1 != want {
+		t.Errorf("expected hash %q, got %q", want, h1)
+	}
+
+	val2 := S{Items: []string{"ab", "c"}}
+	var h2 string
+	if err := getHash(reflect.TypeOf(val2), reflect.ValueOf(val2), &h2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if h1 == h2 {
+		t.Errorf("expected different hash for different slices, got %q", h1)
+	}
+}

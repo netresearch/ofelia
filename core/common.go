@@ -347,6 +347,11 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 				*hash += strconv.FormatInt(fieldv.Int(), 10)
 			} else if kind == reflect.Bool {
 				*hash += strconv.FormatBool(fieldv.Bool())
+			} else if kind == reflect.Slice && field.Type.Elem().Kind() == reflect.String {
+				strs := fieldv.Interface().([]string)
+				for _, str := range strs {
+					*hash += fmt.Sprintf("%d:%s,", len(str), str)
+				}
 			} else {
 				return fmt.Errorf("unsupported field type")
 			}
