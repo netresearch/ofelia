@@ -189,6 +189,45 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	c.Assert(ok, Equals, false)
 }
 
+// TestIniConfigUpdateEnvChange verifies environment changes are applied on reload.
+func (s *SuiteConfig) TestIniConfigUpdateEnvChange(c *C) {
+	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	c.Assert(err, IsNil)
+	defer os.Remove(tmp.Name())
+
+	content1 := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\nenvironment = FOO=bar\n"
+	_, err = tmp.WriteString(content1)
+	c.Assert(err, IsNil)
+	tmp.Close()
+
+	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	c.Assert(err, IsNil)
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+
+	for name, j := range cfg.RunJobs {
+		defaults.Set(j)
+		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Name = name
+		j.buildMiddlewares()
+		cfg.sh.AddJob(j)
+	}
+
+	c.Assert(cfg.RunJobs["foo"].Environment[0], Equals, "FOO=bar")
+
+	oldTime := cfg.configModTime
+	content2 := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\nenvironment = FOO=baz\n"
+	err = os.WriteFile(tmp.Name(), []byte(content2), 0o644)
+	c.Assert(err, IsNil)
+	c.Assert(waitForModTimeChange(tmp.Name(), oldTime), IsNil)
+
+	err = cfg.iniConfigUpdate()
+	c.Assert(err, IsNil)
+	c.Assert(cfg.RunJobs["foo"].Environment[0], Equals, "FOO=baz")
+}
+
 // Test iniConfigUpdate does nothing when the INI file did not change
 func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 	tmp, err := ioutil.TempFile("", "ofelia_*.ini")

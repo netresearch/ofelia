@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"reflect"
 
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/gobs/args"
@@ -13,7 +14,7 @@ type ExecJob struct {
 	Container   string         `hash:"true"`
 	User        string         `default:"root" hash:"true"`
 	TTY         bool           `default:"false" hash:"true"`
-	Environment []string       `mapstructure:"environment"`
+	Environment []string       `mapstructure:"environment" hash:"true"`
 
 	execID string
 }
@@ -93,4 +94,12 @@ func (j *ExecJob) inspectExec() (*docker.ExecInspect, error) {
 	}
 
 	return i, nil
+}
+
+func (j *ExecJob) Hash() (string, error) {
+	var h string
+	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &h); err != nil {
+		return "", err
+	}
+	return h, nil
 }

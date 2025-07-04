@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -19,30 +20,30 @@ func init() {
 type RunJob struct {
 	BareJob `mapstructure:",squash"`
 	Client  *docker.Client `json:"-"`
-	User    string         `default:"root"`
+	User    string         `default:"root" hash:"true"`
 
 	// ContainerName specifies the name of the container to be created. If
 	// nil, the job name will be used. If set to an empty string, Docker
 	// will assign a random name.
-	ContainerName *string `gcfg:"container-name" mapstructure:"container-name"`
+	ContainerName *string `gcfg:"container-name" mapstructure:"container-name" hash:"true"`
 
-	TTY bool `default:"false"`
+	TTY bool `default:"false" hash:"true"`
 
 	// do not use bool values with "default:true" because if
 	// user would set it to "false" explicitly, it still will be
 	// changed to "true" https://github.com/netresearch/ofelia/issues/135
 	// so lets use strings here as workaround
-	Delete string `default:"true"`
-	Pull   string `default:"true"`
+	Delete string `default:"true" hash:"true"`
+	Pull   string `default:"true" hash:"true"`
 
-	Image       string
-	Network     string
-	Hostname    string
-	Entrypoint  *string
-	Container   string
-	Volume      []string
-	VolumesFrom []string `gcfg:"volumes-from" mapstructure:"volumes-from,"`
-	Environment []string `mapstructure:"environment"`
+	Image       string   `hash:"true"`
+	Network     string   `hash:"true"`
+	Hostname    string   `hash:"true"`
+	Entrypoint  *string  `hash:"true"`
+	Container   string   `hash:"true"`
+	Volume      []string `hash:"true"`
+	VolumesFrom []string `gcfg:"volumes-from" mapstructure:"volumes-from," hash:"true"`
+	Environment []string `mapstructure:"environment" hash:"true"`
 
 	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 
@@ -286,4 +287,12 @@ func (j *RunJob) deleteContainer() error {
 	return j.Client.RemoveContainer(docker.RemoveContainerOptions{
 		ID: j.getContainerID(),
 	})
+}
+
+func (j *RunJob) Hash() (string, error) {
+	var h string
+	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &h); err != nil {
+		return "", err
+	}
+	return h, nil
 }
