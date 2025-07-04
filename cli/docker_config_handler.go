@@ -18,6 +18,7 @@ type dockerClient interface {
 	Info() (*docker.DockerInfo, error)
 	ListContainers(opts docker.ListContainersOptions) ([]docker.APIContainers, error)
 	AddEventListenerWithOptions(opts docker.EventsOptions, listener chan<- *docker.APIEvents) error
+	RemoveEventListener(listener chan *docker.APIEvents) error
 }
 
 type DockerHandler struct {
@@ -189,6 +190,9 @@ func (c *DockerHandler) watchEvents() {
 	for {
 		select {
 		case <-c.ctx.Done():
+			if err := c.dockerClient.RemoveEventListener(ch); err != nil {
+				c.logger.Debugf("%v", err)
+			}
 			return
 		case <-ch:
 			labels, err := c.GetDockerLabels()

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -36,6 +37,33 @@ func (d *chanNotifier) dockerLabelsUpdate(labels map[string]map[string]string) {
 type DockerHandlerSuite struct{}
 
 var _ = Suite(&DockerHandlerSuite{})
+
+// fakeDockerClient is a minimal implementation of dockerClient for testing
+// event listener registration and removal.
+type fakeDockerClient struct {
+	addPtr       uintptr
+	removePtr    uintptr
+	removeCalled bool
+}
+
+func (f *fakeDockerClient) Info() (*docker.DockerInfo, error) {
+	return &docker.DockerInfo{}, nil
+}
+
+func (f *fakeDockerClient) ListContainers(opts docker.ListContainersOptions) ([]docker.APIContainers, error) {
+	return nil, nil
+}
+
+func (f *fakeDockerClient) AddEventListenerWithOptions(opts docker.EventsOptions, listener chan<- *docker.APIEvents) error {
+	f.addPtr = reflect.ValueOf(listener).Pointer()
+	return nil
+}
+
+func (f *fakeDockerClient) RemoveEventListener(listener chan *docker.APIEvents) error {
+	f.removePtr = reflect.ValueOf(listener).Pointer()
+	f.removeCalled = true
+	return nil
+}
 
 // TestBuildDockerClientError verifies that buildDockerClient returns an error when DOCKER_HOST is invalid
 func (s *DockerHandlerSuite) TestBuildDockerClientError(c *C) {
@@ -209,4 +237,30 @@ func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniExecJobs(c *C) {
 
 	c.Assert(len(cfg.ExecJobs), Equals, 1)
 	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+}
+
+// TestWatchEventsRemovesListener ensures that the event listener is removed when
+// the DockerHandler context is canceled.
+func (s *DockerHandlerSuite) TestWatchEventsRemovesListener(c *C) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &fakeDockerClient{}
+	h := &DockerHandler{ctx: ctx, cancel: cancel, dockerClient: client, notifier: &dummyNotifier{}, logger: &TestLogger{}}
+	done := make(chan struct{})
+	go func() {
+		h.watchEvents()
+		close(done)
+	}()
+
+	// ensure goroutine started
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(50 * time.Millisecond):
+		c.Error("watchEvents did not stop")
+	}
+
+	c.Assert(client.removeCalled, Equals, true)
+	c.Assert(client.removePtr, Equals, client.addPtr)
 }
