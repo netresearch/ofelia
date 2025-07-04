@@ -15,6 +15,27 @@ const (
 	serviceLabel        = labelPrefix + ".service"
 )
 
+var globalLabelKeys = map[string]struct{}{
+	"smtp-host":            {},
+	"smtp-port":            {},
+	"smtp-user":            {},
+	"smtp-password":        {},
+	"smtp-tls-skip-verify": {},
+	"email-to":             {},
+	"email-from":           {},
+	"mail-only-on-error":   {},
+	"save-folder":          {},
+	"save-only-on-error":   {},
+	"slack-webhook":        {},
+	"slack-only-on-error":  {},
+	"log-level":            {},
+	"enable-web":           {},
+	"web-address":          {},
+	"enable-pprof":         {},
+	"pprof-address":        {},
+	"max-runtime":          {},
+}
+
 func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) error {
 	execJobs := make(map[string]map[string]interface{})
 	localJobs := make(map[string]map[string]interface{})
@@ -23,7 +44,7 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 	composeJobs := make(map[string]map[string]interface{})
 	globalConfigs := make(map[string]interface{})
 
-	for c, l := range labels {
+	for containerName, l := range labels {
 		isServiceContainer := func() bool {
 			for k, v := range l {
 				if k == serviceLabel {
@@ -34,10 +55,19 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 		}()
 
 		for k, v := range l {
+			if k == requiredLabel || k == serviceLabel {
+				continue
+			}
 			parts := strings.Split(k, ".")
 			if len(parts) < 4 {
 				if isServiceContainer {
-					globalConfigs[parts[1]] = v
+					if _, ok := globalLabelKeys[parts[1]]; ok {
+						globalConfigs[parts[1]] = v
+					} else if c.logger != nil {
+						c.logger.Warningf("unknown label %q", k)
+					}
+				} else if c.logger != nil {
+					c.logger.Warningf("unknown label %q", k)
 				}
 
 				continue
@@ -46,7 +76,7 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 			jobType, jobName, jobParam := parts[1], parts[2], parts[3]
 			scopedJobName := jobName
 			if jobType == jobExec {
-				scopedJobName = c + "." + jobName
+				scopedJobName = containerName + "." + jobName
 			}
 			switch {
 			case jobType == jobExec: // only job exec can be provided on the non-service container
@@ -58,7 +88,7 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 				// since this label was placed not on the service container
 				// this means we need to `exec` command in this container
 				if !isServiceContainer {
-					execJobs[scopedJobName]["container"] = c
+					execJobs[scopedJobName]["container"] = containerName
 				}
 			case jobType == jobLocal && isServiceContainer:
 				if _, ok := localJobs[jobName]; !ok {
@@ -81,7 +111,9 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 				}
 				setJobParam(composeJobs[jobName], jobParam, v)
 			default:
-				// TODO: warn about unknown parameter
+				if c.logger != nil {
+					c.logger.Warningf("unknown label %q", k)
+				}
 			}
 		}
 	}
