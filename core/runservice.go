@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,15 +17,15 @@ import (
 type RunServiceJob struct {
 	BareJob `mapstructure:",squash"`
 	Client  *docker.Client `json:"-"`
-	User    string         `default:"root"`
-	TTY     bool           `default:"false"`
+	User    string         `default:"root" hash:"true"`
+	TTY     bool           `default:"false" hash:"true"`
 	// do not use bool values with "default:true" because if
 	// user would set it to "false" explicitly, it still will be
 	// changed to "true" https://github.com/netresearch/ofelia/issues/135
 	// so lets use strings here as workaround
-	Delete     string `default:"true"`
-	Image      string
-	Network    string
+	Delete     string        `default:"true" hash:"true"`
+	Image      string        `hash:"true"`
+	Network    string        `hash:"true"`
 	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 }
 
@@ -208,4 +209,12 @@ func (j *RunServiceJob) deleteService(ctx *Context, svcID string) error {
 
 	return err
 
+}
+
+func (j *RunServiceJob) Hash() (string, error) {
+	var h string
+	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &h); err != nil {
+		return "", err
+	}
+	return h, nil
 }

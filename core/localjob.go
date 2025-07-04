@@ -3,14 +3,15 @@ package core
 import (
 	"os"
 	"os/exec"
+	"reflect"
 
 	"github.com/gobs/args"
 )
 
 type LocalJob struct {
 	BareJob     `mapstructure:",squash"`
-	Dir         string
-	Environment []string `mapstructure:"environment"`
+	Dir         string   `hash:"true"`
+	Environment []string `mapstructure:"environment" hash:"true"`
 }
 
 func NewLocalJob() *LocalJob {
@@ -43,4 +44,12 @@ func (j *LocalJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 		Env: append(os.Environ(), j.Environment...),
 		Dir: j.Dir,
 	}, nil
+}
+
+func (j *LocalJob) Hash() (string, error) {
+	var h string
+	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &h); err != nil {
+		return "", err
+	}
+	return h, nil
 }

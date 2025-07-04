@@ -4,6 +4,7 @@ import (
 	"github.com/gobs/args"
 	"os"
 	"os/exec"
+	"reflect"
 )
 
 type ComposeJob struct {
@@ -39,4 +40,12 @@ func (j *ComposeJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 	cmd.Stderr = ctx.Execution.ErrorStream
 	cmd.Env = os.Environ()
 	return cmd, nil
+}
+
+func (j *ComposeJob) Hash() (string, error) {
+	var h string
+	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &h); err != nil {
+		return "", err
+	}
+	return h, nil
 }
