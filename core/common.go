@@ -368,11 +368,11 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 				if elem.Kind() == reflect.String {
 					*hash += elem.String()
 				} else {
-					return fmt.Errorf("unsupported field type")
+					return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
 				}
 			}
 		default:
-			return fmt.Errorf("unsupported field type")
+			return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
 		}
 	}
 
