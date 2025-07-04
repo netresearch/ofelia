@@ -191,7 +191,7 @@ func (c *DockerHandler) watchEvents() {
 		select {
 		case <-c.ctx.Done():
 			if err := c.dockerClient.RemoveEventListener(ch); err != nil {
-				c.logger.Debugf("%v", err)
+				c.logger.Debugf("error removing event listener: %v", err)
 			}
 			return
 		case <-ch:

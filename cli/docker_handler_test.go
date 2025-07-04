@@ -44,6 +44,7 @@ type fakeDockerClient struct {
 	addPtr       uintptr
 	removePtr    uintptr
 	removeCalled bool
+	addedCh      chan struct{}
 }
 
 func (f *fakeDockerClient) Info() (*docker.DockerInfo, error) {
@@ -56,6 +57,10 @@ func (f *fakeDockerClient) ListContainers(opts docker.ListContainersOptions) ([]
 
 func (f *fakeDockerClient) AddEventListenerWithOptions(opts docker.EventsOptions, listener chan<- *docker.APIEvents) error {
 	f.addPtr = reflect.ValueOf(listener).Pointer()
+	if f.addedCh != nil {
+		close(f.addedCh)
+		f.addedCh = nil
+	}
 	return nil
 }
 
@@ -243,7 +248,7 @@ func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniExecJobs(c *C) {
 // the DockerHandler context is canceled.
 func (s *DockerHandlerSuite) TestWatchEventsRemovesListener(c *C) {
 	ctx, cancel := context.WithCancel(context.Background())
-	client := &fakeDockerClient{}
+	client := &fakeDockerClient{addedCh: make(chan struct{})}
 	h := &DockerHandler{ctx: ctx, cancel: cancel, dockerClient: client, notifier: &dummyNotifier{}, logger: &TestLogger{}}
 	done := make(chan struct{})
 	go func() {
@@ -251,8 +256,7 @@ func (s *DockerHandlerSuite) TestWatchEventsRemovesListener(c *C) {
 		close(done)
 	}()
 
-	// ensure goroutine started
-	time.Sleep(10 * time.Millisecond)
+	<-client.addedCh
 	cancel()
 
 	select {
