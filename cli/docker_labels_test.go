@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	. "gopkg.in/check.v1"
@@ -41,6 +42,15 @@ func (s *DockerLabelSuite) TestUnknownLabelWarning(c *C) {
 	err := cfg.buildFromDockerLabels(labels)
 	c.Assert(err, IsNil)
 	c.Assert(len(logger.warnings), Equals, 2)
-	c.Assert(logger.warnings[0], Matches, ".*invalid.job.schedule.*")
-	c.Assert(logger.warnings[1], Matches, ".*unknown.*")
+	var invalid, unknown bool
+	for _, w := range logger.warnings {
+		if strings.Contains(w, "invalid.job.schedule") {
+			invalid = true
+		}
+		if strings.Contains(w, ".unknown") {
+			unknown = true
+		}
+	}
+	c.Assert(invalid, Equals, true)
+	c.Assert(unknown, Equals, true)
 }
