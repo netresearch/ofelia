@@ -123,7 +123,7 @@ Ofelia merges options from multiple sources in the following order. Values from 
 2. `config.ini`
 3. Docker labels
 4. Command-line flags
-5. Environment variables (when implemented)
+5. Environment variables
 
 The daemon watches `config.ini` and reloads it automatically when the file changes.
 
