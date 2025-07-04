@@ -332,7 +332,7 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 		fieldv := v.Field(i)
 		kind := field.Type.Kind()
 
-		if kind == reflect.Struct {
+		if kind == reflect.Struct && field.Type != reflect.TypeOf(time.Duration(0)) {
 			if err := getHash(field.Type, fieldv, hash); err != nil {
 				return err
 			}
@@ -340,16 +340,39 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 		}
 
 		hashmeTag := field.Tag.Get(HashmeTagName)
-		if hashmeTag == "true" {
-			if kind == reflect.String {
-				*hash += fieldv.String()
-			} else if kind == reflect.Int32 || kind == reflect.Int || kind == reflect.Int64 || kind == reflect.Int16 || kind == reflect.Int8 {
-				*hash += strconv.FormatInt(fieldv.Int(), 10)
-			} else if kind == reflect.Bool {
-				*hash += strconv.FormatBool(fieldv.Bool())
+		if hashmeTag != "true" {
+			continue
+		}
+
+		switch kind {
+		case reflect.String:
+			*hash += fieldv.String()
+		case reflect.Int32, reflect.Int, reflect.Int64, reflect.Int16, reflect.Int8:
+			*hash += strconv.FormatInt(fieldv.Int(), 10)
+		case reflect.Bool:
+			*hash += strconv.FormatBool(fieldv.Bool())
+		case reflect.Slice:
+			if field.Type.Elem().Kind() == reflect.String {
+				strs := fieldv.Interface().([]string)
+				for _, str := range strs {
+					*hash += fmt.Sprintf("%d:%s,", len(str), str)
+				}
 			} else {
 				return fmt.Errorf("unsupported field type")
 			}
+		case reflect.Pointer:
+			if fieldv.IsNil() {
+				*hash += "<nil>"
+			} else {
+				elem := fieldv.Elem()
+				if elem.Kind() == reflect.String {
+					*hash += elem.String()
+				} else {
+					return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
+				}
+			}
+		default:
+			return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
 		}
 	}
 
