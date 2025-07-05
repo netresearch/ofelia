@@ -126,9 +126,12 @@
 
     function formatTime(dateStr) {
       const pref = localStorage.getItem('timezone') || 'local';
-      const dt = new Date(dateStr);
+      if (dateStr === null || dateStr === undefined) return 'Invalid Date';
+      const str = String(dateStr);
+      const dt = new Date(str);
+      if (isNaN(dt)) return 'Invalid Date';
       if (pref === 'utc') return dt.toISOString().replace('T',' ').replace('Z','');
-      if (pref === 'server') return dateStr.replace('T',' ');
+      if (pref === 'server') return str.replace('T',' ').replace('Z','');
       return dt.toLocaleString();
     }
 
