@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 
 	defaults "github.com/creasty/defaults"
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/middlewares"
+
+	"github.com/sirupsen/logrus"
 
 	. "gopkg.in/check.v1"
 )
@@ -343,6 +347,55 @@ func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(len(cfg.RunJobs), Equals, 2)
 	c.Assert(cfg.RunJobs["foo"].GetSchedule(), Equals, "@every 10s")
+}
+
+// TestIniConfigUpdateGlobalChange verifies global middleware options and log
+// level are reloaded.
+func (s *SuiteConfig) TestIniConfigUpdateGlobalChange(c *C) {
+	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	c.Assert(err, IsNil)
+	defer os.Remove(tmp.Name())
+
+	dir := c.MkDir()
+	content1 := fmt.Sprintf("[global]\nlog-level = INFO\nsave-folder = %s\n",
+		dir)
+	content1 += "save-only-on-error = false\n"
+	content1 += "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
+	_, err = tmp.WriteString(content1)
+	c.Assert(err, IsNil)
+	tmp.Close()
+
+	logrus.SetLevel(logrus.InfoLevel)
+
+	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	c.Assert(err, IsNil)
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+
+	ApplyLogLevel(cfg.Global.LogLevel)
+	ms := cfg.sh.Middlewares()
+	c.Assert(ms, HasLen, 1)
+	saveMw := ms[0].(*middlewares.Save)
+	c.Assert(saveMw.SaveOnlyOnError, Equals, false)
+	c.Assert(logrus.GetLevel(), Equals, logrus.InfoLevel)
+
+	oldTime := cfg.configModTime
+	content2 := fmt.Sprintf("[global]\nlog-level = DEBUG\nsave-folder = %s\nsave-only-on-error = true\n", dir)
+	content2 += "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
+	err = os.WriteFile(tmp.Name(), []byte(content2), 0o644)
+	c.Assert(err, IsNil)
+	c.Assert(waitForModTimeChange(tmp.Name(), oldTime), IsNil)
+
+	err = cfg.iniConfigUpdate()
+	c.Assert(err, IsNil)
+	c.Assert(cfg.Global.LogLevel, Equals, "DEBUG")
+	ms = cfg.sh.Middlewares()
+	c.Assert(ms, HasLen, 1)
+	saveMw = ms[0].(*middlewares.Save)
+	c.Assert(saveMw.SaveOnlyOnError, Equals, true)
+	c.Assert(logrus.GetLevel(), Equals, logrus.DebugLevel)
 }
 
 func waitForModTimeChange(path string, after time.Time) error {

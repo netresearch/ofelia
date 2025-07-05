@@ -273,6 +273,19 @@ func (s *SuiteCommon) TestMiddlewareContainerUseOder(c *C) {
 	c.Assert(ms[1], Equals, mA)
 }
 
+func (s *SuiteCommon) TestMiddlewareContainerReset(c *C) {
+	mA := &TestMiddleware{}
+	mB := &TestMiddlewareAltA{}
+
+	container := &middlewareContainer{}
+	container.Use(mA)
+	container.ResetMiddlewares(mB)
+
+	ms := container.Middlewares()
+	c.Assert(ms, HasLen, 1)
+	c.Assert(ms[0], Equals, mB)
+}
+
 type TestMiddleware struct {
 	Called int
 	Nested bool
