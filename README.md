@@ -36,6 +36,7 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
   the binary.
 - **Removed job history** keeps deregistered jobs in memory and shows them in the web UI.
 - **Enhanced web UI** allows editing and deleting jobs, shows job origin and type, displays each job's configuration and renders the scheduler configuration in a table with empty job sections hidden. Action buttons now use clear icons.
+- **Timezone selector** in the web UI lets you view timestamps in local, server or UTC time and remembers your choice.
 
 This fork is based off of [mcuadros/ofelia](https://github.com/mcuadros/ofelia).
 
@@ -93,7 +94,9 @@ the UI allows starting jobs manually, disabling or enabling them and creating,
 updating or deleting jobs of all types. A second table lists jobs removed from
 the configuration via `/api/jobs/removed`. The endpoint `/api/jobs/{name}/history`
 exposes past runs including stdout, stderr and any error messages while
-`/api/config` returns the active configuration as JSON.
+`/api/config` returns the active configuration as JSON. The UI includes a
+timezone selector so you can view times in your local zone, the server zone or
+UTC and have that preference saved locally.
 Creating `run` or `exec` jobs requires Ofelia to run with Docker access; the
 server rejects such requests if no Docker client is available.
 
