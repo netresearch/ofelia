@@ -12,6 +12,13 @@
   </style>
 </head>
 <body>
+  <label>Time zone
+    <select id="timezoneSelect">
+      <option value="local">local</option>
+      <option value="server">server</option>
+      <option value="utc">utc</option>
+    </select>
+  </label>
   <h1>Scheduled Jobs</h1>
   <table id="jobs">
     <thead>
@@ -117,8 +124,25 @@
       return `${ns}ns`;
     }
 
+    function formatTime(dateStr) {
+      const pref = localStorage.getItem('timezone') || 'local';
+      if (dateStr === null || dateStr === undefined) return 'Invalid Date';
+      const str = String(dateStr);
+      const dt = new Date(str);
+      if (isNaN(dt)) return 'Invalid Date';
+      if (pref === 'utc') return dt.toISOString().replace('T',' ').replace('Z','');
+      if (pref === 'server') return str.replace('T',' ').replace('Z','');
+      return dt.toLocaleString();
+    }
+
     let jobsData = {};
     let editing = null;
+    const tzSelect = document.getElementById('timezoneSelect');
+    tzSelect.value = localStorage.getItem('timezone') || 'local';
+    tzSelect.addEventListener('change', () => {
+      localStorage.setItem('timezone', tzSelect.value);
+      refresh();
+    });
     async function loadJobs() {
       const resp = await fetch('/api/jobs');
       const jobs = await resp.json();
@@ -131,7 +155,7 @@
         const statusText = j.last_run ? (j.last_run.failed ? 'Failed' : (j.last_run.skipped ? 'Skipped' : 'Success')) : 'never';
         const symbol = statusText === 'Failed' ? '❌' : statusText === 'Skipped' ? '⏭' : statusText === 'Success' ? '✅' : '–';
         const status = `${symbol} ${statusText}`;
-        const time = j.last_run ? new Date(j.last_run.date).toISOString().replace('T',' ').replace('Z','') : '';
+        const time = j.last_run ? formatTime(j.last_run.date) : '';
         const duration = j.last_run ? j.last_run.duration : '';
         const cfg = `<details><summary>⚙</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
         tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td class="fixed">${j.schedule}</td><td class="fixed">${j.command}</td>` +
@@ -170,7 +194,7 @@
         const statusText = e.failed ? 'Failed' : (e.skipped ? 'Skipped' : 'Success');
         const symbol = statusText === 'Failed' ? '❌' : statusText === 'Skipped' ? '⏭' : '✅';
         const status = `${symbol} ${statusText}`;
-        const time = new Date(e.date).toISOString().replace('T',' ').replace('Z','');
+        const time = formatTime(e.date);
         const err = e.error ? e.error : '';
         row.innerHTML = `<td>${time}</td><td>${formatDuration(e.duration)}</td><td>${status}</td>` +
           `<td>${err}</td>` +
@@ -189,7 +213,7 @@
         const statusText = j.last_run ? (j.last_run.failed ? 'Failed' : (j.last_run.skipped ? 'Skipped' : 'Success')) : 'never';
         const symbol = statusText === 'Failed' ? '❌' : statusText === 'Skipped' ? '⏭' : statusText === 'Success' ? '✅' : '–';
         const status = `${symbol} ${statusText}`;
-        const time = j.last_run ? new Date(j.last_run.date).toISOString().replace('T',' ').replace('Z','') : '';
+        const time = j.last_run ? formatTime(j.last_run.date) : '';
         const duration = j.last_run ? j.last_run.duration : '';
         const cfg = `<details><summary>⚙</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
         tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td class="fixed">${j.schedule}</td><td class="fixed">${j.command}</td><td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${formatDuration(duration)}</td><td>${cfg}</td>`;
