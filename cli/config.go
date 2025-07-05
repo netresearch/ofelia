@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -257,6 +258,7 @@ type jobConfig interface {
 	Hash() (string, error)
 	GetJobSource() JobSource
 	SetJobSource(JobSource)
+	ResetMiddlewares(...core.Middleware)
 }
 
 // syncJobMap updates the scheduler and the provided job map based on the parsed
@@ -400,9 +402,30 @@ func (c *Config) iniConfigUpdate() error {
 	if err != nil {
 		return err
 	}
+	globalChanged := !reflect.DeepEqual(parsed.Global, c.Global)
 	c.configFiles = files
 	c.configModTime = latest
 	c.logger.Debugf("applied config files from %s", strings.Join(files, ", "))
+	if globalChanged {
+		c.Global = parsed.Global
+		c.sh.ResetMiddlewares()
+		c.buildSchedulerMiddlewares(c.sh)
+		for _, j := range c.sh.Jobs {
+			if jc, ok := j.(jobConfig); ok {
+				jc.ResetMiddlewares()
+				jc.buildMiddlewares()
+				j.Use(c.sh.Middlewares()...)
+			}
+		}
+		for _, j := range c.sh.Disabled {
+			if jc, ok := j.(jobConfig); ok {
+				jc.ResetMiddlewares()
+				jc.buildMiddlewares()
+				j.Use(c.sh.Middlewares()...)
+			}
+		}
+		ApplyLogLevel(c.Global.LogLevel)
+	}
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		defaults.Set(j)

@@ -127,6 +127,11 @@ Ofelia merges options from multiple sources in the following order. Values from 
 
 The daemon watches `config.ini` and reloads it automatically when the file changes.
 
+Job definitions and most `[global]` middleware options (`slack-*`, `save-*`,
+`mail-*`, `log-level`, `max-runtime`) are applied on reload. Options that start
+servers (`enable-web`, `web-address`, `enable-pprof`, `pprof-address`) and all
+`[docker]` settings require restarting the daemon.
+
 ## Configuration
 
 ### Jobs

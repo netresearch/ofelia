@@ -221,6 +221,12 @@ func (c *middlewareContainer) Use(ms ...Middleware) {
 	}
 }
 
+func (c *middlewareContainer) ResetMiddlewares(ms ...Middleware) {
+	c.m = nil
+	c.order = nil
+	c.Use(ms...)
+}
+
 func (c *middlewareContainer) Middlewares() []Middleware {
 	var ms []Middleware
 	for _, t := range c.order {
