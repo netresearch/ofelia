@@ -14,18 +14,18 @@ func TestComposeJobBuildCommand(t *testing.T) {
 		{
 			name: "Run command",
 			job: &ComposeJob{
+				BareJob: BareJob{Command: `echo "foo bar"`},
 				File:    "compose.yml",
 				Service: "svc",
-				Command: `echo "foo bar"`,
 			},
 			wantArgs: []string{"docker", "compose", "-f", "compose.yml", "run", "--rm", "svc", "echo", "foo bar"},
 		},
 		{
 			name: "Exec command",
 			job: &ComposeJob{
+				BareJob: BareJob{Command: `echo "foo bar"`},
 				File:    "compose.yml",
 				Service: "svc",
-				Command: `echo "foo bar"`,
 				Exec:    true,
 			},
 			wantArgs: []string{"docker", "compose", "-f", "compose.yml", "exec", "svc", "echo", "foo bar"},
