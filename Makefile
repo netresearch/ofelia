@@ -32,6 +32,33 @@ endif
 # Rules
 all: clean packages
 
+.PHONY: fmt
+fmt:
+ 	@gofmt -w $$(git ls-files '*.go')
+
+.PHONY: vet
+vet:
+ 	@go vet ./...
+
+.PHONY: tidy
+tidy:
+ 	@go mod tidy
+
+.PHONY: lint
+lint:
+ 	@which golangci-lint >/dev/null 2>&1 || (echo "Installing golangci-lint..." && go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest version >/dev/null)
+ 	@go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run --timeout=5m
+
+.PHONY: ci
+ci: vet
+ 	@unformatted=$$(gofmt -l $$(git ls-files '*.go')); \
+ 	if [ -n "$$unformatted" ]; then \
+ 	  echo "The following files are not formatted:" >&2; \
+ 	  echo "$$unformatted" >&2; \
+ 	  exit 1; \
+ 	fi
+ 	@go test ./...
+
 .PHONY: test
 test: 
 	@go test -v ./...
