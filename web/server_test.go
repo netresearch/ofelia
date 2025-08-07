@@ -52,8 +52,8 @@ func TestHistoryEndpoint(t *testing.T) {
 	job.Schedule = "@daily"
 	job.Command = "echo"
 	e, _ := core.NewExecution()
-	e.OutputStream.Write([]byte("out"))
-	e.ErrorStream.Write([]byte("err"))
+	_, _ = e.OutputStream.Write([]byte("out"))
+	_, _ = e.ErrorStream.Write([]byte("err"))
 	e.Error = fmt.Errorf("boom")
 	e.Failed = true
 	job.SetLastRun(e)
@@ -85,8 +85,8 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 	job.Schedule = "@daily"
 	job.Command = "echo"
 	e, _ := core.NewExecution()
-	e.OutputStream.Write([]byte("out"))
-	e.ErrorStream.Write([]byte("err"))
+	_, _ = e.OutputStream.Write([]byte("out"))
+	_, _ = e.ErrorStream.Write([]byte("err"))
 	e.Error = fmt.Errorf("boom")
 	e.Failed = true
 	job.SetLastRun(e)

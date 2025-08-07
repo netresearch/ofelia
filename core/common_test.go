@@ -306,7 +306,7 @@ func (m *TestMiddleware) Run(ctx *Context) error {
 	}
 
 	if m.Nested {
-		ctx.Next()
+		_ = ctx.Next()
 	}
 
 	return m.Error

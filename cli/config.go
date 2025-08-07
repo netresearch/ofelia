@@ -71,7 +71,7 @@ func NewConfig(logger core.Logger) *Config {
 		logger:      logger,
 	}
 
-	defaults.Set(c)
+	_ = defaults.Set(c)
 	return c
 }
 
@@ -198,29 +198,29 @@ func (c *Config) InitializeApp() error {
 	}
 
 	for name, j := range c.ExecJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
 
 	for name, j := range c.RunJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
 
 	for name, j := range c.LocalJobs {
 		defaults.Set(j)
 		j.Name = name
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
 
 	for name, j := range c.ServiceJobs {
@@ -271,7 +271,7 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 		}
 		newJob, ok := parsed[name]
 		if !ok {
-			c.sh.RemoveJob(j)
+			_ = c.sh.RemoveJob(j)
 			delete(current, name)
 			continue
 		}
@@ -288,7 +288,7 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 			continue
 		}
 		if newHash != oldHash {
-			c.sh.RemoveJob(j)
+			_ = c.sh.RemoveJob(j)
 			newJob.buildMiddlewares()
 			c.sh.AddJob(newJob)
 			current[name] = newJob
@@ -300,7 +300,7 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 			if cur.GetJobSource() != source {
 				if source == JobSourceINI && cur.GetJobSource() == JobSourceLabel {
 					c.logger.Warningf("overriding label-defined %s job %q with INI job", jobKind, name)
-					c.sh.RemoveJob(cur)
+					_ = c.sh.RemoveJob(cur)
 				} else if source == JobSourceLabel && cur.GetJobSource() == JobSourceINI {
 					c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name)
 					continue
@@ -328,14 +328,14 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	parsedLabelConfig.buildFromDockerLabels(labels)
 
 	execPrep := func(name string, j *ExecJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
 	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep, JobSourceLabel, "exec")
 
 	runPrep := func(name string, j *RunJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -345,13 +345,13 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel, "run")
 
 	localPrep := func(name string, j *LocalJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 	}
 	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
 
 	servicePrep := func(name string, j *RunServiceConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -361,7 +361,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, servicePrep, JobSourceLabel, "service")
 
 	composePrep := func(name string, j *ComposeJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 	}
 	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -31,12 +30,11 @@ func (s *SuiteConfig) TestBuildFromFileError(c *C) {
 	c.Assert(err, NotNil)
 
 	// Invalid content
-	tmpFile, err := ioutil.TempFile("", "config_test")
+	tmpFile, err := os.CreateTemp("", "config_test")
 	c.Assert(err, IsNil)
 	defer os.Remove(tmpFile.Name())
 
-	_, err = tmpFile.WriteString("invalid content")
-	c.Assert(err, IsNil)
+	_, _ = tmpFile.WriteString("invalid content")
 	tmpFile.Close()
 
 	_, err = BuildFromFile(tmpFile.Name(), &TestLogger{})
@@ -139,13 +137,12 @@ func (s *SuiteConfig) TestDockerLabelsUpdateStaleJobs(c *C) {
 
 // Test iniConfigUpdate reloads jobs from the INI file
 func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
-	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	tmp, err := os.CreateTemp("", "ofelia_*.ini")
 	c.Assert(err, IsNil)
 	defer os.Remove(tmp.Name())
 
 	content1 := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
-	_, err = tmp.WriteString(content1)
-	c.Assert(err, IsNil)
+	_, _ = tmp.WriteString(content1)
 	tmp.Close()
 
 	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
@@ -195,7 +192,7 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 
 // TestIniConfigUpdateEnvChange verifies environment changes are applied on reload.
 func (s *SuiteConfig) TestIniConfigUpdateEnvChange(c *C) {
-	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	tmp, err := os.CreateTemp("", "ofelia_*.ini")
 	c.Assert(err, IsNil)
 	defer os.Remove(tmp.Name())
 
@@ -234,7 +231,7 @@ func (s *SuiteConfig) TestIniConfigUpdateEnvChange(c *C) {
 
 // Test iniConfigUpdate does nothing when the INI file did not change
 func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
-	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	tmp, err := os.CreateTemp("", "ofelia_*.ini")
 	c.Assert(err, IsNil)
 	defer os.Remove(tmp.Name())
 
@@ -268,7 +265,7 @@ func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 
 // TestIniConfigUpdateLabelConflict verifies INI jobs override label jobs on reload.
 func (s *SuiteConfig) TestIniConfigUpdateLabelConflict(c *C) {
-	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	tmp, err := os.CreateTemp("", "ofelia_*.ini")
 	c.Assert(err, IsNil)
 	defer os.Remove(tmp.Name())
 
@@ -308,7 +305,7 @@ func (s *SuiteConfig) TestIniConfigUpdateLabelConflict(c *C) {
 
 // Test iniConfigUpdate reloads when any of the glob matched files change
 func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
-	dir, err := ioutil.TempDir("", "ofelia_glob_update")
+	dir, err := os.MkdirTemp("", "ofelia_glob_update")
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -352,7 +349,7 @@ func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
 // TestIniConfigUpdateGlobalChange verifies global middleware options and log
 // level are reloaded.
 func (s *SuiteConfig) TestIniConfigUpdateGlobalChange(c *C) {
-	tmp, err := ioutil.TempFile("", "ofelia_*.ini")
+	tmp, err := os.CreateTemp("", "ofelia_*.ini")
 	c.Assert(err, IsNil)
 	defer os.Remove(tmp.Name())
 
