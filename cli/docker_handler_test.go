@@ -23,14 +23,7 @@ type dummyNotifier struct{}
 
 func (d *dummyNotifier) dockerLabelsUpdate(labels map[string]map[string]string) {}
 
-type chanNotifier struct{ ch chan struct{} }
-
-func (d *chanNotifier) dockerLabelsUpdate(labels map[string]map[string]string) {
-	select {
-	case d.ch <- struct{}{}:
-	default:
-	}
-}
+// removed unused test helper
 
 // DockerHandlerSuite contains tests for DockerHandler methods
 type DockerHandlerSuite struct{}
@@ -75,7 +68,7 @@ func (s *DockerHandlerSuite) TestGetDockerLabelsNoContainers(c *C) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/containers/json") {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte("[]"))
+			_, _ = w.Write([]byte("[]"))
 			return
 		}
 		http.NotFound(w, r)

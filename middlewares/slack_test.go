@@ -23,7 +23,7 @@ func (s *SuiteSlack) TestNewSlackEmpty(c *C) {
 func (s *SuiteSlack) TestRunSuccess(c *C) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var m slackMessage
-		json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
+		_ = json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
 		c.Assert(m.Attachments[0].Title, Equals, "Execution successful")
 	}))
 
@@ -39,7 +39,7 @@ func (s *SuiteSlack) TestRunSuccess(c *C) {
 func (s *SuiteSlack) TestRunSuccessFailed(c *C) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var m slackMessage
-		json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
+		_ = json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
 		c.Assert(m.Attachments[0].Title, Equals, "Execution failed")
 	}))
 
@@ -69,7 +69,7 @@ func (s *SuiteSlack) TestRunSuccessOnError(c *C) {
 func (s *SuiteSlack) TestCustomHTTPClient(c *C) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var m slackMessage
-		json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
+		_ = json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
 		c.Assert(m.Attachments[0].Title, Equals, "Execution successful")
 	}))
 

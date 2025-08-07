@@ -115,14 +115,14 @@ func (m *Mail) from() string {
 
 func (m *Mail) subject(ctx *core.Context) string {
 	buf := bytes.NewBuffer(nil)
-	mailSubjectTemplate.Execute(buf, ctx)
+	_ = mailSubjectTemplate.Execute(buf, ctx)
 
 	return buf.String()
 }
 
 func (m *Mail) body(ctx *core.Context) string {
 	buf := bytes.NewBuffer(nil)
-	mailBodyTemplate.Execute(buf, ctx)
+	_ = mailBodyTemplate.Execute(buf, ctx)
 
 	return buf.String()
 }

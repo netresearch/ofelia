@@ -66,13 +66,13 @@ func main() {
 	logger := buildLogger(pre.LogLevel)
 
 	parser := flags.NewNamedParser("ofelia", flags.Default)
-	parser.AddCommand(
+	_, _ = parser.AddCommand(
 		"daemon",
 		"daemon process",
 		"",
 		&cli.DaemonCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
 	)
-	parser.AddCommand(
+	_, _ = parser.AddCommand(
 		"validate",
 		"validates the config file",
 		"",

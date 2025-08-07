@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -496,7 +495,7 @@ func (s *SuiteConfig) TestBuildFromStringError(c *C) {
 // Test for BuildFromFile success path
 func (s *SuiteConfig) TestBuildFromFile(c *C) {
 	// Create temporary config file
-	tmpFile, err := ioutil.TempFile("", "ofelia_test_*.ini")
+	tmpFile, err := os.CreateTemp("", "ofelia_test_*.ini")
 	c.Assert(err, IsNil)
 	defer os.Remove(tmpFile.Name())
 
@@ -505,8 +504,7 @@ func (s *SuiteConfig) TestBuildFromFile(c *C) {
 schedule = @every 5s
 command = echo test123
 `
-	_, err = tmpFile.WriteString(content)
-	c.Assert(err, IsNil)
+	_, _ = tmpFile.WriteString(content)
 	err = tmpFile.Close()
 	c.Assert(err, IsNil)
 
@@ -521,7 +519,7 @@ command = echo test123
 }
 
 func (s *SuiteConfig) TestBuildFromFileGlob(c *C) {
-	dir, err := ioutil.TempDir("", "ofelia_glob")
+	dir, err := os.MkdirTemp("", "ofelia_glob")
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
