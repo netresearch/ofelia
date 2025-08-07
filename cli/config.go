@@ -143,105 +143,88 @@ func (c *Config) InitializeApp() error {
 	c.sh = core.NewScheduler(c.logger)
 	c.buildSchedulerMiddlewares(c.sh)
 
-	var err error
-	c.dockerHandler, err = newDockerHandler(context.Background(), c, c.logger, &c.Docker, nil)
-	if err != nil {
+	if err := c.initDockerHandler(); err != nil {
 		return err
 	}
+	c.mergeJobsFromDockerLabels()
+	c.registerAllJobs()
+	return nil
+}
 
-	// In order to support non dynamic job types such as Local or Run using labels
-	// lets parse the labels and merge the job lists
+func (c *Config) initDockerHandler() error {
+	var err error
+	c.dockerHandler, err = newDockerHandler(context.Background(), c, c.logger, &c.Docker, nil)
+	return err
+}
+
+func (c *Config) mergeJobsFromDockerLabels() {
 	dockerLabels, err := c.dockerHandler.GetDockerLabels()
-	if err == nil {
-		parsedLabelConfig := Config{}
-
-		parsedLabelConfig.buildFromDockerLabels(dockerLabels)
-		for name, j := range parsedLabelConfig.ExecJobs {
-			if existing, ok := c.ExecJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined exec job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.ExecJobs[name] = j
-		}
-
-		for name, j := range parsedLabelConfig.RunJobs {
-			if existing, ok := c.RunJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined run job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.RunJobs[name] = j
-		}
-
-		for name, j := range parsedLabelConfig.LocalJobs {
-			if existing, ok := c.LocalJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined local job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.LocalJobs[name] = j
-		}
-
-		for name, j := range parsedLabelConfig.ServiceJobs {
-			if existing, ok := c.ServiceJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined service job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.ServiceJobs[name] = j
-		}
-
-		for name, j := range parsedLabelConfig.ComposeJobs {
-			if existing, ok := c.ComposeJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined compose job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.ComposeJobs[name] = j
-		}
+	if err != nil {
+		return
 	}
+	parsed := Config{}
+	parsed.buildFromDockerLabels(dockerLabels)
+
+	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
+	mergeJobs(c, c.RunJobs, parsed.RunJobs, "run")
+	mergeJobs(c, c.LocalJobs, parsed.LocalJobs, "local")
+	mergeJobs(c, c.ServiceJobs, parsed.ServiceJobs, "service")
+	mergeJobs(c, c.ComposeJobs, parsed.ComposeJobs, "compose")
+}
+
+// mergeJobs copies jobs from src into dst while respecting INI precedence.
+func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind string) {
+	for name, j := range src {
+		if existing, ok := dst[name]; ok && existing.GetJobSource() == JobSourceINI {
+			c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", kind, name)
+			continue
+		}
+		dst[name] = j
+	}
+}
+
+func (c *Config) registerAllJobs() {
+	client := c.dockerHandler.GetInternalDockerClient()
 
 	for name, j := range c.ExecJobs {
 		_ = defaults.Set(j)
-		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Client = client
 		j.Name = name
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
 	}
-
 	for name, j := range c.RunJobs {
 		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
-		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Client = client
 		j.Name = name
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
 	}
-
 	for name, j := range c.LocalJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
 	}
-
 	for name, j := range c.ServiceJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
 		j.Name = name
-		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Client = client
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
-
 	for name, j := range c.ComposeJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
-
-	return nil
 }
 
 func (c *Config) buildSchedulerMiddlewares(sh *core.Scheduler) {
