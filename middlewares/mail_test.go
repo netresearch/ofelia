@@ -1,23 +1,25 @@
 package middlewares
 
 import (
-	"net"
-	"strconv"
-	"strings"
-	"sync"
+    "io"
+    "net"
+    "strconv"
+    "strings"
+    "time"
 
-	"github.com/bradfitz/go-smtpd/smtpd"
+    smtp "github.com/emersion/go-smtp"
 
-	. "gopkg.in/check.v1"
+    . "gopkg.in/check.v1"
 )
 
 type MailSuite struct {
 	BaseSuite
 
-	l         net.Listener
-	smtpd     *smtpd.Server
-	smtpdHost string
-	smtpdPort int
+    l         net.Listener
+    server    *smtp.Server
+    smtpdHost string
+    smtpdPort int
+    fromCh    chan string
 }
 
 var _ = Suite(&MailSuite{})
@@ -25,18 +27,23 @@ var _ = Suite(&MailSuite{})
 func (s *MailSuite) SetUpTest(c *C) {
 	s.BaseSuite.SetUpTest(c)
 
-	s.smtpd = &smtpd.Server{
-		Addr: ":0",
-	}
+    s.fromCh = make(chan string, 1)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	c.Assert(err, IsNil)
 
 	s.l = ln
-	go func() {
-		err := s.smtpd.Serve(ln)
-		c.Assert(err, IsNil)
-	}()
+    go func() {
+        be := &testBackend{fromCh: s.fromCh}
+        s.server = smtp.NewServer(be)
+        s.server.AllowInsecureAuth = true
+        // Serve on the pre-bound listener
+        err := s.server.Serve(ln)
+        // Only assert if it's not the expected listener close during teardown
+        if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
+            c.Assert(err, IsNil)
+        }
+    }()
 
 	p := strings.Split(s.l.Addr().String(), ":")
 	s.smtpdHost = p[0]
@@ -62,18 +69,47 @@ func (s *MailSuite) TestRunSuccess(c *C) {
 		EmailFrom: "qux@qux.com",
 	})
 
-	var wg sync.WaitGroup
-	s.smtpd.OnNewMail = func(_ smtpd.Connection, from smtpd.MailAddress) (smtpd.Envelope, error) {
-		c.Assert(from.Email(), Equals, "qux@qux.com")
-		wg.Done()
+    done := make(chan struct{})
+    go func() {
+        c.Assert(m.Run(s.ctx), IsNil)
+        close(done)
+    }()
 
-		return nil, nil
-	}
+    select {
+    case from := <-s.fromCh:
+        c.Assert(from, Equals, "qux@qux.com")
+    case <-time.After(3 * time.Second):
+        c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+    }
 
-	wg.Add(1)
-	go func() {
-		c.Assert(m.Run(s.ctx), IsNil)
-	}()
-
-	wg.Wait()
+    <-done
 }
+
+// test SMTP backend using github.com/emersion/go-smtp
+type testBackend struct {
+    fromCh chan string
+}
+
+func (b *testBackend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
+    return &testSession{fromCh: b.fromCh}, nil
+}
+
+type testSession struct {
+    fromCh chan string
+}
+
+func (s *testSession) Mail(from string, _ *smtp.MailOptions) error {
+    s.fromCh <- from
+    return nil
+}
+
+func (s *testSession) Rcpt(_ string, _ *smtp.RcptOptions) error { return nil }
+
+func (s *testSession) Data(r io.Reader) error {
+    // Drain data
+    _, _ = io.Copy(io.Discard, r)
+    return nil
+}
+
+func (s *testSession) Reset()        {}
+func (s *testSession) Logout() error { return nil }
