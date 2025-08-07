@@ -174,7 +174,14 @@ func (e *Execution) Start() {
 // failed. Also mark the execution as IsRunning false and save the duration time
 func (e *Execution) Stop(err error) {
 	e.IsRunning = false
+	// Guard against zero or unset start time and ensure a positive duration
+	if e.Date.IsZero() {
+		e.Date = time.Now()
+	}
 	e.Duration = time.Since(e.Date)
+	if e.Duration <= 0 {
+		e.Duration = time.Nanosecond
+	}
 
 	if err != nil && err != ErrSkippedExecution {
 		e.Error = err
