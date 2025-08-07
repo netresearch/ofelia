@@ -16,118 +16,111 @@ const (
 )
 
 func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) error {
-	execJobs := make(map[string]map[string]interface{})
-	localJobs := make(map[string]map[string]interface{})
-	runJobs := make(map[string]map[string]interface{})
-	serviceJobs := make(map[string]map[string]interface{})
-	composeJobs := make(map[string]map[string]interface{})
-	globalConfigs := make(map[string]interface{})
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals := splitLabelsByType(labels)
 
-	for c, l := range labels {
-		isServiceContainer := func() bool {
-			for k, v := range l {
-				if k == serviceLabel {
-					return v == "true"
-				}
-			}
-			return false
-		}()
-
-		for k, v := range l {
-			parts := strings.Split(k, ".")
-			if len(parts) < 4 {
-				if isServiceContainer {
-					globalConfigs[parts[1]] = v
-				}
-
-				continue
-			}
-
-			jobType, jobName, jobParam := parts[1], parts[2], parts[3]
-			scopedJobName := jobName
-			if jobType == jobExec {
-				scopedJobName = c + "." + jobName
-			}
-			switch {
-			case jobType == jobExec: // only job exec can be provided on the non-service container
-				if _, ok := execJobs[scopedJobName]; !ok {
-					execJobs[scopedJobName] = make(map[string]interface{})
-				}
-
-				setJobParam(execJobs[scopedJobName], jobParam, v)
-				// since this label was placed not on the service container
-				// this means we need to `exec` command in this container
-				if !isServiceContainer {
-					execJobs[scopedJobName]["container"] = c
-				}
-			case jobType == jobLocal && isServiceContainer:
-				if _, ok := localJobs[jobName]; !ok {
-					localJobs[jobName] = make(map[string]interface{})
-				}
-				setJobParam(localJobs[jobName], jobParam, v)
-			case jobType == jobServiceRun && isServiceContainer:
-				if _, ok := serviceJobs[jobName]; !ok {
-					serviceJobs[jobName] = make(map[string]interface{})
-				}
-				setJobParam(serviceJobs[jobName], jobParam, v)
-			case jobType == jobRun:
-				if _, ok := runJobs[jobName]; !ok {
-					runJobs[jobName] = make(map[string]interface{})
-				}
-				setJobParam(runJobs[jobName], jobParam, v)
-			case jobType == jobCompose:
-				if _, ok := composeJobs[jobName]; !ok {
-					composeJobs[jobName] = make(map[string]interface{})
-				}
-				setJobParam(composeJobs[jobName], jobParam, v)
-			default:
-				// TODO: warn about unknown parameter
-			}
-		}
-	}
-
-	if len(globalConfigs) > 0 {
-		if err := mapstructure.WeakDecode(globalConfigs, &c.Global); err != nil {
+	if len(globals) > 0 {
+		if err := mapstructure.WeakDecode(globals, &c.Global); err != nil {
 			return err
 		}
 	}
 
-	if len(execJobs) > 0 {
-		if err := mapstructure.WeakDecode(execJobs, &c.ExecJobs); err != nil {
-			return err
+	decodeInto := func(src map[string]map[string]interface{}, dst any) error {
+		if len(src) == 0 {
+			return nil
 		}
-		markJobSource(c.ExecJobs, JobSourceLabel)
+		return mapstructure.WeakDecode(src, dst)
 	}
 
-	if len(localJobs) > 0 {
-		if err := mapstructure.WeakDecode(localJobs, &c.LocalJobs); err != nil {
-			return err
-		}
-		markJobSource(c.LocalJobs, JobSourceLabel)
+	if err := decodeInto(execJobs, &c.ExecJobs); err != nil {
+		return err
+	}
+	if err := decodeInto(localJobs, &c.LocalJobs); err != nil {
+		return err
+	}
+	if err := decodeInto(serviceJobs, &c.ServiceJobs); err != nil {
+		return err
+	}
+	if err := decodeInto(runJobs, &c.RunJobs); err != nil {
+		return err
+	}
+	if err := decodeInto(composeJobs, &c.ComposeJobs); err != nil {
+		return err
 	}
 
-	if len(serviceJobs) > 0 {
-		if err := mapstructure.WeakDecode(serviceJobs, &c.ServiceJobs); err != nil {
-			return err
-		}
-		markJobSource(c.ServiceJobs, JobSourceLabel)
-	}
-
-	if len(runJobs) > 0 {
-		if err := mapstructure.WeakDecode(runJobs, &c.RunJobs); err != nil {
-			return err
-		}
-		markJobSource(c.RunJobs, JobSourceLabel)
-	}
-
-	if len(composeJobs) > 0 {
-		if err := mapstructure.WeakDecode(composeJobs, &c.ComposeJobs); err != nil {
-			return err
-		}
-		markJobSource(c.ComposeJobs, JobSourceLabel)
-	}
+	markJobSource(c.ExecJobs, JobSourceLabel)
+	markJobSource(c.LocalJobs, JobSourceLabel)
+	markJobSource(c.ServiceJobs, JobSourceLabel)
+	markJobSource(c.RunJobs, JobSourceLabel)
+	markJobSource(c.ComposeJobs, JobSourceLabel)
 
 	return nil
+}
+
+// splitLabelsByType partitions label maps and parses values into per-type maps.
+func splitLabelsByType(labels map[string]map[string]string) (
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]interface{},
+	globalConfigs map[string]interface{},
+) {
+	execJobs = make(map[string]map[string]interface{})
+	localJobs = make(map[string]map[string]interface{})
+	runJobs = make(map[string]map[string]interface{})
+	serviceJobs = make(map[string]map[string]interface{})
+	composeJobs = make(map[string]map[string]interface{})
+	globalConfigs = make(map[string]interface{})
+
+	for containerName, labelSet := range labels {
+		isService := hasServiceLabel(labelSet)
+		for k, v := range labelSet {
+			parts := strings.Split(k, ".")
+			if len(parts) < 4 {
+				if isService {
+					globalConfigs[parts[1]] = v
+				}
+				continue
+			}
+			jobType, jobName, jobParam := parts[1], parts[2], parts[3]
+			scopedName := jobName
+			if jobType == jobExec {
+				scopedName = containerName + "." + jobName
+			}
+			switch {
+			case jobType == jobExec:
+				ensureJob(execJobs, scopedName)
+				setJobParam(execJobs[scopedName], jobParam, v)
+				if !isService {
+					execJobs[scopedName]["container"] = containerName
+				}
+			case jobType == jobLocal && isService:
+				ensureJob(localJobs, jobName)
+				setJobParam(localJobs[jobName], jobParam, v)
+			case jobType == jobServiceRun && isService:
+				ensureJob(serviceJobs, jobName)
+				setJobParam(serviceJobs[jobName], jobParam, v)
+			case jobType == jobRun:
+				ensureJob(runJobs, jobName)
+				setJobParam(runJobs[jobName], jobParam, v)
+			case jobType == jobCompose:
+				ensureJob(composeJobs, jobName)
+				setJobParam(composeJobs[jobName], jobParam, v)
+			}
+		}
+	}
+	return
+}
+
+func hasServiceLabel(labels map[string]string) bool {
+	for k, v := range labels {
+		if k == serviceLabel && v == "true" {
+			return true
+		}
+	}
+	return false
+}
+
+func ensureJob(m map[string]map[string]interface{}, name string) {
+	if _, ok := m[name]; !ok {
+		m[name] = make(map[string]interface{})
+	}
 }
 
 // markJobSource assigns the provided source to all jobs in the map.

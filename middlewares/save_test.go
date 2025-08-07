@@ -1,7 +1,6 @@
 package middlewares
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +47,7 @@ func (s *SuiteSave) TestNewSlackEmpty(c *C) {
 }
 
 func (s *SuiteSave) TestRunSuccess(c *C) {
-	dir, err := ioutil.TempDir("/tmp", "save")
+	dir, err := os.MkdirTemp("/tmp", "save")
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -72,7 +71,7 @@ func (s *SuiteSave) TestRunSuccess(c *C) {
 }
 
 func (s *SuiteSave) TestRunSuccessOnError(c *C) {
-	dir, err := ioutil.TempDir("/tmp", "save")
+	dir, err := os.MkdirTemp("/tmp", "save")
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -90,7 +89,7 @@ func (s *SuiteSave) TestRunSuccessOnError(c *C) {
 }
 
 func (s *SuiteSave) TestSensitiveData(c *C) {
-	dir, err := ioutil.TempDir("/tmp", "save")
+	dir, err := os.MkdirTemp("/tmp", "save")
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
@@ -129,7 +128,7 @@ func (s *SuiteSave) TestSensitiveData(c *C) {
 }
 
 func (s *SuiteSave) TestCreatesSaveFolder(c *C) {
-	dir, err := ioutil.TempDir("/tmp", "save")
+	dir, err := os.MkdirTemp("/tmp", "save")
 	c.Assert(err, IsNil)
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
@@ -149,7 +148,7 @@ func (s *SuiteSave) TestCreatesSaveFolder(c *C) {
 }
 
 func (s *SuiteSave) TestSafeFilename(c *C) {
-	dir, err := ioutil.TempDir("/tmp", "save")
+	dir, err := os.MkdirTemp("/tmp", "save")
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 
