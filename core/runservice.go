@@ -74,13 +74,12 @@ func (j *RunServiceJob) buildService() (*swarm.Service, error) {
 
 	// For a service to interact with other services in a stack,
 	// we need to attach it to the same network
-	if j.Network != "" {
-		createSvcOpts.ServiceSpec.Networks = []swarm.NetworkAttachmentConfig{
-			{
-				Target: j.Network,
-			},
-		}
-	}
+    if j.Network != "" {
+        // Prefer attaching via TaskTemplate Networks when available
+        createSvcOpts.ServiceSpec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{
+            {Target: j.Network},
+        }
+    }
 
 	if j.Command != "" {
 		createSvcOpts.ServiceSpec.TaskTemplate.ContainerSpec.Command = strings.Split(j.Command, " ")

@@ -154,11 +154,11 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 
 	// register initial jobs
 	for name, j := range cfg.RunJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
-		cfg.sh.AddJob(j)
+		_ = cfg.sh.AddJob(j)
 	}
 
 	c.Assert(len(cfg.RunJobs), Equals, 1)
@@ -209,11 +209,11 @@ func (s *SuiteConfig) TestIniConfigUpdateEnvChange(c *C) {
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	for name, j := range cfg.RunJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
-		cfg.sh.AddJob(j)
+		_ = cfg.sh.AddJob(j)
 	}
 
 	c.Assert(cfg.RunJobs["foo"].Environment[0], Equals, "FOO=bar")
@@ -248,11 +248,11 @@ func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	for name, j := range cfg.RunJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
-		cfg.sh.AddJob(j)
+		_ = cfg.sh.AddJob(j)
 	}
 
 	// call iniConfigUpdate without modifying the file
@@ -282,11 +282,11 @@ func (s *SuiteConfig) TestIniConfigUpdateLabelConflict(c *C) {
 
 	cfg.RunJobs["foo"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo lbl"}}, JobSource: JobSourceLabel}
 	for name, j := range cfg.RunJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
-		cfg.sh.AddJob(j)
+		_ = cfg.sh.AddJob(j)
 	}
 
 	oldTime := cfg.configModTime
@@ -329,7 +329,7 @@ func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
-		cfg.sh.AddJob(j)
+        _ = cfg.sh.AddJob(j)
 	}
 
 	c.Assert(len(cfg.RunJobs), Equals, 2)
