@@ -1,19 +1,20 @@
 package core
 
 import (
-	docker "github.com/fsouza/go-dockerclient"
 	"testing"
+
+	docker "github.com/fsouza/go-dockerclient"
 )
 
 // TestNewExecutionInitial tests the initial state of a new Execution.
 func TestNewExecutionInitial(t *testing.T) {
-	e, err := NewExecution()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if e == nil {
-		t.Error("expected NewExecution to return non-nil")
-	}
+    e, err := NewExecution()
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+    if e == nil {
+        t.Fatal("expected NewExecution to return non-nil")
+    }
 	if e.ID == "" {
 		t.Error("expected non-empty ID")
 	}

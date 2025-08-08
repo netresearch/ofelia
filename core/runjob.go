@@ -125,12 +125,12 @@ func (j *RunJob) Run(ctx *Context) error {
 		if err != nil {
 			return err
 		}
-	} else {
-		container, err = j.Client.InspectContainer(j.Container)
-		if err != nil {
-			return err
-		}
-	}
+    } else {
+        container, err = j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: j.Container})
+        if err != nil {
+            return err
+        }
+    }
 
 	if container != nil {
 		j.setContainerID(container.ID)
@@ -235,13 +235,15 @@ func (j *RunJob) startContainer() error {
 	return j.Client.StartContainer(j.getContainerID(), &docker.HostConfig{})
 }
 
+// nolint:unused // used in integration tests via build tags
 func (j *RunJob) stopContainer(timeout uint) error {
-	return j.Client.StopContainer(j.getContainerID(), timeout)
+    return j.Client.StopContainer(j.getContainerID(), timeout)
 }
 
+// nolint:unused // used in integration tests via build tags
 func (j *RunJob) getContainer() (*docker.Container, error) {
-	id := j.getContainerID()
-	return j.Client.InspectContainer(id)
+    id := j.getContainerID()
+    return j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: id})
 }
 
 const (
@@ -259,7 +261,7 @@ func (j *RunJob) watchContainer() error {
 			return ErrMaxTimeRunning
 		}
 
-		c, err := j.Client.InspectContainer(j.getContainerID())
+        c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: j.getContainerID()})
 		if err != nil {
 			return err
 		}

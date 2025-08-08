@@ -18,8 +18,6 @@ import (
 var version string
 var build string
 
-const logFormat = "%{time} %{color} %{shortfile} ▶ %{level} %{color:reset} %{message}"
-
 func buildLogger(level string) core.Logger {
 	logrus.SetOutput(os.Stdout)
 	logrus.SetReportCaller(true)

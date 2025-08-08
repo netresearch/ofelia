@@ -163,7 +163,7 @@ func (c *Config) mergeJobsFromDockerLabels() {
 		return
 	}
 	parsed := Config{}
-	parsed.buildFromDockerLabels(dockerLabels)
+	_ = parsed.buildFromDockerLabels(dockerLabels)
 
 	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
 	mergeJobs(c, c.RunJobs, parsed.RunJobs, "run")
@@ -299,7 +299,7 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 		}
 		prep(name, j)
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 		current[name] = j
 	}
 }
@@ -308,7 +308,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	c.logger.Debugf("dockerLabelsUpdate started")
 
 	var parsedLabelConfig Config
-	parsedLabelConfig.buildFromDockerLabels(labels)
+        _ = parsedLabelConfig.buildFromDockerLabels(labels)
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)

@@ -201,7 +201,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					"label1": "1",
 					"label2": "2",
 				},
@@ -211,7 +211,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "true",
 					"label2":      "2",
 				},
@@ -221,7 +221,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "false",
 					labelPrefix + "." + jobLocal + ".job1.schedule": "everyday! yey!",
 				},
@@ -231,7 +231,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "true",
 					labelPrefix + "." + jobLocal + ".job1.schedule": "everyday! yey!",
 					labelPrefix + "." + jobLocal + ".job1.command":  "rm -rf *test*",
@@ -244,7 +244,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobLocal + ".job1.schedule":      "schedule1",
@@ -254,7 +254,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 					labelPrefix + "." + jobServiceRun + ".job3.schedule": "schedule3",
 					labelPrefix + "." + jobServiceRun + ".job3.command":  "command3",
 				},
-				"other": map[string]string{
+				"other": {
 					requiredLabel: "true",
 					labelPrefix + "." + jobLocal + ".job4.schedule":      "schedule4",
 					labelPrefix + "." + jobLocal + ".job4.command":       "command4",
