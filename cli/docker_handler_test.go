@@ -30,6 +30,39 @@ type DockerHandlerSuite struct{}
 
 var _ = Suite(&DockerHandlerSuite{})
 
+// newBaseConfig creates a Config with logger, docker handler, and scheduler ready
+func newBaseConfig() *Config {
+	cfg := NewConfig(&TestLogger{})
+	cfg.logger = &TestLogger{}
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+	return cfg
+}
+
+func addRunJobsToScheduler(cfg *Config) {
+	for name, j := range cfg.RunJobs {
+		_ = defaults.Set(j)
+		j.Name = name
+		_ = cfg.sh.AddJob(j)
+	}
+}
+
+func addExecJobsToScheduler(cfg *Config) {
+	for name, j := range cfg.ExecJobs {
+		_ = defaults.Set(j)
+		j.Name = name
+		_ = cfg.sh.AddJob(j)
+	}
+}
+
+func assertKeepsIniJobs(c *C, cfg *Config, jobsCount func() int) {
+	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+	c.Assert(jobsCount(), Equals, 1)
+	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+}
+
 // TestBuildDockerClientError verifies that buildDockerClient returns an error when DOCKER_HOST is invalid
 func (s *DockerHandlerSuite) TestBuildDockerClientError(c *C) {
 	orig := os.Getenv("DOCKER_HOST")
@@ -157,49 +190,23 @@ func (s *DockerHandlerSuite) TestWatchInvalidInterval(c *C) {
 // TestDockerLabelsUpdateKeepsIniRunJobs verifies that RunJobs defined via INI
 // remain when dockerLabelsUpdate receives no labeled containers.
 func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniRunJobs(c *C) {
-	cfg := NewConfig(&TestLogger{})
-	cfg.logger = &TestLogger{}
-	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
-	cfg.buildSchedulerMiddlewares(cfg.sh)
+	cfg := newBaseConfig()
 
 	cfg.RunJobs["ini-job"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}
 
-	for name, j := range cfg.RunJobs {
-		defaults.Set(j)
-		j.Name = name
-		cfg.sh.AddJob(j)
-	}
+	addRunJobsToScheduler(cfg)
 
-	c.Assert(len(cfg.sh.Entries()), Equals, 1)
-
-	cfg.dockerLabelsUpdate(map[string]map[string]string{})
-
-	c.Assert(len(cfg.RunJobs), Equals, 1)
-	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+	assertKeepsIniJobs(c, cfg, func() int { return len(cfg.RunJobs) })
 }
 
 // TestDockerLabelsUpdateKeepsIniExecJobs verifies that ExecJobs defined via INI
 // remain when dockerLabelsUpdate receives no labeled containers.
 func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniExecJobs(c *C) {
-	cfg := NewConfig(&TestLogger{})
-	cfg.logger = &TestLogger{}
-	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
-	cfg.buildSchedulerMiddlewares(cfg.sh)
+	cfg := newBaseConfig()
 
 	cfg.ExecJobs["ini-exec"] = &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}
 
-	for name, j := range cfg.ExecJobs {
-		defaults.Set(j)
-		j.Name = name
-		cfg.sh.AddJob(j)
-	}
+	addExecJobsToScheduler(cfg)
 
-	c.Assert(len(cfg.sh.Entries()), Equals, 1)
-
-	cfg.dockerLabelsUpdate(map[string]map[string]string{})
-
-	c.Assert(len(cfg.ExecJobs), Equals, 1)
-	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+	assertKeepsIniJobs(c, cfg, func() int { return len(cfg.ExecJobs) })
 }

@@ -93,5 +93,5 @@ func (m *Save) saveContextToDisk(ctx *core.Context, filename string) error {
 }
 
 func (m *Save) writeFile(data []byte, filename string) error {
-	return os.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0o644)
 }

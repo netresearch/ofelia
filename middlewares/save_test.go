@@ -10,6 +10,8 @@ import (
 	. "gopkg.in/check.v1"
 )
 
+const testNameFoo = "foo"
+
 type SuiteSave struct {
 	BaseSuite
 }
@@ -54,19 +56,19 @@ func (s *SuiteSave) TestRunSuccess(c *C) {
 	s.ctx.Start()
 	s.ctx.Stop(nil)
 
-	s.job.Name = "foo"
+	s.job.Name = testNameFoo
 	s.ctx.Execution.Date = time.Time{}
 
 	m := NewSave(&SaveConfig{SaveFolder: dir})
 	c.Assert(m.Run(s.ctx), IsNil)
 
-	_, err = os.Stat(filepath.Join(dir, "00010101_000000_foo.json"))
+	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".json"))
 	c.Assert(err, IsNil)
 
-	_, err = os.Stat(filepath.Join(dir, "00010101_000000_foo.stdout.log"))
+	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".stdout.log"))
 	c.Assert(err, IsNil)
 
-	_, err = os.Stat(filepath.Join(dir, "00010101_000000_foo.stderr.log"))
+	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".stderr.log"))
 	c.Assert(err, IsNil)
 }
 
@@ -78,13 +80,13 @@ func (s *SuiteSave) TestRunSuccessOnError(c *C) {
 	s.ctx.Start()
 	s.ctx.Stop(nil)
 
-	s.job.Name = "foo"
+	s.job.Name = testNameFoo
 	s.ctx.Execution.Date = time.Time{}
 
 	m := NewSave(&SaveConfig{SaveFolder: dir, SaveOnlyOnError: true})
 	c.Assert(m.Run(s.ctx), IsNil)
 
-	_, err = os.Stat(filepath.Join(dir, "00010101_000000_foo.json"))
+	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".json"))
 	c.Assert(err, Not(IsNil))
 }
 
@@ -136,7 +138,7 @@ func (s *SuiteSave) TestCreatesSaveFolder(c *C) {
 	s.ctx.Start()
 	s.ctx.Stop(nil)
 
-	s.job.Name = "foo"
+	s.job.Name = testNameFoo
 	s.ctx.Execution.Date = time.Time{}
 
 	m := NewSave(&SaveConfig{SaveFolder: dir})

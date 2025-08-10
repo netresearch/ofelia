@@ -2,14 +2,13 @@ package middlewares
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
 	"os"
 	"strings"
-
-	"crypto/tls"
 
 	mail "github.com/go-mail/mail/v2"
 
@@ -54,13 +53,12 @@ func (m *Mail) Run(ctx *core.Context) error {
 	err := ctx.Next()
 	ctx.Stop(err)
 
-	if ctx.Execution.Failed || !m.MailOnlyOnError {
-		err := m.sendMail(ctx)
-		if err != nil {
-			ctx.Logger.Errorf("Mail error: %q", err)
-		}
+	if !(ctx.Execution.Failed || !m.MailOnlyOnError) {
+		return err
 	}
-
+	if mailErr := m.sendMail(ctx); mailErr != nil {
+		ctx.Logger.Errorf("Mail error: %q", mailErr)
+	}
 	return err
 }
 
@@ -97,11 +95,7 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 	if m.SMTPTLSSkipVerify {
 		d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	if err := d.DialAndSend(msg); err != nil {
-		return err
-	}
-
-	return nil
+	return d.DialAndSend(msg)
 }
 
 func (m *Mail) from() string {

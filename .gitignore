@@ -1,3 +1,7 @@
+# ChunkHound config and data
+.chunkhound.json
+.chunkhound/*.json
+.chunkhound/**
 .vscode
 ofelia
 debug

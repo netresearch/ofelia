@@ -11,7 +11,7 @@ import (
 	"github.com/netresearch/ofelia/core"
 )
 
-var ErrNoContainerWithOfeliaEnabled = errors.New("Couldn't find containers with label 'ofelia.enabled=true'")
+var ErrNoContainerWithOfeliaEnabled = errors.New("couldn't find containers with label 'ofelia.enabled=true'")
 
 // dockerClient defines the Docker client methods used by DockerHandler.
 type dockerClient interface {
@@ -158,7 +158,7 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 		return nil, ErrNoContainerWithOfeliaEnabled
 	}
 
-	var labels = make(map[string]map[string]string)
+	labels := make(map[string]map[string]string)
 
 	for _, c := range conts {
 		if len(c.Names) > 0 && len(c.Labels) > 0 {

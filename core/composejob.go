@@ -1,10 +1,11 @@
 package core
 
 import (
-	"github.com/gobs/args"
 	"os"
 	"os/exec"
 	"reflect"
+
+	"github.com/gobs/args"
 )
 
 type ComposeJob struct {
@@ -17,14 +18,11 @@ type ComposeJob struct {
 func NewComposeJob() *ComposeJob { return &ComposeJob{} }
 
 func (j *ComposeJob) Run(ctx *Context) error {
-	cmd, err := j.buildCommand(ctx)
-	if err != nil {
-		return err
-	}
+	cmd := j.buildCommand(ctx)
 	return cmd.Run()
 }
 
-func (j *ComposeJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
+func (j *ComposeJob) buildCommand(ctx *Context) *exec.Cmd {
 	var argsSlice []string
 	argsSlice = append(argsSlice, "compose", "-f", j.File)
 	if j.Exec {
@@ -39,7 +37,7 @@ func (j *ComposeJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 	cmd.Stdout = ctx.Execution.OutputStream
 	cmd.Stderr = ctx.Execution.ErrorStream
 	cmd.Env = os.Environ()
-	return cmd, nil
+	return cmd
 }
 
 func (j *ComposeJob) Hash() (string, error) {

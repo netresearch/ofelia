@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	defaults "github.com/creasty/defaults"
@@ -16,6 +17,13 @@ import (
 
 	. "gopkg.in/check.v1"
 )
+
+const (
+	iniFoo = "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
+	iniBar = "[job-run \"bar\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo bar\n"
+)
+
+// Keep unused constants minimal; remove if not used to satisfy unused linter.
 
 // Test error path of BuildFromString with invalid INI string
 func (s *SuiteConfig) TestBuildFromStringInvalidIni(c *C) {
@@ -141,8 +149,7 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	c.Assert(err, IsNil)
 	defer os.Remove(tmp.Name())
 
-	content1 := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
-	_, _ = tmp.WriteString(content1)
+	_, _ = tmp.WriteString(iniFoo)
 	tmp.Close()
 
 	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
@@ -166,7 +173,7 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 
 	// modify ini: change schedule and add new job
 	oldTime := cfg.configModTime
-	content2 := "[job-run \"foo\"]\nschedule = @every 10s\nimage = busybox\ncommand = echo foo\n[job-run \"bar\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo bar\n"
+	content2 := strings.ReplaceAll(iniFoo, "@every 5s", "@every 10s") + iniBar
 	err = os.WriteFile(tmp.Name(), []byte(content2), 0o644)
 	c.Assert(err, IsNil)
 	c.Assert(waitForModTimeChange(tmp.Name(), oldTime), IsNil)
@@ -178,7 +185,7 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 
 	// modify ini: remove foo
 	oldTime = cfg.configModTime
-	content3 := "[job-run \"bar\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo bar\n"
+	content3 := iniBar
 	err = os.WriteFile(tmp.Name(), []byte(content3), 0o644)
 	c.Assert(err, IsNil)
 	c.Assert(waitForModTimeChange(tmp.Name(), oldTime), IsNil)
@@ -235,8 +242,7 @@ func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 	c.Assert(err, IsNil)
 	defer os.Remove(tmp.Name())
 
-	content := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
-	_, err = tmp.WriteString(content)
+	_, err = tmp.WriteString(iniFoo)
 	c.Assert(err, IsNil)
 	tmp.Close()
 
@@ -310,7 +316,7 @@ func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
 	defer os.RemoveAll(dir)
 
 	file1 := filepath.Join(dir, "a.ini")
-	err = os.WriteFile(file1, []byte("[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"), 0o644)
+	err = os.WriteFile(file1, []byte(iniFoo), 0o644)
 	c.Assert(err, IsNil)
 
 	file2 := filepath.Join(dir, "b.ini")
@@ -325,11 +331,11 @@ func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	for name, j := range cfg.RunJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 		j.buildMiddlewares()
-        _ = cfg.sh.AddJob(j)
+		_ = cfg.sh.AddJob(j)
 	}
 
 	c.Assert(len(cfg.RunJobs), Equals, 2)
@@ -357,7 +363,7 @@ func (s *SuiteConfig) TestIniConfigUpdateGlobalChange(c *C) {
 	content1 := fmt.Sprintf("[global]\nlog-level = INFO\nsave-folder = %s\n",
 		dir)
 	content1 += "save-only-on-error = false\n"
-	content1 += "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
+	content1 += iniFoo
 	_, err = tmp.WriteString(content1)
 	c.Assert(err, IsNil)
 	tmp.Close()
@@ -380,7 +386,7 @@ func (s *SuiteConfig) TestIniConfigUpdateGlobalChange(c *C) {
 
 	oldTime := cfg.configModTime
 	content2 := fmt.Sprintf("[global]\nlog-level = DEBUG\nsave-folder = %s\nsave-only-on-error = true\n", dir)
-	content2 += "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"
+	content2 += iniFoo
 	err = os.WriteFile(tmp.Name(), []byte(content2), 0o644)
 	c.Assert(err, IsNil)
 	c.Assert(waitForModTimeChange(tmp.Name(), oldTime), IsNil)

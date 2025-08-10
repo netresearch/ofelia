@@ -25,7 +25,8 @@ func (s *SuiteScheduler) TestAddJob(c *C) {
 
 func (s *SuiteScheduler) TestStartStop(c *C) {
 	job := &TestJob{}
-	job.Schedule = "@every 1s"
+	const every1s = "@every 1s"
+	job.Schedule = every1s
 
 	sc := NewScheduler(&TestLogger{})
 	err := sc.AddJob(job)
