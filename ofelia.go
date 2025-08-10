@@ -15,8 +15,10 @@ import (
 	ini "gopkg.in/ini.v1"
 )
 
-var version string
-var build string
+var (
+	version string
+	build   string
+)
 
 func buildLogger(level string) core.Logger {
 	logrus.SetOutput(os.Stdout)

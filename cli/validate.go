@@ -16,7 +16,7 @@ type ValidateCommand struct {
 }
 
 // Execute runs the validation command
-func (c *ValidateCommand) Execute(args []string) error {
+func (c *ValidateCommand) Execute(_ []string) error {
 	ApplyLogLevel(c.LogLevel)
 	c.Logger.Debugf("Validating %q ... ", c.ConfigFile)
 	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
@@ -41,18 +41,18 @@ func (c *ValidateCommand) Execute(args []string) error {
 
 func applyConfigDefaults(conf *Config) {
 	for _, j := range conf.ExecJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 	for _, j := range conf.RunJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 	for _, j := range conf.LocalJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 	for _, j := range conf.ServiceJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 	for _, j := range conf.ComposeJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 }

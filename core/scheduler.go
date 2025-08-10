@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	ErrEmptyScheduler = errors.New("unable to start a empty scheduler.")
-	ErrEmptySchedule  = errors.New("unable to add a job with a empty schedule.")
+	ErrEmptyScheduler = errors.New("unable to start an empty scheduler")
+	ErrEmptySchedule  = errors.New("unable to add a job with an empty schedule")
 )
 
 type Scheduler struct {

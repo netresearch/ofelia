@@ -1,16 +1,27 @@
 linters:
+  disable-all: true
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - typecheck
-    - unused
-    - gocyclo
-    - revive
     - gofmt
     - goimports
+    - gofumpt
+    - revive
+    - gocyclo
+    - ineffassign
+    - errcheck
+    - misspell
+    - goconst
+    - dupl
+    - prealloc
+    - typecheck
+    - staticcheck
+    - gosimple
+    - govet
+    - unused
+    - unparam
+    - nolintlint
+    - predeclared
+    - copyloopvar
+    - exhaustive
 
 run:
   timeout: 5m
@@ -25,10 +36,16 @@ issues:
 
 linters-settings:
   gocyclo:
-    min-complexity: 20
+    min-complexity: 15
   revive:
     rules:
       - name: blank-imports
         disabled: true
       - name: package-comments
         disabled: true
+      - name: var-naming
+      - name: exported
+      - name: if-return
+      - name: early-return
+  misspell:
+    locale: US

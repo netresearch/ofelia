@@ -26,9 +26,7 @@ type Server struct {
 
 // HTTPServer returns the underlying http.Server used by the web interface. It
 // is exposed for tests and may change if the Server struct evolves.
-func (s *Server) HTTPServer() *http.Server {
-	return s.srv
-}
+func (s *Server) HTTPServer() *http.Server { return s.srv }
 
 func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockerclient.Client) *Server {
 	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), client: client}
@@ -53,16 +51,9 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockercl
 	return server
 }
 
-func (s *Server) Start() error {
-	go func() {
-		_ = s.srv.ListenAndServe()
-	}()
-	return nil
-}
+func (s *Server) Start() error { go func() { _ = s.srv.ListenAndServe() }(); return nil }
 
-func (s *Server) Shutdown(ctx context.Context) error {
-	return s.srv.Shutdown(ctx)
-}
+func (s *Server) Shutdown(ctx context.Context) error { return s.srv.Shutdown(ctx) }
 
 type apiExecution struct {
 	Date     time.Time     `json:"date"`
@@ -142,9 +133,10 @@ func jobType(j core.Job) string {
 	}
 }
 
-func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
-	jobs := make([]apiJob, 0, len(s.scheduler.Jobs))
-	for _, job := range s.scheduler.Jobs {
+// buildAPIJobs converts a slice of core.Job into apiJob payloads.
+func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
+	jobs := make([]apiJob, 0, len(list))
+	for _, job := range list {
 		var execInfo *apiExecution
 		if lrGetter, ok := job.(interface{ GetLastRun() *core.Execution }); ok {
 			if lr := lrGetter.GetLastRun(); lr != nil {
@@ -175,51 +167,22 @@ func (s *Server) jobsHandler(w http.ResponseWriter, r *http.Request) {
 			Config:   cfgBytes,
 		})
 	}
+	return jobs
+}
 
+func (s *Server) jobsHandler(w http.ResponseWriter, _ *http.Request) {
+	jobs := s.buildAPIJobs(s.scheduler.Jobs)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jobs)
 }
 
-func (s *Server) removedJobsHandler(w http.ResponseWriter, r *http.Request) {
-	removed := s.scheduler.GetRemovedJobs()
-	jobs := make([]apiJob, 0, len(removed))
-	for _, job := range removed {
-		var execInfo *apiExecution
-		if lrGetter, ok := job.(interface{ GetLastRun() *core.Execution }); ok {
-			if lr := lrGetter.GetLastRun(); lr != nil {
-				errStr := ""
-				if lr.Error != nil {
-					errStr = lr.Error.Error()
-				}
-				execInfo = &apiExecution{
-					Date:     lr.Date,
-					Duration: lr.Duration,
-					Failed:   lr.Failed,
-					Skipped:  lr.Skipped,
-					Error:    errStr,
-					Stdout:   lr.OutputStream.String(),
-					Stderr:   lr.ErrorStream.String(),
-				}
-			}
-		}
-		origin := s.jobOrigin(job.GetName())
-		cfgBytes, _ := json.Marshal(job)
-		jobs = append(jobs, apiJob{
-			Name:     job.GetName(),
-			Type:     jobType(job),
-			Schedule: job.GetSchedule(),
-			Command:  job.GetCommand(),
-			LastRun:  execInfo,
-			Origin:   origin,
-			Config:   cfgBytes,
-		})
-	}
-
+func (s *Server) removedJobsHandler(w http.ResponseWriter, _ *http.Request) {
+	jobs := s.buildAPIJobs(s.scheduler.GetRemovedJobs())
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jobs)
 }
 
-func (s *Server) disabledJobsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) disabledJobsHandler(w http.ResponseWriter, _ *http.Request) {
 	disabled := s.scheduler.GetDisabledJobs()
 	jobs := make([]apiJob, 0, len(disabled))
 	for _, job := range disabled {
@@ -395,7 +358,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) configHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) configHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	cfg := stripJobs(s.config)
 	_ = json.NewEncoder(w).Encode(cfg)

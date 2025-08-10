@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"net/http"
+
+	// pprof server is enabled conditionally at runtime. Keep the import so the endpoint exists when enabled.
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
@@ -38,7 +40,7 @@ type DaemonCommand struct {
 }
 
 // Execute runs the daemon
-func (c *DaemonCommand) Execute(args []string) error {
+func (c *DaemonCommand) Execute(_ []string) error {
 	if err := c.boot(); err != nil {
 		return err
 	}
@@ -46,12 +48,7 @@ func (c *DaemonCommand) Execute(args []string) error {
 	if err := c.start(); err != nil {
 		return err
 	}
-
-	if err := c.shutdown(); err != nil {
-		return err
-	}
-
-	return nil
+	return c.shutdown()
 }
 
 func (c *DaemonCommand) boot() (err error) {

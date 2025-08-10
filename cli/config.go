@@ -258,57 +258,69 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 			delete(current, name)
 			continue
 		}
-		prep(name, newJob)
-		newJob.SetJobSource(source)
-		newHash, err1 := newJob.Hash()
-		if err1 != nil {
-			c.logger.Errorf("hash calculation failed: %v", err1)
-			continue
-		}
-		oldHash, err2 := j.Hash()
-		if err2 != nil {
-			c.logger.Errorf("hash calculation failed: %v", err2)
-			continue
-		}
-		if newHash != oldHash {
-			_ = c.sh.RemoveJob(j)
-			newJob.buildMiddlewares()
-			c.sh.AddJob(newJob)
+		if updated := replaceIfChanged(c, name, j, newJob, prep, source); updated {
 			current[name] = newJob
+			continue
 		}
 	}
 
 	for name, j := range parsed {
 		if cur, ok := current[name]; ok {
-			if cur.GetJobSource() != source {
-				if source == JobSourceINI && cur.GetJobSource() == JobSourceLabel {
-					c.logger.Warningf("overriding label-defined %s job %q with INI job", jobKind, name)
-					_ = c.sh.RemoveJob(cur)
-				} else if source == JobSourceLabel && cur.GetJobSource() == JobSourceINI {
-					c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name)
-					continue
-				} else {
-					continue
-				}
+			if cur.GetJobSource() == source {
+				continue
+			}
+			if source == JobSourceINI && cur.GetJobSource() == JobSourceLabel {
+				c.logger.Warningf("overriding label-defined %s job %q with INI job", jobKind, name)
+				_ = c.sh.RemoveJob(cur)
+			} else if source == JobSourceLabel && cur.GetJobSource() == JobSourceINI {
+				c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name)
+				continue
 			} else {
 				continue
 			}
 		}
-		if source != "" {
-			j.SetJobSource(source)
-		}
-		prep(name, j)
-		j.buildMiddlewares()
-		_ = c.sh.AddJob(j)
-		current[name] = j
+		addNewJob(c, name, j, prep, source, current)
 	}
+}
+
+func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, prep func(string, J), source JobSource) bool {
+	prep(name, newJob)
+	newJob.SetJobSource(source)
+	newHash, err1 := newJob.Hash()
+	if err1 != nil {
+		c.logger.Errorf("hash calculation failed: %v", err1)
+		return false
+	}
+	oldHash, err2 := oldJob.Hash()
+	if err2 != nil {
+		c.logger.Errorf("hash calculation failed: %v", err2)
+		return false
+	}
+	if newHash == oldHash {
+		return false
+	}
+	_ = c.sh.RemoveJob(oldJob)
+	newJob.buildMiddlewares()
+	_ = c.sh.AddJob(newJob)
+	// caller updates current map entry
+	return true
+}
+
+func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J) {
+	if source != "" {
+		j.SetJobSource(source)
+	}
+	prep(name, j)
+	j.buildMiddlewares()
+	_ = c.sh.AddJob(j)
+	current[name] = j
 }
 
 func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	c.logger.Debugf("dockerLabelsUpdate started")
 
 	var parsedLabelConfig Config
-        _ = parsedLabelConfig.buildFromDockerLabels(labels)
+	_ = parsedLabelConfig.buildFromDockerLabels(labels)
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
@@ -360,25 +372,17 @@ func (c *Config) iniConfigUpdate() error {
 		return err
 	}
 
-	var latest time.Time
-	for _, f := range files {
-		info, err := os.Stat(f)
-		if err != nil {
-			return err
-		}
-		if info.ModTime().After(latest) {
-			latest = info.ModTime()
-		}
+	latest, changed, err := latestChanged(files, c.configModTime)
+	if err != nil {
+		return err
 	}
-
 	for _, f := range files {
 		c.logger.Debugf("checking config file %s", f)
 	}
-	if latest.Equal(c.configModTime) {
+	if !changed {
 		c.logger.Debugf("config not changed")
 		return nil
 	}
-
 	c.logger.Debugf("reloading config files from %s", strings.Join(files, ", "))
 
 	parsed, err := BuildFromFile(c.configPath, c.logger)
@@ -411,14 +415,14 @@ func (c *Config) iniConfigUpdate() error {
 	}
 
 	execPrep := func(name string, j *ExecJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
 	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep, JobSourceINI, "exec")
 
 	runPrep := func(name string, j *RunJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -428,13 +432,13 @@ func (c *Config) iniConfigUpdate() error {
 	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI, "run")
 
 	localPrep := func(name string, j *LocalJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 	}
 	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, localPrep, JobSourceINI, "local")
 
 	svcPrep := func(name string, j *RunServiceConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -444,7 +448,7 @@ func (c *Config) iniConfigUpdate() error {
 	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep, JobSourceINI, "service")
 
 	composePrep := func(name string, j *ComposeJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 	}
 	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep, JobSourceINI, "compose")
@@ -558,6 +562,52 @@ type DockerConfig struct {
 }
 
 func parseIni(cfg *ini.File, c *Config) error {
+	if err := parseGlobalAndDocker(cfg, c); err != nil {
+		return err
+	}
+	for _, section := range cfg.Sections() {
+		name := strings.TrimSpace(section.Name())
+		switch {
+		case strings.HasPrefix(name, jobExec):
+			if err := decodeJob(section, &ExecJobConfig{JobSource: JobSourceINI}, func(n string, j *ExecJobConfig) { c.ExecJobs[n] = j }, jobExec); err != nil {
+				return err
+			}
+		case strings.HasPrefix(name, jobRun):
+			if err := decodeJob(section, &RunJobConfig{JobSource: JobSourceINI}, func(n string, j *RunJobConfig) { c.RunJobs[n] = j }, jobRun); err != nil {
+				return err
+			}
+		case strings.HasPrefix(name, jobServiceRun):
+			if err := decodeJob(section, &RunServiceConfig{JobSource: JobSourceINI}, func(n string, j *RunServiceConfig) { c.ServiceJobs[n] = j }, jobServiceRun); err != nil {
+				return err
+			}
+		case strings.HasPrefix(name, jobLocal):
+			if err := decodeJob(section, &LocalJobConfig{JobSource: JobSourceINI}, func(n string, j *LocalJobConfig) { c.LocalJobs[n] = j }, jobLocal); err != nil {
+				return err
+			}
+		case strings.HasPrefix(name, jobCompose):
+			if err := decodeJob(section, &ComposeJobConfig{JobSource: JobSourceINI}, func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j }, jobCompose); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func latestChanged(files []string, prev time.Time) (time.Time, bool, error) {
+	var latest time.Time
+	for _, f := range files {
+		info, err := os.Stat(f)
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		if info.ModTime().After(latest) {
+			latest = info.ModTime()
+		}
+	}
+	return latest, latest.After(prev), nil
+}
+
+func parseGlobalAndDocker(cfg *ini.File, c *Config) error {
 	if sec, err := cfg.GetSection("global"); err == nil {
 		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Global); err != nil {
 			return err
@@ -568,47 +618,15 @@ func parseIni(cfg *ini.File, c *Config) error {
 			return err
 		}
 	}
+	return nil
+}
 
-	for _, section := range cfg.Sections() {
-		name := strings.TrimSpace(section.Name())
-		switch {
-		case strings.HasPrefix(name, jobExec):
-			jobName := parseJobName(name, jobExec)
-			job := &ExecJobConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
-				return err
-			}
-			c.ExecJobs[jobName] = job
-		case strings.HasPrefix(name, jobRun):
-			jobName := parseJobName(name, jobRun)
-			job := &RunJobConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
-				return err
-			}
-			c.RunJobs[jobName] = job
-		case strings.HasPrefix(name, jobServiceRun):
-			jobName := parseJobName(name, jobServiceRun)
-			job := &RunServiceConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
-				return err
-			}
-			c.ServiceJobs[jobName] = job
-		case strings.HasPrefix(name, jobLocal):
-			jobName := parseJobName(name, jobLocal)
-			job := &LocalJobConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
-				return err
-			}
-			c.LocalJobs[jobName] = job
-		case strings.HasPrefix(name, jobCompose):
-			jobName := parseJobName(name, jobCompose)
-			job := &ComposeJobConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
-				return err
-			}
-			c.ComposeJobs[jobName] = job
-		}
+func decodeJob[T jobConfig](section *ini.Section, job T, set func(string, T), prefix string) error {
+	jobName := parseJobName(strings.TrimSpace(section.Name()), prefix)
+	if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+		return err
 	}
+	set(jobName, job)
 	return nil
 }
 

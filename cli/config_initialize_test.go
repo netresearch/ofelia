@@ -12,6 +12,8 @@ import (
 	. "gopkg.in/check.v1"
 )
 
+const containersJSON = "/containers/json"
+
 // Hook up gocheck into the "go test" runner.
 func TestConfigInit(t *testing.T) { TestingT(t) }
 
@@ -22,8 +24,9 @@ var _ = Suite(&ConfigInitSuite{})
 // TestInitializeAppSuccess verifies that InitializeApp succeeds when Docker handler connects and no containers are found.
 func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
 	// HTTP test server returning empty container list
+	const containersJSON = "/containers/json"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/containers/json" {
+		if r.URL.Path == containersJSON {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte("[]"))
 			return
@@ -62,12 +65,12 @@ func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
 
 // TestInitializeAppLabelConflict ensures label-defined jobs do not override INI jobs at startup.
 func (s *ConfigInitSuite) TestInitializeAppLabelConflict(c *C) {
-	iniStr := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo ini\n"
+	const iniStr = "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo ini\n"
 	cfg, err := BuildFromString(iniStr, &TestLogger{})
 	c.Assert(err, IsNil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/containers/json" {
+		if r.URL.Path == containersJSON {
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, `[{"Names":["/cont1"],"Labels":{`+
 				`"ofelia.enabled":"true",`+
@@ -114,7 +117,7 @@ func (s *ConfigInitSuite) TestInitializeAppComposeConflict(c *C) {
 	c.Assert(err, IsNil)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/containers/json" {
+		if r.URL.Path == containersJSON {
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, `[{"Names":["/cont1"],"Labels":{`+
 				`"ofelia.enabled":"true",`+

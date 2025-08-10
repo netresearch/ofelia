@@ -18,7 +18,7 @@ var (
 	// it as skipped.
 	ErrSkippedExecution   = errors.New("skipped execution")
 	ErrUnexpected         = errors.New("error unexpected, docker has returned exit code -1, maybe wrong user?")
-	ErrMaxTimeRunning     = errors.New("the job has exceeded the maximum allowed time running.")
+	ErrMaxTimeRunning     = errors.New("the job has exceeded the maximum allowed time running")
 	ErrLocalImageNotFound = errors.New("couldn't find image on the host")
 )
 
@@ -235,11 +235,10 @@ func (c *middlewareContainer) ResetMiddlewares(ms ...Middleware) {
 }
 
 func (c *middlewareContainer) Middlewares() []Middleware {
-	var ms []Middleware
+	ms := make([]Middleware, 0, len(c.order))
 	for _, t := range c.order {
 		ms = append(ms, c.m[t])
 	}
-
 	return ms
 }
 
@@ -278,8 +277,9 @@ func buildPullOptions(image string) (docker.PullImageOptions, docker.AuthConfigu
 		registry = parts[0]
 	}
 
+	const defaultTagLatest = "latest"
 	if tag == "" {
-		tag = "latest"
+		tag = defaultTagLatest
 	}
 
 	return docker.PullImageOptions{
@@ -357,6 +357,7 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 			continue
 		}
 
+		//nolint:exhaustive // reflect.Kind has many values; only relevant kinds are supported for hashing
 		switch kind {
 		case reflect.String:
 			*hash += fieldv.String()
@@ -365,25 +366,27 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 		case reflect.Bool:
 			*hash += strconv.FormatBool(fieldv.Bool())
 		case reflect.Slice:
-			if field.Type.Elem().Kind() == reflect.String {
-				strs := fieldv.Interface().([]string)
-				for _, str := range strs {
-					*hash += fmt.Sprintf("%d:%s,", len(str), str)
-				}
-			} else {
+			if field.Type.Elem().Kind() != reflect.String {
 				return fmt.Errorf("unsupported field type")
+			}
+			strs := fieldv.Interface().([]string)
+			for _, str := range strs {
+				*hash += fmt.Sprintf("%d:%s,", len(str), str)
 			}
 		case reflect.Pointer:
 			if fieldv.IsNil() {
 				*hash += "<nil>"
-			} else {
-				elem := fieldv.Elem()
-				if elem.Kind() == reflect.String {
-					*hash += elem.String()
-				} else {
-					return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
-				}
+				continue
 			}
+			elem := fieldv.Elem()
+			if elem.Kind() == reflect.String {
+				*hash += elem.String()
+				continue
+			}
+			return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
+		// Other kinds are intentionally not part of the job hash. They are either
+		// not used in our job structs today or would require a more elaborate
+		// stable string representation that is out of scope here.
 		default:
 			return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
 		}

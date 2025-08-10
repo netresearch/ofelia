@@ -14,6 +14,16 @@ import (
 	webpkg "github.com/netresearch/ofelia/web"
 )
 
+const (
+	schedDaily   = "@daily"
+	schedHourly  = "@hourly"
+	cmdEcho      = "echo"
+	nameJobINI   = "job-ini"
+	nameJobLabel = "job-label"
+	originINI    = "ini"
+	originLabel  = "label"
+)
+
 type stubLogger struct{}
 
 func (stubLogger) Criticalf(string, ...interface{}) {}
@@ -49,8 +59,16 @@ type apiJob struct {
 func TestHistoryEndpoint(t *testing.T) {
 	job := &testJob{}
 	job.Name = "job1"
-	job.Schedule = "@daily"
-	job.Command = "echo"
+	const (
+		schedDaily   = "@daily"
+		schedHourly  = "@hourly"
+		cmdEcho      = "echo"
+		nameJobINI   = "job-ini"
+		nameJobLabel = "job-label"
+		originINI    = "ini"
+	)
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
 	e, _ := core.NewExecution()
 	_, _ = e.OutputStream.Write([]byte("out"))
 	_, _ = e.ErrorStream.Write([]byte("err"))
@@ -82,8 +100,8 @@ func TestHistoryEndpoint(t *testing.T) {
 func TestJobsHandlerIncludesOutput(t *testing.T) {
 	job := &testJob{}
 	job.Name = "job1"
-	job.Schedule = "@daily"
-	job.Command = "echo"
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
 	e, _ := core.NewExecution()
 	_, _ = e.OutputStream.Write([]byte("out"))
 	_, _ = e.ErrorStream.Write([]byte("err"))
@@ -114,13 +132,13 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 
 func TestJobsHandlerOrigin(t *testing.T) {
 	jobIni := &testJob{}
-	jobIni.Name = "job-ini"
-	jobIni.Schedule = "@daily"
-	jobIni.Command = "echo"
+	jobIni.Name = nameJobINI
+	jobIni.Schedule = schedDaily
+	jobIni.Command = cmdEcho
 
 	jobLabel := &testJob{}
-	jobLabel.Name = "job-label"
-	jobLabel.Schedule = "@hourly"
+	jobLabel.Name = nameJobLabel
+	jobLabel.Schedule = schedHourly
 	jobLabel.Command = "ls"
 
 	sched := &core.Scheduler{Jobs: []core.Job{jobIni, jobLabel}, Logger: &stubLogger{}}
@@ -159,19 +177,20 @@ func TestJobsHandlerOrigin(t *testing.T) {
 		m[j.Name] = j.Origin
 	}
 
-	if m["job-ini"] != "ini" || m["job-label"] != "label" {
+	if m[nameJobINI] != originINI || m[nameJobLabel] != originLabel {
 		t.Fatalf("unexpected origins %v", m)
 	}
 }
+
 func TestRemovedJobsHandlerOrigin(t *testing.T) {
 	jobIni := &testJob{}
-	jobIni.Name = "job-ini"
-	jobIni.Schedule = "@daily"
-	jobIni.Command = "echo"
+	jobIni.Name = nameJobINI
+	jobIni.Schedule = schedDaily
+	jobIni.Command = cmdEcho
 
 	jobLabel := &testJob{}
-	jobLabel.Name = "job-label"
-	jobLabel.Schedule = "@hourly"
+	jobLabel.Name = nameJobLabel
+	jobLabel.Schedule = schedHourly
 	jobLabel.Command = "ls"
 
 	sched := core.NewScheduler(&stubLogger{})
@@ -211,20 +230,20 @@ func TestRemovedJobsHandlerOrigin(t *testing.T) {
 	for _, j := range jobs {
 		m[j.Name] = j.Origin
 	}
-	if m["job-ini"] != "ini" || m["job-label"] != "label" {
+	if m[nameJobINI] != originINI || m[nameJobLabel] != originLabel {
 		t.Fatalf("unexpected origins %v", m)
 	}
 }
 
 func TestDisabledJobsHandlerOrigin(t *testing.T) {
 	jobIni := &testJob{}
-	jobIni.Name = "job-ini"
-	jobIni.Schedule = "@daily"
-	jobIni.Command = "echo"
+	jobIni.Name = nameJobINI
+	jobIni.Schedule = schedDaily
+	jobIni.Command = cmdEcho
 
 	jobLabel := &testJob{}
-	jobLabel.Name = "job-label"
-	jobLabel.Schedule = "@hourly"
+	jobLabel.Name = nameJobLabel
+	jobLabel.Schedule = schedHourly
 	jobLabel.Command = "ls"
 
 	sched := core.NewScheduler(&stubLogger{})
@@ -264,7 +283,7 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 	for _, j := range jobs {
 		m[j.Name] = j.Origin
 	}
-	if m["job-ini"] != "ini" || m["job-label"] != "label" {
+	if m[nameJobINI] != originINI || m[nameJobLabel] != originLabel {
 		t.Fatalf("unexpected origins %v", m)
 	}
 }
