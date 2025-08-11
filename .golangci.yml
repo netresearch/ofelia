@@ -22,6 +22,8 @@ linters:
     - predeclared
     - copyloopvar
     - exhaustive
+    - forbidigo
+    - wrapcheck
 
 run:
   timeout: 5m
@@ -33,6 +35,7 @@ issues:
       linters:
         - gocyclo
         - revive
+        - wrapcheck
 
 linters-settings:
   gocyclo:
@@ -47,5 +50,17 @@ linters-settings:
       - name: exported
       - name: if-return
       - name: early-return
+      - name: line-length-limit
+        arguments: [ 140 ]
+      - name: import-shadowing
+      - name: time-naming
+      - name: increment-decrement
+  forbidigo:
+    forbid:
+      - '^fmt\.Print.*$'
+  wrapcheck:
+    ignoreSigRegexps:
+      - 'errors\.New\('
+      - '\*github\.com/netresearch/ofelia/core\.Context\)\.Next\('
   misspell:
     locale: US

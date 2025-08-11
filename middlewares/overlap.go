@@ -33,6 +33,5 @@ func (m *Overlap) Run(ctx *core.Context) error {
 	if m.NoOverlap && ctx.Job.Running() > 1 {
 		ctx.Stop(core.ErrSkippedExecution)
 	}
-
 	return ctx.Next()
 }

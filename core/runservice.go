@@ -83,10 +83,10 @@ func (j *RunServiceJob) buildService() (*swarm.Service, error) {
 
 	svc, err := j.Client.CreateService(createSvcOpts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create service: %w", err)
 	}
 
-	return svc, err
+	return svc, nil
 }
 
 const (
@@ -103,7 +103,7 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 
 	svc, err := j.Client.InspectService(svcID)
 	if err != nil {
-		return fmt.Errorf("failed to inspect service %s: %w", svcID, err)
+		return fmt.Errorf("inspect service %s: %w", svcID, err)
 	}
 
 	startTime := time.Now()
@@ -201,7 +201,10 @@ func (j *RunServiceJob) deleteService(ctx *Context, svcID string) error {
 		return nil
 	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("remove service %s: %w", svcID, err)
+	}
+	return nil
 }
 
 func (j *RunServiceJob) Hash() (string, error) {

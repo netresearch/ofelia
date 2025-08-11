@@ -53,7 +53,12 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockercl
 
 func (s *Server) Start() error { go func() { _ = s.srv.ListenAndServe() }(); return nil }
 
-func (s *Server) Shutdown(ctx context.Context) error { return s.srv.Shutdown(ctx) }
+func (s *Server) Shutdown(ctx context.Context) error {
+	if err := s.srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shutdown http server: %w", err)
+	}
+	return nil
+}
 
 type apiExecution struct {
 	Date     time.Time     `json:"date"`

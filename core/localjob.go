@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"reflect"
@@ -24,19 +25,22 @@ func (j *LocalJob) Run(ctx *Context) error {
 		return err
 	}
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("local run: %w", err)
+	}
+	return nil
 }
 
 func (j *LocalJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
-	args := args.GetArgs(j.Command)
-	bin, err := exec.LookPath(args[0])
+	cmdArgs := args.GetArgs(j.Command)
+	bin, err := exec.LookPath(cmdArgs[0])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("look path %q: %w", cmdArgs[0], err)
 	}
 
 	return &exec.Cmd{
 		Path:   bin,
-		Args:   args,
+		Args:   cmdArgs,
 		Stdout: ctx.Execution.OutputStream,
 		Stderr: ctx.Execution.ErrorStream,
 		// add custom env variables to the existing ones
