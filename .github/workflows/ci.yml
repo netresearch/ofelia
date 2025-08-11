@@ -2,60 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-
-permissions:
-  contents: read
-
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: stable
-          check-latest: true
-      - name: GolangCI-Lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --out-format=tab --allow-parallel-runners
-
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: stable
-          check-latest: true
-      - name: Build
-        run: go build ./...
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: stable
-          check-latest: true
-      - name: Test
-        run: go test ./...
-
-name: CI
-
-on:
-  push:
     branches: ['**']
     tags: ['**']
   pull_request:
@@ -83,7 +29,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-        go-version: 1.24.6
+          go-version: ${{ matrix.go-version }}
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -148,16 +94,13 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-        go-version: 1.24.6
+          go-version: ${{ matrix.go-version }}
 
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Docker
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Start Docker service
-        run: sudo systemctl start docker
 
       - name: Confirm Docker
         run: docker info
