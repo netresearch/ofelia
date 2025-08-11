@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -71,7 +72,7 @@ func NewConfig(logger core.Logger) *Config {
 		logger:      logger,
 	}
 
-	defaults.Set(c)
+	_ = defaults.Set(c)
 	return c
 }
 
@@ -80,7 +81,7 @@ func NewConfig(logger core.Logger) *Config {
 func resolveConfigFiles(pattern string) ([]string, error) {
 	files, err := filepath.Glob(pattern)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("glob %q: %w", pattern, err)
 	}
 	if len(files) == 0 {
 		files = []string{pattern}
@@ -103,10 +104,10 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	for _, f := range files {
 		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, f)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("load ini %q: %w", f, err)
 		}
 		if err := parseIni(cfg, c); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse ini %q: %w", f, err)
 		}
 		if info, statErr := os.Stat(f); statErr == nil {
 			if info.ModTime().After(latest) {
@@ -130,10 +131,10 @@ func BuildFromString(config string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
 	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, []byte(config))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load ini from string: %w", err)
 	}
 	if err := parseIni(cfg, c); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse ini from string: %w", err)
 	}
 	return c, nil
 }
@@ -143,105 +144,88 @@ func (c *Config) InitializeApp() error {
 	c.sh = core.NewScheduler(c.logger)
 	c.buildSchedulerMiddlewares(c.sh)
 
-	var err error
-	c.dockerHandler, err = newDockerHandler(context.Background(), c, c.logger, &c.Docker, nil)
-	if err != nil {
+	if err := c.initDockerHandler(); err != nil {
 		return err
 	}
+	c.mergeJobsFromDockerLabels()
+	c.registerAllJobs()
+	return nil
+}
 
-	// In order to support non dynamic job types such as Local or Run using labels
-	// lets parse the labels and merge the job lists
+func (c *Config) initDockerHandler() error {
+	var err error
+	c.dockerHandler, err = newDockerHandler(context.Background(), c, c.logger, &c.Docker, nil)
+	return err
+}
+
+func (c *Config) mergeJobsFromDockerLabels() {
 	dockerLabels, err := c.dockerHandler.GetDockerLabels()
-	if err == nil {
-		parsedLabelConfig := Config{}
-
-		parsedLabelConfig.buildFromDockerLabels(dockerLabels)
-		for name, j := range parsedLabelConfig.ExecJobs {
-			if existing, ok := c.ExecJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined exec job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.ExecJobs[name] = j
-		}
-
-		for name, j := range parsedLabelConfig.RunJobs {
-			if existing, ok := c.RunJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined run job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.RunJobs[name] = j
-		}
-
-		for name, j := range parsedLabelConfig.LocalJobs {
-			if existing, ok := c.LocalJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined local job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.LocalJobs[name] = j
-		}
-
-		for name, j := range parsedLabelConfig.ServiceJobs {
-			if existing, ok := c.ServiceJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined service job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.ServiceJobs[name] = j
-		}
-
-		for name, j := range parsedLabelConfig.ComposeJobs {
-			if existing, ok := c.ComposeJobs[name]; ok && existing.JobSource == JobSourceINI {
-				c.logger.Warningf("ignoring label-defined compose job %q because an INI job with the same name exists", name)
-				continue
-			}
-			c.ComposeJobs[name] = j
-		}
+	if err != nil {
+		return
 	}
+	parsed := Config{}
+	_ = parsed.buildFromDockerLabels(dockerLabels)
+
+	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
+	mergeJobs(c, c.RunJobs, parsed.RunJobs, "run")
+	mergeJobs(c, c.LocalJobs, parsed.LocalJobs, "local")
+	mergeJobs(c, c.ServiceJobs, parsed.ServiceJobs, "service")
+	mergeJobs(c, c.ComposeJobs, parsed.ComposeJobs, "compose")
+}
+
+// mergeJobs copies jobs from src into dst while respecting INI precedence.
+func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind string) {
+	for name, j := range src {
+		if existing, ok := dst[name]; ok && existing.GetJobSource() == JobSourceINI {
+			c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", kind, name)
+			continue
+		}
+		dst[name] = j
+	}
+}
+
+func (c *Config) registerAllJobs() {
+	client := c.dockerHandler.GetInternalDockerClient()
 
 	for name, j := range c.ExecJobs {
-		defaults.Set(j)
-		j.Client = c.dockerHandler.GetInternalDockerClient()
+		_ = defaults.Set(j)
+		j.Client = client
 		j.Name = name
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
-
 	for name, j := range c.RunJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
-		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Client = client
 		j.Name = name
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
-
 	for name, j := range c.LocalJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
-
 	for name, j := range c.ServiceJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
 		j.Name = name
-		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Client = client
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
-
 	for name, j := range c.ComposeJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 		j.buildMiddlewares()
-		c.sh.AddJob(j)
+		_ = c.sh.AddJob(j)
 	}
-
-	return nil
 }
 
 func (c *Config) buildSchedulerMiddlewares(sh *core.Scheduler) {
@@ -271,71 +255,83 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 		}
 		newJob, ok := parsed[name]
 		if !ok {
-			c.sh.RemoveJob(j)
+			_ = c.sh.RemoveJob(j)
 			delete(current, name)
 			continue
 		}
-		prep(name, newJob)
-		newJob.SetJobSource(source)
-		newHash, err1 := newJob.Hash()
-		if err1 != nil {
-			c.logger.Errorf("hash calculation failed: %v", err1)
-			continue
-		}
-		oldHash, err2 := j.Hash()
-		if err2 != nil {
-			c.logger.Errorf("hash calculation failed: %v", err2)
-			continue
-		}
-		if newHash != oldHash {
-			c.sh.RemoveJob(j)
-			newJob.buildMiddlewares()
-			c.sh.AddJob(newJob)
+		if updated := replaceIfChanged(c, name, j, newJob, prep, source); updated {
 			current[name] = newJob
+			continue
 		}
 	}
 
 	for name, j := range parsed {
 		if cur, ok := current[name]; ok {
-			if cur.GetJobSource() != source {
-				if source == JobSourceINI && cur.GetJobSource() == JobSourceLabel {
-					c.logger.Warningf("overriding label-defined %s job %q with INI job", jobKind, name)
-					c.sh.RemoveJob(cur)
-				} else if source == JobSourceLabel && cur.GetJobSource() == JobSourceINI {
-					c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name)
-					continue
-				} else {
-					continue
-				}
+			if cur.GetJobSource() == source {
+				continue
+			}
+			if source == JobSourceINI && cur.GetJobSource() == JobSourceLabel {
+				c.logger.Warningf("overriding label-defined %s job %q with INI job", jobKind, name)
+				_ = c.sh.RemoveJob(cur)
+			} else if source == JobSourceLabel && cur.GetJobSource() == JobSourceINI {
+				c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name)
+				continue
 			} else {
 				continue
 			}
 		}
-		if source != "" {
-			j.SetJobSource(source)
-		}
-		prep(name, j)
-		j.buildMiddlewares()
-		c.sh.AddJob(j)
-		current[name] = j
+		addNewJob(c, name, j, prep, source, current)
 	}
+}
+
+func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, prep func(string, J), source JobSource) bool {
+	prep(name, newJob)
+	newJob.SetJobSource(source)
+	newHash, err1 := newJob.Hash()
+	if err1 != nil {
+		c.logger.Errorf("hash calculation failed: %v", err1)
+		return false
+	}
+	oldHash, err2 := oldJob.Hash()
+	if err2 != nil {
+		c.logger.Errorf("hash calculation failed: %v", err2)
+		return false
+	}
+	if newHash == oldHash {
+		return false
+	}
+	_ = c.sh.RemoveJob(oldJob)
+	newJob.buildMiddlewares()
+	_ = c.sh.AddJob(newJob)
+	// caller updates current map entry
+	return true
+}
+
+func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J) {
+	if source != "" {
+		j.SetJobSource(source)
+	}
+	prep(name, j)
+	j.buildMiddlewares()
+	_ = c.sh.AddJob(j)
+	current[name] = j
 }
 
 func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	c.logger.Debugf("dockerLabelsUpdate started")
 
 	var parsedLabelConfig Config
-	parsedLabelConfig.buildFromDockerLabels(labels)
+	_ = parsedLabelConfig.buildFromDockerLabels(labels)
 
 	execPrep := func(name string, j *ExecJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
 	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep, JobSourceLabel, "exec")
 
 	runPrep := func(name string, j *RunJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -345,13 +341,13 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel, "run")
 
 	localPrep := func(name string, j *LocalJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 	}
 	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
 
 	servicePrep := func(name string, j *RunServiceConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -361,7 +357,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, servicePrep, JobSourceLabel, "service")
 
 	composePrep := func(name string, j *ComposeJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 	}
 	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
@@ -377,25 +373,17 @@ func (c *Config) iniConfigUpdate() error {
 		return err
 	}
 
-	var latest time.Time
-	for _, f := range files {
-		info, err := os.Stat(f)
-		if err != nil {
-			return err
-		}
-		if info.ModTime().After(latest) {
-			latest = info.ModTime()
-		}
+	latest, changed, err := latestChanged(files, c.configModTime)
+	if err != nil {
+		return err
 	}
-
 	for _, f := range files {
 		c.logger.Debugf("checking config file %s", f)
 	}
-	if latest.Equal(c.configModTime) {
+	if !changed {
 		c.logger.Debugf("config not changed")
 		return nil
 	}
-
 	c.logger.Debugf("reloading config files from %s", strings.Join(files, ", "))
 
 	parsed, err := BuildFromFile(c.configPath, c.logger)
@@ -428,14 +416,14 @@ func (c *Config) iniConfigUpdate() error {
 	}
 
 	execPrep := func(name string, j *ExecJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
 	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep, JobSourceINI, "exec")
 
 	runPrep := func(name string, j *RunJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -445,13 +433,13 @@ func (c *Config) iniConfigUpdate() error {
 	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI, "run")
 
 	localPrep := func(name string, j *LocalJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 	}
 	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, localPrep, JobSourceINI, "local")
 
 	svcPrep := func(name string, j *RunServiceConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -461,7 +449,7 @@ func (c *Config) iniConfigUpdate() error {
 	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep, JobSourceINI, "service")
 
 	composePrep := func(name string, j *ComposeJobConfig) {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 		j.Name = name
 	}
 	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep, JobSourceINI, "compose")
@@ -575,57 +563,96 @@ type DockerConfig struct {
 }
 
 func parseIni(cfg *ini.File, c *Config) error {
-	if sec, err := cfg.GetSection("global"); err == nil {
-		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Global); err != nil {
-			return err
-		}
+	if err := parseGlobalAndDocker(cfg, c); err != nil {
+		return err
 	}
-	if sec, err := cfg.GetSection("docker"); err == nil {
-		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Docker); err != nil {
-			return err
-		}
-	}
-
 	for _, section := range cfg.Sections() {
 		name := strings.TrimSpace(section.Name())
 		switch {
 		case strings.HasPrefix(name, jobExec):
-			jobName := parseJobName(name, jobExec)
-			job := &ExecJobConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+			if err := decodeJob(
+				section,
+				&ExecJobConfig{JobSource: JobSourceINI},
+				func(n string, j *ExecJobConfig) { c.ExecJobs[n] = j },
+				jobExec,
+			); err != nil {
 				return err
 			}
-			c.ExecJobs[jobName] = job
 		case strings.HasPrefix(name, jobRun):
-			jobName := parseJobName(name, jobRun)
-			job := &RunJobConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+			if err := decodeJob(
+				section,
+				&RunJobConfig{JobSource: JobSourceINI},
+				func(n string, j *RunJobConfig) { c.RunJobs[n] = j },
+				jobRun,
+			); err != nil {
 				return err
 			}
-			c.RunJobs[jobName] = job
 		case strings.HasPrefix(name, jobServiceRun):
-			jobName := parseJobName(name, jobServiceRun)
-			job := &RunServiceConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+			if err := decodeJob(
+				section,
+				&RunServiceConfig{JobSource: JobSourceINI},
+				func(n string, j *RunServiceConfig) { c.ServiceJobs[n] = j },
+				jobServiceRun,
+			); err != nil {
 				return err
 			}
-			c.ServiceJobs[jobName] = job
 		case strings.HasPrefix(name, jobLocal):
-			jobName := parseJobName(name, jobLocal)
-			job := &LocalJobConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+			if err := decodeJob(
+				section,
+				&LocalJobConfig{JobSource: JobSourceINI},
+				func(n string, j *LocalJobConfig) { c.LocalJobs[n] = j },
+				jobLocal,
+			); err != nil {
 				return err
 			}
-			c.LocalJobs[jobName] = job
 		case strings.HasPrefix(name, jobCompose):
-			jobName := parseJobName(name, jobCompose)
-			job := &ComposeJobConfig{JobSource: JobSourceINI}
-			if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+			if err := decodeJob(
+				section,
+				&ComposeJobConfig{JobSource: JobSourceINI},
+				func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j },
+				jobCompose,
+			); err != nil {
 				return err
 			}
-			c.ComposeJobs[jobName] = job
 		}
 	}
+	return nil
+}
+
+func latestChanged(files []string, prev time.Time) (time.Time, bool, error) {
+	var latest time.Time
+	for _, f := range files {
+		info, err := os.Stat(f)
+		if err != nil {
+			return time.Time{}, false, fmt.Errorf("stat %q: %w", f, err)
+		}
+		if info.ModTime().After(latest) {
+			latest = info.ModTime()
+		}
+	}
+	return latest, latest.After(prev), nil
+}
+
+func parseGlobalAndDocker(cfg *ini.File, c *Config) error {
+	if sec, err := cfg.GetSection("global"); err == nil {
+		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Global); err != nil {
+			return fmt.Errorf("decode [global]: %w", err)
+		}
+	}
+	if sec, err := cfg.GetSection("docker"); err == nil {
+		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Docker); err != nil {
+			return fmt.Errorf("decode [docker]: %w", err)
+		}
+	}
+	return nil
+}
+
+func decodeJob[T jobConfig](section *ini.Section, job T, set func(string, T), prefix string) error {
+	jobName := parseJobName(strings.TrimSpace(section.Name()), prefix)
+	if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+		return fmt.Errorf("decode job %q: %w", jobName, err)
+	}
+	set(jobName, job)
 	return nil
 }
 

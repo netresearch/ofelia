@@ -54,7 +54,7 @@ func (m *Save) Run(ctx *core.Context) error {
 
 func (m *Save) saveToDisk(ctx *core.Context) error {
 	if err := os.MkdirAll(m.SaveFolder, 0o755); err != nil {
-		return err
+		return fmt.Errorf("mkdir %q: %w", m.SaveFolder, err)
 	}
 
 	safeName := strings.NewReplacer("/", "_", "\\", "_").Replace(ctx.Job.GetName())
@@ -67,17 +67,17 @@ func (m *Save) saveToDisk(ctx *core.Context) error {
 	e := ctx.Execution
 	err := m.writeFile(e.ErrorStream.Bytes(), fmt.Sprintf("%s.stderr.log", root))
 	if err != nil {
-		return err
+		return fmt.Errorf("write stderr log: %w", err)
 	}
 
 	err = m.writeFile(e.OutputStream.Bytes(), fmt.Sprintf("%s.stdout.log", root))
 	if err != nil {
-		return err
+		return fmt.Errorf("write stdout log: %w", err)
 	}
 
 	err = m.saveContextToDisk(ctx, fmt.Sprintf("%s.json", root))
 	if err != nil {
-		return err
+		return fmt.Errorf("write context json: %w", err)
 	}
 
 	return nil
@@ -89,9 +89,15 @@ func (m *Save) saveContextToDisk(ctx *core.Context, filename string) error {
 		"Execution": ctx.Execution,
 	}, "", "  ")
 
-	return m.writeFile(js, filename)
+	if err := m.writeFile(js, filename); err != nil {
+		return fmt.Errorf("write json file: %w", err)
+	}
+	return nil
 }
 
 func (m *Save) writeFile(data []byte, filename string) error {
-	return os.WriteFile(filename, data, 0644)
+	if err := os.WriteFile(filename, data, 0o644); err != nil {
+		return fmt.Errorf("write file %q: %w", filename, err)
+	}
+	return nil
 }

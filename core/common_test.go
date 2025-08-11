@@ -306,15 +306,17 @@ func (m *TestMiddleware) Run(ctx *Context) error {
 	}
 
 	if m.Nested {
-		ctx.Next()
+		_ = ctx.Next()
 	}
 
 	return m.Error
 }
 
-type TestMiddlewareAltA struct{ TestMiddleware }
-type TestMiddlewareAltB struct{ TestMiddleware }
-type TestMiddlewareAltC struct{ TestMiddleware }
+type (
+	TestMiddlewareAltA struct{ TestMiddleware }
+	TestMiddlewareAltB struct{ TestMiddleware }
+	TestMiddlewareAltC struct{ TestMiddleware }
+)
 
 type TestJob struct {
 	BareJob

@@ -18,7 +18,7 @@ var (
 	// it as skipped.
 	ErrSkippedExecution   = errors.New("skipped execution")
 	ErrUnexpected         = errors.New("error unexpected, docker has returned exit code -1, maybe wrong user?")
-	ErrMaxTimeRunning     = errors.New("the job has exceeded the maximum allowed time running.")
+	ErrMaxTimeRunning     = errors.New("the job has exceeded the maximum allowed time running")
 	ErrLocalImageNotFound = errors.New("couldn't find image on the host")
 )
 
@@ -88,7 +88,10 @@ func (c *Context) doNext() error {
 			continue
 		}
 
-		return m.Run(c)
+		if err := m.Run(c); err != nil {
+			return fmt.Errorf("middleware run: %w", err)
+		}
+		return nil
 	}
 
 	if !c.Execution.IsRunning {
@@ -96,7 +99,10 @@ func (c *Context) doNext() error {
 	}
 
 	c.executed = true
-	return c.Job.Run(c)
+	if err := c.Job.Run(c); err != nil {
+		return fmt.Errorf("job run: %w", err)
+	}
+	return nil
 }
 
 func (c *Context) getNext() (Middleware, bool) {
@@ -174,7 +180,14 @@ func (e *Execution) Start() {
 // failed. Also mark the execution as IsRunning false and save the duration time
 func (e *Execution) Stop(err error) {
 	e.IsRunning = false
+	// Guard against zero or unset start time and ensure a positive duration
+	if e.Date.IsZero() {
+		e.Date = time.Now()
+	}
 	e.Duration = time.Since(e.Date)
+	if e.Duration <= 0 {
+		e.Duration = time.Nanosecond
+	}
 
 	if err != nil && err != ErrSkippedExecution {
 		e.Error = err
@@ -228,11 +241,10 @@ func (c *middlewareContainer) ResetMiddlewares(ms ...Middleware) {
 }
 
 func (c *middlewareContainer) Middlewares() []Middleware {
-	var ms []Middleware
+	ms := make([]Middleware, 0, len(c.order))
 	for _, t := range c.order {
 		ms = append(ms, c.m[t])
 	}
-
 	return ms
 }
 
@@ -247,7 +259,7 @@ type Logger interface {
 func randomID() (string, error) {
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("rand read: %w", err)
 	}
 
 	return fmt.Sprintf("%x", b), nil
@@ -256,7 +268,7 @@ func randomID() (string, error) {
 func buildFindLocalImageOptions(image string) docker.ListImagesOptions {
 	return docker.ListImagesOptions{
 		Filters: map[string][]string{
-			"reference": []string{image},
+			"reference": {image},
 		},
 	}
 }
@@ -271,8 +283,9 @@ func buildPullOptions(image string) (docker.PullImageOptions, docker.AuthConfigu
 		registry = parts[0]
 	}
 
+	const defaultTagLatest = "latest"
 	if tag == "" {
-		tag = "latest"
+		tag = defaultTagLatest
 	}
 
 	return docker.PullImageOptions{
@@ -350,6 +363,7 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 			continue
 		}
 
+		//nolint:exhaustive // reflect.Kind has many values; only relevant kinds are supported for hashing
 		switch kind {
 		case reflect.String:
 			*hash += fieldv.String()
@@ -358,25 +372,27 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 		case reflect.Bool:
 			*hash += strconv.FormatBool(fieldv.Bool())
 		case reflect.Slice:
-			if field.Type.Elem().Kind() == reflect.String {
-				strs := fieldv.Interface().([]string)
-				for _, str := range strs {
-					*hash += fmt.Sprintf("%d:%s,", len(str), str)
-				}
-			} else {
+			if field.Type.Elem().Kind() != reflect.String {
 				return fmt.Errorf("unsupported field type")
+			}
+			strs := fieldv.Interface().([]string)
+			for _, str := range strs {
+				*hash += fmt.Sprintf("%d:%s,", len(str), str)
 			}
 		case reflect.Pointer:
 			if fieldv.IsNil() {
 				*hash += "<nil>"
-			} else {
-				elem := fieldv.Elem()
-				if elem.Kind() == reflect.String {
-					*hash += elem.String()
-				} else {
-					return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
-				}
+				continue
 			}
+			elem := fieldv.Elem()
+			if elem.Kind() == reflect.String {
+				*hash += elem.String()
+				continue
+			}
+			return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
+		// Other kinds are intentionally not part of the job hash. They are either
+		// not used in our job structs today or would require a more elaborate
+		// stable string representation that is out of scope here.
 		default:
 			return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
 		}

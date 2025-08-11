@@ -39,7 +39,6 @@ func (j *RunServiceJob) Run(ctx *Context) error {
 	}
 
 	svc, err := j.buildService()
-
 	if err != nil {
 		return err
 	}
@@ -54,31 +53,27 @@ func (j *RunServiceJob) Run(ctx *Context) error {
 }
 
 func (j *RunServiceJob) buildService() (*swarm.Service, error) {
+	// createOptions := types.ServiceCreateOptions{}
 
-	//createOptions := types.ServiceCreateOptions{}
-
-	max := uint64(1)
+	maxAttempts := uint64(1)
 	createSvcOpts := docker.CreateServiceOptions{}
 
-	createSvcOpts.ServiceSpec.TaskTemplate.ContainerSpec =
-		&swarm.ContainerSpec{
-			Image: j.Image,
-		}
+	createSvcOpts.ServiceSpec.TaskTemplate.ContainerSpec = &swarm.ContainerSpec{
+		Image: j.Image,
+	}
 
 	// Make the service run once and not restart
-	createSvcOpts.ServiceSpec.TaskTemplate.RestartPolicy =
-		&swarm.RestartPolicy{
-			MaxAttempts: &max,
-			Condition:   swarm.RestartPolicyConditionNone,
-		}
+	createSvcOpts.ServiceSpec.TaskTemplate.RestartPolicy = &swarm.RestartPolicy{
+		MaxAttempts: &maxAttempts,
+		Condition:   swarm.RestartPolicyConditionNone,
+	}
 
 	// For a service to interact with other services in a stack,
 	// we need to attach it to the same network
 	if j.Network != "" {
-		createSvcOpts.Networks = []swarm.NetworkAttachmentConfig{
-			swarm.NetworkAttachmentConfig{
-				Target: j.Network,
-			},
+		// Prefer attaching via TaskTemplate Networks when available
+		createSvcOpts.ServiceSpec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{
+			{Target: j.Network},
 		}
 	}
 
@@ -88,10 +83,10 @@ func (j *RunServiceJob) buildService() (*swarm.Service, error) {
 
 	svc, err := j.Client.CreateService(createSvcOpts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create service: %w", err)
 	}
 
-	return svc, err
+	return svc, nil
 }
 
 const (
@@ -108,7 +103,7 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 
 	svc, err := j.Client.InspectService(svcID)
 	if err != nil {
-		return fmt.Errorf("failed to inspect service %s: %w", svcID, err)
+		return fmt.Errorf("inspect service %s: %w", svcID, err)
 	}
 
 	startTime := time.Now()
@@ -149,7 +144,6 @@ func (j *RunServiceJob) findTaskStatus(ctx *Context, taskID string) (int, bool) 
 	tasks, err := j.Client.ListTasks(docker.ListTasksOptions{
 		Filters: taskFilters,
 	})
-
 	if err != nil {
 		ctx.Logger.Errorf("Failed to find task ID %s. Considering the task terminated: %s\n", taskID, err.Error())
 		return 0, false
@@ -193,7 +187,7 @@ func (j *RunServiceJob) findTaskStatus(ctx *Context, taskID string) (int, bool) 
 }
 
 func (j *RunServiceJob) deleteService(ctx *Context, svcID string) error {
-	if delete, _ := strconv.ParseBool(j.Delete); !delete {
+	if shouldDelete, _ := strconv.ParseBool(j.Delete); !shouldDelete {
 		return nil
 	}
 
@@ -207,8 +201,10 @@ func (j *RunServiceJob) deleteService(ctx *Context, svcID string) error {
 		return nil
 	}
 
-	return err
-
+	if err != nil {
+		return fmt.Errorf("remove service %s: %w", svcID, err)
+	}
+	return nil
 }
 
 func (j *RunServiceJob) Hash() (string, error) {

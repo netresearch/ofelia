@@ -1,18 +1,23 @@
 package core
 
 import (
-	docker "github.com/fsouza/go-dockerclient"
 	"testing"
+
+	docker "github.com/fsouza/go-dockerclient"
 )
+
+const imageRepoName = "repo/name"
 
 // TestNewExecutionInitial tests the initial state of a new Execution.
 func TestNewExecutionInitial(t *testing.T) {
 	e, err := NewExecution()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+		return
 	}
 	if e == nil {
-		t.Error("expected NewExecution to return non-nil")
+		t.Fatal("expected NewExecution to return non-nil")
+		return
 	}
 	if e.ID == "" {
 		t.Error("expected non-empty ID")
@@ -78,9 +83,9 @@ func TestBuildPullOptionsDefaultTag(t *testing.T) {
 	defer func() { dockercfg = orig }()
 	dockercfg = nil
 
-	image := "repo/name"
+	image := imageRepoName
 	opts, auth := buildPullOptions(image)
-	if opts.Repository != "repo/name" {
+	if opts.Repository != imageRepoName {
 		t.Errorf("expected repository 'repo/name', got '%s'", opts.Repository)
 	}
 	if opts.Tag != "latest" {
