@@ -71,13 +71,17 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 
 	base := fmt.Sprintf("%s_%s", ctx.Job.GetName(), ctx.Execution.ID)
 	msg.Attach(base+".stdout.log", mail.SetCopyFunc(func(w io.Writer) error {
-		_, err := w.Write(ctx.Execution.OutputStream.Bytes())
-		return err
+		if _, err := w.Write(ctx.Execution.OutputStream.Bytes()); err != nil {
+			return fmt.Errorf("write stdout attachment: %w", err)
+		}
+		return nil
 	}))
 
 	msg.Attach(base+".stderr.log", mail.SetCopyFunc(func(w io.Writer) error {
-		_, err := w.Write(ctx.Execution.ErrorStream.Bytes())
-		return err
+		if _, err := w.Write(ctx.Execution.ErrorStream.Bytes()); err != nil {
+			return fmt.Errorf("write stderr attachment: %w", err)
+		}
+		return nil
 	}))
 
 	msg.Attach(base+".stderr.json", mail.SetCopyFunc(func(w io.Writer) error {
@@ -86,8 +90,10 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 			"Execution": ctx.Execution,
 		}, "", "  ")
 
-		_, err := w.Write(js)
-		return err
+		if _, err := w.Write(js); err != nil {
+			return fmt.Errorf("write json attachment: %w", err)
+		}
+		return nil
 	}))
 
 	d := mail.NewDialer(m.SMTPHost, m.SMTPPort, m.SMTPUser, m.SMTPPassword)
@@ -95,7 +101,10 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 	if m.SMTPTLSSkipVerify {
 		d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	return d.DialAndSend(msg)
+	if err := d.DialAndSend(msg); err != nil {
+		return fmt.Errorf("dial and send mail: %w", err)
+	}
+	return nil
 }
 
 func (m *Mail) from() string {

@@ -88,7 +88,10 @@ func (c *Context) doNext() error {
 			continue
 		}
 
-		return m.Run(c)
+		if err := m.Run(c); err != nil {
+			return fmt.Errorf("middleware run: %w", err)
+		}
+		return nil
 	}
 
 	if !c.Execution.IsRunning {
@@ -96,7 +99,10 @@ func (c *Context) doNext() error {
 	}
 
 	c.executed = true
-	return c.Job.Run(c)
+	if err := c.Job.Run(c); err != nil {
+		return fmt.Errorf("job run: %w", err)
+	}
+	return nil
 }
 
 func (c *Context) getNext() (Middleware, bool) {
@@ -253,7 +259,7 @@ type Logger interface {
 func randomID() (string, error) {
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("rand read: %w", err)
 	}
 
 	return fmt.Sprintf("%x", b), nil

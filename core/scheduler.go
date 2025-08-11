@@ -29,7 +29,12 @@ type Scheduler struct {
 func NewScheduler(l Logger) *Scheduler {
 	cronUtils := NewCronUtils(l)
 	cron := cron.New(
-		cron.WithParser(cron.NewParser(cron.SecondOptional|cron.Minute|cron.Hour|cron.Dom|cron.Month|cron.Dow|cron.Descriptor)),
+		cron.WithParser(
+			cron.NewParser(
+				cron.SecondOptional|cron.Minute|cron.Hour|
+					cron.Dom|cron.Month|cron.Dow|cron.Descriptor,
+			),
+		),
 		cron.WithLogger(cronUtils),
 		cron.WithChain(cron.Recover(cronUtils)),
 	)
@@ -47,18 +52,27 @@ func (s *Scheduler) AddJob(j Job) error {
 
 	id, err := s.cron.AddJob(j.GetSchedule(), &jobWrapper{s, j})
 	if err != nil {
-		s.Logger.Warningf("Failed to register job %q - %q - %q", j.GetName(), j.GetCommand(), j.GetSchedule())
-		return err
+		s.Logger.Warningf(
+			"Failed to register job %q - %q - %q",
+			j.GetName(), j.GetCommand(), j.GetSchedule(),
+		)
+		return fmt.Errorf("add cron job: %w", err)
 	}
 	j.SetCronJobID(int(id)) // Cast to int in order to avoid pushing cron external to common
 	j.Use(s.Middlewares()...)
 	s.Jobs = append(s.Jobs, j)
-	s.Logger.Noticef("New job registered %q - %q - %q - ID: %v", j.GetName(), j.GetCommand(), j.GetSchedule(), id)
+	s.Logger.Noticef(
+		"New job registered %q - %q - %q - ID: %v",
+		j.GetName(), j.GetCommand(), j.GetSchedule(), id,
+	)
 	return nil
 }
 
 func (s *Scheduler) RemoveJob(j Job) error {
-	s.Logger.Noticef("Job deregistered (will not fire again) %q - %q - %q - ID: %v", j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID())
+	s.Logger.Noticef(
+		"Job deregistered (will not fire again) %q - %q - %q - ID: %v",
+		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
+	)
 	s.cron.Remove(cron.EntryID(j.GetCronJobID()))
 	for i, job := range s.Jobs {
 		if job == j || job.GetCronJobID() == j.GetCronJobID() {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -80,7 +81,7 @@ func NewConfig(logger core.Logger) *Config {
 func resolveConfigFiles(pattern string) ([]string, error) {
 	files, err := filepath.Glob(pattern)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("glob %q: %w", pattern, err)
 	}
 	if len(files) == 0 {
 		files = []string{pattern}
@@ -103,10 +104,10 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	for _, f := range files {
 		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, f)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("load ini %q: %w", f, err)
 		}
 		if err := parseIni(cfg, c); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse ini %q: %w", f, err)
 		}
 		if info, statErr := os.Stat(f); statErr == nil {
 			if info.ModTime().After(latest) {
@@ -130,10 +131,10 @@ func BuildFromString(config string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
 	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, []byte(config))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load ini from string: %w", err)
 	}
 	if err := parseIni(cfg, c); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse ini from string: %w", err)
 	}
 	return c, nil
 }
@@ -569,23 +570,48 @@ func parseIni(cfg *ini.File, c *Config) error {
 		name := strings.TrimSpace(section.Name())
 		switch {
 		case strings.HasPrefix(name, jobExec):
-			if err := decodeJob(section, &ExecJobConfig{JobSource: JobSourceINI}, func(n string, j *ExecJobConfig) { c.ExecJobs[n] = j }, jobExec); err != nil {
+			if err := decodeJob(
+				section,
+				&ExecJobConfig{JobSource: JobSourceINI},
+				func(n string, j *ExecJobConfig) { c.ExecJobs[n] = j },
+				jobExec,
+			); err != nil {
 				return err
 			}
 		case strings.HasPrefix(name, jobRun):
-			if err := decodeJob(section, &RunJobConfig{JobSource: JobSourceINI}, func(n string, j *RunJobConfig) { c.RunJobs[n] = j }, jobRun); err != nil {
+			if err := decodeJob(
+				section,
+				&RunJobConfig{JobSource: JobSourceINI},
+				func(n string, j *RunJobConfig) { c.RunJobs[n] = j },
+				jobRun,
+			); err != nil {
 				return err
 			}
 		case strings.HasPrefix(name, jobServiceRun):
-			if err := decodeJob(section, &RunServiceConfig{JobSource: JobSourceINI}, func(n string, j *RunServiceConfig) { c.ServiceJobs[n] = j }, jobServiceRun); err != nil {
+			if err := decodeJob(
+				section,
+				&RunServiceConfig{JobSource: JobSourceINI},
+				func(n string, j *RunServiceConfig) { c.ServiceJobs[n] = j },
+				jobServiceRun,
+			); err != nil {
 				return err
 			}
 		case strings.HasPrefix(name, jobLocal):
-			if err := decodeJob(section, &LocalJobConfig{JobSource: JobSourceINI}, func(n string, j *LocalJobConfig) { c.LocalJobs[n] = j }, jobLocal); err != nil {
+			if err := decodeJob(
+				section,
+				&LocalJobConfig{JobSource: JobSourceINI},
+				func(n string, j *LocalJobConfig) { c.LocalJobs[n] = j },
+				jobLocal,
+			); err != nil {
 				return err
 			}
 		case strings.HasPrefix(name, jobCompose):
-			if err := decodeJob(section, &ComposeJobConfig{JobSource: JobSourceINI}, func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j }, jobCompose); err != nil {
+			if err := decodeJob(
+				section,
+				&ComposeJobConfig{JobSource: JobSourceINI},
+				func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j },
+				jobCompose,
+			); err != nil {
 				return err
 			}
 		}
@@ -598,7 +624,7 @@ func latestChanged(files []string, prev time.Time) (time.Time, bool, error) {
 	for _, f := range files {
 		info, err := os.Stat(f)
 		if err != nil {
-			return time.Time{}, false, err
+			return time.Time{}, false, fmt.Errorf("stat %q: %w", f, err)
 		}
 		if info.ModTime().After(latest) {
 			latest = info.ModTime()
@@ -610,12 +636,12 @@ func latestChanged(files []string, prev time.Time) (time.Time, bool, error) {
 func parseGlobalAndDocker(cfg *ini.File, c *Config) error {
 	if sec, err := cfg.GetSection("global"); err == nil {
 		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Global); err != nil {
-			return err
+			return fmt.Errorf("decode [global]: %w", err)
 		}
 	}
 	if sec, err := cfg.GetSection("docker"); err == nil {
 		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Docker); err != nil {
-			return err
+			return fmt.Errorf("decode [docker]: %w", err)
 		}
 	}
 	return nil
@@ -624,7 +650,7 @@ func parseGlobalAndDocker(cfg *ini.File, c *Config) error {
 func decodeJob[T jobConfig](section *ini.Section, job T, set func(string, T), prefix string) error {
 	jobName := parseJobName(strings.TrimSpace(section.Name()), prefix)
 	if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
-		return err
+		return fmt.Errorf("decode job %q: %w", jobName, err)
 	}
 	set(jobName, job)
 	return nil

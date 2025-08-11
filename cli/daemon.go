@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	// pprof server is enabled conditionally at runtime. Keep the import so the endpoint exists when enabled.
@@ -18,16 +19,16 @@ import (
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile         string         `long:"config" env:"OFELIA_CONFIG" description:"configuration file" default:"/etc/ofelia/config.ini"`
-	DockerFilters      []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER" description:"Filter for docker containers"`
-	DockerPollInterval *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL" description:"Interval for docker polling and INI reload (0 disables)"`
-	DockerUseEvents    *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS" description:"Use docker events instead of polling"`
-	DockerNoPoll       *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL" description:"Disable polling docker for labels"`
-	LogLevel           string         `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (overrides config)"`
-	EnablePprof        bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF" description:"Enable the pprof HTTP server"`
-	PprofAddr          string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" description:"Address for the pprof HTTP server to listen on" default:"127.0.0.1:8080"`
-	EnableWeb          bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB" description:"Enable the web UI"`
-	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" description:"Address for the web UI HTTP server to listen on" default:":8081"`
+	ConfigFile         string         `long:"config" env:"OFELIA_CONFIG" default:"/etc/ofelia/config.ini"`
+	DockerFilters      []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER"`
+	DockerPollInterval *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL"`
+	DockerUseEvents    *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS"`
+	DockerNoPoll       *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL"`
+	LogLevel           string         `long:"log-level" env:"OFELIA_LOG_LEVEL"`
+	EnablePprof        bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF"`
+	PprofAddr          string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" default:"127.0.0.1:8080"`
+	EnableWeb          bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
+	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
 
 	scheduler     *core.Scheduler
 	signals       chan os.Signal
@@ -78,7 +79,9 @@ func (c *DaemonCommand) boot() (err error) {
 		c.PprofAddr = config.Global.PprofAddr
 	}
 
-	c.pprofServer = &http.Server{Addr: c.PprofAddr}
+	c.pprofServer = &http.Server{
+		Addr: c.PprofAddr,
+	}
 
 	if c.LogLevel == "" {
 		ApplyLogLevel(config.Global.LogLevel)
@@ -107,7 +110,7 @@ func (c *DaemonCommand) boot() (err error) {
 func (c *DaemonCommand) start() error {
 	c.setSignals()
 	if err := c.scheduler.Start(); err != nil {
-		return err
+		return fmt.Errorf("start scheduler: %w", err)
 	}
 
 	if c.EnablePprof {
@@ -177,7 +180,10 @@ func (c *DaemonCommand) shutdown() error {
 	}
 
 	c.Logger.Warningf("Waiting running jobs.")
-	return c.scheduler.Stop()
+	if err := c.scheduler.Stop(); err != nil {
+		return fmt.Errorf("stop scheduler: %w", err)
+	}
+	return nil
 }
 
 func (c *DaemonCommand) applyOptions(config *Config) {

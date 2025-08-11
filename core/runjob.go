@@ -136,14 +136,18 @@ func (j *RunJob) createOrInspectContainer() (*docker.Container, error) {
 	if j.Image != "" && j.Container == "" {
 		return j.buildContainer()
 	}
-	return j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: j.Container})
+	c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: j.Container})
+	if err != nil {
+		return nil, fmt.Errorf("inspect container %q: %w", j.Container, err)
+	}
+	return c, nil
 }
 
 // startAndWait starts the container, waits for completion and tails logs.
 func (j *RunJob) startAndWait(ctx *Context) error {
 	startTime := time.Now()
 	if err := j.startContainer(); err != nil {
-		return err
+		return fmt.Errorf("start container: %w", err)
 	}
 	err := j.watchContainer()
 	if err == ErrUnexpected {
@@ -166,7 +170,7 @@ func (j *RunJob) startAndWait(ctx *Context) error {
 func (j *RunJob) searchLocalImage() error {
 	imgs, err := j.Client.ListImages(buildFindLocalImageOptions(j.Image))
 	if err != nil {
-		return err
+		return fmt.Errorf("list images: %w", err)
 	}
 
 	if len(imgs) != 1 {
@@ -202,7 +206,7 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 		},
 	})
 	if err != nil {
-		return c, fmt.Errorf("error creating exec: %w", err)
+		return c, fmt.Errorf("create container: %w", err)
 	}
 
 	if j.Network != "" {
@@ -214,7 +218,7 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 				if err := j.Client.ConnectNetwork(network.ID, docker.NetworkConnectionOptions{
 					Container: c.ID,
 				}); err != nil {
-					return c, fmt.Errorf("error connecting container to network: %w", err)
+					return c, fmt.Errorf("connect container to network: %w", err)
 				}
 			}
 		}
@@ -224,18 +228,28 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 }
 
 func (j *RunJob) startContainer() error {
-	return j.Client.StartContainer(j.getContainerID(), &docker.HostConfig{})
+	if err := j.Client.StartContainer(j.getContainerID(), &docker.HostConfig{}); err != nil {
+		return fmt.Errorf("start container: %w", err)
+	}
+	return nil
 }
 
 //nolint:unused // used in integration tests via build tags
 func (j *RunJob) stopContainer(timeout uint) error {
-	return j.Client.StopContainer(j.getContainerID(), timeout)
+	if err := j.Client.StopContainer(j.getContainerID(), timeout); err != nil {
+		return fmt.Errorf("stop container: %w", err)
+	}
+	return nil
 }
 
 //nolint:unused // used in integration tests via build tags
 func (j *RunJob) getContainer() (*docker.Container, error) {
 	id := j.getContainerID()
-	return j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: id})
+	c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: id})
+	if err != nil {
+		return nil, fmt.Errorf("inspect container %q: %w", id, err)
+	}
+	return c, nil
 }
 
 const (
@@ -255,7 +269,7 @@ func (j *RunJob) watchContainer() error {
 
 		c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: j.getContainerID()})
 		if err != nil {
-			return err
+			return fmt.Errorf("inspect container %q: %w", j.getContainerID(), err)
 		}
 
 		if !c.State.Running {
@@ -270,7 +284,7 @@ func (j *RunJob) watchContainer() error {
 	case -1:
 		return ErrUnexpected
 	default:
-		return fmt.Errorf("error non-zero exit code: %d", s.ExitCode)
+		return fmt.Errorf("non-zero exit code: %d", s.ExitCode)
 	}
 }
 
@@ -278,9 +292,12 @@ func (j *RunJob) deleteContainer() error {
 	if shouldDelete, _ := strconv.ParseBool(j.Delete); !shouldDelete {
 		return nil
 	}
-	return j.Client.RemoveContainer(docker.RemoveContainerOptions{
+	if err := j.Client.RemoveContainer(docker.RemoveContainerOptions{
 		ID: j.getContainerID(),
-	})
+	}); err != nil {
+		return fmt.Errorf("remove container: %w", err)
+	}
+	return nil
 }
 
 func (j *RunJob) Hash() (string, error) {

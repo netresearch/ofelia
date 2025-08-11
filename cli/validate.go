@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	defaults "github.com/creasty/defaults"
 	"github.com/netresearch/ofelia/core"
@@ -31,9 +32,9 @@ func (c *ValidateCommand) Execute(_ []string) error {
 	applyConfigDefaults(conf)
 	out, err := json.MarshalIndent(conf, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal config: %w", err)
 	}
-	fmt.Println(string(out))
+	_, _ = fmt.Fprintln(os.Stdout, string(out))
 
 	c.Logger.Debugf("OK")
 	return nil

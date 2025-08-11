@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"reflect"
@@ -19,7 +20,10 @@ func NewComposeJob() *ComposeJob { return &ComposeJob{} }
 
 func (j *ComposeJob) Run(ctx *Context) error {
 	cmd := j.buildCommand(ctx)
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("compose run: %w", err)
+	}
+	return nil
 }
 
 func (j *ComposeJob) buildCommand(ctx *Context) *exec.Cmd {

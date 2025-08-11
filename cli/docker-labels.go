@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
@@ -20,7 +21,7 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 
 	if len(globals) > 0 {
 		if err := mapstructure.WeakDecode(globals, &c.Global); err != nil {
-			return err
+			return fmt.Errorf("decode global labels: %w", err)
 		}
 	}
 
@@ -32,19 +33,19 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 	}
 
 	if err := decodeInto(execJobs, &c.ExecJobs); err != nil {
-		return err
+		return fmt.Errorf("decode exec jobs: %w", err)
 	}
 	if err := decodeInto(localJobs, &c.LocalJobs); err != nil {
-		return err
+		return fmt.Errorf("decode local jobs: %w", err)
 	}
 	if err := decodeInto(serviceJobs, &c.ServiceJobs); err != nil {
-		return err
+		return fmt.Errorf("decode service jobs: %w", err)
 	}
 	if err := decodeInto(runJobs, &c.RunJobs); err != nil {
-		return err
+		return fmt.Errorf("decode run jobs: %w", err)
 	}
 	if err := decodeInto(composeJobs, &c.ComposeJobs); err != nil {
-		return err
+		return fmt.Errorf("decode compose jobs: %w", err)
 	}
 
 	markJobSource(c.ExecJobs, JobSourceLabel)

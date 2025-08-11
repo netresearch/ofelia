@@ -86,7 +86,8 @@ func main() {
 			}
 
 			parser.WriteHelp(os.Stdout)
-			fmt.Printf("\nBuild information\n  commit: %s\n  date:%s\n", version, build)
+			// forbidigo: avoid fmt.Printf; use logger-like output to stdout instead
+			_, _ = fmt.Fprintf(os.Stdout, "\nBuild information\n  commit: %s\n  date:%s\n", version, build)
 		}
 
 		os.Exit(1)

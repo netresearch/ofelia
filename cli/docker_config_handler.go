@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -47,18 +48,24 @@ func (c *DockerHandler) GetInternalDockerClient() *docker.Client {
 func (c *DockerHandler) buildDockerClient() (dockerClient, error) {
 	client, err := docker.NewClientFromEnv()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create docker client from env: %w", err)
 	}
 
 	// Sanity check Docker connection
 	if _, err := client.Info(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("docker client info: %w", err)
 	}
 
 	return client, nil
 }
 
-func NewDockerHandler(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, client dockerClient) (*DockerHandler, error) {
+func NewDockerHandler(
+	ctx context.Context,
+	notifier dockerLabelsUpdate,
+	logger core.Logger,
+	cfg *DockerConfig,
+	client dockerClient,
+) (*DockerHandler, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -87,7 +94,7 @@ func NewDockerHandler(ctx context.Context, notifier dockerLabelsUpdate, logger c
 
 	// Do a sanity check on docker
 	if _, err = c.dockerClient.Info(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("docker info: %w", err)
 	}
 
 	if !c.disablePolling && c.pollInterval > 0 {
@@ -151,7 +158,7 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 		Filters: filters,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list containers: %w", err)
 	}
 
 	if len(conts) == 0 {
