@@ -20,15 +20,19 @@ type stubLogger struct {
 func (l *stubLogger) Criticalf(format string, args ...interface{}) {
 	l.calls = append(l.calls, logCall{"Criticalf", format, args})
 }
+
 func (l *stubLogger) Debugf(format string, args ...interface{}) {
 	l.calls = append(l.calls, logCall{"Debugf", format, args})
 }
+
 func (l *stubLogger) Errorf(format string, args ...interface{}) {
 	l.calls = append(l.calls, logCall{"Errorf", format, args})
 }
+
 func (l *stubLogger) Noticef(format string, args ...interface{}) {
 	l.calls = append(l.calls, logCall{"Noticef", format, args})
 }
+
 func (l *stubLogger) Warningf(format string, args ...interface{}) {
 	l.calls = append(l.calls, logCall{"Warningf", format, args})
 }

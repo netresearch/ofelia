@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -54,7 +53,7 @@ func (s *SuiteConfig) TestJobDefaultsSet(c *C) {
 	j := &RunJobConfig{}
 	j.Pull = "false"
 
-	defaults.Set(j)
+	_ = defaults.Set(j)
 
 	c.Assert(j.Pull, Equals, "false")
 }
@@ -62,7 +61,7 @@ func (s *SuiteConfig) TestJobDefaultsSet(c *C) {
 func (s *SuiteConfig) TestJobDefaultsNotSet(c *C) {
 	j := &RunJobConfig{}
 
-	defaults.Set(j)
+	_ = defaults.Set(j)
 
 	c.Assert(j.Pull, Equals, "true")
 }
@@ -112,9 +111,10 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 				`,
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
-					"foo": {RunJob: core.RunJob{BareJob: core.BareJob{
-						Schedule: "@every 10s",
-					},
+					"foo": {RunJob: core.RunJob{
+						BareJob: core.BareJob{
+							Schedule: "@every 10s",
+						},
 						Environment: []string{"KEY1=value1", "KEY2=value2"},
 					}},
 				},
@@ -130,9 +130,10 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
                                 `,
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
-					"foo": {RunJob: core.RunJob{BareJob: core.BareJob{
-						Schedule: "@every 10s",
-					},
+					"foo": {RunJob: core.RunJob{
+						BareJob: core.BareJob{
+							Schedule: "@every 10s",
+						},
 						VolumesFrom: []string{"volume1", "volume2"},
 					}},
 				},
@@ -147,9 +148,10 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
                                 `,
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
-					"foo": {RunJob: core.RunJob{BareJob: core.BareJob{
-						Schedule: "@every 10s",
-					},
+					"foo": {RunJob: core.RunJob{
+						BareJob: core.BareJob{
+							Schedule: "@every 10s",
+						},
 						Entrypoint: func() *string { s := ""; return &s }(),
 					}},
 				},
@@ -202,7 +204,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					"label1": "1",
 					"label2": "2",
 				},
@@ -212,7 +214,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "true",
 					"label2":      "2",
 				},
@@ -222,7 +224,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "false",
 					labelPrefix + "." + jobLocal + ".job1.schedule": "everyday! yey!",
 				},
@@ -232,7 +234,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "true",
 					labelPrefix + "." + jobLocal + ".job1.schedule": "everyday! yey!",
 					labelPrefix + "." + jobLocal + ".job1.command":  "rm -rf *test*",
@@ -245,7 +247,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobLocal + ".job1.schedule":      "schedule1",
@@ -255,7 +257,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 					labelPrefix + "." + jobServiceRun + ".job3.schedule": "schedule3",
 					labelPrefix + "." + jobServiceRun + ".job3.command":  "command3",
 				},
-				"other": map[string]string{
+				"other": {
 					requiredLabel: "true",
 					labelPrefix + "." + jobLocal + ".job4.schedule":      "schedule4",
 					labelPrefix + "." + jobLocal + ".job4.command":       "command4",
@@ -267,23 +269,23 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 			},
 			ExpectedConfig: Config{
 				LocalJobs: map[string]*LocalJobConfig{
-					"job1": &LocalJobConfig{LocalJob: core.LocalJob{BareJob: core.BareJob{
+					"job1": {LocalJob: core.LocalJob{BareJob: core.BareJob{
 						Schedule: "schedule1",
 						Command:  "command1",
 					}}},
 				},
 				RunJobs: map[string]*RunJobConfig{
-					"job2": &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{
+					"job2": {RunJob: core.RunJob{BareJob: core.BareJob{
 						Schedule: "schedule2",
 						Command:  "command2",
 					}}},
-					"job5": &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{
+					"job5": {RunJob: core.RunJob{BareJob: core.BareJob{
 						Schedule: "schedule5",
 						Command:  "command5",
 					}}},
 				},
 				ServiceJobs: map[string]*RunServiceConfig{
-					"job3": &RunServiceConfig{RunServiceJob: core.RunServiceJob{BareJob: core.BareJob{
+					"job3": {RunServiceJob: core.RunServiceJob{BareJob: core.BareJob{
 						Schedule: "schedule3",
 						Command:  "command3",
 					}}},
@@ -293,13 +295,13 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobExec + ".job1.schedule": "schedule1",
 					labelPrefix + "." + jobExec + ".job1.command":  "command1",
 				},
-				"other": map[string]string{
+				"other": {
 					requiredLabel: "true",
 					labelPrefix + "." + jobExec + ".job2.schedule": "schedule2",
 					labelPrefix + "." + jobExec + ".job2.command":  "command2",
@@ -307,11 +309,11 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 			},
 			ExpectedConfig: Config{
 				ExecJobs: map[string]*ExecJobConfig{
-					"some.job1": &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{
+					"some.job1": {ExecJob: core.ExecJob{BareJob: core.BareJob{
 						Schedule: "schedule1",
 						Command:  "command1",
 					}}},
-					"other.job2": &ExecJobConfig{ExecJob: core.ExecJob{
+					"other.job2": {ExecJob: core.ExecJob{
 						BareJob: core.BareJob{
 							Schedule: "schedule2",
 							Command:  "command2",
@@ -324,7 +326,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 		{
 			Labels: map[string]map[string]string{
-				"some": map[string]string{
+				"some": {
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobExec + ".job1.schedule":   "schedule1",
@@ -334,10 +336,11 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 			},
 			ExpectedConfig: Config{
 				ExecJobs: map[string]*ExecJobConfig{
-					"some.job1": &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{
-						Schedule: "schedule1",
-						Command:  "command1",
-					}},
+					"some.job1": {
+						ExecJob: core.ExecJob{BareJob: core.BareJob{
+							Schedule: "schedule1",
+							Command:  "command1",
+						}},
 						OverlapConfig: middlewares.OverlapConfig{NoOverlap: true},
 					},
 				},
@@ -359,19 +362,23 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 			},
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
-					"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
-						Schedule: "schedule1",
-						Command:  "command1",
+					"job1": {
+						RunJob: core.RunJob{
+							BareJob: core.BareJob{
+								Schedule: "schedule1",
+								Command:  "command1",
+							},
+							Volume: []string{"/test/tmp:/test/tmp:ro"},
+						},
 					},
-						Volume: []string{"/test/tmp:/test/tmp:ro"},
-					},
-					},
-					"job2": {RunJob: core.RunJob{BareJob: core.BareJob{
-						Schedule: "schedule2",
-						Command:  "command2",
-					},
-						Volume: []string{"/test/tmp:/test/tmp:ro", "/test/tmp:/test/tmp:rw"},
-					},
+					"job2": {
+						RunJob: core.RunJob{
+							BareJob: core.BareJob{
+								Schedule: "schedule2",
+								Command:  "command2",
+							},
+							Volume: []string{"/test/tmp:/test/tmp:ro", "/test/tmp:/test/tmp:rw"},
+						},
 					},
 				},
 			},
@@ -392,19 +399,23 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 			},
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
-					"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
-						Schedule: "schedule1",
-						Command:  "command1",
+					"job1": {
+						RunJob: core.RunJob{
+							BareJob: core.BareJob{
+								Schedule: "schedule1",
+								Command:  "command1",
+							},
+							Environment: []string{"KEY1=value1"},
+						},
 					},
-						Environment: []string{"KEY1=value1"},
-					},
-					},
-					"job2": {RunJob: core.RunJob{BareJob: core.BareJob{
-						Schedule: "schedule2",
-						Command:  "command2",
-					},
-						Environment: []string{"KEY1=value1", "KEY2=value2"},
-					},
+					"job2": {
+						RunJob: core.RunJob{
+							BareJob: core.BareJob{
+								Schedule: "schedule2",
+								Command:  "command2",
+							},
+							Environment: []string{"KEY1=value1", "KEY2=value2"},
+						},
 					},
 				},
 			},
@@ -471,7 +482,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 	}
 
 	for _, t := range testcases {
-		var conf = Config{}
+		conf := Config{}
 		err := conf.buildFromDockerLabels(t.Labels)
 		c.Assert(err, IsNil)
 		setJobSource(&conf, JobSourceLabel)
@@ -482,8 +493,8 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 	}
 }
 
-func toJSON(any interface{}) string {
-	b, _ := json.MarshalIndent(any, "", "  ")
+func toJSON(val interface{}) string {
+	b, _ := json.MarshalIndent(val, "", "  ")
 	return string(b)
 }
 
@@ -496,7 +507,7 @@ func (s *SuiteConfig) TestBuildFromStringError(c *C) {
 // Test for BuildFromFile success path
 func (s *SuiteConfig) TestBuildFromFile(c *C) {
 	// Create temporary config file
-	tmpFile, err := ioutil.TempFile("", "ofelia_test_*.ini")
+	tmpFile, err := os.CreateTemp("", "ofelia_test_*.ini")
 	c.Assert(err, IsNil)
 	defer os.Remove(tmpFile.Name())
 
@@ -505,8 +516,7 @@ func (s *SuiteConfig) TestBuildFromFile(c *C) {
 schedule = @every 5s
 command = echo test123
 `
-	_, err = tmpFile.WriteString(content)
-	c.Assert(err, IsNil)
+	_, _ = tmpFile.WriteString(content)
 	err = tmpFile.Close()
 	c.Assert(err, IsNil)
 
@@ -521,7 +531,7 @@ command = echo test123
 }
 
 func (s *SuiteConfig) TestBuildFromFileGlob(c *C) {
-	dir, err := ioutil.TempDir("", "ofelia_glob")
+	dir, err := os.MkdirTemp("", "ofelia_glob")
 	c.Assert(err, IsNil)
 	defer os.RemoveAll(dir)
 

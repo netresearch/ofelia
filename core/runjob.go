@@ -75,69 +75,24 @@ func entrypointSlice(ep *string) []string {
 }
 
 func (j *RunJob) Run(ctx *Context) error {
-	var container *docker.Container
-	var err error
 	pull, _ := strconv.ParseBool(j.Pull)
 
 	if j.Image != "" && j.Container == "" {
-		if err = func() error {
-			var pullError error
-
-			// if Pull option "true"
-			// try pulling image first
-			if pull {
-				if pullError = pullImage(j.Client, j.Image); pullError == nil {
-					ctx.Log("Pulled image " + j.Image)
-					return nil
-				}
-			}
-
-			// if Pull option "false"
-			// try to find image locally first
-			searchErr := j.searchLocalImage()
-			if searchErr == nil {
-				ctx.Log("Found locally image " + j.Image)
-				return nil
-			}
-
-			// if couldn't find image locally, still try to pull
-			if !pull && searchErr == ErrLocalImageNotFound {
-				if pullError = pullImage(j.Client, j.Image); pullError == nil {
-					ctx.Log("Pulled image " + j.Image)
-					return nil
-				}
-			}
-
-			if pullError != nil {
-				return pullError
-			}
-
-			if searchErr != nil {
-				return searchErr
-			}
-
-			return nil
-		}(); err != nil {
-			return err
-		}
-
-		container, err = j.buildContainer()
-		if err != nil {
-			return err
-		}
-	} else {
-		container, err = j.Client.InspectContainer(j.Container)
-		if err != nil {
+		if err := j.ensureImageAvailable(ctx, pull); err != nil {
 			return err
 		}
 	}
 
+	container, err := j.createOrInspectContainer()
+	if err != nil {
+		return err
+	}
 	if container != nil {
 		j.setContainerID(container.ID)
 	}
 
-	// cleanup container if it is a created one
-	if j.Container == "" {
+	created := j.Container == ""
+	if created {
 		defer func() {
 			if delErr := j.deleteContainer(); delErr != nil {
 				ctx.Warn("failed to delete container: " + delErr.Error())
@@ -145,16 +100,59 @@ func (j *RunJob) Run(ctx *Context) error {
 		}()
 	}
 
-	startTime := time.Now()
-	if err := j.startContainer(); err != nil {
-		return err
+	return j.startAndWait(ctx)
+}
+
+// ensureImageAvailable pulls or verifies the image presence according to Pull option.
+func (j *RunJob) ensureImageAvailable(ctx *Context, pull bool) error {
+	var pullError error
+
+	if pull {
+		if pullError = pullImage(j.Client, j.Image); pullError == nil {
+			ctx.Log("Pulled image " + j.Image)
+			return nil
+		}
 	}
 
-	err = j.watchContainer()
+	searchErr := j.searchLocalImage()
+	if searchErr == nil {
+		ctx.Log("Found locally image " + j.Image)
+		return nil
+	}
+	if !pull && searchErr == ErrLocalImageNotFound {
+		if pullError = pullImage(j.Client, j.Image); pullError == nil {
+			ctx.Log("Pulled image " + j.Image)
+			return nil
+		}
+	}
+	if pullError != nil {
+		return pullError
+	}
+	return searchErr
+}
+
+// createOrInspectContainer creates a new container when needed or inspects an existing one.
+func (j *RunJob) createOrInspectContainer() (*docker.Container, error) {
+	if j.Image != "" && j.Container == "" {
+		return j.buildContainer()
+	}
+	c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: j.Container})
+	if err != nil {
+		return nil, fmt.Errorf("inspect container %q: %w", j.Container, err)
+	}
+	return c, nil
+}
+
+// startAndWait starts the container, waits for completion and tails logs.
+func (j *RunJob) startAndWait(ctx *Context) error {
+	startTime := time.Now()
+	if err := j.startContainer(); err != nil {
+		return fmt.Errorf("start container: %w", err)
+	}
+	err := j.watchContainer()
 	if err == ErrUnexpected {
 		return err
 	}
-
 	if logsErr := j.Client.Logs(docker.LogsOptions{
 		Container:    j.getContainerID(),
 		OutputStream: ctx.Execution.OutputStream,
@@ -166,14 +164,13 @@ func (j *RunJob) Run(ctx *Context) error {
 	}); logsErr != nil {
 		ctx.Warn("failed to fetch container logs: " + logsErr.Error())
 	}
-
 	return err
 }
 
 func (j *RunJob) searchLocalImage() error {
 	imgs, err := j.Client.ListImages(buildFindLocalImageOptions(j.Image))
 	if err != nil {
-		return err
+		return fmt.Errorf("list images: %w", err)
 	}
 
 	if len(imgs) != 1 {
@@ -208,9 +205,8 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 			VolumesFrom: j.VolumesFrom,
 		},
 	})
-
 	if err != nil {
-		return c, fmt.Errorf("error creating exec: %w", err)
+		return c, fmt.Errorf("create container: %w", err)
 	}
 
 	if j.Network != "" {
@@ -222,7 +218,7 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 				if err := j.Client.ConnectNetwork(network.ID, docker.NetworkConnectionOptions{
 					Container: c.ID,
 				}); err != nil {
-					return c, fmt.Errorf("error connecting container to network: %w", err)
+					return c, fmt.Errorf("connect container to network: %w", err)
 				}
 			}
 		}
@@ -232,16 +228,28 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 }
 
 func (j *RunJob) startContainer() error {
-	return j.Client.StartContainer(j.getContainerID(), &docker.HostConfig{})
+	if err := j.Client.StartContainer(j.getContainerID(), &docker.HostConfig{}); err != nil {
+		return fmt.Errorf("start container: %w", err)
+	}
+	return nil
 }
 
+//nolint:unused // used in integration tests via build tags
 func (j *RunJob) stopContainer(timeout uint) error {
-	return j.Client.StopContainer(j.getContainerID(), timeout)
+	if err := j.Client.StopContainer(j.getContainerID(), timeout); err != nil {
+		return fmt.Errorf("stop container: %w", err)
+	}
+	return nil
 }
 
+//nolint:unused // used in integration tests via build tags
 func (j *RunJob) getContainer() (*docker.Container, error) {
 	id := j.getContainerID()
-	return j.Client.InspectContainer(id)
+	c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: id})
+	if err != nil {
+		return nil, fmt.Errorf("inspect container %q: %w", id, err)
+	}
+	return c, nil
 }
 
 const (
@@ -259,9 +267,9 @@ func (j *RunJob) watchContainer() error {
 			return ErrMaxTimeRunning
 		}
 
-		c, err := j.Client.InspectContainer(j.getContainerID())
+		c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: j.getContainerID()})
 		if err != nil {
-			return err
+			return fmt.Errorf("inspect container %q: %w", j.getContainerID(), err)
 		}
 
 		if !c.State.Running {
@@ -276,17 +284,20 @@ func (j *RunJob) watchContainer() error {
 	case -1:
 		return ErrUnexpected
 	default:
-		return fmt.Errorf("error non-zero exit code: %d", s.ExitCode)
+		return fmt.Errorf("non-zero exit code: %d", s.ExitCode)
 	}
 }
 
 func (j *RunJob) deleteContainer() error {
-	if delete, _ := strconv.ParseBool(j.Delete); !delete {
+	if shouldDelete, _ := strconv.ParseBool(j.Delete); !shouldDelete {
 		return nil
 	}
-	return j.Client.RemoveContainer(docker.RemoveContainerOptions{
+	if err := j.Client.RemoveContainer(docker.RemoveContainerOptions{
 		ID: j.getContainerID(),
-	})
+	}); err != nil {
+		return fmt.Errorf("remove container: %w", err)
+	}
+	return nil
 }
 
 func (j *RunJob) Hash() (string, error) {

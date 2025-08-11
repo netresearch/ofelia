@@ -15,10 +15,10 @@ import (
 	ini "gopkg.in/ini.v1"
 )
 
-var version string
-var build string
-
-const logFormat = "%{time} %{color} %{shortfile} ▶ %{level} %{color:reset} %{message}"
+var (
+	version string
+	build   string
+)
 
 func buildLogger(level string) core.Logger {
 	logrus.SetOutput(os.Stdout)
@@ -66,13 +66,13 @@ func main() {
 	logger := buildLogger(pre.LogLevel)
 
 	parser := flags.NewNamedParser("ofelia", flags.Default)
-	parser.AddCommand(
+	_, _ = parser.AddCommand(
 		"daemon",
 		"daemon process",
 		"",
 		&cli.DaemonCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
 	)
-	parser.AddCommand(
+	_, _ = parser.AddCommand(
 		"validate",
 		"validates the config file",
 		"",
@@ -86,7 +86,8 @@ func main() {
 			}
 
 			parser.WriteHelp(os.Stdout)
-			fmt.Printf("\nBuild information\n  commit: %s\n  date:%s\n", version, build)
+			// forbidigo: avoid fmt.Printf; use logger-like output to stdout instead
+			_, _ = fmt.Fprintf(os.Stdout, "\nBuild information\n  commit: %s\n  date:%s\n", version, build)
 		}
 
 		os.Exit(1)

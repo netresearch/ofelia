@@ -1,0 +1,66 @@
+linters:
+  disable-all: true
+  enable:
+    - gofmt
+    - goimports
+    - gofumpt
+    - revive
+    - gocyclo
+    - ineffassign
+    - errcheck
+    - misspell
+    - goconst
+    - dupl
+    - prealloc
+    - typecheck
+    - staticcheck
+    - gosimple
+    - govet
+    - unused
+    - unparam
+    - nolintlint
+    - predeclared
+    - copyloopvar
+    - exhaustive
+    - forbidigo
+    - wrapcheck
+
+run:
+  timeout: 5m
+  tests: true
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - revive
+        - wrapcheck
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  revive:
+    rules:
+      - name: blank-imports
+        disabled: true
+      - name: package-comments
+        disabled: true
+      - name: var-naming
+      - name: exported
+      - name: if-return
+      - name: early-return
+      - name: line-length-limit
+        arguments: [ 140 ]
+      - name: import-shadowing
+      - name: time-naming
+      - name: increment-decrement
+  forbidigo:
+    forbid:
+      - '^fmt\.Print.*$'
+  wrapcheck:
+    ignoreSigRegexps:
+      - 'errors\.New\('
+      - '\*github\.com/netresearch/ofelia/core\.Context\)\.Next\('
+  misspell:
+    locale: US

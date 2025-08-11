@@ -1,12 +1,12 @@
 module github.com/netresearch/ofelia
 
-go 1.24
+go 1.24.6
 
 require (
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2
-	github.com/bradfitz/go-smtpd v0.0.0-20170404230938-deb6d6237625
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/docker v28.3.3+incompatible
+	github.com/emersion/go-smtp v0.24.0
 	github.com/fsouza/go-dockerclient v1.12.1
 	github.com/go-mail/mail/v2 v2.3.0
 	github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93
@@ -14,7 +14,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.9.3
-	golang.org/x/term v0.32.0
+	golang.org/x/term v0.34.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/ini.v1 v1.67.0
 )
@@ -25,6 +25,7 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
@@ -41,7 +42,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/sys v0.35.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/mail.v2 v2.3.1 // indirect
 )

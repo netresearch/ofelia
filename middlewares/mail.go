@@ -2,14 +2,13 @@ package middlewares
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
 	"os"
 	"strings"
-
-	"crypto/tls"
 
 	mail "github.com/go-mail/mail/v2"
 
@@ -54,13 +53,12 @@ func (m *Mail) Run(ctx *core.Context) error {
 	err := ctx.Next()
 	ctx.Stop(err)
 
-	if ctx.Execution.Failed || !m.MailOnlyOnError {
-		err := m.sendMail(ctx)
-		if err != nil {
-			ctx.Logger.Errorf("Mail error: %q", err)
-		}
+	if !(ctx.Execution.Failed || !m.MailOnlyOnError) {
+		return err
 	}
-
+	if mailErr := m.sendMail(ctx); mailErr != nil {
+		ctx.Logger.Errorf("Mail error: %q", mailErr)
+	}
 	return err
 }
 
@@ -73,13 +71,17 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 
 	base := fmt.Sprintf("%s_%s", ctx.Job.GetName(), ctx.Execution.ID)
 	msg.Attach(base+".stdout.log", mail.SetCopyFunc(func(w io.Writer) error {
-		_, err := w.Write(ctx.Execution.OutputStream.Bytes())
-		return err
+		if _, err := w.Write(ctx.Execution.OutputStream.Bytes()); err != nil {
+			return fmt.Errorf("write stdout attachment: %w", err)
+		}
+		return nil
 	}))
 
 	msg.Attach(base+".stderr.log", mail.SetCopyFunc(func(w io.Writer) error {
-		_, err := w.Write(ctx.Execution.ErrorStream.Bytes())
-		return err
+		if _, err := w.Write(ctx.Execution.ErrorStream.Bytes()); err != nil {
+			return fmt.Errorf("write stderr attachment: %w", err)
+		}
+		return nil
 	}))
 
 	msg.Attach(base+".stderr.json", mail.SetCopyFunc(func(w io.Writer) error {
@@ -88,8 +90,10 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 			"Execution": ctx.Execution,
 		}, "", "  ")
 
-		_, err := w.Write(js)
-		return err
+		if _, err := w.Write(js); err != nil {
+			return fmt.Errorf("write json attachment: %w", err)
+		}
+		return nil
 	}))
 
 	d := mail.NewDialer(m.SMTPHost, m.SMTPPort, m.SMTPUser, m.SMTPPassword)
@@ -98,9 +102,8 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 		d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	if err := d.DialAndSend(msg); err != nil {
-		return err
+		return fmt.Errorf("dial and send mail: %w", err)
 	}
-
 	return nil
 }
 
@@ -115,14 +118,14 @@ func (m *Mail) from() string {
 
 func (m *Mail) subject(ctx *core.Context) string {
 	buf := bytes.NewBuffer(nil)
-	mailSubjectTemplate.Execute(buf, ctx)
+	_ = mailSubjectTemplate.Execute(buf, ctx)
 
 	return buf.String()
 }
 
 func (m *Mail) body(ctx *core.Context) string {
 	buf := bytes.NewBuffer(nil)
-	mailBodyTemplate.Execute(buf, ctx)
+	_ = mailBodyTemplate.Execute(buf, ctx)
 
 	return buf.String()
 }

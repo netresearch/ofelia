@@ -63,7 +63,6 @@ func (j *ExecJob) buildExec() (*docker.Exec, error) {
 		User:         j.User,
 		Env:          j.Environment,
 	})
-
 	if err != nil {
 		return exec, fmt.Errorf("error creating exec: %w", err)
 	}
@@ -78,7 +77,6 @@ func (j *ExecJob) startExec(e *Execution) error {
 		ErrorStream:  e.ErrorStream,
 		RawTerminal:  j.TTY,
 	})
-
 	if err != nil {
 		return fmt.Errorf("error starting exec: %w", err)
 	}
@@ -88,7 +86,6 @@ func (j *ExecJob) startExec(e *Execution) error {
 
 func (j *ExecJob) inspectExec() (*docker.ExecInspect, error) {
 	i, err := j.Client.InspectExec(j.execID)
-
 	if err != nil {
 		return i, fmt.Errorf("error inspecting exec: %w", err)
 	}

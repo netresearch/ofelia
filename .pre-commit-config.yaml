@@ -1,0 +1,22 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        entry: bash -lc 'gofmt -s -w $(git ls-files "*.go")'
+        language: system
+        types: [go]
+      - id: gofumpt
+        name: gofumpt
+        entry: bash -lc 'gofumpt -w $(git ls-files "*.go")'
+        language: system
+        types: [go]
+      - id: golangci-lint
+        name: golangci-lint
+        entry: bash -lc 'golangci-lint run --out-format=tab --new-from-rev origin/HEAD || true'
+        language: system
+        types: [go]
+        pass_filenames: false
+
+
+

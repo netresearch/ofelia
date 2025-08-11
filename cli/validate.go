@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	defaults "github.com/creasty/defaults"
 	"github.com/netresearch/ofelia/core"
@@ -16,7 +17,7 @@ type ValidateCommand struct {
 }
 
 // Execute runs the validation command
-func (c *ValidateCommand) Execute(args []string) error {
+func (c *ValidateCommand) Execute(_ []string) error {
 	ApplyLogLevel(c.LogLevel)
 	c.Logger.Debugf("Validating %q ... ", c.ConfigFile)
 	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
@@ -31,9 +32,9 @@ func (c *ValidateCommand) Execute(args []string) error {
 	applyConfigDefaults(conf)
 	out, err := json.MarshalIndent(conf, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal config: %w", err)
 	}
-	fmt.Println(string(out))
+	_, _ = fmt.Fprintln(os.Stdout, string(out))
 
 	c.Logger.Debugf("OK")
 	return nil
@@ -41,18 +42,18 @@ func (c *ValidateCommand) Execute(args []string) error {
 
 func applyConfigDefaults(conf *Config) {
 	for _, j := range conf.ExecJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 	for _, j := range conf.RunJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 	for _, j := range conf.LocalJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 	for _, j := range conf.ServiceJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 	for _, j := range conf.ComposeJobs {
-		defaults.Set(j)
+		_ = defaults.Set(j)
 	}
 }

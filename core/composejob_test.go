@@ -39,10 +39,7 @@ func TestComposeJobBuildCommand(t *testing.T) {
 				t.Fatalf("NewExecution error: %v", err)
 			}
 			ctx := &Context{Execution: exec}
-			cmd, err := tt.job.buildCommand(ctx)
-			if err != nil {
-				t.Fatalf("buildCommand error: %v", err)
-			}
+			cmd := tt.job.buildCommand(ctx)
 			if !reflect.DeepEqual(cmd.Args, tt.wantArgs) {
 				t.Errorf("unexpected args: %v, want %v", cmd.Args, tt.wantArgs)
 			}

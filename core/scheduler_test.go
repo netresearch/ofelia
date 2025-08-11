@@ -25,18 +25,19 @@ func (s *SuiteScheduler) TestAddJob(c *C) {
 
 func (s *SuiteScheduler) TestStartStop(c *C) {
 	job := &TestJob{}
-	job.Schedule = "@every 1s"
+	const every1s = "@every 1s"
+	job.Schedule = every1s
 
 	sc := NewScheduler(&TestLogger{})
 	err := sc.AddJob(job)
 	c.Assert(err, IsNil)
 
-	sc.Start()
+	_ = sc.Start()
 	c.Assert(sc.IsRunning(), Equals, true)
 
 	time.Sleep(time.Second * 2)
 
-	sc.Stop()
+	_ = sc.Stop()
 	c.Assert(sc.IsRunning(), Equals, false)
 }
 
@@ -49,7 +50,7 @@ func (s *SuiteScheduler) TestMergeMiddlewaresSame(c *C) {
 
 	sc := NewScheduler(&TestLogger{})
 	sc.Use(mA)
-	sc.AddJob(job)
+	_ = sc.AddJob(job)
 
 	m := job.Middlewares()
 	c.Assert(m, HasLen, 1)
@@ -64,9 +65,9 @@ func (s *SuiteScheduler) TestLastRunRecorded(c *C) {
 	err := sc.AddJob(job)
 	c.Assert(err, IsNil)
 
-	sc.Start()
+	_ = sc.Start()
 	time.Sleep(time.Second * 2)
-	sc.Stop()
+	_ = sc.Stop()
 
 	lr := job.GetLastRun()
 	c.Assert(lr, NotNil)
