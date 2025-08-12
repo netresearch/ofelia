@@ -65,6 +65,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Download modules
+        run: go mod download
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
