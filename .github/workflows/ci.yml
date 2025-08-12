@@ -60,6 +60,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
