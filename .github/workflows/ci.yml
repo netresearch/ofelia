@@ -68,10 +68,13 @@ jobs:
       - name: Download modules
         run: go mod download
 
+      - name: Warm build cache
+        run: go build ./...
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.60.1
+          version: latest
           args: --timeout=5m --out-format=github-actions --allow-parallel-runners
           only-new-issues: false
 
