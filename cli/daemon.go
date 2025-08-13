@@ -4,16 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-
-	// pprof server is enabled conditionally at runtime. Keep the import so the endpoint exists when enabled.
-	// #nosec G108 -- Endpoint is disabled by default and bound to configurable address; acceptable for debugging.
-	_ "net/http/pprof"
+	_ "net/http/pprof" // pprof enabled only when opted-in; #nosec G108 acceptable for debugging
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	dockerclient "github.com/fsouza/go-dockerclient"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/web"
 )

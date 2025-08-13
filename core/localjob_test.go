@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/armon/circbuf"
-
 	. "gopkg.in/check.v1"
 )
 

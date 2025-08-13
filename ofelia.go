@@ -8,11 +8,12 @@ import (
 	"strings"
 
 	"github.com/jessevdk/go-flags"
-	"github.com/netresearch/ofelia/cli"
-	"github.com/netresearch/ofelia/core"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/term"
 	ini "gopkg.in/ini.v1"
+
+	"github.com/netresearch/ofelia/cli"
+	"github.com/netresearch/ofelia/core"
 )
 
 var (

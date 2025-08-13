@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/netresearch/ofelia/core"
-	"github.com/netresearch/ofelia/middlewares"
-
 	defaults "github.com/creasty/defaults"
 	"github.com/mitchellh/mapstructure"
 	ini "gopkg.in/ini.v1"
+
+	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/middlewares"
 )
 
 const (

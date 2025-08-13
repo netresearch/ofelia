@@ -6,6 +6,7 @@ import (
 	"os"
 
 	defaults "github.com/creasty/defaults"
+
 	"github.com/netresearch/ofelia/core"
 )
 

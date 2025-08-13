@@ -9,6 +9,7 @@ import (
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
+
 	"github.com/netresearch/ofelia/core"
 )
 

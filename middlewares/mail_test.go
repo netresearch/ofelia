@@ -8,7 +8,6 @@ import (
 	"time"
 
 	smtp "github.com/emersion/go-smtp"
-
 	. "gopkg.in/check.v1"
 )
 

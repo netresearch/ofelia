@@ -11,6 +11,7 @@ import (
 	"time"
 
 	dockerclient "github.com/fsouza/go-dockerclient"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/static"
 )

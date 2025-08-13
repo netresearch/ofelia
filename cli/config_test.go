@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	defaults "github.com/creasty/defaults"
+	. "gopkg.in/check.v1"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
-	. "gopkg.in/check.v1"
 )
 
 // Hook up gocheck into the "go test" runner.
