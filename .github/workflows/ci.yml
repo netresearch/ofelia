@@ -12,6 +12,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: "${{ github.repository_owner }}/ofelia"
@@ -64,10 +67,7 @@ jobs:
           THRESHOLD=55.0
           TOTAL=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
           echo "Total coverage: ${TOTAL}% (threshold ${THRESHOLD}%)"
-          if [ "$(echo "$TOTAL < $THRESHOLD" | bc -l)" -eq 1 ]; then
-            echo "Coverage ${TOTAL}% is below threshold ${THRESHOLD}%" >&2
-            exit 1
-          fi
+          awk -v t="$THRESHOLD" -v a="$TOTAL" 'BEGIN { if (a+0 < t+0) { exit 1 } }'
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -99,7 +99,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
-          args: --timeout=5m --out-format=github-actions --allow-parallel-runners --tests=false
+          args: --timeout=5m --out-format=github-actions --allow-parallel-runners
           only-new-issues: false
 
   vulncheck:
@@ -256,8 +256,6 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         with:
           args: detect --source . --no-banner --redact
-        env:
-          GITLEAKS_ENABLE_CORPUS: "true"
 
   build_image:
     name: Build and push container image
@@ -297,6 +295,8 @@ jobs:
           platforms: linux/amd64,linux/arm/v7,linux/arm64
           build-args: |
             CGO_ENABLED=0
+          provenance: true
+          sbom: true
 
   release_binaries:
     if: github.event_name == 'release'
@@ -346,4 +346,52 @@ jobs:
           platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
           build-args: |
             CGO_ENABLED=0
+          provenance: true
+          sbom: true
+
+  hadolint:
+    name: hadolint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+  workflow-lint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reviewdog/action-actionlint@v1
+
+  trivy:
+    name: trivy scan (fs)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-results.sarif
+          vuln-type: 'os,library'
+          severity: CRITICAL,HIGH
+          exit-code: 1
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
 
