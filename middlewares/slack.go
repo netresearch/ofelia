@@ -1,10 +1,13 @@
 package middlewares
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/netresearch/ofelia/core"
@@ -68,7 +71,24 @@ func (m *Slack) pushMessage(ctx *core.Context) {
 		m.Client = &http.Client{Timeout: 5 * time.Second}
 	}
 
-	r, err := m.Client.PostForm(m.SlackWebhook, values)
+	// Build request with context and validate URL
+	u, err := url.Parse(m.SlackWebhook)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		ctx.Logger.Errorf("Slack webhook URL is invalid: %q", m.SlackWebhook)
+		return
+	}
+	if host, _, herr := net.SplitHostPort(u.Host); herr == nil {
+		u.Host = host // normalize host:port to host if port is standard
+	}
+	ctxReq, cancel := context.WithTimeout(context.Background(), m.Client.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctxReq, http.MethodPost, u.String(), strings.NewReader(values.Encode()))
+	if err != nil {
+		ctx.Logger.Errorf("Slack request build error: %q", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r, err := m.Client.Do(req)
 	if err != nil {
 		ctx.Logger.Errorf("Slack error calling %q error: %q", m.SlackWebhook, err)
 	} else {
@@ -116,7 +136,7 @@ type slackMessage struct {
 	Text        string            `json:"text"`
 	Username    string            `json:"username"`
 	Attachments []slackAttachment `json:"attachments"`
-	IconURL     string            `json:"icon_url"`
+	IconURL     string            `json:"iconUrl"`
 }
 
 type slackAttachment struct {
