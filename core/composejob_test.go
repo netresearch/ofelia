@@ -5,13 +5,6 @@ import (
 	"testing"
 )
 
-//
-
-// circbufForTest allocates small buffers for Execution streams.
-//
-
-// Second test block merged into this file; imports present above
-
 func TestComposeJobBuildCommand(t *testing.T) {
 	tests := []struct {
 		name     string

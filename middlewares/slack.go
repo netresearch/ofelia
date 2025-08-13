@@ -136,7 +136,7 @@ type slackMessage struct {
 	Text        string            `json:"text"`
 	Username    string            `json:"username"`
 	Attachments []slackAttachment `json:"attachments"`
-	IconURL     string            `json:"iconUrl"`
+	IconURL     string            `json:"icon_url"`
 }
 
 type slackAttachment struct {
