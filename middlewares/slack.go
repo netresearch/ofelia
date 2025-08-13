@@ -90,18 +90,19 @@ func (m *Slack) buildMessage(ctx *core.Context) *slackMessage {
 		ctx.Job.GetName(), ctx.Execution.Duration, ctx.Job.GetCommand(),
 	)
 
-	if ctx.Execution.Failed {
+	switch {
+	case ctx.Execution.Failed:
 		msg.Attachments = append(msg.Attachments, slackAttachment{
 			Title: "Execution failed",
 			Text:  ctx.Execution.Error.Error(),
 			Color: "#F35A00",
 		})
-	} else if ctx.Execution.Skipped {
+	case ctx.Execution.Skipped:
 		msg.Attachments = append(msg.Attachments, slackAttachment{
 			Title: "Execution skipped",
 			Color: "#FFA500",
 		})
-	} else {
+	default:
 		msg.Attachments = append(msg.Attachments, slackAttachment{
 			Title: "Execution successful",
 			Color: "#7CD197",

@@ -189,10 +189,10 @@ func (e *Execution) Stop(err error) {
 		e.Duration = time.Nanosecond
 	}
 
-	if err != nil && err != ErrSkippedExecution {
+	if err != nil && !errors.Is(err, ErrSkippedExecution) {
 		e.Error = err
 		e.Failed = true
-	} else if err == ErrSkippedExecution {
+	} else if errors.Is(err, ErrSkippedExecution) {
 		e.Skipped = true
 	}
 }
@@ -363,7 +363,6 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 			continue
 		}
 
-		//nolint:exhaustive // reflect.Kind has many values; only relevant kinds are supported for hashing
 		switch kind {
 		case reflect.String:
 			*hash += fieldv.String()

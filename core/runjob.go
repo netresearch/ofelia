@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -119,7 +120,7 @@ func (j *RunJob) ensureImageAvailable(ctx *Context, pull bool) error {
 		ctx.Log("Found locally image " + j.Image)
 		return nil
 	}
-	if !pull && searchErr == ErrLocalImageNotFound {
+	if !pull && errors.Is(searchErr, ErrLocalImageNotFound) {
 		if pullError = pullImage(j.Client, j.Image); pullError == nil {
 			ctx.Log("Pulled image " + j.Image)
 			return nil
@@ -150,7 +151,7 @@ func (j *RunJob) startAndWait(ctx *Context) error {
 		return fmt.Errorf("start container: %w", err)
 	}
 	err := j.watchContainer()
-	if err == ErrUnexpected {
+	if errors.Is(err, ErrUnexpected) {
 		return err
 	}
 	if logsErr := j.Client.Logs(docker.LogsOptions{

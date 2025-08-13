@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -195,7 +196,8 @@ func (j *RunServiceJob) deleteService(ctx *Context, svcID string) error {
 		ID: svcID,
 	})
 
-	if _, is := err.(*docker.NoSuchService); is {
+	var noSvc *docker.NoSuchService
+	if errors.As(err, &noSvc) {
 		ctx.Logger.Warningf("Service %s cannot be removed. An error may have happened, "+
 			"or it might have been removed by another process", svcID)
 		return nil
