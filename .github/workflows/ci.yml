@@ -174,9 +174,8 @@ jobs:
         uses: github/codeql-action/analyze@v3
 
   lint-extra:
-    name: extra linters (advisory)
+    name: extra linters
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -194,7 +193,7 @@ jobs:
       - name: Warm build cache
         run: go build ./...
 
-      - name: Run extra linters (advisory)
+      - name: Run extra linters
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
@@ -212,9 +211,8 @@ jobs:
           only-new-issues: false
 
   gosec:
-    name: gosec (advisory)
+    name: gosec
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -231,9 +229,8 @@ jobs:
         run: $GOPATH/bin/gosec ./...
 
   gitleaks:
-    name: gitleaks (advisory)
+    name: gitleaks
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
     steps:
@@ -243,7 +240,7 @@ jobs:
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
         with:
-          args: detect --source . --no-banner --redact --exit-code 0
+          args: detect --source . --no-banner --redact
 
   build_image:
     name: Build and push container image
