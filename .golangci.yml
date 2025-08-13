@@ -93,6 +93,3 @@ linters-settings:
       - standard
       - default
       - prefix(github.com/netresearch/ofelia)
-  tagliatelle:
-    cases:
-      json: camel
