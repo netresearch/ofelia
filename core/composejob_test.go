@@ -52,5 +52,3 @@ func TestComposeJobBuildCommand(t *testing.T) {
 		})
 	}
 }
-
-// Removed as part of refactoring into table-driven test.

@@ -53,7 +53,7 @@ func (m *Save) Run(ctx *core.Context) error {
 }
 
 func (m *Save) saveToDisk(ctx *core.Context) error {
-	if err := os.MkdirAll(m.SaveFolder, 0o755); err != nil {
+	if err := os.MkdirAll(m.SaveFolder, 0o750); err != nil {
 		return fmt.Errorf("mkdir %q: %w", m.SaveFolder, err)
 	}
 
@@ -96,7 +96,7 @@ func (m *Save) saveContextToDisk(ctx *core.Context, filename string) error {
 }
 
 func (m *Save) writeFile(data []byte, filename string) error {
-	if err := os.WriteFile(filename, data, 0o644); err != nil {
+	if err := os.WriteFile(filename, data, 0o600); err != nil {
 		return fmt.Errorf("write file %q: %w", filename, err)
 	}
 	return nil

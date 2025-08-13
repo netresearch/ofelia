@@ -12,6 +12,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: "${{ github.repository_owner }}/ofelia"
@@ -36,6 +39,11 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
       - name: Vet
         run: go vet ./...
 
@@ -49,7 +57,23 @@ jobs:
           fi
 
       - name: Unit tests
-        run: go test -race ./...
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -n 1 || true
+
+      - name: Enforce coverage threshold
+        run: |
+          THRESHOLD=60.0
+          TOTAL=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+          echo "Total coverage: ${TOTAL}% (threshold ${THRESHOLD}%)"
+          awk -v t="$THRESHOLD" -v a="$TOTAL" 'BEGIN { if (a+0 < t+0) { exit 1 } }'
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
 
   lint:
     name: golangci-lint
@@ -80,20 +104,28 @@ jobs:
 
   vulncheck:
     name: govulncheck
-    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.x
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Run govulncheck (advisory only)
-        continue-on-error: true
+          go-version-file: go.mod
+      - name: Run govulncheck and fail only if fix available
         run: |
           set +e
-          go run golang.org/x/vuln/cmd/govulncheck@latest ./... || true
+          TMP_OUT=$(mktemp)
+          go run golang.org/x/vuln/cmd/govulncheck@latest ./... | tee "$TMP_OUT"
+          status=$?
+          set -e
+          # Fail only if any vulnerability reports a concrete fixed version (not "N/A")
+          if grep -E "^\s*Fixed in:\s+" "$TMP_OUT" | grep -v "Fixed in: N/A" >/dev/null; then
+            echo "govulncheck: vulnerabilities with available fixes detected; failing job"
+            exit 1
+          fi
+          echo "govulncheck: no vulnerabilities with available fixes (or only unfixed advisories)"
+          exit 0
 
   integration:
     name: integration tests
@@ -122,7 +154,7 @@ jobs:
         run: docker info
 
       - name: Integration tests
-        run: go test -tags=integration ./...
+        run: go test -race -tags=integration ./...
 
   codeql:
     # skip merge queue branches as they disappear before the upload step
@@ -134,13 +166,13 @@ jobs:
       contents: read
       security-events: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.x
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
+          go-version-file: go.mod
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
@@ -155,6 +187,82 @@ jobs:
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+
+  lint-extra:
+    name: extra linters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Warm build cache
+        run: go build ./...
+
+      - name: Run extra linters
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: >-
+            --timeout=5m --out-format=github-actions
+            --disable-all
+            --enable=gocritic
+            --enable=bodyclose
+            --enable=contextcheck
+            --enable=errorlint
+            --enable=errname
+            --enable=asciicheck
+            --enable=gci
+          only-new-issues: false
+
+  gosec:
+    name: gosec
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec
+        run: |
+          echo "GOPATH=$(go env GOPATH)"
+          $(go env GOPATH)/bin/gosec ./...
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download gitleaks (OSS)
+        run: |
+          set -e
+          VERSION="8.18.4"
+          URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          curl -sSL "$URL" | tar -xz gitleaks
+          chmod +x gitleaks
+
+      - name: Run gitleaks
+        run: ./gitleaks detect --source . --no-banner --redact
 
   build_image:
     name: Build and push container image
@@ -171,6 +279,9 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -189,6 +300,10 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           platforms: linux/amd64,linux/arm/v7,linux/arm64
+          build-args: |
+            CGO_ENABLED=0
+          provenance: true
+          sbom: true
 
   release_binaries:
     if: github.event_name == 'release'
@@ -214,6 +329,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -233,4 +351,54 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
           platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
+          build-args: |
+            CGO_ENABLED=0
+          provenance: true
+          sbom: true
+
+  hadolint:
+    name: hadolint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+  workflow-lint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reviewdog/action-actionlint@v1
+
+  trivy:
+    name: trivy scan (fs)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-results.sarif
+          vuln-type: 'os,library'
+          severity: CRITICAL,HIGH
+          exit-code: 1
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
 

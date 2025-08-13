@@ -4,15 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-
-	// pprof server is enabled conditionally at runtime. Keep the import so the endpoint exists when enabled.
-	_ "net/http/pprof"
+	_ "net/http/pprof" // #nosec G108
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	dockerclient "github.com/fsouza/go-dockerclient"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/web"
 )
@@ -80,7 +79,10 @@ func (c *DaemonCommand) boot() (err error) {
 	}
 
 	c.pprofServer = &http.Server{
-		Addr: c.PprofAddr,
+		Addr:              c.PprofAddr,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	if c.LogLevel == "" {

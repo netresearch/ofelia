@@ -37,6 +37,7 @@ func (j *ComposeJob) buildCommand(ctx *Context) *exec.Cmd {
 	if j.Command != "" {
 		argsSlice = append(argsSlice, args.GetArgs(j.Command)...)
 	}
+	// #nosec G204 -- command arguments are constructed from validated job config
 	cmd := exec.Command("docker", argsSlice...)
 	cmd.Stdout = ctx.Execution.OutputStream
 	cmd.Stderr = ctx.Execution.ErrorStream

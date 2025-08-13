@@ -189,10 +189,10 @@ func (e *Execution) Stop(err error) {
 		e.Duration = time.Nanosecond
 	}
 
-	if err != nil && err != ErrSkippedExecution {
+	if err != nil && !errors.Is(err, ErrSkippedExecution) {
 		e.Error = err
 		e.Failed = true
-	} else if err == ErrSkippedExecution {
+	} else if errors.Is(err, ErrSkippedExecution) {
 		e.Skipped = true
 	}
 }

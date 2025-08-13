@@ -1,8 +1,7 @@
 FROM golang:1.24.6-alpine AS builder
 
-RUN apk update
-RUN apk upgrade
-RUN apk add gcc musl-dev git
+# hadolint ignore=DL3018
+RUN apk add --no-cache gcc musl-dev git
 
 WORKDIR ${GOPATH}/src/github.com/netresearch/ofelia
 
@@ -11,7 +10,7 @@ RUN go mod download
 
 COPY . ${GOPATH}/src/github.com/netresearch/ofelia
 
-RUN go build -o /go/bin/ofelia .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /go/bin/ofelia .
 
 FROM alpine:3.21
 
@@ -19,8 +18,8 @@ FROM alpine:3.21
 LABEL ofelia.service=true
 LABEL ofelia.enabled=true
 
-RUN apk --no-cache upgrade
-RUN apk --no-cache add ca-certificates tzdata
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates tzdata
 
 COPY --from=builder /go/bin/ofelia /usr/bin/ofelia
 

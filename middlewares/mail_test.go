@@ -8,7 +8,6 @@ import (
 	"time"
 
 	smtp "github.com/emersion/go-smtp"
-
 	. "gopkg.in/check.v1"
 )
 
@@ -33,17 +32,19 @@ func (s *MailSuite) SetUpTest(c *C) {
 	c.Assert(err, IsNil)
 
 	s.l = ln
-	go func() {
-		be := &testBackend{fromCh: s.fromCh}
-		s.server = smtp.NewServer(be)
-		s.server.AllowInsecureAuth = true
+	// Initialize server outside of the goroutine to avoid racy field writes
+	fromCh := s.fromCh
+	srv := smtp.NewServer(&testBackend{fromCh: fromCh})
+	srv.AllowInsecureAuth = true
+	s.server = srv
+	go func(srv *smtp.Server, ln net.Listener) {
 		// Serve on the pre-bound listener
-		err := s.server.Serve(ln)
+		err := srv.Serve(ln)
 		// Only assert if it's not the expected listener close during teardown
 		if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
 			c.Assert(err, IsNil)
 		}
-	}()
+	}(srv, ln)
 
 	p := strings.Split(s.l.Addr().String(), ":")
 	s.smtpdHost = p[0]

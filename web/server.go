@@ -11,6 +11,7 @@ import (
 	"time"
 
 	dockerclient "github.com/fsouza/go-dockerclient"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/static"
 )
@@ -47,7 +48,13 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockercl
 		panic("failed to load UI subdirectory: " + err.Error())
 	}
 	mux.Handle("/", http.FileServer(http.FS(uiFS)))
-	server.srv = &http.Server{Addr: addr, Handler: mux}
+	server.srv = &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	return server
 }
 
@@ -75,7 +82,7 @@ type apiJob struct {
 	Type     string          `json:"type"`
 	Schedule string          `json:"schedule"`
 	Command  string          `json:"command"`
-	LastRun  *apiExecution   `json:"last_run,omitempty"`
+	LastRun  *apiExecution   `json:"lastRun,omitempty"`
 	Origin   string          `json:"origin"`
 	Config   json.RawMessage `json:"config"`
 }
