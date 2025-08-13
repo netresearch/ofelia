@@ -21,6 +21,7 @@ linters:
     - unconvert
     - paralleltest
     - tparallel
+    - depguard
     - revive
     - gocyclo
     - ineffassign
@@ -93,3 +94,9 @@ linters-settings:
       - standard
       - default
       - prefix(github.com/netresearch/ofelia)
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: log
+            desc: use core.Logger (logrus via core adapter)

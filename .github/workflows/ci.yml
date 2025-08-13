@@ -64,7 +64,7 @@ jobs:
 
       - name: Enforce coverage threshold
         run: |
-          THRESHOLD=55.0
+          THRESHOLD=60.0
           TOTAL=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
           echo "Total coverage: ${TOTAL}% (threshold ${THRESHOLD}%)"
           awk -v t="$THRESHOLD" -v a="$TOTAL" 'BEGIN { if (a+0 < t+0) { exit 1 } }'
