@@ -99,6 +99,7 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 	d := mail.NewDialer(m.SMTPHost, m.SMTPPort, m.SMTPUser, m.SMTPPassword)
 	// When TLSConfig.InsecureSkipVerify is true, mail server certificate authority is not validated
 	if m.SMTPTLSSkipVerify {
+		// #nosec G402 -- Allow explicit opt-in for development/legacy servers via config.
 		d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	if err := d.DialAndSend(msg); err != nil {

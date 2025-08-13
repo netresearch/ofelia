@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	// pprof server is enabled conditionally at runtime. Keep the import so the endpoint exists when enabled.
+	// #nosec G108 -- Endpoint is disabled by default and bound to configurable address; acceptable for debugging.
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
@@ -80,7 +81,8 @@ func (c *DaemonCommand) boot() (err error) {
 	}
 
 	c.pprofServer = &http.Server{
-		Addr: c.PprofAddr,
+		Addr:              c.PprofAddr,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	if c.LogLevel == "" {

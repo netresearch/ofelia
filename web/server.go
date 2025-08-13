@@ -47,7 +47,7 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockercl
 		panic("failed to load UI subdirectory: " + err.Error())
 	}
 	mux.Handle("/", http.FileServer(http.FS(uiFS)))
-	server.srv = &http.Server{Addr: addr, Handler: mux}
+	server.srv = &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	return server
 }
 
