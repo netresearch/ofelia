@@ -49,7 +49,16 @@ jobs:
           fi
 
       - name: Unit tests
-        run: go test -race ./...
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -n 1 || true
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
 
   lint:
     name: golangci-lint
@@ -85,7 +94,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.x
+          go-version-file: go.mod
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Run govulncheck and fail only if fix available
@@ -145,7 +154,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.x
+          go-version-file: go.mod
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -163,6 +172,78 @@ jobs:
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+
+  lint-extra:
+    name: extra linters (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Warm build cache
+        run: go build ./...
+
+      - name: Run extra linters (advisory)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: >-
+            --timeout=5m --out-format=github-actions
+            --disable-all
+            --enable=gocritic
+            --enable=bodyclose
+            --enable=contextcheck
+            --enable=errorlint
+            --enable=errname
+            --enable=tagliatelle
+            --enable=asciicheck
+            --enable=gci
+          only-new-issues: false
+
+  gosec:
+    name: gosec (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec
+        run: $GOPATH/bin/gosec ./...
+
+  gitleaks:
+    name: gitleaks (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --no-banner --redact --exit-code 0
 
   build_image:
     name: Build and push container image
