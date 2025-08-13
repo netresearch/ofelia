@@ -363,6 +363,7 @@ func getHash(t reflect.Type, v reflect.Value, hash *string) error {
 			continue
 		}
 
+		//nolint:exhaustive // reflect.Kind has many values; only relevant kinds are supported for hashing
 		switch kind {
 		case reflect.String:
 			*hash += fieldv.String()

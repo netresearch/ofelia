@@ -57,6 +57,9 @@ issues:
       text: "nolint:exhaustive"
       linters:
         - nolintlint
+    - path: middlewares/slack\.go
+      linters:
+        - tagliatelle
 
 linters-settings:
   gocyclo:
@@ -92,4 +95,4 @@ linters-settings:
       - prefix(github.com/netresearch/ofelia)
   tagliatelle:
     rules:
-      json: snake
+      json: camel

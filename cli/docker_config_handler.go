@@ -23,7 +23,7 @@ type dockerClient interface {
 }
 
 type DockerHandler struct {
-	ctx            context.Context
+	ctx            context.Context //nolint:containedctx // holds lifecycle for background goroutines
 	cancel         context.CancelFunc
 	filters        []string
 	dockerClient   dockerClient
@@ -61,7 +61,7 @@ func (c *DockerHandler) buildDockerClient() (dockerClient, error) {
 }
 
 func NewDockerHandler(
-	ctx context.Context,
+	ctx context.Context, //nolint:contextcheck // external callers provide base context; we derive cancelable child
 	notifier dockerLabelsUpdate,
 	logger core.Logger,
 	cfg *DockerConfig,
