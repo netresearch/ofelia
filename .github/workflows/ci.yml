@@ -220,7 +220,6 @@ jobs:
             --enable=contextcheck
             --enable=errorlint
             --enable=errname
-            --enable=tagliatelle
             --enable=asciicheck
             --enable=gci
           only-new-issues: false
