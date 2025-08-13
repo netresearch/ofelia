@@ -240,7 +240,9 @@ jobs:
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Run gosec
-        run: $GOPATH/bin/gosec ./...
+        run: |
+          echo "GOPATH=$(go env GOPATH)"
+          $(go env GOPATH)/bin/gosec ./...
 
   gitleaks:
     name: gitleaks
