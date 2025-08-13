@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -81,7 +82,8 @@ func main() {
 	)
 
 	if _, err := parser.ParseArgs(args); err != nil {
-		if flagErr, ok := err.(*flags.Error); ok {
+		var flagErr *flags.Error
+		if errors.As(err, &flagErr) {
 			if flagErr.Type == flags.ErrHelp {
 				return
 			}

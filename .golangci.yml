@@ -5,6 +5,22 @@ linters:
     - goimports
     - gofumpt
     - gci
+    - gocritic
+    - bodyclose
+    - contextcheck
+    - errorlint
+    - errname
+    - tagliatelle
+    - asciicheck
+    - durationcheck
+    - containedctx
+    - noctx
+    - nilerr
+    - nilnil
+    - nosprintfhostport
+    - unconvert
+    - paralleltest
+    - tparallel
     - revive
     - gocyclo
     - ineffassign
@@ -37,6 +53,10 @@ issues:
         - gocyclo
         - revive
         - wrapcheck
+    - path: core/common\.go
+      text: "nolint:exhaustive"
+      linters:
+        - nolintlint
 
 linters-settings:
   gocyclo:
@@ -70,3 +90,6 @@ linters-settings:
       - standard
       - default
       - prefix(github.com/netresearch/ofelia)
+  tagliatelle:
+    rules:
+      json: snake
