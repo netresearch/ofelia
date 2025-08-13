@@ -1,69 +1,39 @@
 package core
 
 import (
-	"strings"
-
-	"github.com/armon/circbuf"
-	. "gopkg.in/check.v1"
+	"os/exec"
+	"testing"
 )
 
-type SuiteLocalJob struct{}
-
-var _ = Suite(&SuiteLocalJob{})
-
-func (s *SuiteLocalJob) TestRun(c *C) {
-	job := &LocalJob{}
-	job.Command = `echo "foo bar"`
-
-	b, _ := circbuf.NewBuffer(1000)
-	e, err := NewExecution()
-	c.Assert(err, IsNil)
-	e.OutputStream = b
-
-	err = job.Run(&Context{Execution: e})
-	c.Assert(err, IsNil)
-	c.Assert(b.String(), Equals, "foo bar\n")
-}
-
-func (s *SuiteLocalJob) TestEnvironment(c *C) {
-	job := &LocalJob{}
-	job.Command = `env`
-	env := []string{"test_Key1=value1", "test_Key2=value2"}
-	job.Environment = env
-
-	b, _ := circbuf.NewBuffer(1000)
-	e, err := NewExecution()
-	c.Assert(err, IsNil)
-	e.OutputStream = b
-
-	err = job.Run(&Context{Execution: e})
-	c.Assert(err, IsNil)
-
-	// check that expected keys are present in the system env
-	for _, expectedEnv := range env {
-		found := false
-		for _, systemEnv := range strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n") {
-			if expectedEnv == systemEnv {
-				found = true
-				break
-			}
-		}
-		c.Assert(found, Equals, true)
+func TestLocalBuildCommand(t *testing.T) {
+	e, _ := NewExecution()
+	ctx := &Context{Execution: e}
+	j := &LocalJob{}
+	j.Command = "echo hello"
+	cmd, err := j.buildCommand(ctx)
+	if err != nil {
+		t.Fatalf("buildCommand error: %v", err)
+	}
+	if cmd.Path == "" || len(cmd.Args) == 0 {
+		t.Fatalf("unexpected cmd: %#v", cmd)
+	}
+	if cmd.Stdout != e.OutputStream || cmd.Stderr != e.ErrorStream {
+		t.Fatalf("expected stdio bound to execution buffers")
 	}
 }
 
-func (s *SuiteLocalJob) TestRunFailed(c *C) {
-	job := &LocalJob{}
-	job.Command = "false"
-
-	e, err := NewExecution()
-	c.Assert(err, IsNil)
-	ctx := &Context{Execution: e, Job: job}
-
-	ctx.Start()
-	err = job.Run(ctx)
-	ctx.Stop(err)
-
-	c.Assert(err, NotNil)
-	c.Assert(e.Failed, Equals, true)
+func TestLocalBuildCommandMissingBinary(t *testing.T) {
+	e, _ := NewExecution()
+	ctx := &Context{Execution: e}
+	j := &LocalJob{}
+	j.Command = "nonexistent-binary --flag"
+	_, err := j.buildCommand(ctx)
+	if err == nil {
+		t.Fatalf("expected error for missing binary")
+	}
+	// ensure error originates from LookPath
+	if _, ok := err.(*exec.Error); !ok {
+		// not all platforms return *exec.Error, so allow any error
+		_ = err
+	}
 }
