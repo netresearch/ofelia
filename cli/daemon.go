@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof" // pprof enabled only when opted-in; #nosec G108 acceptable for debugging
+	_ "net/http/pprof" // #nosec G108
 	"os"
 	"os/signal"
 	"syscall"

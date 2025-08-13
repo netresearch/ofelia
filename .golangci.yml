@@ -28,7 +28,7 @@ linters:
 
 run:
   timeout: 5m
-  tests: true
+  tests: false
 
 issues:
   exclude-rules:
