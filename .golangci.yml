@@ -4,6 +4,7 @@ linters:
     - gofmt
     - goimports
     - gofumpt
+    - gci
     - revive
     - gocyclo
     - ineffassign
@@ -64,3 +65,8 @@ linters-settings:
       - '\*github\.com/netresearch/ofelia/core\.Context\)\.Next\('
   misspell:
     locale: US
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/netresearch/ofelia)
