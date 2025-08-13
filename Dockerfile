@@ -1,8 +1,6 @@
 FROM golang:1.24.6-alpine AS builder
 
 # hadolint ignore=DL3018
-# Rationale: We pin the base image digest. Package pinning in builder stage adds maintenance overhead
-# with little risk reduction for this project. Security updates flow from the base image.
 RUN apk add --no-cache gcc musl-dev git
 
 WORKDIR ${GOPATH}/src/github.com/netresearch/ofelia
@@ -21,7 +19,6 @@ LABEL ofelia.service=true
 LABEL ofelia.enabled=true
 
 # hadolint ignore=DL3018
-# Rationale: We pin the base image digest. Runtime packages are minimal and updated via base image refresh.
 RUN apk add --no-cache ca-certificates tzdata
 
 COPY --from=builder /go/bin/ofelia /usr/bin/ofelia
