@@ -80,7 +80,6 @@ jobs:
 
   vulncheck:
     name: govulncheck
-    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - name: Install Go
@@ -89,11 +88,20 @@ jobs:
           go-version: 1.24.x
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Run govulncheck (advisory only)
-        continue-on-error: true
+      - name: Run govulncheck and fail only if fix available
         run: |
           set +e
-          go run golang.org/x/vuln/cmd/govulncheck@latest ./... || true
+          TMP_OUT=$(mktemp)
+          go run golang.org/x/vuln/cmd/govulncheck@latest ./... | tee "$TMP_OUT"
+          status=$?
+          set -e
+          # Fail only if any vulnerability reports a concrete fixed version (not "N/A")
+          if grep -E "^\s*Fixed in:\s+" "$TMP_OUT" | grep -v "Fixed in: N/A" >/dev/null; then
+            echo "govulncheck: vulnerabilities with available fixes detected; failing job"
+            exit 1
+          fi
+          echo "govulncheck: no vulnerabilities with available fixes (or only unfixed advisories)"
+          exit 0
 
   integration:
     name: integration tests
