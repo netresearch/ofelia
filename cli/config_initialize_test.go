@@ -8,8 +8,9 @@ import (
 	"testing"
 
 	docker "github.com/fsouza/go-dockerclient"
-	"github.com/netresearch/ofelia/core"
 	. "gopkg.in/check.v1"
+
+	"github.com/netresearch/ofelia/core"
 )
 
 const containersJSON = "/containers/json"

@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/netresearch/ofelia/core"
-	"github.com/netresearch/ofelia/middlewares"
-
 	defaults "github.com/creasty/defaults"
 	"github.com/mitchellh/mapstructure"
 	ini "gopkg.in/ini.v1"
+
+	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/middlewares"
 )
 
 const (
@@ -267,16 +267,16 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 
 	for name, j := range parsed {
 		if cur, ok := current[name]; ok {
-			if cur.GetJobSource() == source {
+			switch {
+			case cur.GetJobSource() == source:
 				continue
-			}
-			if source == JobSourceINI && cur.GetJobSource() == JobSourceLabel {
+			case source == JobSourceINI && cur.GetJobSource() == JobSourceLabel:
 				c.logger.Warningf("overriding label-defined %s job %q with INI job", jobKind, name)
 				_ = c.sh.RemoveJob(cur)
-			} else if source == JobSourceLabel && cur.GetJobSource() == JobSourceINI {
+			case source == JobSourceLabel && cur.GetJobSource() == JobSourceINI:
 				c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name)
 				continue
-			} else {
+			default:
 				continue
 			}
 		}
@@ -666,13 +666,14 @@ func sectionToMap(section *ini.Section) map[string]interface{} {
 	m := make(map[string]interface{})
 	for _, key := range section.Keys() {
 		vals := key.ValueWithShadows()
-		if len(vals) > 1 {
+		switch {
+		case len(vals) > 1:
 			cp := make([]string, len(vals))
 			copy(cp, vals)
 			m[key.Name()] = cp
-		} else if len(vals) == 1 {
+		case len(vals) == 1:
 			m[key.Name()] = vals[0]
-		} else {
+		default:
 			// Handle empty values
 			m[key.Name()] = ""
 		}

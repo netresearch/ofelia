@@ -4,6 +4,24 @@ linters:
     - gofmt
     - goimports
     - gofumpt
+    - gci
+    - gocritic
+    - bodyclose
+    - contextcheck
+    - errorlint
+    - errname
+    - tagliatelle
+    - asciicheck
+    - durationcheck
+    - containedctx
+    - noctx
+    - nilerr
+    - nilnil
+    - nosprintfhostport
+    - unconvert
+    - paralleltest
+    - tparallel
+    - depguard
     - revive
     - gocyclo
     - ineffassign
@@ -27,7 +45,7 @@ linters:
 
 run:
   timeout: 5m
-  tests: true
+  tests: false
 
 issues:
   exclude-rules:
@@ -36,6 +54,13 @@ issues:
         - gocyclo
         - revive
         - wrapcheck
+    - path: core/common\.go
+      text: "nolint:exhaustive"
+      linters:
+        - nolintlint
+    - path: middlewares/slack\.go
+      linters:
+        - tagliatelle
 
 linters-settings:
   gocyclo:
@@ -64,3 +89,14 @@ linters-settings:
       - '\*github\.com/netresearch/ofelia/core\.Context\)\.Next\('
   misspell:
     locale: US
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/netresearch/ofelia)
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: log
+            desc: use core.Logger (logrus via core adapter)

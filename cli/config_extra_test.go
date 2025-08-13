@@ -10,12 +10,11 @@ import (
 	"time"
 
 	defaults "github.com/creasty/defaults"
+	"github.com/sirupsen/logrus"
+	. "gopkg.in/check.v1"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
-
-	"github.com/sirupsen/logrus"
-
-	. "gopkg.in/check.v1"
 )
 
 const (

@@ -3,9 +3,9 @@ package middlewares
 import (
 	"testing"
 
-	"github.com/netresearch/ofelia/core"
-
 	. "gopkg.in/check.v1"
+
+	"github.com/netresearch/ofelia/core"
 )
 
 func Test(t *testing.T) { TestingT(t) }

@@ -7,10 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/netresearch/ofelia/core"
 	"github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
 	. "gopkg.in/check.v1"
+
+	"github.com/netresearch/ofelia/core"
 )
 
 func TestDaemonBoot(t *testing.T) { TestingT(t) }

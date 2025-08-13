@@ -15,7 +15,6 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/fsouza/go-dockerclient/testing"
 	"github.com/sirupsen/logrus"
-
 	. "gopkg.in/check.v1"
 )
 

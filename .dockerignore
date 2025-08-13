@@ -1,0 +1,24 @@
+# VCS
+.git
+.gitignore
+
+# CI
+.github/
+
+# Go build cache and artifacts
+**/*.out
+**/*.test
+bin/
+build/
+coverage.out
+
+# Node/UI (if any)
+node_modules/
+dist/
+
+# Editor
+.vscode/
+.idea/
+
+# Misc
+.DS_Store

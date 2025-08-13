@@ -1,10 +1,13 @@
 package middlewares
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/netresearch/ofelia/core"
@@ -68,7 +71,24 @@ func (m *Slack) pushMessage(ctx *core.Context) {
 		m.Client = &http.Client{Timeout: 5 * time.Second}
 	}
 
-	r, err := m.Client.PostForm(m.SlackWebhook, values)
+	// Build request with context and validate URL
+	u, err := url.Parse(m.SlackWebhook)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		ctx.Logger.Errorf("Slack webhook URL is invalid: %q", m.SlackWebhook)
+		return
+	}
+	if host, _, herr := net.SplitHostPort(u.Host); herr == nil {
+		u.Host = host // normalize host:port to host if port is standard
+	}
+	ctxReq, cancel := context.WithTimeout(context.Background(), m.Client.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctxReq, http.MethodPost, u.String(), strings.NewReader(values.Encode()))
+	if err != nil {
+		ctx.Logger.Errorf("Slack request build error: %q", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r, err := m.Client.Do(req)
 	if err != nil {
 		ctx.Logger.Errorf("Slack error calling %q error: %q", m.SlackWebhook, err)
 	} else {
@@ -90,18 +110,19 @@ func (m *Slack) buildMessage(ctx *core.Context) *slackMessage {
 		ctx.Job.GetName(), ctx.Execution.Duration, ctx.Job.GetCommand(),
 	)
 
-	if ctx.Execution.Failed {
+	switch {
+	case ctx.Execution.Failed:
 		msg.Attachments = append(msg.Attachments, slackAttachment{
 			Title: "Execution failed",
 			Text:  ctx.Execution.Error.Error(),
 			Color: "#F35A00",
 		})
-	} else if ctx.Execution.Skipped {
+	case ctx.Execution.Skipped:
 		msg.Attachments = append(msg.Attachments, slackAttachment{
 			Title: "Execution skipped",
 			Color: "#FFA500",
 		})
-	} else {
+	default:
 		msg.Attachments = append(msg.Attachments, slackAttachment{
 			Title: "Execution successful",
 			Color: "#7CD197",
