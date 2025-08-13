@@ -251,10 +251,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Download gitleaks (OSS)
+        run: |
+          set -e
+          VERSION="8.18.4"
+          URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          curl -sSL "$URL" | tar -xz gitleaks
+          chmod +x gitleaks
+
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: detect --source . --no-banner --redact
+        run: ./gitleaks detect --source . --no-banner --redact
 
   build_image:
     name: Build and push container image
