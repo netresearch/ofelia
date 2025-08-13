@@ -19,10 +19,10 @@ import (
 type chanNotifier struct{ ch chan struct{} }
 
 func (n *chanNotifier) dockerLabelsUpdate(_ map[string]map[string]string) {
-    select {
-    case n.ch <- struct{}{}:
-    default:
-    }
+	select {
+	case n.ch <- struct{}{}:
+	default:
+	}
 }
 
 func (s *DockerHandlerSuite) TestPollingDisabled(c *C) {
