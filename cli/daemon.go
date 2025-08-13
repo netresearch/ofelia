@@ -81,6 +81,8 @@ func (c *DaemonCommand) boot() (err error) {
 	c.pprofServer = &http.Server{
 		Addr:              c.PprofAddr,
 		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	if c.LogLevel == "" {
