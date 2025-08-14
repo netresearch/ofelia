@@ -1,4 +1,4 @@
-FROM golang:1.24.6-alpine AS builder
+FROM golang:1.25.0-alpine AS builder
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache gcc musl-dev git

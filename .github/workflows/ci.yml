@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: [1.24.x]
+        go-version: [1.25.x]
         platform: [ubuntu-latest]
     steps:
       - name: Checkout code
@@ -99,6 +99,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          install-mode: goinstall
           args: --timeout=5m --out-format=github-actions --allow-parallel-runners
           only-new-issues: false
 
@@ -134,7 +135,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: [1.24.x]
+        go-version: [1.25.x]
         platform: [ubuntu-latest]
     steps:
       - name: Checkout code
@@ -212,6 +213,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          install-mode: goinstall
           args: >-
             --timeout=5m --out-format=github-actions
             --disable-all
@@ -312,6 +314,8 @@ jobs:
       matrix:
         goos: [linux, darwin]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -326,6 +330,11 @@ jobs:
   release_docker:
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
 
