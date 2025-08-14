@@ -99,6 +99,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          install-mode: goinstall
           args: --timeout=5m --out-format=github-actions --allow-parallel-runners
           only-new-issues: false
 
@@ -212,6 +213,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          install-mode: goinstall
           args: >-
             --timeout=5m --out-format=github-actions
             --disable-all
