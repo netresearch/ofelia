@@ -13,7 +13,7 @@ repos:
         types: [go]
       - id: golangci-lint
         name: golangci-lint
-        entry: bash -lc 'golangci-lint run --out-format=tab --new-from-rev origin/HEAD || true'
+        entry: bash -lc 'make lint'
         language: system
         types: [go]
         pass_filenames: false
