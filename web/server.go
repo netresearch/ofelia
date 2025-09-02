@@ -29,6 +29,9 @@ type Server struct {
 // is exposed for tests and may change if the Server struct evolves.
 func (s *Server) HTTPServer() *http.Server { return s.srv }
 
+// GetHTTPServer returns the underlying http.Server for graceful shutdown support
+func (s *Server) GetHTTPServer() *http.Server { return s.srv }
+
 func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockerclient.Client) *Server {
 	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), client: client}
 	mux := http.NewServeMux()
@@ -77,6 +80,52 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return fmt.Errorf("shutdown http server: %w", err)
 	}
 	return nil
+}
+
+// RegisterHealthEndpoints registers health check endpoints on the server
+func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
+	if s.srv == nil || s.srv.Handler == nil {
+		return
+	}
+	
+	// Get the existing mux from the handler chain
+	// We need to add the health endpoints to the underlying mux
+	// before the middleware chain
+	mux := http.NewServeMux()
+	
+	// Re-register all existing endpoints
+	mux.HandleFunc("/api/jobs/removed", s.removedJobsHandler)
+	mux.HandleFunc("/api/jobs/disabled", s.disabledJobsHandler)
+	mux.HandleFunc("/api/jobs/run", s.runJobHandler)
+	mux.HandleFunc("/api/jobs/disable", s.disableJobHandler)
+	mux.HandleFunc("/api/jobs/enable", s.enableJobHandler)
+	mux.HandleFunc("/api/jobs/create", s.createJobHandler)
+	mux.HandleFunc("/api/jobs/update", s.updateJobHandler)
+	mux.HandleFunc("/api/jobs/delete", s.deleteJobHandler)
+	mux.HandleFunc("/api/jobs/", s.historyHandler)
+	mux.HandleFunc("/api/jobs", s.jobsHandler)
+	mux.HandleFunc("/api/config", s.configHandler)
+	
+	// Add health endpoints
+	mux.HandleFunc("/health", hc.HealthHandler())
+	mux.HandleFunc("/healthz", hc.HealthHandler())
+	mux.HandleFunc("/ready", hc.ReadinessHandler())
+	mux.HandleFunc("/live", hc.LivenessHandler())
+	
+	// Add UI handler
+	uiFS, err := fs.Sub(static.UI, "ui")
+	if err == nil {
+		mux.Handle("/", http.FileServer(http.FS(uiFS)))
+	}
+	
+	// Re-apply middleware chain
+	rl := newRateLimiter(100, time.Minute)
+	var handler http.Handler = mux
+	handler = securityHeaders(handler)
+	handler = rl.middleware(handler)
+	
+	// Update the server handler
+	s.srv.Handler = handler
 }
 
 type apiExecution struct {

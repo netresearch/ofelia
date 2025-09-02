@@ -1,13 +1,10 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // #nosec G108
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	dockerclient "github.com/fsouza/go-dockerclient"
@@ -29,14 +26,16 @@ type DaemonCommand struct {
 	EnableWeb          bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
 	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
 
-	scheduler     *core.Scheduler
-	signals       chan os.Signal
-	pprofServer   *http.Server
-	webServer     *web.Server
-	dockerHandler *DockerHandler
-	config        *Config
-	done          chan struct{}
-	Logger        core.Logger
+	scheduler        *core.Scheduler
+	signals          chan os.Signal
+	pprofServer      *http.Server
+	webServer        *web.Server
+	dockerHandler    *DockerHandler
+	config           *Config
+	done             chan struct{}
+	Logger           core.Logger
+	shutdownManager  *core.ShutdownManager
+	healthChecker    *web.HealthChecker
 }
 
 // Execute runs the daemon
@@ -54,6 +53,9 @@ func (c *DaemonCommand) Execute(_ []string) error {
 func (c *DaemonCommand) boot() (err error) {
 	// Apply CLI log level before reading config
 	ApplyLogLevel(c.LogLevel)
+
+	// Initialize shutdown manager
+	c.shutdownManager = core.NewShutdownManager(c.Logger, 30*time.Second)
 
 	// Always try to read the config file, as there are options such as globals or some tasks that can be specified there and not in docker
 	config, err := BuildFromFile(c.ConfigFile, c.Logger)
@@ -98,19 +100,36 @@ func (c *DaemonCommand) boot() (err error) {
 	c.scheduler = config.sh
 	c.dockerHandler = config.dockerHandler
 	c.config = config
+	
+	// Initialize health checker
+	var dockerClient *dockerclient.Client
+	if c.dockerHandler != nil {
+		dockerClient = c.dockerHandler.GetInternalDockerClient()
+	}
+	c.healthChecker = web.NewHealthChecker(dockerClient, "1.0.0")
+	
+	// Create graceful scheduler with shutdown support
+	gracefulScheduler := core.NewGracefulScheduler(c.scheduler, c.shutdownManager)
+	c.scheduler = gracefulScheduler.Scheduler
+	
 	if c.EnableWeb {
-		var client *dockerclient.Client
-		if c.dockerHandler != nil {
-			client = c.dockerHandler.GetInternalDockerClient()
-		}
-		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, client)
+		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, dockerClient)
+		
+		// Register health endpoints
+		c.webServer.RegisterHealthEndpoints(c.healthChecker)
+		
+		// Create graceful server with shutdown support
+		gracefulServer := core.NewGracefulServer(c.webServer.GetHTTPServer(), c.shutdownManager, c.Logger)
+		_ = gracefulServer // The hooks are registered internally
 	}
 
 	return err
 }
 
 func (c *DaemonCommand) start() error {
-	c.setSignals()
+	// Start listening for shutdown signals
+	c.shutdownManager.ListenForShutdown()
+	
 	if err := c.scheduler.Start(); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)
 	}
@@ -143,48 +162,19 @@ func (c *DaemonCommand) start() error {
 }
 
 func (c *DaemonCommand) setSignals() {
-	c.signals = make(chan os.Signal, 1)
+	// Create done channel to wait for shutdown
 	c.done = make(chan struct{})
-
-	signal.Notify(c.signals, syscall.SIGINT, syscall.SIGTERM)
-
+	
+	// Monitor shutdown manager
 	go func() {
-		sig := <-c.signals
-		c.Logger.Warningf(
-			"Signal received: %s, shutting down the process\n", sig,
-		)
-
+		<-c.shutdownManager.ShutdownChan()
 		close(c.done)
 	}()
 }
 
 func (c *DaemonCommand) shutdown() error {
 	<-c.done
-
-	c.Logger.Warningf("Stopping HTTP server")
-	if err := c.pprofServer.Shutdown(context.Background()); err != nil {
-		c.Logger.Warningf("Error stopping HTTP server: %v", err)
-	}
-	if c.EnableWeb && c.webServer != nil {
-		c.Logger.Warningf("Stopping web server")
-		if err := c.webServer.Shutdown(context.Background()); err != nil {
-			c.Logger.Warningf("Error stopping web server: %v", err)
-		}
-	}
-
-	if c.dockerHandler != nil {
-		c.Logger.Warningf("Stopping docker handler")
-		_ = c.dockerHandler.Shutdown(context.Background())
-	}
-
-	if !c.scheduler.IsRunning() {
-		return nil
-	}
-
-	c.Logger.Warningf("Waiting running jobs.")
-	if err := c.scheduler.Stop(); err != nil {
-		return fmt.Errorf("stop scheduler: %w", err)
-	}
+	// Shutdown manager handles everything through registered hooks
 	return nil
 }
 

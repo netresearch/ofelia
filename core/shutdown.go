@@ -210,14 +210,14 @@ func (gs *GracefulScheduler) RunJobWithTracking(job Job, ctx *Context) error {
 	case err := <-done:
 		return err
 	case <-jobCtx.Done():
-		gs.Scheduler.logger.Warningf("Job %s cancelled due to shutdown", job.GetName())
+		gs.Scheduler.Logger.Warningf("Job %s cancelled due to shutdown", job.GetName())
 		return fmt.Errorf("job cancelled: shutdown in progress")
 	}
 }
 
 // gracefulStop stops the scheduler gracefully
 func (gs *GracefulScheduler) gracefulStop(ctx context.Context) error {
-	gs.Scheduler.logger.Noticef("Stopping scheduler gracefully")
+	gs.Scheduler.Logger.Noticef("Stopping scheduler gracefully")
 	
 	// Stop accepting new jobs
 	gs.Scheduler.Stop()
@@ -231,11 +231,11 @@ func (gs *GracefulScheduler) gracefulStop(ctx context.Context) error {
 	
 	select {
 	case <-done:
-		gs.Scheduler.logger.Noticef("All jobs completed successfully")
+		gs.Scheduler.Logger.Noticef("All jobs completed successfully")
 		return nil
 	case <-ctx.Done():
 		// Count remaining jobs
-		gs.Scheduler.logger.Warningf("Forcing shutdown with active jobs")
+		gs.Scheduler.Logger.Warningf("Forcing shutdown with active jobs")
 		return fmt.Errorf("timeout waiting for jobs to complete")
 	}
 }
