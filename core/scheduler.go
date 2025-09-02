@@ -20,10 +20,12 @@ type Scheduler struct {
 	Logger   Logger
 
 	middlewareContainer
-	cron      *cron.Cron
-	wg        sync.WaitGroup
-	isRunning bool
-	mu        sync.RWMutex // Protect isRunning and wg/removed operations
+	cron             *cron.Cron
+	wg               sync.WaitGroup
+	isRunning        bool
+	mu               sync.RWMutex // Protect isRunning and wg/removed operations
+	maxConcurrentJobs int
+	jobSemaphore     chan struct{} // Limits concurrent job execution
 }
 
 func NewScheduler(l Logger) *Scheduler {
@@ -39,10 +41,26 @@ func NewScheduler(l Logger) *Scheduler {
 		cron.WithChain(cron.Recover(cronUtils)),
 	)
 
+	// Default to 10 concurrent jobs, can be configured
+	maxConcurrent := 10
+	
 	return &Scheduler{
-		Logger: l,
-		cron:   cron,
+		Logger:            l,
+		cron:              cron,
+		maxConcurrentJobs: maxConcurrent,
+		jobSemaphore:      make(chan struct{}, maxConcurrent),
 	}
+}
+
+// SetMaxConcurrentJobs configures the maximum number of concurrent jobs
+func (s *Scheduler) SetMaxConcurrentJobs(max int) {
+	if max < 1 {
+		max = 1
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.maxConcurrentJobs = max
+	s.jobSemaphore = make(chan struct{}, max)
 }
 
 func (s *Scheduler) AddJob(j Job) error {
@@ -198,6 +216,18 @@ type jobWrapper struct {
 }
 
 func (w *jobWrapper) Run() {
+	// Acquire semaphore slot for job concurrency limit
+	select {
+	case w.s.jobSemaphore <- struct{}{}:
+		// Got a slot, proceed
+		defer func() { <-w.s.jobSemaphore }() // Release slot when done
+	default:
+		// No slots available, skip this execution
+		w.s.Logger.Warningf("Job %q skipped - max concurrent jobs limit reached (%d)",
+			w.j.GetName(), w.s.maxConcurrentJobs)
+		return
+	}
+	
 	w.s.mu.Lock()
 	if !w.s.isRunning {
 		w.s.mu.Unlock()
@@ -217,6 +247,10 @@ func (w *jobWrapper) Run() {
 		w.s.Logger.Errorf("failed to create execution: %v", err)
 		return
 	}
+	
+	// Ensure buffers are returned to pool when done
+	defer e.Cleanup()
+	
 	ctx := NewContext(w.s, w.j, e)
 
 	w.start(ctx)

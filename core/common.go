@@ -156,10 +156,14 @@ type Execution struct {
 
 // NewExecution returns a new Execution, with a random ID
 func NewExecution() (*Execution, error) {
-	bufOut, _ := circbuf.NewBuffer(maxStreamSize)
-	bufErr, _ := circbuf.NewBuffer(maxStreamSize)
+	// Use buffer pool to reduce memory allocation
+	bufOut := DefaultBufferPool.Get()
+	bufErr := DefaultBufferPool.Get()
 	id, err := randomID()
 	if err != nil {
+		// Return buffers to pool on error
+		DefaultBufferPool.Put(bufOut)
+		DefaultBufferPool.Put(bufErr)
 		return nil, err
 	}
 	return &Execution{
@@ -194,6 +198,18 @@ func (e *Execution) Stop(err error) {
 		e.Failed = true
 	} else if errors.Is(err, ErrSkippedExecution) {
 		e.Skipped = true
+	}
+}
+
+// Cleanup returns execution buffers to the pool for reuse
+func (e *Execution) Cleanup() {
+	if e.OutputStream != nil {
+		DefaultBufferPool.Put(e.OutputStream)
+		e.OutputStream = nil
+	}
+	if e.ErrorStream != nil {
+		DefaultBufferPool.Put(e.ErrorStream)
+		e.ErrorStream = nil
 	}
 }
 

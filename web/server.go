@@ -32,6 +32,9 @@ func (s *Server) HTTPServer() *http.Server { return s.srv }
 func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockerclient.Client) *Server {
 	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), client: client}
 	mux := http.NewServeMux()
+	
+	// Create rate limiter: 100 requests per minute per IP
+	rl := newRateLimiter(100, time.Minute)
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
 	mux.HandleFunc("/api/jobs/disabled", server.disabledJobsHandler)
 	mux.HandleFunc("/api/jobs/run", server.runJobHandler)
@@ -45,12 +48,21 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockercl
 	mux.HandleFunc("/api/config", server.configHandler)
 	uiFS, err := fs.Sub(static.UI, "ui")
 	if err != nil {
-		panic("failed to load UI subdirectory: " + err.Error())
+		// Return error gracefully instead of panic
+		// The caller should handle this error appropriately
+		server.scheduler.Logger.Errorf("failed to load UI subdirectory: %v", err)
+		return nil
 	}
 	mux.Handle("/", http.FileServer(http.FS(uiFS)))
+	
+	// Apply security middlewares
+	var handler http.Handler = mux
+	handler = securityHeaders(handler)
+	handler = rl.middleware(handler)
+	
 	server.srv = &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
