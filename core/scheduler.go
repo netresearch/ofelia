@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/robfig/cron/v3"
 )
@@ -20,13 +21,15 @@ type Scheduler struct {
 	Logger   Logger
 
 	middlewareContainer
-	cron             *cron.Cron
-	wg               sync.WaitGroup
-	isRunning        bool
-	mu               sync.RWMutex // Protect isRunning and wg/removed operations
-	maxConcurrentJobs int
-	jobSemaphore     chan struct{} // Limits concurrent job execution
-	retryExecutor    *RetryExecutor
+	cron                *cron.Cron
+	wg                  sync.WaitGroup
+	isRunning           bool
+	mu                  sync.RWMutex // Protect isRunning and wg/removed operations
+	maxConcurrentJobs   int
+	jobSemaphore        chan struct{} // Limits concurrent job execution
+	retryExecutor       *RetryExecutor
+	workflowOrchestrator *WorkflowOrchestrator
+	jobsByName          map[string]Job // Quick lookup for jobs by name
 }
 
 func NewScheduler(l Logger) *Scheduler {
@@ -45,13 +48,19 @@ func NewScheduler(l Logger) *Scheduler {
 	// Default to 10 concurrent jobs, can be configured
 	maxConcurrent := 10
 	
-	return &Scheduler{
+	s := &Scheduler{
 		Logger:            l,
 		cron:              cron,
 		maxConcurrentJobs: maxConcurrent,
 		jobSemaphore:      make(chan struct{}, maxConcurrent),
 		retryExecutor:     NewRetryExecutor(l),
+		jobsByName:        make(map[string]Job),
 	}
+	
+	// Initialize workflow orchestrator
+	s.workflowOrchestrator = NewWorkflowOrchestrator(s, l)
+	
+	return s
 }
 
 // SetMaxConcurrentJobs configures the maximum number of concurrent jobs
@@ -109,6 +118,18 @@ func (s *Scheduler) RemoveJob(j Job) error {
 func (s *Scheduler) Start() error {
 	s.mu.Lock()
 	s.isRunning = true
+	
+	// Build dependency graph
+	if err := s.workflowOrchestrator.BuildDependencyGraph(s.Jobs); err != nil {
+		s.Logger.Errorf("Failed to build dependency graph: %v", err)
+		// Continue anyway - jobs without dependencies will still work
+	}
+	
+	// Build job name lookup map
+	for _, j := range s.Jobs {
+		s.jobsByName[j.GetName()] = j
+	}
+	
 	s.mu.Unlock()
 	s.Logger.Debugf("Starting scheduler")
 	s.cron.Start()
@@ -129,6 +150,29 @@ func (s *Scheduler) Stop() error {
 // Entries returns all scheduled cron entries.
 func (s *Scheduler) Entries() []cron.Entry {
 	return s.cron.Entries()
+}
+
+// RunJob manually triggers a job by name
+func (s *Scheduler) RunJob(jobName string) error {
+	s.mu.RLock()
+	job, exists := s.jobsByName[jobName]
+	s.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("job %s not found", jobName)
+	}
+	
+	// Check if job can run based on dependencies
+	executionID := fmt.Sprintf("manual-%d", time.Now().Unix())
+	if !s.workflowOrchestrator.CanExecute(jobName, executionID) {
+		return fmt.Errorf("job %s cannot run: dependencies not satisfied", jobName)
+	}
+	
+	// Run the job
+	wrapper := &jobWrapper{s: s, j: job}
+	go wrapper.Run()
+	
+	return nil
 }
 
 // GetRemovedJobs returns a copy of all jobs that were removed from the scheduler.
@@ -171,15 +215,6 @@ func (s *Scheduler) GetDisabledJob(name string) Job {
 	return j
 }
 
-// RunJob manually executes a job by name.
-func (s *Scheduler) RunJob(name string) error {
-	j, _ := getJob(s.Jobs, name)
-	if j == nil {
-		return fmt.Errorf("job %q not found", name)
-	}
-	go (&jobWrapper{s: s, j: j}).Run()
-	return nil
-}
 
 // DisableJob stops scheduling the job but keeps it for later enabling.
 func (s *Scheduler) DisableJob(name string) error {
@@ -218,6 +253,15 @@ type jobWrapper struct {
 }
 
 func (w *jobWrapper) Run() {
+	// Generate workflow execution ID
+	executionID := fmt.Sprintf("sched-%d-%s", time.Now().Unix(), w.j.GetName())
+	
+	// Check dependencies
+	if !w.s.workflowOrchestrator.CanExecute(w.j.GetName(), executionID) {
+		w.s.Logger.Debugf("Job %q skipped - dependencies not satisfied", w.j.GetName())
+		return
+	}
+	
 	// Acquire semaphore slot for job concurrency limit
 	select {
 	case w.s.jobSemaphore <- struct{}{}:
@@ -255,6 +299,9 @@ func (w *jobWrapper) Run() {
 	
 	ctx := NewContext(w.s, w.j, e)
 
+	// Mark job as started in workflow
+	w.s.workflowOrchestrator.JobStarted(w.j.GetName(), executionID)
+	
 	w.start(ctx)
 	
 	// Execute with retry logic
@@ -263,6 +310,10 @@ func (w *jobWrapper) Run() {
 	})
 	
 	w.stop(ctx, err)
+	
+	// Mark job as completed in workflow
+	success := err == nil && !ctx.Execution.Failed
+	w.s.workflowOrchestrator.JobCompleted(w.j.GetName(), executionID, success)
 }
 
 func (w *jobWrapper) start(ctx *Context) {

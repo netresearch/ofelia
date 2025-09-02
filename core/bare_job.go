@@ -7,14 +7,18 @@ import (
 )
 
 type BareJob struct {
-	Schedule         string  `hash:"true"`
-	Name             string  `hash:"true"`
-	Command          string  `hash:"true"`
-	HistoryLimit     int     `default:"10"`
-	MaxRetries       int     `default:"0"`    // Maximum number of retry attempts (0 = no retries)
-	RetryDelayMs     int     `default:"1000"` // Initial retry delay in milliseconds
-	RetryExponential bool    `default:"true"` // Use exponential backoff for retries
-	RetryMaxDelayMs  int     `default:"60000"` // Maximum retry delay in milliseconds (1 minute)
+	Schedule         string   `hash:"true"`
+	Name             string   `hash:"true"`
+	Command          string   `hash:"true"`
+	HistoryLimit     int      `default:"10"`
+	MaxRetries       int      `default:"0"`    // Maximum number of retry attempts (0 = no retries)
+	RetryDelayMs     int      `default:"1000"` // Initial retry delay in milliseconds
+	RetryExponential bool     `default:"true"` // Use exponential backoff for retries
+	RetryMaxDelayMs  int      `default:"60000"` // Maximum retry delay in milliseconds (1 minute)
+	Dependencies     []string // Names of jobs that must complete successfully before this job
+	OnSuccess        []string // Jobs to trigger on successful completion
+	OnFailure        []string // Jobs to trigger on failure
+	AllowParallel    bool     `default:"true"` // Allow job to run in parallel with others
 
 	middlewareContainer
 	running int32
@@ -90,4 +94,11 @@ func (j *BareJob) GetHistory() []*Execution {
 	hist := make([]*Execution, len(j.history))
 	copy(hist, j.history)
 	return hist
+}
+
+// Run implements the Job interface - this is handled by jobWrapper
+func (j *BareJob) Run(ctx *Context) error {
+	// This method is typically not called directly
+	// The scheduler's jobWrapper handles the actual execution
+	return ctx.Next()
 }
