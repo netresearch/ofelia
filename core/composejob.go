@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"reflect"
 
 	"github.com/gobs/args"
 )
@@ -45,10 +44,3 @@ func (j *ComposeJob) buildCommand(ctx *Context) *exec.Cmd {
 	return cmd
 }
 
-func (j *ComposeJob) Hash() (string, error) {
-	var h string
-	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &h); err != nil {
-		return "", err
-	}
-	return h, nil
-}

@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"reflect"
 
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/gobs/args"
@@ -16,15 +15,23 @@ type ExecJob struct {
 	TTY         bool           `default:"false" hash:"true"`
 	Environment []string       `mapstructure:"environment" hash:"true"`
 
-	execID string
+	dockerOps *DockerOperations `json:"-"` // High-level Docker operations wrapper
+	execID    string
 }
 
 func NewExecJob(c *docker.Client) *ExecJob {
-	return &ExecJob{Client: c}
+	// Initialize Docker operations wrapper with basic logger
+	// Metrics will be set later when the job runs in a context
+	dockerOps := NewDockerOperations(c, &SimpleLogger{}, nil)
+
+	return &ExecJob{
+		Client:    c,
+		dockerOps: dockerOps,
+	}
 }
 
 func (j *ExecJob) Run(ctx *Context) error {
-	exec, err := j.buildExec()
+	exec, err := j.buildExec(ctx)
 	if err != nil {
 		return err
 	}
@@ -48,12 +55,20 @@ func (j *ExecJob) Run(ctx *Context) error {
 	case -1:
 		return ErrUnexpected
 	default:
-		return fmt.Errorf("error non-zero exit code: %d", inspect.ExitCode)
+		return NonZeroExitError{ExitCode: inspect.ExitCode}
 	}
 }
 
-func (j *ExecJob) buildExec() (*docker.Exec, error) {
-	exec, err := j.Client.CreateExec(docker.CreateExecOptions{
+func (j *ExecJob) buildExec(ctx *Context) (*docker.Exec, error) {
+	// Update DockerOperations context
+	j.dockerOps.logger = ctx.Logger
+	if ctx.Scheduler != nil && ctx.Scheduler.metricsRecorder != nil {
+		j.dockerOps.metricsRecorder = ctx.Scheduler.metricsRecorder
+	}
+
+	execOps := j.dockerOps.NewExecOperations()
+	
+	exec, err := execOps.CreateExec(docker.CreateExecOptions{
 		AttachStdin:  false,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -64,39 +79,36 @@ func (j *ExecJob) buildExec() (*docker.Exec, error) {
 		Env:          j.Environment,
 	})
 	if err != nil {
-		return exec, fmt.Errorf("error creating exec: %w", err)
+		return nil, fmt.Errorf("create exec: %w", err)
 	}
 
 	return exec, nil
 }
 
 func (j *ExecJob) startExec(e *Execution) error {
-	err := j.Client.StartExec(j.execID, docker.StartExecOptions{
+	execOps := j.dockerOps.NewExecOperations()
+	
+	err := execOps.StartExec(j.execID, docker.StartExecOptions{
 		Tty:          j.TTY,
 		OutputStream: e.OutputStream,
 		ErrorStream:  e.ErrorStream,
 		RawTerminal:  j.TTY,
 	})
 	if err != nil {
-		return fmt.Errorf("error starting exec: %w", err)
+		return fmt.Errorf("start exec: %w", err)
 	}
 
 	return nil
 }
 
 func (j *ExecJob) inspectExec() (*docker.ExecInspect, error) {
-	i, err := j.Client.InspectExec(j.execID)
+	execOps := j.dockerOps.NewExecOperations()
+	
+	inspect, err := execOps.InspectExec(j.execID)
 	if err != nil {
-		return i, fmt.Errorf("error inspecting exec: %w", err)
+		return nil, fmt.Errorf("inspect exec: %w", err)
 	}
 
-	return i, nil
+	return inspect, nil
 }
 
-func (j *ExecJob) Hash() (string, error) {
-	var h string
-	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &h); err != nil {
-		return "", err
-	}
-	return h, nil
-}
