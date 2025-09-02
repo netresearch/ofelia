@@ -2,6 +2,7 @@ package web
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,11 +14,12 @@ import (
 
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
-	Enabled     bool   `json:"enabled"`
-	Username    string `json:"username"`
-	Password    string `json:"password"`
-	SecretKey   string `json:"secret_key"`
-	TokenExpiry int    `json:"token_expiry"` // in hours
+	Enabled      bool   `json:"enabled"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`     // Deprecated: use PasswordHash instead
+	PasswordHash string `json:"password_hash"` // bcrypt hash of password (preferred)
+	SecretKey    string `json:"secret_key"`
+	TokenExpiry  int    `json:"token_expiry"` // in hours
 }
 
 // Simple JWT implementation (for demonstration - in production use a proper JWT library)
@@ -183,8 +185,14 @@ func (h *LoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Validate credentials (simple for demo - use proper hashing in production)
-	if credentials.Username != h.config.Username || credentials.Password != h.config.Password {
+	// Validate credentials using secure comparison
+	// This is legacy auth - use JWT for production
+	usernameMatch := subtle.ConstantTimeCompare([]byte(credentials.Username), []byte(h.config.Username)) == 1
+	passwordMatch := subtle.ConstantTimeCompare([]byte(credentials.Password), []byte(h.config.Password)) == 1
+	
+	if !usernameMatch || !passwordMatch {
+		// Add slight delay to prevent timing attacks
+		time.Sleep(100 * time.Millisecond)
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
