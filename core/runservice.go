@@ -3,7 +3,6 @@ package core
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,7 +34,14 @@ func NewRunServiceJob(c *docker.Client) *RunServiceJob {
 }
 
 func (j *RunServiceJob) Run(ctx *Context) error {
-	if err := pullImage(j.Client, j.Image); err != nil {
+	// Use Docker operations abstraction for image pulling
+	dockerOps := NewDockerOperations(j.Client, ctx.Logger, nil)
+	if ctx.Scheduler != nil && ctx.Scheduler.metricsRecorder != nil {
+		dockerOps.metricsRecorder = ctx.Scheduler.metricsRecorder
+	}
+
+	imageOps := dockerOps.NewImageOperations()
+	if err := imageOps.PullImage(j.Image); err != nil {
 		return err
 	}
 
@@ -109,6 +115,7 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 
 	startTime := time.Now()
 
+	const watchDuration = time.Millisecond * 500 // Optimized from 100ms to reduce CPU usage
 	ticker := time.NewTicker(watchDuration)
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -209,10 +216,3 @@ func (j *RunServiceJob) deleteService(ctx *Context, svcID string) error {
 	return nil
 }
 
-func (j *RunServiceJob) Hash() (string, error) {
-	var h string
-	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &h); err != nil {
-		return "", err
-	}
-	return h, nil
-}

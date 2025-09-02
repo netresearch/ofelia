@@ -2,8 +2,7 @@ package core
 
 import (
 	"errors"
-	"fmt"
-	"reflect"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -19,9 +18,11 @@ func init() {
 }
 
 type RunJob struct {
-	BareJob `mapstructure:",squash"`
-	Client  *docker.Client `json:"-"`
-	User    string         `default:"root" hash:"true"`
+	BareJob   `mapstructure:",squash"`
+	Client    *docker.Client    `json:"-"`
+	monitor   *ContainerMonitor `json:"-"` // Container monitor for efficient watching
+	dockerOps *DockerOperations `json:"-"` // High-level Docker operations wrapper
+	User      string            `default:"root" hash:"true"`
 
 	// ContainerName specifies the name of the container to be created. If
 	// nil, the job name will be used. If set to an empty string, Docker
@@ -53,7 +54,26 @@ type RunJob struct {
 }
 
 func NewRunJob(c *docker.Client) *RunJob {
-	return &RunJob{Client: c}
+	// Create a logger for the monitor (will be set properly when job runs)
+	logger := &SimpleLogger{}
+	monitor := NewContainerMonitor(c, logger)
+
+	// Check for Docker events configuration
+	if useEvents := os.Getenv("OFELIA_USE_DOCKER_EVENTS"); useEvents != "" {
+		// Default is true, so only disable if explicitly set to false
+		if useEvents == "false" || useEvents == "0" || useEvents == "no" {
+			monitor.SetUseEventsAPI(false)
+		}
+	}
+
+	// Initialize Docker operations wrapper
+	dockerOps := NewDockerOperations(c, logger, nil)
+
+	return &RunJob{
+		Client:    c,
+		monitor:   monitor,
+		dockerOps: dockerOps,
+	}
 }
 
 func (j *RunJob) setContainerID(id string) {
@@ -106,30 +126,19 @@ func (j *RunJob) Run(ctx *Context) error {
 
 // ensureImageAvailable pulls or verifies the image presence according to Pull option.
 func (j *RunJob) ensureImageAvailable(ctx *Context, pull bool) error {
-	var pullError error
-
-	if pull {
-		if pullError = pullImage(j.Client, j.Image); pullError == nil {
-			ctx.Log("Pulled image " + j.Image)
-			return nil
-		}
+	// Update dockerOps with current context logger and metrics
+	imageOps := j.dockerOps.NewImageOperations()
+	imageOps.logger = ctx.Logger
+	if ctx.Scheduler != nil && ctx.Scheduler.metricsRecorder != nil {
+		imageOps.metricsRecorder = ctx.Scheduler.metricsRecorder
 	}
 
-	searchErr := j.searchLocalImage()
-	if searchErr == nil {
-		ctx.Log("Found locally image " + j.Image)
-		return nil
+	if err := imageOps.EnsureImage(j.Image, pull); err != nil {
+		return err
 	}
-	if !pull && errors.Is(searchErr, ErrLocalImageNotFound) {
-		if pullError = pullImage(j.Client, j.Image); pullError == nil {
-			ctx.Log("Pulled image " + j.Image)
-			return nil
-		}
-	}
-	if pullError != nil {
-		return pullError
-	}
-	return searchErr
+
+	ctx.Log("Image " + j.Image + " is available")
+	return nil
 }
 
 // createOrInspectContainer creates a new container when needed or inspects an existing one.
@@ -137,41 +146,34 @@ func (j *RunJob) createOrInspectContainer() (*docker.Container, error) {
 	if j.Image != "" && j.Container == "" {
 		return j.buildContainer()
 	}
-	c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: j.Container})
-	if err != nil {
-		return nil, fmt.Errorf("inspect container %q: %w", j.Container, err)
-	}
-	return c, nil
+
+	containerOps := j.dockerOps.NewContainerLifecycle()
+	return containerOps.InspectContainer(j.Container)
 }
 
 // startAndWait starts the container, waits for completion and tails logs.
 func (j *RunJob) startAndWait(ctx *Context) error {
 	startTime := time.Now()
 	if err := j.startContainer(); err != nil {
-		return fmt.Errorf("start container: %w", err)
+		return err
 	}
 	err := j.watchContainer()
 	if errors.Is(err, ErrUnexpected) {
 		return err
 	}
-	if logsErr := j.Client.Logs(docker.LogsOptions{
-		Container:    j.getContainerID(),
-		OutputStream: ctx.Execution.OutputStream,
-		ErrorStream:  ctx.Execution.ErrorStream,
-		Stdout:       true,
-		Stderr:       true,
-		Since:        startTime.Unix(),
-		RawTerminal:  j.TTY,
-	}); logsErr != nil {
+	logsOps := j.dockerOps.NewLogsOperations()
+	if logsErr := logsOps.GetLogsSince(j.getContainerID(), startTime, true, true,
+		ctx.Execution.OutputStream, ctx.Execution.ErrorStream); logsErr != nil {
 		ctx.Warn("failed to fetch container logs: " + logsErr.Error())
 	}
 	return err
 }
 
 func (j *RunJob) searchLocalImage() error {
-	imgs, err := j.Client.ListImages(buildFindLocalImageOptions(j.Image))
+	imageOps := j.dockerOps.NewImageOperations()
+	imgs, err := imageOps.ListImages(j.Image)
 	if err != nil {
-		return fmt.Errorf("list images: %w", err)
+		return err
 	}
 
 	if len(imgs) != 1 {
@@ -186,7 +188,9 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 	if j.ContainerName != nil {
 		name = *j.ContainerName
 	}
-	c, err := j.Client.CreateContainer(docker.CreateContainerOptions{
+
+	containerOps := j.dockerOps.NewContainerLifecycle()
+	opts := docker.CreateContainerOptions{
 		Name: name,
 		Config: &docker.Config{
 			Image:        j.Image,
@@ -205,21 +209,21 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 			Binds:       j.Volume,
 			VolumesFrom: j.VolumesFrom,
 		},
-	})
-	if err != nil {
-		return c, fmt.Errorf("create container: %w", err)
 	}
 
+	c, err := containerOps.CreateContainer(opts)
+	if err != nil {
+		return c, err
+	}
+
+	// Connect to network if specified
 	if j.Network != "" {
-		networkOpts := docker.NetworkFilterOpts{}
-		networkOpts["name"] = map[string]bool{}
-		networkOpts["name"][j.Network] = true
-		if networks, err := j.Client.FilteredListNetworks(networkOpts); err == nil {
+		networkOps := j.dockerOps.NewNetworkOperations()
+		networks, err := networkOps.FindNetworkByName(j.Network)
+		if err == nil {
 			for _, network := range networks {
-				if err := j.Client.ConnectNetwork(network.ID, docker.NetworkConnectionOptions{
-					Container: c.ID,
-				}); err != nil {
-					return c, fmt.Errorf("connect container to network: %w", err)
+				if err := networkOps.ConnectContainerToNetwork(c.ID, network.ID); err != nil {
+					return c, err
 				}
 			}
 		}
@@ -229,35 +233,47 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 }
 
 func (j *RunJob) startContainer() error {
-	if err := j.Client.StartContainer(j.getContainerID(), &docker.HostConfig{}); err != nil {
-		return fmt.Errorf("start container: %w", err)
-	}
-	return nil
+	containerOps := j.dockerOps.NewContainerLifecycle()
+	return containerOps.StartContainer(j.getContainerID(), &docker.HostConfig{})
 }
 
 //nolint:unused // used in integration tests via build tags
 func (j *RunJob) stopContainer(timeout uint) error {
-	if err := j.Client.StopContainer(j.getContainerID(), timeout); err != nil {
-		return fmt.Errorf("stop container: %w", err)
-	}
-	return nil
+	containerOps := j.dockerOps.NewContainerLifecycle()
+	return containerOps.StopContainer(j.getContainerID(), timeout)
 }
 
 //nolint:unused // used in integration tests via build tags
 func (j *RunJob) getContainer() (*docker.Container, error) {
-	id := j.getContainerID()
-	c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: id})
-	if err != nil {
-		return nil, fmt.Errorf("inspect container %q: %w", id, err)
-	}
-	return c, nil
+	containerOps := j.dockerOps.NewContainerLifecycle()
+	return containerOps.InspectContainer(j.getContainerID())
 }
 
-const (
-	watchDuration = time.Millisecond * 100
-)
-
 func (j *RunJob) watchContainer() error {
+	// Use the efficient container monitor
+	if j.monitor == nil {
+		// Fallback to old polling method if monitor not available
+		return j.watchContainerLegacy()
+	}
+
+	state, err := j.monitor.WaitForContainer(j.getContainerID(), j.MaxRuntime)
+	if err != nil {
+		return err
+	}
+
+	switch state.ExitCode {
+	case 0:
+		return nil
+	case -1:
+		return ErrUnexpected
+	default:
+		return NonZeroExitError{ExitCode: state.ExitCode}
+	}
+}
+
+// watchContainerLegacy is the old polling method kept for backward compatibility
+func (j *RunJob) watchContainerLegacy() error {
+	const watchDuration = time.Millisecond * 500 // Optimized from 100ms to reduce CPU usage
 	var s docker.State
 	var r time.Duration
 	for {
@@ -268,9 +284,10 @@ func (j *RunJob) watchContainer() error {
 			return ErrMaxTimeRunning
 		}
 
-		c, err := j.Client.InspectContainerWithOptions(docker.InspectContainerOptions{ID: j.getContainerID()})
+		containerOps := j.dockerOps.NewContainerLifecycle()
+		c, err := containerOps.InspectContainer(j.getContainerID())
 		if err != nil {
-			return fmt.Errorf("inspect container %q: %w", j.getContainerID(), err)
+			return err
 		}
 
 		if !c.State.Running {
@@ -285,7 +302,7 @@ func (j *RunJob) watchContainer() error {
 	case -1:
 		return ErrUnexpected
 	default:
-		return fmt.Errorf("non-zero exit code: %d", s.ExitCode)
+		return NonZeroExitError{ExitCode: s.ExitCode}
 	}
 }
 
@@ -293,18 +310,8 @@ func (j *RunJob) deleteContainer() error {
 	if shouldDelete, _ := strconv.ParseBool(j.Delete); !shouldDelete {
 		return nil
 	}
-	if err := j.Client.RemoveContainer(docker.RemoveContainerOptions{
-		ID: j.getContainerID(),
-	}); err != nil {
-		return fmt.Errorf("remove container: %w", err)
-	}
-	return nil
+
+	containerOps := j.dockerOps.NewContainerLifecycle()
+	return containerOps.RemoveContainer(j.getContainerID(), false)
 }
 
-func (j *RunJob) Hash() (string, error) {
-	var h string
-	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &h); err != nil {
-		return "", err
-	}
-	return h, nil
-}
