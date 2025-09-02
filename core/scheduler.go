@@ -30,6 +30,7 @@ type Scheduler struct {
 	retryExecutor       *RetryExecutor
 	workflowOrchestrator *WorkflowOrchestrator
 	jobsByName          map[string]Job // Quick lookup for jobs by name
+	metricsRecorder     MetricsRecorder // Metrics recorder for job metrics
 }
 
 func NewScheduler(l Logger) *Scheduler {
@@ -72,6 +73,17 @@ func (s *Scheduler) SetMaxConcurrentJobs(max int) {
 	defer s.mu.Unlock()
 	s.maxConcurrentJobs = max
 	s.jobSemaphore = make(chan struct{}, max)
+}
+
+// SetMetricsRecorder sets the metrics recorder for the scheduler
+func (s *Scheduler) SetMetricsRecorder(recorder MetricsRecorder) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.metricsRecorder = recorder
+	// Also set it on the retry executor
+	if s.retryExecutor != nil {
+		s.retryExecutor.SetMetricsRecorder(recorder)
+	}
 }
 
 func (s *Scheduler) AddJob(j Job) error {
@@ -319,6 +331,12 @@ func (w *jobWrapper) Run() {
 func (w *jobWrapper) start(ctx *Context) {
 	ctx.Start()
 	ctx.Log("Started - " + ctx.Job.GetCommand())
+	
+	// Record job started metric if available
+	if w.s.metricsRecorder != nil {
+		// This could be extended to record job start metrics
+		// For now, the retry metrics are the main focus
+	}
 }
 
 func (w *jobWrapper) stop(ctx *Context, err error) {

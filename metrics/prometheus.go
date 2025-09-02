@@ -145,22 +145,28 @@ func (mc *MetricsCollector) RecordJobRetry(jobName string, attempt int, success 
 	// Increment total retries counter
 	if counter, exists := mc.metrics["ofelia_job_retries_total"]; exists {
 		counter.Value++
+		counter.LastUpdated = time.Now()
 	}
 	
 	// Record success or failure
 	if success {
 		if counter, exists := mc.metrics["ofelia_job_retry_success_total"]; exists {
 			counter.Value++
+			counter.LastUpdated = time.Now()
 		}
 	} else {
 		if counter, exists := mc.metrics["ofelia_job_retry_failed_total"]; exists {
 			counter.Value++
+			counter.LastUpdated = time.Now()
 		}
 	}
 	
-	// Record retry delay (exponential backoff calculation)
-	// Note: For simplicity, we're just tracking the count of retries
-	// Actual delay tracking would require histogram support
+	// Record attempt number in histogram (simplified - just track the attempt count)
+	if hist, exists := mc.metrics["ofelia_job_retry_delay_seconds"]; exists && hist.Histogram != nil {
+		// Use attempt number as a proxy for delay (higher attempts = longer delays)
+		delaySeconds := float64(attempt) // Simplified: each attempt represents increasing delay
+		mc.ObserveHistogram("ofelia_job_retry_delay_seconds", delaySeconds)
+	}
 }
 
 // Export formats metrics in Prometheus text format

@@ -61,6 +61,8 @@ func newSchedWithJob(name string) *core.Scheduler {
 	j.Name = name
 	j.Schedule = "@daily"
 	_ = sc.AddJob(j)
+	// Ensure the scheduler is properly initialized
+	_ = sc.Start()
 	return sc
 }
 

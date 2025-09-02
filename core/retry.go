@@ -30,9 +30,15 @@ func (j *BareJob) GetRetryConfig() RetryConfig {
 	}
 }
 
+// MetricsRecorder interface for recording retry metrics
+type MetricsRecorder interface {
+	RecordJobRetry(jobName string, attempt int, success bool)
+}
+
 // RetryExecutor wraps job execution with retry logic
 type RetryExecutor struct {
-	logger Logger
+	logger  Logger
+	metrics MetricsRecorder
 }
 
 // NewRetryExecutor creates a new retry executor
@@ -40,6 +46,11 @@ func NewRetryExecutor(logger Logger) *RetryExecutor {
 	return &RetryExecutor{
 		logger: logger,
 	}
+}
+
+// SetMetricsRecorder sets the metrics recorder for the retry executor
+func (re *RetryExecutor) SetMetricsRecorder(metrics MetricsRecorder) {
+	re.metrics = metrics
 }
 
 // ExecuteWithRetry executes a job with retry logic
@@ -70,7 +81,9 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 			if attempt > 0 {
 				re.logger.Noticef("Job %s succeeded after %d retries", job.GetName(), attempt)
 				// Record retry success in metrics
-				// TODO: Add metrics collector integration
+				if re.metrics != nil {
+					re.metrics.RecordJobRetry(job.GetName(), attempt, true)
+				}
 			}
 			return nil
 		}
@@ -89,7 +102,9 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 			job.GetName(), attempt+1, config.MaxRetries+1, err, delay)
 		
 		// Record retry attempt in metrics
-		// TODO: Add metrics collector integration
+		if re.metrics != nil {
+			re.metrics.RecordJobRetry(job.GetName(), attempt+1, false)
+		}
 		
 		// Wait before retry
 		time.Sleep(delay)
@@ -100,6 +115,11 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 	// All retries exhausted
 	re.logger.Errorf("Job %s failed after %d retries: %v", 
 		job.GetName(), config.MaxRetries+1, lastErr)
+	
+	// Record final failure in metrics
+	if re.metrics != nil {
+		re.metrics.RecordJobRetry(job.GetName(), config.MaxRetries+1, false)
+	}
 	
 	return fmt.Errorf("job failed after %d attempts: %w", config.MaxRetries+1, lastErr)
 }
