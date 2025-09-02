@@ -73,3 +73,42 @@ func (s *SuiteScheduler) TestLastRunRecorded(c *C) {
 	c.Assert(lr, NotNil)
 	c.Assert(lr.Duration > 0, Equals, true)
 }
+
+func (s *SuiteScheduler) TestWorkflowOrchestratorInit(c *C) {
+	sc := NewScheduler(&TestLogger{})
+
+	// Initialize workflow orchestrator
+	sc.workflowOrchestrator = NewWorkflowOrchestrator(sc, &TestLogger{})
+	c.Assert(sc.workflowOrchestrator, NotNil)
+
+	// Test that executions map is initialized
+	c.Assert(sc.workflowOrchestrator.executions, NotNil)
+
+	// Test creating a workflow execution
+	exec := &WorkflowExecution{
+		ID:            "test-exec",
+		StartTime:     time.Now(),
+		CompletedJobs: make(map[string]bool),
+		FailedJobs:    make(map[string]bool),
+		RunningJobs:   make(map[string]bool),
+	}
+
+	sc.workflowOrchestrator.executions["test-exec"] = exec
+	c.Assert(sc.workflowOrchestrator.executions["test-exec"], Equals, exec)
+}
+
+func (s *SuiteScheduler) TestSchedulerCleanupTicker(c *C) {
+	sc := NewScheduler(&TestLogger{})
+
+	// Test that cleanup ticker can be initialized
+	sc.cleanupTicker = time.NewTicker(1 * time.Hour)
+	c.Assert(sc.cleanupTicker, NotNil)
+
+	// Test that cleanup stop channel can be initialized
+	sc.cleanupStop = make(chan struct{})
+	c.Assert(sc.cleanupStop, NotNil)
+
+	// Clean up
+	sc.cleanupTicker.Stop()
+	close(sc.cleanupStop)
+}

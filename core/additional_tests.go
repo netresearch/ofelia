@@ -9,7 +9,7 @@ import (
 func TestSchedulerMoreEntries(t *testing.T) {
 	logger := &LogrusAdapter{}
 	s := NewScheduler(logger)
-	
+
 	// Add some test jobs
 	job1 := &LocalJob{
 		BareJob: BareJob{
@@ -18,7 +18,7 @@ func TestSchedulerMoreEntries(t *testing.T) {
 			Command:  "echo test1",
 		},
 	}
-	
+
 	job2 := &LocalJob{
 		BareJob: BareJob{
 			Name:     "test-entries-2",
@@ -26,15 +26,15 @@ func TestSchedulerMoreEntries(t *testing.T) {
 			Command:  "echo test2",
 		},
 	}
-	
+
 	s.AddJob(job1)
 	s.AddJob(job2)
 	s.Start()
 	defer s.Stop()
-	
+
 	// Get entries
 	entries := s.Entries()
-	
+
 	if len(entries) != 2 {
 		t.Errorf("Expected 2 entries, got %d", len(entries))
 	}
@@ -44,7 +44,7 @@ func TestSchedulerMoreEntries(t *testing.T) {
 func TestSchedulerMoreGetDisabledJobs(t *testing.T) {
 	logger := &LogrusAdapter{}
 	s := NewScheduler(logger)
-	
+
 	// Add a job and then disable it
 	job := &LocalJob{
 		BareJob: BareJob{
@@ -53,20 +53,20 @@ func TestSchedulerMoreGetDisabledJobs(t *testing.T) {
 			Command:  "echo disabled",
 		},
 	}
-	
+
 	s.AddJob(job)
 	s.Start()
-	
+
 	// Disable the job
 	s.RemoveJob(job)
-	
+
 	// Get disabled jobs
 	disabledJobs := s.GetDisabledJobs()
-	
+
 	if len(disabledJobs) != 1 {
 		t.Errorf("Expected 1 disabled job, got %d", len(disabledJobs))
 	}
-	
+
 	s.Stop()
 }
 
@@ -74,7 +74,7 @@ func TestSchedulerMoreGetDisabledJobs(t *testing.T) {
 func TestSchedulerMoreRunJob(t *testing.T) {
 	logger := &LogrusAdapter{}
 	s := NewScheduler(logger)
-	
+
 	job := &LocalJob{
 		BareJob: BareJob{
 			Name:     "manual-run-job",
@@ -82,20 +82,20 @@ func TestSchedulerMoreRunJob(t *testing.T) {
 			Command:  "echo manual",
 		},
 	}
-	
+
 	s.AddJob(job)
 	s.Start()
 	defer s.Stop()
-	
+
 	// Run job manually
 	err := s.RunJob("manual-run-job")
 	if err != nil {
 		t.Errorf("Failed to run job: %v", err)
 	}
-	
+
 	// Give it a moment to execute
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Test running non-existent job
 	err = s.RunJob("non-existent")
 	if err == nil {
@@ -106,32 +106,32 @@ func TestSchedulerMoreRunJob(t *testing.T) {
 // TestLocalJobFunctions tests LocalJob functions
 func TestLocalJobFunctions(t *testing.T) {
 	job := NewLocalJob()
-	
+
 	if job == nil {
 		t.Fatal("NewLocalJob returned nil")
 	}
-	
+
 	// Set up the job
 	job.Name = "test-local"
 	job.Command = "echo test"
 	job.Dir = "/tmp"
-	
+
 	// Test Hash function
 	hash, err := job.Hash()
 	if err != nil {
 		t.Errorf("Hash returned error: %v", err)
 	}
-	
+
 	if hash == "" {
 		t.Error("Hash returned empty string")
 	}
-	
+
 	// Same job should produce same hash
 	hash2, err := job.Hash()
 	if err != nil {
 		t.Errorf("Hash returned error: %v", err)
 	}
-	
+
 	if hash != hash2 {
 		t.Error("Hash not consistent")
 	}
@@ -140,21 +140,21 @@ func TestLocalJobFunctions(t *testing.T) {
 // TestComposeJobFunctions tests ComposeJob functions
 func TestComposeJobFunctions(t *testing.T) {
 	job := NewComposeJob()
-	
+
 	if job == nil {
 		t.Fatal("NewComposeJob returned nil")
 	}
-	
+
 	// Set up the job
 	job.Name = "test-compose"
 	job.Command = "up -d"
-	
+
 	// Test Hash function
 	hash, err := job.Hash()
 	if err != nil {
 		t.Errorf("Hash returned error: %v", err)
 	}
-	
+
 	if hash == "" {
 		t.Error("Hash returned empty string")
 	}
@@ -163,21 +163,21 @@ func TestComposeJobFunctions(t *testing.T) {
 // TestExecJobFunctions tests ExecJob functions
 func TestExecJobFunctions(t *testing.T) {
 	job := NewExecJob(nil)
-	
+
 	if job == nil {
 		t.Fatal("NewExecJob returned nil")
 	}
-	
+
 	// Set up the job
 	job.Name = "test-exec"
 	job.Container = "test-container"
-	
+
 	// Test Hash function
 	hash, err := job.Hash()
 	if err != nil {
 		t.Errorf("Hash returned error: %v", err)
 	}
-	
+
 	if hash == "" {
 		t.Error("Hash returned empty string")
 	}
@@ -186,21 +186,21 @@ func TestExecJobFunctions(t *testing.T) {
 // TestRunJobFunctions tests RunJob functions
 func TestRunJobFunctions(t *testing.T) {
 	job := NewRunJob(nil)
-	
+
 	if job == nil {
 		t.Fatal("NewRunJob returned nil")
 	}
-	
+
 	// Set up the job
 	job.Name = "test-run"
 	job.Image = "alpine:latest"
-	
+
 	// Test Hash function
 	hash, err := job.Hash()
 	if err != nil {
 		t.Errorf("Hash returned error: %v", err)
 	}
-	
+
 	if hash == "" {
 		t.Error("Hash returned empty string")
 	}
@@ -209,21 +209,21 @@ func TestRunJobFunctions(t *testing.T) {
 // TestRunServiceJobFunctions tests RunServiceJob functions
 func TestRunServiceJobFunctions(t *testing.T) {
 	job := NewRunServiceJob(nil)
-	
+
 	if job == nil {
 		t.Fatal("NewRunServiceJob returned nil")
 	}
-	
+
 	// Set up the job
 	job.Name = "test-service"
 	job.Image = "nginx:latest"
-	
+
 	// Test Hash function
 	hash, err := job.Hash()
 	if err != nil {
 		t.Errorf("Hash returned error: %v", err)
 	}
-	
+
 	if hash == "" {
 		t.Error("Hash returned empty string")
 	}
@@ -232,32 +232,32 @@ func TestRunServiceJobFunctions(t *testing.T) {
 // TestBufferPoolMoreGetSized tests GetSized method
 func TestBufferPoolMoreGetSized(t *testing.T) {
 	pool := NewBufferPool(10, 1024, 4096)
-	
+
 	// Get a sized buffer
 	buf := pool.GetSized(2048)
-	
+
 	if buf == nil {
 		t.Fatal("GetSized returned nil")
 	}
-	
+
 	// Check that size is at least what we requested
 	if buf.Size() < 2048 {
 		t.Errorf("Buffer size %d is less than requested 2048", buf.Size())
 	}
-	
+
 	// Return buffer to pool
 	pool.Put(buf)
-	
+
 	// Test getting buffer larger than max
 	largeBuf := pool.GetSized(8192)
 	if largeBuf == nil {
 		t.Fatal("GetSized returned nil for large buffer")
 	}
-	
+
 	if largeBuf.Size() < 8192 {
 		t.Errorf("Large buffer size %d is less than requested 8192", largeBuf.Size())
 	}
-	
+
 	pool.Put(largeBuf)
 }
 
@@ -272,20 +272,20 @@ func TestContextCreation(t *testing.T) {
 	}
 	exec, _ := NewExecution()
 	ctx := NewContext(s, job, exec)
-	
+
 	if ctx == nil {
 		t.Fatal("NewContext returned nil")
 	}
-	
+
 	// Test that context has the expected fields
 	if ctx.Scheduler != s {
 		t.Error("Context scheduler not set correctly")
 	}
-	
+
 	if ctx.Job != job {
 		t.Error("Context job not set correctly")
 	}
-	
+
 	if ctx.Execution != exec {
 		t.Error("Context execution not set correctly")
 	}
@@ -294,14 +294,14 @@ func TestContextCreation(t *testing.T) {
 // TestLogrusAdapterFunctions tests logrus adapter functions
 func TestLogrusAdapterFunctions(t *testing.T) {
 	adapter := &LogrusAdapter{}
-	
+
 	// Test that methods can be called without panicking
 	adapter.Criticalf("critical: %s", "test")
 	adapter.Debugf("debug: %s", "test")
 	adapter.Errorf("error: %s", "test")
 	adapter.Noticef("notice: %s", "test")
 	adapter.Warningf("warning: %s", "test")
-	
+
 	// If we get here without panicking, the test passes
 	t.Log("All LogrusAdapter methods are callable")
 }
