@@ -11,9 +11,9 @@ type BareJob struct {
 	Name             string   `hash:"true"`
 	Command          string   `hash:"true"`
 	HistoryLimit     int      `default:"10"`
-	MaxRetries       int      `default:"0"`    // Maximum number of retry attempts (0 = no retries)
-	RetryDelayMs     int      `default:"1000"` // Initial retry delay in milliseconds
-	RetryExponential bool     `default:"true"` // Use exponential backoff for retries
+	MaxRetries       int      `default:"0"`     // Maximum number of retry attempts (0 = no retries)
+	RetryDelayMs     int      `default:"1000"`  // Initial retry delay in milliseconds
+	RetryExponential bool     `default:"true"`  // Use exponential backoff for retries
 	RetryMaxDelayMs  int      `default:"60000"` // Maximum retry delay in milliseconds (1 minute)
 	Dependencies     []string // Names of jobs that must complete successfully before this job
 	OnSuccess        []string // Jobs to trigger on successful completion

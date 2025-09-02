@@ -30,9 +30,15 @@ func (j *BareJob) GetRetryConfig() RetryConfig {
 	}
 }
 
-// MetricsRecorder interface for recording retry metrics
+// MetricsRecorder interface for recording retry and monitoring metrics
 type MetricsRecorder interface {
 	RecordJobRetry(jobName string, attempt int, success bool)
+	RecordContainerEvent()
+	RecordContainerMonitorFallback()
+	RecordContainerMonitorMethod(usingEvents bool)
+	RecordContainerWaitDuration(seconds float64)
+	RecordDockerOperation(operation string)
+	RecordDockerError(operation string)
 }
 
 // RetryExecutor wraps job execution with retry logic
@@ -61,21 +67,21 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 		// No retry support, execute once
 		return runFunc(ctx)
 	}
-	
+
 	config := retryableJob.GetRetryConfig()
-	
+
 	// If no retries configured, execute once
 	if config.MaxRetries <= 0 {
 		return runFunc(ctx)
 	}
-	
+
 	var lastErr error
 	attempt := 0
-	
+
 	for attempt <= config.MaxRetries {
 		// Execute the job
 		err := runFunc(ctx)
-		
+
 		// Success
 		if err == nil {
 			if attempt > 0 {
@@ -87,57 +93,57 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 			}
 			return nil
 		}
-		
+
 		lastErr = err
-		
+
 		// Check if we have retries left
 		if attempt >= config.MaxRetries {
 			break
 		}
-		
+
 		// Calculate delay
 		delay := re.calculateDelay(config, attempt)
-		
-		re.logger.Warningf("Job %s failed (attempt %d/%d): %v. Retrying in %v", 
+
+		re.logger.Warningf("Job %s failed (attempt %d/%d): %v. Retrying in %v",
 			job.GetName(), attempt+1, config.MaxRetries+1, err, delay)
-		
+
 		// Record retry attempt in metrics
 		if re.metrics != nil {
 			re.metrics.RecordJobRetry(job.GetName(), attempt+1, false)
 		}
-		
+
 		// Wait before retry
 		time.Sleep(delay)
-		
+
 		attempt++
 	}
-	
+
 	// All retries exhausted
-	re.logger.Errorf("Job %s failed after %d retries: %v", 
+	re.logger.Errorf("Job %s failed after %d retries: %v",
 		job.GetName(), config.MaxRetries+1, lastErr)
-	
+
 	// Record final failure in metrics
 	if re.metrics != nil {
 		re.metrics.RecordJobRetry(job.GetName(), config.MaxRetries+1, false)
 	}
-	
+
 	return fmt.Errorf("job failed after %d attempts: %w", config.MaxRetries+1, lastErr)
 }
 
 // calculateDelay calculates the retry delay based on configuration
 func (re *RetryExecutor) calculateDelay(config RetryConfig, attempt int) time.Duration {
 	delayMs := config.RetryDelayMs
-	
+
 	if config.RetryExponential {
 		// Exponential backoff: delay * 2^attempt
 		delayMs = int(float64(config.RetryDelayMs) * math.Pow(2, float64(attempt)))
-		
+
 		// Cap at maximum delay
 		if delayMs > config.RetryMaxDelayMs {
 			delayMs = config.RetryMaxDelayMs
 		}
 	}
-	
+
 	return time.Duration(delayMs) * time.Millisecond
 }
 

@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -21,16 +22,18 @@ type Scheduler struct {
 	Logger   Logger
 
 	middlewareContainer
-	cron                *cron.Cron
-	wg                  sync.WaitGroup
-	isRunning           bool
-	mu                  sync.RWMutex // Protect isRunning and wg/removed operations
-	maxConcurrentJobs   int
-	jobSemaphore        chan struct{} // Limits concurrent job execution
-	retryExecutor       *RetryExecutor
+	cron                 *cron.Cron
+	wg                   sync.WaitGroup
+	isRunning            bool
+	mu                   sync.RWMutex // Protect isRunning and wg/removed operations
+	maxConcurrentJobs    int
+	jobSemaphore         chan struct{} // Limits concurrent job execution
+	retryExecutor        *RetryExecutor
 	workflowOrchestrator *WorkflowOrchestrator
-	jobsByName          map[string]Job // Quick lookup for jobs by name
-	metricsRecorder     MetricsRecorder // Metrics recorder for job metrics
+	jobsByName           map[string]Job  // Quick lookup for jobs by name
+	metricsRecorder      MetricsRecorder // Metrics recorder for job metrics
+	cleanupTicker        *time.Ticker    // Ticker for workflow cleanup
+	cleanupStop          chan struct{}   // Signal to stop cleanup
 }
 
 func NewScheduler(l Logger) *Scheduler {
@@ -48,7 +51,7 @@ func NewScheduler(l Logger) *Scheduler {
 
 	// Default to 10 concurrent jobs, can be configured
 	maxConcurrent := 10
-	
+
 	s := &Scheduler{
 		Logger:            l,
 		cron:              cron,
@@ -57,10 +60,13 @@ func NewScheduler(l Logger) *Scheduler {
 		retryExecutor:     NewRetryExecutor(l),
 		jobsByName:        make(map[string]Job),
 	}
-	
+
 	// Initialize workflow orchestrator
 	s.workflowOrchestrator = NewWorkflowOrchestrator(s, l)
-	
+
+	// Initialize cleanup channels
+	s.cleanupStop = make(chan struct{})
+
 	return s
 }
 
@@ -130,18 +136,21 @@ func (s *Scheduler) RemoveJob(j Job) error {
 func (s *Scheduler) Start() error {
 	s.mu.Lock()
 	s.isRunning = true
-	
+
 	// Build dependency graph
 	if err := s.workflowOrchestrator.BuildDependencyGraph(s.Jobs); err != nil {
 		s.Logger.Errorf("Failed to build dependency graph: %v", err)
 		// Continue anyway - jobs without dependencies will still work
 	}
-	
+
 	// Build job name lookup map
 	for _, j := range s.Jobs {
 		s.jobsByName[j.GetName()] = j
 	}
-	
+
+	// Start workflow cleanup routine
+	s.startWorkflowCleanup()
+
 	s.mu.Unlock()
 	s.Logger.Debugf("Starting scheduler")
 	s.cron.Start()
@@ -153,10 +162,50 @@ func (s *Scheduler) Stop() error {
 
 	s.mu.Lock()
 	s.isRunning = false
+
+	// Stop cleanup routine
+	if s.cleanupTicker != nil {
+		s.cleanupTicker.Stop()
+		close(s.cleanupStop)
+	}
 	s.mu.Unlock()
 
 	s.wg.Wait() // Then wait for existing jobs
 	return nil
+}
+
+// startWorkflowCleanup starts the background cleanup routine for workflow executions
+func (s *Scheduler) startWorkflowCleanup() {
+	// Default cleanup interval: 1 hour
+	// Default retention: 24 hours
+	cleanupInterval := 1 * time.Hour
+	retentionDuration := 24 * time.Hour
+
+	// Check for environment variable overrides
+	if interval := os.Getenv("OFELIA_WORKFLOW_CLEANUP_INTERVAL"); interval != "" {
+		if d, err := time.ParseDuration(interval); err == nil {
+			cleanupInterval = d
+		}
+	}
+	if retention := os.Getenv("OFELIA_WORKFLOW_RETENTION"); retention != "" {
+		if d, err := time.ParseDuration(retention); err == nil {
+			retentionDuration = d
+		}
+	}
+
+	s.cleanupTicker = time.NewTicker(cleanupInterval)
+
+	go func() {
+		for {
+			select {
+			case <-s.cleanupTicker.C:
+				s.workflowOrchestrator.CleanupOldExecutions(retentionDuration)
+				s.Logger.Debugf("Cleaned up workflow executions older than %v", retentionDuration)
+			case <-s.cleanupStop:
+				return
+			}
+		}
+	}()
 }
 
 // Entries returns all scheduled cron entries.
@@ -169,21 +218,21 @@ func (s *Scheduler) RunJob(jobName string) error {
 	s.mu.RLock()
 	job, exists := s.jobsByName[jobName]
 	s.mu.RUnlock()
-	
+
 	if !exists {
 		return fmt.Errorf("job %s not found", jobName)
 	}
-	
+
 	// Check if job can run based on dependencies
 	executionID := fmt.Sprintf("manual-%d", time.Now().Unix())
 	if !s.workflowOrchestrator.CanExecute(jobName, executionID) {
 		return fmt.Errorf("job %s cannot run: dependencies not satisfied", jobName)
 	}
-	
+
 	// Run the job
 	wrapper := &jobWrapper{s: s, j: job}
 	go wrapper.Run()
-	
+
 	return nil
 }
 
@@ -227,7 +276,6 @@ func (s *Scheduler) GetDisabledJob(name string) Job {
 	return j
 }
 
-
 // DisableJob stops scheduling the job but keeps it for later enabling.
 func (s *Scheduler) DisableJob(name string) error {
 	j, idx := getJob(s.Jobs, name)
@@ -267,13 +315,13 @@ type jobWrapper struct {
 func (w *jobWrapper) Run() {
 	// Generate workflow execution ID
 	executionID := fmt.Sprintf("sched-%d-%s", time.Now().Unix(), w.j.GetName())
-	
+
 	// Check dependencies
 	if !w.s.workflowOrchestrator.CanExecute(w.j.GetName(), executionID) {
 		w.s.Logger.Debugf("Job %q skipped - dependencies not satisfied", w.j.GetName())
 		return
 	}
-	
+
 	// Acquire semaphore slot for job concurrency limit
 	select {
 	case w.s.jobSemaphore <- struct{}{}:
@@ -285,7 +333,7 @@ func (w *jobWrapper) Run() {
 			w.j.GetName(), w.s.maxConcurrentJobs)
 		return
 	}
-	
+
 	w.s.mu.Lock()
 	if !w.s.isRunning {
 		w.s.mu.Unlock()
@@ -305,24 +353,24 @@ func (w *jobWrapper) Run() {
 		w.s.Logger.Errorf("failed to create execution: %v", err)
 		return
 	}
-	
+
 	// Ensure buffers are returned to pool when done
 	defer e.Cleanup()
-	
+
 	ctx := NewContext(w.s, w.j, e)
 
 	// Mark job as started in workflow
 	w.s.workflowOrchestrator.JobStarted(w.j.GetName(), executionID)
-	
+
 	w.start(ctx)
-	
+
 	// Execute with retry logic
 	err = w.s.retryExecutor.ExecuteWithRetry(w.j, ctx, func(c *Context) error {
 		return c.Next()
 	})
-	
+
 	w.stop(ctx, err)
-	
+
 	// Mark job as completed in workflow
 	success := err == nil && !ctx.Execution.Failed
 	w.s.workflowOrchestrator.JobCompleted(w.j.GetName(), executionID, success)
@@ -331,7 +379,7 @@ func (w *jobWrapper) Run() {
 func (w *jobWrapper) start(ctx *Context) {
 	ctx.Start()
 	ctx.Log("Started - " + ctx.Job.GetCommand())
-	
+
 	// Record job started metric if available
 	if w.s.metricsRecorder != nil {
 		// This could be extended to record job start metrics

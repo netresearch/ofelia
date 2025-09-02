@@ -13,12 +13,12 @@ import (
 
 // ShutdownManager handles graceful shutdown of the application
 type ShutdownManager struct {
-	timeout       time.Duration
-	hooks         []ShutdownHook
-	mu            sync.Mutex
-	shutdownChan  chan struct{}
+	timeout        time.Duration
+	hooks          []ShutdownHook
+	mu             sync.Mutex
+	shutdownChan   chan struct{}
 	isShuttingDown bool
-	logger        Logger
+	logger         Logger
 }
 
 // ShutdownHook is a function to be called during shutdown
@@ -33,7 +33,7 @@ func NewShutdownManager(logger Logger, timeout time.Duration) *ShutdownManager {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	
+
 	return &ShutdownManager{
 		timeout:      timeout,
 		hooks:        make([]ShutdownHook, 0),
@@ -46,9 +46,9 @@ func NewShutdownManager(logger Logger, timeout time.Duration) *ShutdownManager {
 func (sm *ShutdownManager) RegisterHook(hook ShutdownHook) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	sm.hooks = append(sm.hooks, hook)
-	
+
 	// Sort hooks by priority
 	for i := len(sm.hooks) - 1; i > 0; i-- {
 		if sm.hooks[i].Priority < sm.hooks[i-1].Priority {
@@ -62,12 +62,12 @@ func (sm *ShutdownManager) RegisterHook(hook ShutdownHook) {
 // ListenForShutdown starts listening for shutdown signals
 func (sm *ShutdownManager) ListenForShutdown() {
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, 
+	signal.Notify(sigChan,
 		os.Interrupt,
 		syscall.SIGTERM,
 		syscall.SIGQUIT,
 	)
-	
+
 	go func() {
 		sig := <-sigChan
 		sm.logger.Warningf("Received shutdown signal: %v", sig)
@@ -84,27 +84,27 @@ func (sm *ShutdownManager) Shutdown() error {
 	}
 	sm.isShuttingDown = true
 	sm.mu.Unlock()
-	
+
 	sm.logger.Noticef("Starting graceful shutdown (timeout: %v)", sm.timeout)
-	
+
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), sm.timeout)
 	defer cancel()
-	
+
 	// Signal that shutdown has started
 	close(sm.shutdownChan)
-	
+
 	// Execute shutdown hooks in order
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(sm.hooks))
-	
+
 	for _, hook := range sm.hooks {
 		wg.Add(1)
 		go func(h ShutdownHook) {
 			defer wg.Done()
-			
+
 			sm.logger.Debugf("Executing shutdown hook: %s (priority: %d)", h.Name, h.Priority)
-			
+
 			if err := h.Hook(ctx); err != nil {
 				sm.logger.Errorf("Shutdown hook '%s' failed: %v", h.Name, err)
 				errChan <- fmt.Errorf("hook %s: %w", h.Name, err)
@@ -113,14 +113,14 @@ func (sm *ShutdownManager) Shutdown() error {
 			}
 		}(hook)
 	}
-	
+
 	// Wait for all hooks to complete or timeout
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
 		close(done)
 	}()
-	
+
 	select {
 	case <-done:
 		sm.logger.Noticef("Graceful shutdown completed successfully")
@@ -128,18 +128,18 @@ func (sm *ShutdownManager) Shutdown() error {
 		sm.logger.Errorf("Graceful shutdown timed out after %v", sm.timeout)
 		return fmt.Errorf("shutdown timed out")
 	}
-	
+
 	// Check for errors
 	close(errChan)
 	var errors []error
 	for err := range errChan {
 		errors = append(errors, err)
 	}
-	
+
 	if len(errors) > 0 {
 		return fmt.Errorf("shutdown completed with %d errors", len(errors))
 	}
-	
+
 	return nil
 }
 
@@ -169,14 +169,14 @@ func NewGracefulScheduler(scheduler *Scheduler, shutdownManager *ShutdownManager
 		Scheduler:       scheduler,
 		shutdownManager: shutdownManager,
 	}
-	
+
 	// Register scheduler shutdown hook
 	shutdownManager.RegisterHook(ShutdownHook{
 		Name:     "scheduler",
 		Priority: 10,
 		Hook:     gs.gracefulStop,
 	})
-	
+
 	return gs
 }
 
@@ -186,26 +186,26 @@ func (gs *GracefulScheduler) RunJobWithTracking(job Job, ctx *Context) error {
 	if gs.shutdownManager.IsShuttingDown() {
 		return fmt.Errorf("cannot start job during shutdown")
 	}
-	
+
 	gs.activeJobs.Add(1)
 	defer gs.activeJobs.Done()
-	
+
 	// Create a context that can be cancelled during shutdown
 	jobCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	// Monitor for shutdown
 	go func() {
 		<-gs.shutdownManager.ShutdownChan()
 		cancel()
 	}()
-	
+
 	// Run the job with cancellation support
 	done := make(chan error, 1)
 	go func() {
 		done <- job.Run(ctx)
 	}()
-	
+
 	select {
 	case err := <-done:
 		return err
@@ -218,17 +218,17 @@ func (gs *GracefulScheduler) RunJobWithTracking(job Job, ctx *Context) error {
 // gracefulStop stops the scheduler gracefully
 func (gs *GracefulScheduler) gracefulStop(ctx context.Context) error {
 	gs.Scheduler.Logger.Noticef("Stopping scheduler gracefully")
-	
+
 	// Stop accepting new jobs
 	gs.Scheduler.Stop()
-	
+
 	// Wait for active jobs to complete
 	done := make(chan struct{})
 	go func() {
 		gs.activeJobs.Wait()
 		close(done)
 	}()
-	
+
 	select {
 	case <-done:
 		gs.Scheduler.Logger.Noticef("All jobs completed successfully")
@@ -254,27 +254,27 @@ func NewGracefulServer(server *http.Server, shutdownManager *ShutdownManager, lo
 		shutdownManager: shutdownManager,
 		logger:          logger,
 	}
-	
+
 	// Register server shutdown hook
 	shutdownManager.RegisterHook(ShutdownHook{
 		Name:     "http-server",
 		Priority: 20, // After scheduler
 		Hook:     gs.gracefulStop,
 	})
-	
+
 	return gs
 }
 
 // gracefulStop stops the HTTP server gracefully
 func (gs *GracefulServer) gracefulStop(ctx context.Context) error {
 	gs.logger.Noticef("Stopping HTTP server gracefully")
-	
+
 	// Stop accepting new connections
 	if err := gs.server.Shutdown(ctx); err != nil {
 		gs.logger.Errorf("HTTP server shutdown error: %v", err)
 		return err
 	}
-	
+
 	gs.logger.Noticef("HTTP server stopped successfully")
 	return nil
 }

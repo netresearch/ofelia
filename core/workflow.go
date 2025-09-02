@@ -17,11 +17,11 @@ type WorkflowOrchestrator struct {
 
 // DependencyNode represents a job in the dependency graph
 type DependencyNode struct {
-	Job           Job
-	Dependencies  []string // Job names this job depends on
-	Dependents    []string // Job names that depend on this job
-	OnSuccess     []string // Jobs to trigger on success
-	OnFailure     []string // Jobs to trigger on failure
+	Job          Job
+	Dependencies []string // Job names this job depends on
+	Dependents   []string // Job names that depend on this job
+	OnSuccess    []string // Jobs to trigger on success
+	OnFailure    []string // Jobs to trigger on failure
 }
 
 // WorkflowExecution tracks the state of a workflow execution
@@ -48,10 +48,10 @@ func NewWorkflowOrchestrator(scheduler *Scheduler, logger Logger) *WorkflowOrche
 func (wo *WorkflowOrchestrator) BuildDependencyGraph(jobs []Job) error {
 	wo.mu.Lock()
 	defer wo.mu.Unlock()
-	
+
 	// Clear existing graph
 	wo.dependencies = make(map[string]*DependencyNode)
-	
+
 	// First pass: create nodes
 	for _, job := range jobs {
 		// Create node with default empty values
@@ -62,17 +62,17 @@ func (wo *WorkflowOrchestrator) BuildDependencyGraph(jobs []Job) error {
 			OnFailure:    []string{},
 			Dependents:   []string{},
 		}
-		
+
 		// If it's a BareJob, extract dependency configuration
 		if bareJob, ok := job.(*BareJob); ok {
 			node.Dependencies = bareJob.Dependencies
 			node.OnSuccess = bareJob.OnSuccess
 			node.OnFailure = bareJob.OnFailure
 		}
-		
+
 		wo.dependencies[job.GetName()] = node
 	}
-	
+
 	// Second pass: build dependent relationships
 	for jobName, node := range wo.dependencies {
 		for _, dep := range node.Dependencies {
@@ -83,12 +83,12 @@ func (wo *WorkflowOrchestrator) BuildDependencyGraph(jobs []Job) error {
 			}
 		}
 	}
-	
+
 	// Validate for circular dependencies
 	if err := wo.validateDAG(); err != nil {
 		return fmt.Errorf("dependency validation failed: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -96,7 +96,7 @@ func (wo *WorkflowOrchestrator) BuildDependencyGraph(jobs []Job) error {
 func (wo *WorkflowOrchestrator) validateDAG() error {
 	visited := make(map[string]bool)
 	recStack := make(map[string]bool)
-	
+
 	for jobName := range wo.dependencies {
 		if !visited[jobName] {
 			if wo.hasCycle(jobName, visited, recStack) {
@@ -104,7 +104,7 @@ func (wo *WorkflowOrchestrator) validateDAG() error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -112,7 +112,7 @@ func (wo *WorkflowOrchestrator) validateDAG() error {
 func (wo *WorkflowOrchestrator) hasCycle(jobName string, visited, recStack map[string]bool) bool {
 	visited[jobName] = true
 	recStack[jobName] = true
-	
+
 	node := wo.dependencies[jobName]
 	for _, dep := range node.Dependencies {
 		if !visited[dep] {
@@ -123,7 +123,7 @@ func (wo *WorkflowOrchestrator) hasCycle(jobName string, visited, recStack map[s
 			return true
 		}
 	}
-	
+
 	recStack[jobName] = false
 	return false
 }
@@ -133,16 +133,16 @@ func (wo *WorkflowOrchestrator) CanExecute(jobName string, executionID string) b
 	wo.mu.RLock()
 	node, exists := wo.dependencies[jobName]
 	wo.mu.RUnlock()
-	
+
 	if !exists {
 		return true // No dependencies defined
 	}
-	
+
 	// Check if all dependencies are satisfied
 	execution := wo.getOrCreateExecution(executionID)
 	execution.mu.RLock()
 	defer execution.mu.RUnlock()
-	
+
 	for _, dep := range node.Dependencies {
 		if !execution.CompletedJobs[dep] {
 			// Dependency not yet completed
@@ -154,7 +154,7 @@ func (wo *WorkflowOrchestrator) CanExecute(jobName string, executionID string) b
 			return false
 		}
 	}
-	
+
 	// Check if job allows parallel execution
 	if execution.RunningJobs[jobName] {
 		// Check if this job allows parallel execution
@@ -163,7 +163,7 @@ func (wo *WorkflowOrchestrator) CanExecute(jobName string, executionID string) b
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -172,7 +172,7 @@ func (wo *WorkflowOrchestrator) JobStarted(jobName string, executionID string) {
 	execution := wo.getOrCreateExecution(executionID)
 	execution.mu.Lock()
 	defer execution.mu.Unlock()
-	
+
 	execution.RunningJobs[jobName] = true
 	wo.logger.Debugf("Workflow %s: Job %s started", executionID, jobName)
 }
@@ -182,7 +182,7 @@ func (wo *WorkflowOrchestrator) JobCompleted(jobName string, executionID string,
 	execution := wo.getOrCreateExecution(executionID)
 	execution.mu.Lock()
 	delete(execution.RunningJobs, jobName)
-	
+
 	if success {
 		execution.CompletedJobs[jobName] = true
 		wo.logger.Noticef("Workflow %s: Job %s completed successfully", executionID, jobName)
@@ -191,7 +191,7 @@ func (wo *WorkflowOrchestrator) JobCompleted(jobName string, executionID string,
 		wo.logger.Warningf("Workflow %s: Job %s failed", executionID, jobName)
 	}
 	execution.mu.Unlock()
-	
+
 	// Trigger dependent jobs
 	wo.triggerDependentJobs(jobName, executionID, success)
 }
@@ -201,11 +201,11 @@ func (wo *WorkflowOrchestrator) triggerDependentJobs(jobName string, executionID
 	wo.mu.RLock()
 	node, exists := wo.dependencies[jobName]
 	wo.mu.RUnlock()
-	
+
 	if !exists {
 		return
 	}
-	
+
 	// Trigger OnSuccess or OnFailure jobs
 	var jobsToTrigger []string
 	if success {
@@ -213,14 +213,14 @@ func (wo *WorkflowOrchestrator) triggerDependentJobs(jobName string, executionID
 	} else {
 		jobsToTrigger = node.OnFailure
 	}
-	
+
 	for _, triggerJob := range jobsToTrigger {
 		if wo.CanExecute(triggerJob, executionID) {
 			wo.logger.Noticef("Triggering job %s from workflow", triggerJob)
 			wo.scheduler.RunJob(triggerJob)
 		}
 	}
-	
+
 	// Check if any dependent jobs can now run
 	if success {
 		for _, dependent := range node.Dependents {
@@ -236,11 +236,11 @@ func (wo *WorkflowOrchestrator) triggerDependentJobs(jobName string, executionID
 func (wo *WorkflowOrchestrator) getOrCreateExecution(executionID string) *WorkflowExecution {
 	wo.mu.Lock()
 	defer wo.mu.Unlock()
-	
+
 	if execution, exists := wo.executions[executionID]; exists {
 		return execution
 	}
-	
+
 	execution := &WorkflowExecution{
 		ID:            executionID,
 		StartTime:     time.Now(),
@@ -256,7 +256,7 @@ func (wo *WorkflowOrchestrator) getOrCreateExecution(executionID string) *Workfl
 func (wo *WorkflowOrchestrator) CleanupOldExecutions(maxAge time.Duration) {
 	wo.mu.Lock()
 	defer wo.mu.Unlock()
-	
+
 	cutoff := time.Now().Add(-maxAge)
 	for id, execution := range wo.executions {
 		if execution.StartTime.Before(cutoff) {
@@ -271,14 +271,14 @@ func (wo *WorkflowOrchestrator) GetWorkflowStatus(executionID string) map[string
 	wo.mu.RLock()
 	execution, exists := wo.executions[executionID]
 	wo.mu.RUnlock()
-	
+
 	if !exists {
 		return nil
 	}
-	
+
 	execution.mu.RLock()
 	defer execution.mu.RUnlock()
-	
+
 	return map[string]interface{}{
 		"id":            execution.ID,
 		"startTime":     execution.StartTime,

@@ -16,10 +16,7 @@ import (
 var (
 	// ErrSkippedExecution pass this error to `Execution.Stop` if you wish to mark
 	// it as skipped.
-	ErrSkippedExecution   = errors.New("skipped execution")
-	ErrUnexpected         = errors.New("error unexpected, docker has returned exit code -1, maybe wrong user?")
-	ErrMaxTimeRunning     = errors.New("the job has exceeded the maximum allowed time running")
-	ErrLocalImageNotFound = errors.New("couldn't find image on the host")
+	ErrSkippedExecution = errors.New("skipped execution")
 )
 
 const (
@@ -41,6 +38,7 @@ type Job interface {
 	GetCronJobID() int
 	SetCronJobID(int)
 	GetHistory() []*Execution
+	Hash() (string, error)
 }
 
 type Context struct {
