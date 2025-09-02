@@ -48,6 +48,7 @@ func (j *stubJob) GetCommand() string        { return "" }
 func (j *stubJob) Middlewares() []Middleware { return nil }
 func (j *stubJob) Use(...Middleware)         {}
 func (j *stubJob) Run(*Context) error        { return nil }
+func (j *stubJob) Hash() (string, error)     { return "stub-hash", nil }
 func (j *stubJob) Running() int32            { return 0 }
 func (j *stubJob) NotifyStart()              {}
 func (j *stubJob) NotifyStop()               {}
