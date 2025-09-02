@@ -42,7 +42,7 @@ func NewMetricsCollector() *MetricsCollector {
 func (mc *MetricsCollector) RegisterCounter(name, help string) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	mc.metrics[name] = &Metric{
 		Name:        name,
 		Type:        "counter",
@@ -57,7 +57,7 @@ func (mc *MetricsCollector) RegisterCounter(name, help string) {
 func (mc *MetricsCollector) RegisterGauge(name, help string) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	mc.metrics[name] = &Metric{
 		Name:        name,
 		Type:        "gauge",
@@ -72,18 +72,18 @@ func (mc *MetricsCollector) RegisterGauge(name, help string) {
 func (mc *MetricsCollector) RegisterHistogram(name, help string, buckets []float64) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	hist := &Histogram{
 		Count:  0,
 		Sum:    0,
 		Bucket: make(map[float64]int64),
 	}
-	
+
 	// Initialize buckets
 	for _, b := range buckets {
 		hist.Bucket[b] = 0
 	}
-	
+
 	mc.metrics[name] = &Metric{
 		Name:        name,
 		Type:        "histogram",
@@ -98,7 +98,7 @@ func (mc *MetricsCollector) RegisterHistogram(name, help string, buckets []float
 func (mc *MetricsCollector) IncrementCounter(name string, value float64) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	if metric, exists := mc.metrics[name]; exists && metric.Type == "counter" {
 		metric.Value += value
 		metric.LastUpdated = time.Now()
@@ -109,7 +109,7 @@ func (mc *MetricsCollector) IncrementCounter(name string, value float64) {
 func (mc *MetricsCollector) SetGauge(name string, value float64) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	if metric, exists := mc.metrics[name]; exists && metric.Type == "gauge" {
 		metric.Value = value
 		metric.LastUpdated = time.Now()
@@ -120,19 +120,19 @@ func (mc *MetricsCollector) SetGauge(name string, value float64) {
 func (mc *MetricsCollector) ObserveHistogram(name string, value float64) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	if metric, exists := mc.metrics[name]; exists && metric.Type == "histogram" {
 		hist := metric.Histogram
 		hist.Count++
 		hist.Sum += value
-		
+
 		// Update buckets
 		for bucket := range hist.Bucket {
 			if value <= bucket {
 				hist.Bucket[bucket]++
 			}
 		}
-		
+
 		metric.LastUpdated = time.Now()
 	}
 }
@@ -141,13 +141,13 @@ func (mc *MetricsCollector) ObserveHistogram(name string, value float64) {
 func (mc *MetricsCollector) RecordJobRetry(jobName string, attempt int, success bool) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	// Increment total retries counter
 	if counter, exists := mc.metrics["ofelia_job_retries_total"]; exists {
 		counter.Value++
 		counter.LastUpdated = time.Now()
 	}
-	
+
 	// Record success or failure
 	if success {
 		if counter, exists := mc.metrics["ofelia_job_retry_success_total"]; exists {
@@ -160,7 +160,7 @@ func (mc *MetricsCollector) RecordJobRetry(jobName string, attempt int, success 
 			counter.LastUpdated = time.Now()
 		}
 	}
-	
+
 	// Record attempt number in histogram (simplified - just track the attempt count)
 	if hist, exists := mc.metrics["ofelia_job_retry_delay_seconds"]; exists && hist.Histogram != nil {
 		// Use attempt number as a proxy for delay (higher attempts = longer delays)
@@ -207,18 +207,18 @@ func (mc *MetricsCollector) RecordDockerError(operation string) {
 func (mc *MetricsCollector) Export() string {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()
-	
+
 	var output string
-	
+
 	for _, metric := range mc.metrics {
 		// Add HELP and TYPE comments
 		output += fmt.Sprintf("# HELP %s %s\n", metric.Name, metric.Help)
 		output += fmt.Sprintf("# TYPE %s %s\n", metric.Name, metric.Type)
-		
+
 		switch metric.Type {
 		case "counter", "gauge":
 			output += fmt.Sprintf("%s %f\n", metric.Name, metric.Value)
-			
+
 		case "histogram":
 			if metric.Histogram != nil {
 				// Export histogram buckets
@@ -230,10 +230,10 @@ func (mc *MetricsCollector) Export() string {
 				output += fmt.Sprintf("%s_sum %f\n", metric.Name, metric.Histogram.Sum)
 			}
 		}
-		
+
 		output += "\n"
 	}
-	
+
 	return output
 }
 
@@ -254,34 +254,34 @@ func (mc *MetricsCollector) InitDefaultMetrics() {
 	mc.RegisterGauge("ofelia_jobs_running", "Number of currently running jobs")
 	mc.RegisterHistogram("ofelia_job_duration_seconds", "Job execution duration in seconds",
 		[]float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300})
-	
+
 	// System metrics
 	mc.RegisterGauge("ofelia_up", "Ofelia service status (1 = up, 0 = down)")
 	mc.RegisterCounter("ofelia_restarts_total", "Total number of service restarts")
-	
+
 	// HTTP metrics
 	mc.RegisterCounter("ofelia_http_requests_total", "Total number of HTTP requests")
 	mc.RegisterHistogram("ofelia_http_request_duration_seconds", "HTTP request duration in seconds",
 		[]float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1})
-	
+
 	// Docker metrics
 	mc.RegisterCounter("ofelia_docker_operations_total", "Total Docker API operations")
 	mc.RegisterCounter("ofelia_docker_errors_total", "Total Docker API errors")
-	
+
 	// Container monitoring metrics
 	mc.RegisterCounter("ofelia_container_monitor_events_total", "Total container events received")
 	mc.RegisterCounter("ofelia_container_monitor_fallbacks_total", "Total fallbacks to polling")
 	mc.RegisterGauge("ofelia_container_monitor_method", "Container monitoring method (1=events, 0=polling)")
 	mc.RegisterHistogram("ofelia_container_wait_duration_seconds", "Container wait duration in seconds",
 		[]float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10})
-	
+
 	// Retry metrics
 	mc.RegisterCounter("ofelia_job_retries_total", "Total job retry attempts")
 	mc.RegisterCounter("ofelia_job_retry_success_total", "Total successful job retries")
 	mc.RegisterCounter("ofelia_job_retry_failed_total", "Total failed job retries")
 	mc.RegisterHistogram("ofelia_job_retry_delay_seconds", "Retry delay in seconds",
 		[]float64{0.1, 0.5, 1, 2, 5, 10, 30, 60})
-	
+
 	// Set initial values
 	mc.SetGauge("ofelia_up", 1)
 	mc.SetGauge("ofelia_jobs_running", 0)
@@ -307,10 +307,10 @@ func (jm *JobMetrics) JobStarted(jobID string) {
 	jm.mu.Lock()
 	jm.startTime[jobID] = time.Now()
 	jm.mu.Unlock()
-	
+
 	jm.collector.IncrementCounter("ofelia_jobs_total", 1)
-	jm.collector.SetGauge("ofelia_jobs_running", 
-		jm.collector.getGaugeValue("ofelia_jobs_running") + 1)
+	jm.collector.SetGauge("ofelia_jobs_running",
+		jm.collector.getGaugeValue("ofelia_jobs_running")+1)
 }
 
 // JobCompleted records job completion
@@ -323,20 +323,20 @@ func (jm *JobMetrics) JobCompleted(jobID string, success bool) {
 		jm.collector.ObserveHistogram("ofelia_job_duration_seconds", duration)
 	}
 	jm.mu.Unlock()
-	
+
 	if !success {
 		jm.collector.IncrementCounter("ofelia_jobs_failed_total", 1)
 	}
-	
+
 	jm.collector.SetGauge("ofelia_jobs_running",
-		jm.collector.getGaugeValue("ofelia_jobs_running") - 1)
+		jm.collector.getGaugeValue("ofelia_jobs_running")-1)
 }
 
 // Helper method to get gauge value
 func (mc *MetricsCollector) getGaugeValue(name string) float64 {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()
-	
+
 	if metric, exists := mc.metrics[name]; exists && metric.Type == "gauge" {
 		return metric.Value
 	}
@@ -348,13 +348,13 @@ func HTTPMetrics(mc *MetricsCollector) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			
+
 			// Increment request counter
 			mc.IncrementCounter("ofelia_http_requests_total", 1)
-			
+
 			// Call next handler
 			next.ServeHTTP(w, r)
-			
+
 			// Record duration
 			duration := time.Since(start).Seconds()
 			mc.ObserveHistogram("ofelia_http_request_duration_seconds", duration)

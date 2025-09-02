@@ -121,13 +121,13 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	c.configPath = filename
 	c.configFiles = files
 	c.configModTime = latest
-	
+
 	// Validate the loaded configuration
 	validator := config.NewConfigValidator(c)
 	if err := validator.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
-	
+
 	return c, nil
 }
 
@@ -145,13 +145,13 @@ func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
 	if err := parseIni(cfg, c); err != nil {
 		return nil, fmt.Errorf("parse ini from string: %w", err)
 	}
-	
+
 	// Validate the loaded configuration
 	validator := config.NewConfigValidator(c)
 	if err := validator.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
-	
+
 	return c, nil
 }
 

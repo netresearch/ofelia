@@ -17,7 +17,7 @@ type ValidationError struct {
 }
 
 func (e ValidationError) Error() string {
-	return fmt.Sprintf("config validation error for field '%s': %s (value: %v)", 
+	return fmt.Sprintf("config validation error for field '%s': %s (value: %v)",
 		e.Field, e.Message, e.Value)
 }
 
@@ -103,7 +103,7 @@ func (v *Validator) ValidateURL(field string, value string) {
 	if value == "" {
 		return
 	}
-	
+
 	u, err := url.Parse(value)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		v.AddError(field, value, "must be a valid URL")
@@ -115,7 +115,7 @@ func (v *Validator) ValidateEmail(field string, value string) {
 	if value == "" {
 		return
 	}
-	
+
 	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	if !emailRegex.MatchString(value) {
 		v.AddError(field, value, "must be a valid email address")
@@ -127,16 +127,16 @@ func (v *Validator) ValidateCronExpression(field string, value string) {
 	if value == "" {
 		return
 	}
-	
+
 	// Basic cron validation (5 or 6 fields)
 	// This is a simplified check - a full parser would be more thorough
 	parts := strings.Fields(value)
-	
+
 	// Allow special expressions
 	if strings.HasPrefix(value, "@") {
-		validSpecial := []string{"@yearly", "@annually", "@monthly", "@weekly", 
+		validSpecial := []string{"@yearly", "@annually", "@monthly", "@weekly",
 			"@daily", "@midnight", "@hourly", "@every"}
-		
+
 		isValid := false
 		for _, special := range validSpecial {
 			if value == special || strings.HasPrefix(value, special+" ") {
@@ -144,18 +144,18 @@ func (v *Validator) ValidateCronExpression(field string, value string) {
 				break
 			}
 		}
-		
+
 		if !isValid {
 			v.AddError(field, value, "invalid special cron expression")
 		}
 		return
 	}
-	
+
 	if len(parts) < 5 || len(parts) > 6 {
 		v.AddError(field, value, "must have 5 or 6 fields")
 		return
 	}
-	
+
 	// Validate each field has valid characters
 	cronRegex := regexp.MustCompile(`^[\d\*\-,/]+$`)
 	for _, part := range parts {
@@ -171,13 +171,13 @@ func (v *Validator) ValidateEnum(field string, value string, allowed []string) {
 	if value == "" {
 		return
 	}
-	
+
 	for _, a := range allowed {
 		if value == a {
 			return
 		}
 	}
-	
+
 	v.AddError(field, value, fmt.Sprintf("must be one of: %s", strings.Join(allowed, ", ")))
 }
 
@@ -186,7 +186,7 @@ func (v *Validator) ValidatePath(field string, value string) {
 	if value == "" {
 		return
 	}
-	
+
 	// Basic path validation - just check for invalid characters
 	if strings.ContainsAny(value, "\x00") {
 		v.AddError(field, value, "contains invalid characters")
@@ -208,14 +208,14 @@ func NewConfigValidator(config interface{}) *ConfigValidator {
 // Validate performs validation on the configuration
 func (cv *ConfigValidator) Validate() error {
 	v := NewValidator()
-	
+
 	// Validate the configuration using reflection to check struct tags and values
 	cv.validateStruct(v, cv.config, "")
-	
+
 	if v.HasErrors() {
 		return v.Errors()
 	}
-	
+
 	return nil
 }
 
@@ -228,46 +228,46 @@ func (cv *ConfigValidator) validateStruct(v *Validator, obj interface{}, path st
 		}
 		val = val.Elem()
 	}
-	
+
 	if val.Kind() != reflect.Struct {
 		return
 	}
-	
+
 	typ := val.Type()
 	for i := 0; i < val.NumField(); i++ {
 		field := val.Field(i)
 		fieldType := typ.Field(i)
 		fieldName := fieldType.Name
-		
+
 		// Build field path for nested structs
 		fieldPath := fieldName
 		if path != "" {
 			fieldPath = path + "." + fieldName
 		}
-		
+
 		// Skip unexported fields
 		if !field.CanInterface() {
 			continue
 		}
-		
+
 		// Get field tags
 		gcfgTag := fieldType.Tag.Get("gcfg")
 		mapstructureTag := fieldType.Tag.Get("mapstructure")
 		defaultTag := fieldType.Tag.Get("default")
-		
+
 		// Use gcfg or mapstructure tag as field name if available
 		if gcfgTag != "" && gcfgTag != "-" {
 			fieldPath = gcfgTag
 		} else if mapstructureTag != "" && mapstructureTag != "-" && mapstructureTag != ",squash" {
 			fieldPath = mapstructureTag
 		}
-		
+
 		// Handle nested structs
 		if field.Kind() == reflect.Struct && mapstructureTag != ",squash" {
 			cv.validateStruct(v, field.Interface(), fieldPath)
 			continue
 		}
-		
+
 		// Validate based on field type and value
 		cv.validateField(v, field, fieldType, fieldPath, defaultTag)
 	}
@@ -278,13 +278,13 @@ func (cv *ConfigValidator) validateField(v *Validator, field reflect.Value, fiel
 	switch field.Kind() {
 	case reflect.String:
 		str := field.String()
-		
+
 		// Skip validation for fields with defaults when they're empty
 		// The application will use the default value
 		if defaultTag != "" && str == "" {
 			return
 		}
-		
+
 		// Check for required fields (non-empty strings without defaults)
 		if defaultTag == "" && str == "" {
 			// Special cases where empty is allowed
@@ -292,7 +292,7 @@ func (cv *ConfigValidator) validateField(v *Validator, field reflect.Value, fiel
 				v.ValidateRequired(path, str)
 			}
 		}
-		
+
 		// Validate specific string fields
 		switch path {
 		case "schedule", "cron":
@@ -312,22 +312,22 @@ func (cv *ConfigValidator) validateField(v *Validator, field reflect.Value, fiel
 				v.AddError(path, str, "invalid log level (use: debug, info, warning, error, critical)")
 			}
 		}
-		
+
 	case reflect.Int, reflect.Int64:
 		val := field.Int()
-		
+
 		// Validate port numbers
 		if strings.Contains(path, "port") && val > 0 {
 			v.ValidateRange(path, int(val), 1, 65535)
 		}
-		
+
 		// Validate positive values for counts/sizes
 		if strings.Contains(path, "max") || strings.Contains(path, "size") {
 			if val < 0 {
 				v.AddError(path, val, "must be non-negative")
 			}
 		}
-		
+
 	case reflect.Slice:
 		// Validate slice fields (e.g., dependencies)
 		if field.Len() > 0 && strings.Contains(path, "dependencies") {
@@ -346,7 +346,7 @@ func (cv *ConfigValidator) isOptionalField(path string) bool {
 		"environment", "secrets", "volumes", "working_dir",
 		"log-level", // Has default value "info"
 	}
-	
+
 	for _, field := range optionalFields {
 		if strings.Contains(path, field) {
 			return true
@@ -361,17 +361,17 @@ func (cv *ConfigValidator) isValidAddress(addr string) bool {
 	if addr == "" {
 		return false
 	}
-	
+
 	// Simple validation - must contain colon for port
 	if !strings.Contains(addr, ":") {
 		return false
 	}
-	
+
 	parts := strings.Split(addr, ":")
 	if len(parts) != 2 {
 		return false
 	}
-	
+
 	// Port must be numeric
 	_, err := strconv.Atoi(parts[1])
 	return err == nil

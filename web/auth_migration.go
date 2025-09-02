@@ -82,7 +82,7 @@ func CreateAuthProvider(config *AuthConfig) (AuthProvider, error) {
 	if authType == "" {
 		authType = "jwt" // Default to JWT for new installations
 	}
-	
+
 	switch authType {
 	case "legacy":
 		return NewLegacyAuthProvider(config.SecretKey, config.TokenExpiry), nil
@@ -100,13 +100,13 @@ func MigrateAuthToken(legacyProvider *LegacyAuthProvider, jwtProvider AuthProvid
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Extract username from legacy token data
 	tokenData, ok := data.(*TokenData)
 	if !ok {
 		return "", ErrInvalidToken
 	}
-	
+
 	// Generate new JWT token
 	return jwtProvider.GenerateToken(tokenData.Username)
 }
@@ -120,13 +120,13 @@ func AuthMigrationMiddleware(legacy *LegacyAuthProvider, jwt *JWTAuthProvider) f
 				http.Error(w, "Missing authorization", http.StatusUnauthorized)
 				return
 			}
-			
+
 			// Try JWT first
 			if _, err := jwt.ValidateToken(token); err == nil {
 				next.ServeHTTP(w, r)
 				return
 			}
-			
+
 			// Try legacy token and migrate if valid
 			if _, err := legacy.ValidateToken(token); err == nil {
 				// Generate new JWT token
@@ -139,7 +139,7 @@ func AuthMigrationMiddleware(legacy *LegacyAuthProvider, jwt *JWTAuthProvider) f
 				next.ServeHTTP(w, r)
 				return
 			}
-			
+
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 		})
 	}

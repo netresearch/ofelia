@@ -314,4 +314,3 @@ func (j *RunJob) deleteContainer() error {
 	containerOps := j.dockerOps.NewContainerLifecycle()
 	return containerOps.RemoveContainer(j.getContainerID(), false)
 }
-

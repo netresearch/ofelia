@@ -26,16 +26,16 @@ type DaemonCommand struct {
 	EnableWeb          bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
 	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
 
-	scheduler        *core.Scheduler
-	signals          chan os.Signal
-	pprofServer      *http.Server
-	webServer        *web.Server
-	dockerHandler    *DockerHandler
-	config           *Config
-	done             chan struct{}
-	Logger           core.Logger
-	shutdownManager  *core.ShutdownManager
-	healthChecker    *web.HealthChecker
+	scheduler       *core.Scheduler
+	signals         chan os.Signal
+	pprofServer     *http.Server
+	webServer       *web.Server
+	dockerHandler   *DockerHandler
+	config          *Config
+	done            chan struct{}
+	Logger          core.Logger
+	shutdownManager *core.ShutdownManager
+	healthChecker   *web.HealthChecker
 }
 
 // Execute runs the daemon
@@ -100,24 +100,24 @@ func (c *DaemonCommand) boot() (err error) {
 	c.scheduler = config.sh
 	c.dockerHandler = config.dockerHandler
 	c.config = config
-	
+
 	// Initialize health checker
 	var dockerClient *dockerclient.Client
 	if c.dockerHandler != nil {
 		dockerClient = c.dockerHandler.GetInternalDockerClient()
 	}
 	c.healthChecker = web.NewHealthChecker(dockerClient, "1.0.0")
-	
+
 	// Create graceful scheduler with shutdown support
 	gracefulScheduler := core.NewGracefulScheduler(c.scheduler, c.shutdownManager)
 	c.scheduler = gracefulScheduler.Scheduler
-	
+
 	if c.EnableWeb {
 		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, dockerClient)
-		
+
 		// Register health endpoints
 		c.webServer.RegisterHealthEndpoints(c.healthChecker)
-		
+
 		// Create graceful server with shutdown support
 		gracefulServer := core.NewGracefulServer(c.webServer.GetHTTPServer(), c.shutdownManager, c.Logger)
 		_ = gracefulServer // The hooks are registered internally
@@ -129,7 +129,7 @@ func (c *DaemonCommand) boot() (err error) {
 func (c *DaemonCommand) start() error {
 	// Start listening for shutdown signals
 	c.shutdownManager.ListenForShutdown()
-	
+
 	if err := c.scheduler.Start(); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)
 	}
@@ -164,7 +164,7 @@ func (c *DaemonCommand) start() error {
 func (c *DaemonCommand) setSignals() {
 	// Create done channel to wait for shutdown
 	c.done = make(chan struct{})
-	
+
 	// Monitor shutdown manager
 	go func() {
 		<-c.shutdownManager.ShutdownChan()

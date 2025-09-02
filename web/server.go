@@ -35,7 +35,7 @@ func (s *Server) GetHTTPServer() *http.Server { return s.srv }
 func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockerclient.Client) *Server {
 	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), client: client}
 	mux := http.NewServeMux()
-	
+
 	// Create rate limiter: 100 requests per minute per IP
 	rl := newRateLimiter(100, time.Minute)
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
@@ -57,12 +57,12 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockercl
 		return nil
 	}
 	mux.Handle("/", http.FileServer(http.FS(uiFS)))
-	
+
 	// Apply security middlewares
 	var handler http.Handler = mux
 	handler = securityHeaders(handler)
 	handler = rl.middleware(handler)
-	
+
 	server.srv = &http.Server{
 		Addr:              addr,
 		Handler:           handler,
@@ -87,12 +87,12 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 	if s.srv == nil || s.srv.Handler == nil {
 		return
 	}
-	
+
 	// Get the existing mux from the handler chain
 	// We need to add the health endpoints to the underlying mux
 	// before the middleware chain
 	mux := http.NewServeMux()
-	
+
 	// Re-register all existing endpoints
 	mux.HandleFunc("/api/jobs/removed", s.removedJobsHandler)
 	mux.HandleFunc("/api/jobs/disabled", s.disabledJobsHandler)
@@ -105,25 +105,25 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 	mux.HandleFunc("/api/jobs/", s.historyHandler)
 	mux.HandleFunc("/api/jobs", s.jobsHandler)
 	mux.HandleFunc("/api/config", s.configHandler)
-	
+
 	// Add health endpoints
 	mux.HandleFunc("/health", hc.HealthHandler())
 	mux.HandleFunc("/healthz", hc.HealthHandler())
 	mux.HandleFunc("/ready", hc.ReadinessHandler())
 	mux.HandleFunc("/live", hc.LivenessHandler())
-	
+
 	// Add UI handler
 	uiFS, err := fs.Sub(static.UI, "ui")
 	if err == nil {
 		mux.Handle("/", http.FileServer(http.FS(uiFS)))
 	}
-	
+
 	// Re-apply middleware chain
 	rl := newRateLimiter(100, time.Minute)
 	var handler http.Handler = mux
 	handler = securityHeaders(handler)
 	handler = rl.middleware(handler)
-	
+
 	// Update the server handler
 	s.srv.Handler = handler
 }

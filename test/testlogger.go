@@ -63,28 +63,28 @@ func (l *TestLogger) Debugf(s string, v ...interface{}) {
 }
 
 // Deprecated methods for backward compatibility
-func (l *TestLogger) Error(s string) { l.Errorf("%s", s) }
+func (l *TestLogger) Error(s string)   { l.Errorf("%s", s) }
 func (l *TestLogger) Warning(s string) { l.Warningf("%s", s) }
-func (l *TestLogger) Notice(s string) { l.Noticef("%s", s) }
-func (l *TestLogger) Info(s string) { l.Infof("%s", s) }
-func (l *TestLogger) Debug(s string) { l.Debugf("%s", s) }
+func (l *TestLogger) Notice(s string)  { l.Noticef("%s", s) }
+func (l *TestLogger) Info(s string)    { l.Infof("%s", s) }
+func (l *TestLogger) Debug(s string)   { l.Debugf("%s", s) }
 
 // Shortened names for brevity
-func (l *TestLogger) Err(s string) { l.Errorf("%s", s) }
+func (l *TestLogger) Err(s string)  { l.Errorf("%s", s) }
 func (l *TestLogger) Warn(s string) { l.Warningf("%s", s) }
-func (l *TestLogger) Log(s string) { l.Infof("%s", s) }
+func (l *TestLogger) Log(s string)  { l.Infof("%s", s) }
 
 // log is the internal logging method
 func (l *TestLogger) log(level, format string, v ...interface{}) {
 	msg := fmt.Sprintf(format, v...)
-	
+
 	l.mu.Lock()
 	l.messages = append(l.messages, LogEntry{
 		Level:   level,
 		Message: msg,
 	})
 	l.mu.Unlock()
-	
+
 	if l.verbose {
 		fmt.Printf("[%s] %s\n", level, msg)
 	}
@@ -94,7 +94,7 @@ func (l *TestLogger) log(level, format string, v ...interface{}) {
 func (l *TestLogger) GetMessages() []LogEntry {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	result := make([]LogEntry, len(l.messages))
 	copy(result, l.messages)
 	return result
@@ -104,7 +104,7 @@ func (l *TestLogger) GetMessages() []LogEntry {
 func (l *TestLogger) HasMessage(substr string) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	for _, entry := range l.messages {
 		if strings.Contains(entry.Message, substr) {
 			return true
@@ -117,7 +117,7 @@ func (l *TestLogger) HasMessage(substr string) bool {
 func (l *TestLogger) HasError(substr string) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	for _, entry := range l.messages {
 		if entry.Level == "ERROR" && strings.Contains(entry.Message, substr) {
 			return true
@@ -130,7 +130,7 @@ func (l *TestLogger) HasError(substr string) bool {
 func (l *TestLogger) HasWarning(substr string) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	for _, entry := range l.messages {
 		if entry.Level == "WARN" && strings.Contains(entry.Message, substr) {
 			return true
@@ -157,7 +157,7 @@ func (l *TestLogger) MessageCount() int {
 func (l *TestLogger) ErrorCount() int {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	count := 0
 	for _, entry := range l.messages {
 		if entry.Level == "ERROR" {

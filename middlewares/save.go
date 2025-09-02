@@ -56,7 +56,7 @@ func (m *Save) saveToDisk(ctx *core.Context) error {
 	if err := DefaultSanitizer.ValidateSaveFolder(m.SaveFolder); err != nil {
 		return fmt.Errorf("invalid save folder: %w", err)
 	}
-	
+
 	if err := os.MkdirAll(m.SaveFolder, 0o750); err != nil {
 		return fmt.Errorf("mkdir %q: %w", m.SaveFolder, err)
 	}

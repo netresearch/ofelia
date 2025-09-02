@@ -12,6 +12,7 @@ require (
 	github.com/fsouza/go-dockerclient v1.12.1
 	github.com/go-mail/mail/v2 v2.3.0
 	github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/robfig/cron/v3 v3.0.1
@@ -31,7 +32,6 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect

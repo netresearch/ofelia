@@ -19,10 +19,10 @@ type PathSanitizer struct {
 func NewPathSanitizer() *PathSanitizer {
 	return &PathSanitizer{
 		dangerousPatterns: []*regexp.Regexp{
-			regexp.MustCompile(`\.\.`),                    // Directory traversal
-			regexp.MustCompile(`^~`),                      // Home directory reference
+			regexp.MustCompile(`\.\.`),                   // Directory traversal
+			regexp.MustCompile(`^~`),                     // Home directory reference
 			regexp.MustCompile(`(?i)^(con|prn|aux|nul)`), // Windows reserved names
-			regexp.MustCompile(`[<>:"|?*]`),               // Invalid filename chars
+			regexp.MustCompile(`[<>:"|?*]`),              // Invalid filename chars
 		},
 		replacer: strings.NewReplacer(
 			"/", "_",
@@ -47,10 +47,10 @@ func NewPathSanitizer() *PathSanitizer {
 func (ps *PathSanitizer) SanitizePath(path string) string {
 	// First apply replacements to handle null bytes and other dangerous chars
 	cleaned := ps.replacer.Replace(path)
-	
+
 	// Then clean the path to resolve any . or .. elements
 	cleaned = filepath.Clean(cleaned)
-	
+
 	// Check for dangerous patterns
 	for _, pattern := range ps.dangerousPatterns {
 		if pattern.MatchString(cleaned) {
@@ -59,7 +59,7 @@ func (ps *PathSanitizer) SanitizePath(path string) string {
 			break
 		}
 	}
-	
+
 	// Ensure the path doesn't start with / or drive letter on Windows
 	// to prevent absolute path injection
 	if filepath.IsAbs(cleaned) {
@@ -71,7 +71,7 @@ func (ps *PathSanitizer) SanitizePath(path string) string {
 			cleaned = strings.TrimLeft(cleaned, "/\\")
 		}
 	}
-	
+
 	return cleaned
 }
 
@@ -79,7 +79,7 @@ func (ps *PathSanitizer) SanitizePath(path string) string {
 func (ps *PathSanitizer) SanitizeFilename(filename string) string {
 	// Apply replacements for dangerous characters
 	safe := ps.replacer.Replace(filename)
-	
+
 	// Limit filename length to prevent issues
 	const maxLength = 255
 	if len(safe) > maxLength {
@@ -91,12 +91,12 @@ func (ps *PathSanitizer) SanitizeFilename(filename string) string {
 			safe = safe[:maxLength]
 		}
 	}
-	
+
 	// Ensure filename is not empty after sanitization
 	if safe == "" || safe == "." {
 		safe = "unnamed"
 	}
-	
+
 	return safe
 }
 
@@ -114,7 +114,7 @@ func (ps *PathSanitizer) ValidateSaveFolder(folder string) error {
 			return fmt.Errorf("invalid save folder path: contains dangerous pattern")
 		}
 	}
-	
+
 	// Ensure it's not trying to write to system directories
 	cleanPath := filepath.Clean(folder)
 	systemDirs := []string{"/etc", "/bin", "/sbin", "/usr/bin", "/usr/sbin", "/sys", "/proc", "/dev"}
@@ -123,7 +123,7 @@ func (ps *PathSanitizer) ValidateSaveFolder(folder string) error {
 			return fmt.Errorf("invalid save folder: cannot write to system directory %s", sysDir)
 		}
 	}
-	
+
 	return nil
 }
 

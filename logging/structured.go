@@ -40,13 +40,13 @@ func (l LogLevel) String() string {
 
 // LogEntry represents a structured log entry
 type LogEntry struct {
-	Timestamp   time.Time              `json:"timestamp"`
-	Level       string                 `json:"level"`
-	Message     string                 `json:"message"`
-	Fields      map[string]interface{} `json:"fields,omitempty"`
-	Caller      string                 `json:"caller,omitempty"`
-	StackTrace  string                 `json:"stack_trace,omitempty"`
-	CorrelationID string               `json:"correlation_id,omitempty"`
+	Timestamp     time.Time              `json:"timestamp"`
+	Level         string                 `json:"level"`
+	Message       string                 `json:"message"`
+	Fields        map[string]interface{} `json:"fields,omitempty"`
+	Caller        string                 `json:"caller,omitempty"`
+	StackTrace    string                 `json:"stack_trace,omitempty"`
+	CorrelationID string                 `json:"correlation_id,omitempty"`
 }
 
 // StructuredLogger provides structured logging capabilities
@@ -96,13 +96,13 @@ func (l *StructuredLogger) SetJSONFormat(enabled bool) {
 func (l *StructuredLogger) WithField(key string, value interface{}) *StructuredLogger {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	newFields := make(map[string]interface{})
 	for k, v := range l.fields {
 		newFields[k] = v
 	}
 	newFields[key] = value
-	
+
 	return &StructuredLogger{
 		level:         l.level,
 		output:        l.output,
@@ -117,7 +117,7 @@ func (l *StructuredLogger) WithField(key string, value interface{}) *StructuredL
 func (l *StructuredLogger) WithFields(fields map[string]interface{}) *StructuredLogger {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	newFields := make(map[string]interface{})
 	for k, v := range l.fields {
 		newFields[k] = v
@@ -125,7 +125,7 @@ func (l *StructuredLogger) WithFields(fields map[string]interface{}) *Structured
 	for k, v := range fields {
 		newFields[k] = v
 	}
-	
+
 	return &StructuredLogger{
 		level:         l.level,
 		output:        l.output,
@@ -140,7 +140,7 @@ func (l *StructuredLogger) WithFields(fields map[string]interface{}) *Structured
 func (l *StructuredLogger) WithCorrelationID(id string) *StructuredLogger {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	newLogger := *l
 	newLogger.correlationID = id
 	return &newLogger
@@ -150,11 +150,11 @@ func (l *StructuredLogger) WithCorrelationID(id string) *StructuredLogger {
 func (l *StructuredLogger) log(level LogLevel, message string, fields map[string]interface{}) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	if level < l.level {
 		return
 	}
-	
+
 	entry := LogEntry{
 		Timestamp:     time.Now(),
 		Level:         level.String(),
@@ -162,17 +162,17 @@ func (l *StructuredLogger) log(level LogLevel, message string, fields map[string
 		Fields:        make(map[string]interface{}),
 		CorrelationID: l.correlationID,
 	}
-	
+
 	// Merge logger fields
 	for k, v := range l.fields {
 		entry.Fields[k] = v
 	}
-	
+
 	// Merge provided fields
 	for k, v := range fields {
 		entry.Fields[k] = v
 	}
-	
+
 	// Add caller information
 	if l.includeCaller {
 		if pc, file, line, ok := runtime.Caller(2); ok {
@@ -180,32 +180,32 @@ func (l *StructuredLogger) log(level LogLevel, message string, fields map[string
 			entry.Caller = fmt.Sprintf("%s:%d %s", file, line, f.Name())
 		}
 	}
-	
+
 	// Add stack trace for errors
 	if level >= ErrorLevel {
 		buf := make([]byte, 4096)
 		n := runtime.Stack(buf, false)
 		entry.StackTrace = string(buf[:n])
 	}
-	
+
 	// Format and write
 	if l.jsonFormat {
 		encoder := json.NewEncoder(l.output)
 		encoder.Encode(entry)
 	} else {
-		fmt.Fprintf(l.output, "%s [%s] %s", 
+		fmt.Fprintf(l.output, "%s [%s] %s",
 			entry.Timestamp.Format(time.RFC3339),
 			entry.Level,
 			entry.Message)
-		
+
 		if len(entry.Fields) > 0 {
 			fmt.Fprintf(l.output, " %v", entry.Fields)
 		}
-		
+
 		if entry.CorrelationID != "" {
 			fmt.Fprintf(l.output, " [%s]", entry.CorrelationID)
 		}
-		
+
 		fmt.Fprintln(l.output)
 	}
 }
@@ -322,7 +322,7 @@ func (jl *JobLogger) LogComplete(duration time.Duration, success bool) {
 		"duration": duration.Seconds(),
 		"success":  success,
 	}
-	
+
 	if success {
 		jl.InfoWithFields("Job completed successfully", fields)
 	} else {
@@ -343,7 +343,7 @@ var DefaultLogger = NewStructuredLogger()
 
 // Package-level convenience functions
 func Debug(message string) { DefaultLogger.Debug(message) }
-func Info(message string) { DefaultLogger.Info(message) }
-func Warn(message string) { DefaultLogger.Warn(message) }
+func Info(message string)  { DefaultLogger.Info(message) }
+func Warn(message string)  { DefaultLogger.Warn(message) }
 func Error(message string) { DefaultLogger.Error(message) }
 func Fatal(message string) { DefaultLogger.Fatal(message) }

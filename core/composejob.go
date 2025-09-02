@@ -43,4 +43,3 @@ func (j *ComposeJob) buildCommand(ctx *Context) *exec.Cmd {
 	cmd.Env = os.Environ()
 	return cmd
 }
-

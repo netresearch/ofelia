@@ -215,4 +215,3 @@ func (j *RunServiceJob) deleteService(ctx *Context, svcID string) error {
 	}
 	return nil
 }
-
