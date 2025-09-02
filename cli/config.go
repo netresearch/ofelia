@@ -14,6 +14,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	ini "gopkg.in/ini.v1"
 
+	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
 )
@@ -47,6 +48,7 @@ type Config struct {
 		EnablePprof             bool          `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
 		PprofAddr               string        `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
 		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`
+		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels" default:"false"`
 	}
 	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
@@ -119,6 +121,13 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	c.configPath = filename
 	c.configFiles = files
 	c.configModTime = latest
+	
+	// Validate the loaded configuration
+	validator := config.NewConfigValidator(c)
+	if err := validator.Validate(); err != nil {
+		return nil, fmt.Errorf("configuration validation failed: %w", err)
+	}
+	
 	return c, nil
 }
 
@@ -127,15 +136,22 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 // newDockerHandler allows overriding Docker handler creation (e.g., for testing)
 var newDockerHandler = NewDockerHandler
 
-func BuildFromString(config string, logger core.Logger) (*Config, error) {
+func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
 	c := NewConfig(logger)
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, []byte(config))
+	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, []byte(configStr))
 	if err != nil {
 		return nil, fmt.Errorf("load ini from string: %w", err)
 	}
 	if err := parseIni(cfg, c); err != nil {
 		return nil, fmt.Errorf("parse ini from string: %w", err)
 	}
+	
+	// Validate the loaded configuration
+	validator := config.NewConfigValidator(c)
+	if err := validator.Validate(); err != nil {
+		return nil, fmt.Errorf("configuration validation failed: %w", err)
+	}
+	
 	return c, nil
 }
 
@@ -163,7 +179,7 @@ func (c *Config) mergeJobsFromDockerLabels() {
 	if err != nil {
 		return
 	}
-	parsed := Config{}
+	parsed := Config{logger: c.logger}
 	_ = parsed.buildFromDockerLabels(dockerLabels)
 
 	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
@@ -320,7 +336,7 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	c.logger.Debugf("dockerLabelsUpdate started")
 
-	var parsedLabelConfig Config
+	parsedLabelConfig := Config{logger: c.logger}
 	_ = parsedLabelConfig.buildFromDockerLabels(labels)
 
 	execPrep := func(name string, j *ExecJobConfig) {
@@ -344,7 +360,10 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		_ = defaults.Set(j)
 		j.Name = name
 	}
-	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
+	// Security check: only sync local jobs from labels if explicitly allowed
+	if c.Global.AllowHostJobsFromLabels {
+		syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
+	}
 
 	servicePrep := func(name string, j *RunServiceConfig) {
 		_ = defaults.Set(j)
@@ -360,7 +379,10 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		_ = defaults.Set(j)
 		j.Name = name
 	}
-	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
+	// Security check: only sync compose jobs from labels if explicitly allowed
+	if c.Global.AllowHostJobsFromLabels {
+		syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
+	}
 }
 
 func (c *Config) iniConfigUpdate() error {

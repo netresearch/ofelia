@@ -3,7 +3,9 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -207,12 +209,182 @@ func NewConfigValidator(config interface{}) *ConfigValidator {
 func (cv *ConfigValidator) Validate() error {
 	v := NewValidator()
 	
-	// Here you would add specific validation for your config structure
-	// This is just an example framework
+	// Validate the configuration using reflection to check struct tags and values
+	cv.validateStruct(v, cv.config, "")
 	
 	if v.HasErrors() {
 		return v.Errors()
 	}
 	
 	return nil
+}
+
+// validateStruct recursively validates struct fields based on tags
+func (cv *ConfigValidator) validateStruct(v *Validator, obj interface{}, path string) {
+	val := reflect.ValueOf(obj)
+	if val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return
+		}
+		val = val.Elem()
+	}
+	
+	if val.Kind() != reflect.Struct {
+		return
+	}
+	
+	typ := val.Type()
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldType := typ.Field(i)
+		fieldName := fieldType.Name
+		
+		// Build field path for nested structs
+		fieldPath := fieldName
+		if path != "" {
+			fieldPath = path + "." + fieldName
+		}
+		
+		// Skip unexported fields
+		if !field.CanInterface() {
+			continue
+		}
+		
+		// Get field tags
+		gcfgTag := fieldType.Tag.Get("gcfg")
+		mapstructureTag := fieldType.Tag.Get("mapstructure")
+		defaultTag := fieldType.Tag.Get("default")
+		
+		// Use gcfg or mapstructure tag as field name if available
+		if gcfgTag != "" && gcfgTag != "-" {
+			fieldPath = gcfgTag
+		} else if mapstructureTag != "" && mapstructureTag != "-" && mapstructureTag != ",squash" {
+			fieldPath = mapstructureTag
+		}
+		
+		// Handle nested structs
+		if field.Kind() == reflect.Struct && mapstructureTag != ",squash" {
+			cv.validateStruct(v, field.Interface(), fieldPath)
+			continue
+		}
+		
+		// Validate based on field type and value
+		cv.validateField(v, field, fieldType, fieldPath, defaultTag)
+	}
+}
+
+// validateField validates individual fields based on their type and tags
+func (cv *ConfigValidator) validateField(v *Validator, field reflect.Value, fieldType reflect.StructField, path string, defaultTag string) {
+	switch field.Kind() {
+	case reflect.String:
+		str := field.String()
+		
+		// Skip validation for fields with defaults when they're empty
+		// The application will use the default value
+		if defaultTag != "" && str == "" {
+			return
+		}
+		
+		// Check for required fields (non-empty strings without defaults)
+		if defaultTag == "" && str == "" {
+			// Special cases where empty is allowed
+			if !cv.isOptionalField(path) {
+				v.ValidateRequired(path, str)
+			}
+		}
+		
+		// Validate specific string fields
+		switch path {
+		case "schedule", "cron":
+			if str != "" {
+				v.ValidateCronExpression(path, str)
+			}
+		case "email-to", "email-from":
+			if str != "" {
+				v.ValidateEmail(path, str)
+			}
+		case "web-address", "pprof-address":
+			if str != "" && !cv.isValidAddress(str) {
+				v.AddError(path, str, "invalid address format")
+			}
+		case "log-level":
+			if str != "" && !cv.isValidLogLevel(str) {
+				v.AddError(path, str, "invalid log level (use: debug, info, warning, error, critical)")
+			}
+		}
+		
+	case reflect.Int, reflect.Int64:
+		val := field.Int()
+		
+		// Validate port numbers
+		if strings.Contains(path, "port") && val > 0 {
+			v.ValidateRange(path, int(val), 1, 65535)
+		}
+		
+		// Validate positive values for counts/sizes
+		if strings.Contains(path, "max") || strings.Contains(path, "size") {
+			if val < 0 {
+				v.AddError(path, val, "must be non-negative")
+			}
+		}
+		
+	case reflect.Slice:
+		// Validate slice fields (e.g., dependencies)
+		if field.Len() > 0 && strings.Contains(path, "dependencies") {
+			// Dependencies should reference valid job names
+			// This would need access to all job names, skipping for now
+		}
+	}
+}
+
+// isOptionalField checks if a field is optional (can be empty)
+func (cv *ConfigValidator) isOptionalField(path string) bool {
+	optionalFields := []string{
+		"smtp-user", "smtp-password", "email-to", "email-from",
+		"slack-webhook", "slack-channel", "save-folder",
+		"container", "service", "image", "user", "network",
+		"environment", "secrets", "volumes", "working_dir",
+		"log-level", // Has default value "info"
+	}
+	
+	for _, field := range optionalFields {
+		if strings.Contains(path, field) {
+			return true
+		}
+	}
+	return false
+}
+
+// isValidAddress checks if an address string is valid
+func (cv *ConfigValidator) isValidAddress(addr string) bool {
+	// Allow formats like ":8080", "localhost:8080", "127.0.0.1:8080"
+	if addr == "" {
+		return false
+	}
+	
+	// Simple validation - must contain colon for port
+	if !strings.Contains(addr, ":") {
+		return false
+	}
+	
+	parts := strings.Split(addr, ":")
+	if len(parts) != 2 {
+		return false
+	}
+	
+	// Port must be numeric
+	_, err := strconv.Atoi(parts[1])
+	return err == nil
+}
+
+// isValidLogLevel checks if a log level is valid
+func (cv *ConfigValidator) isValidLogLevel(level string) bool {
+	validLevels := []string{"debug", "info", "notice", "warning", "error", "critical"}
+	level = strings.ToLower(level)
+	for _, valid := range validLevels {
+		if level == valid {
+			return true
+		}
+	}
+	return false
 }
