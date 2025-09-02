@@ -11,6 +11,7 @@ import (
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
+	"github.com/netresearch/ofelia/test"
 )
 
 // Hook up gocheck into the "go test" runner.
@@ -20,13 +21,8 @@ type SuiteConfig struct{}
 
 var _ = Suite(&SuiteConfig{})
 
-type TestLogger struct{}
-
-func (*TestLogger) Criticalf(format string, args ...interface{}) {}
-func (*TestLogger) Debugf(format string, args ...interface{})    {}
-func (*TestLogger) Errorf(format string, args ...interface{})    {}
-func (*TestLogger) Noticef(format string, args ...interface{})   {}
-func (*TestLogger) Warningf(format string, args ...interface{})  {}
+// Use shared TestLogger from test package
+type TestLogger = test.TestLogger
 
 func (s *SuiteConfig) TestBuildFromString(c *C) {
 	mockLogger := TestLogger{}
@@ -484,6 +480,7 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 
 	for _, t := range testcases {
 		conf := Config{}
+		conf.logger = test.NewTestLogger() // Initialize logger for tests
 		err := conf.buildFromDockerLabels(t.Labels)
 		c.Assert(err, IsNil)
 		setJobSource(&conf, JobSourceLabel)

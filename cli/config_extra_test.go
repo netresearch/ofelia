@@ -15,6 +15,7 @@ import (
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
+	"github.com/netresearch/ofelia/test"
 )
 
 const (
@@ -26,14 +27,14 @@ const (
 
 // Test error path of BuildFromString with invalid INI string
 func (s *SuiteConfig) TestBuildFromStringInvalidIni(c *C) {
-	_, err := BuildFromString("this is not ini", &TestLogger{})
+	_, err := BuildFromString("this is not ini", test.NewTestLogger())
 	c.Assert(err, NotNil)
 }
 
 // Test error path of BuildFromFile for non-existent or invalid file
 func (s *SuiteConfig) TestBuildFromFileError(c *C) {
 	// Non-existent file
-	_, err := BuildFromFile("nonexistent_file.ini", &TestLogger{})
+	_, err := BuildFromFile("nonexistent_file.ini", test.NewTestLogger())
 	c.Assert(err, NotNil)
 
 	// Invalid content
@@ -44,7 +45,7 @@ func (s *SuiteConfig) TestBuildFromFileError(c *C) {
 	_, _ = tmpFile.WriteString("invalid content")
 	tmpFile.Close()
 
-	_, err = BuildFromFile(tmpFile.Name(), &TestLogger{})
+	_, err = BuildFromFile(tmpFile.Name(), test.NewTestLogger())
 	c.Assert(err, NotNil)
 }
 
@@ -57,7 +58,7 @@ func (s *SuiteConfig) TestInitializeAppErrorDockerHandler(c *C) {
 		return nil, errors.New("factory error")
 	}
 
-	cfg := NewConfig(&TestLogger{})
+	cfg := NewConfig(test.NewTestLogger())
 	err := cfg.InitializeApp()
 	c.Assert(err, NotNil)
 	c.Assert(err.Error(), Equals, "factory error")
@@ -66,10 +67,10 @@ func (s *SuiteConfig) TestInitializeAppErrorDockerHandler(c *C) {
 // Test dynamic updates via dockerLabelsUpdate for ExecJobs: additions, schedule changes, removals
 func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 	// Prepare initial Config
-	cfg := NewConfig(&TestLogger{})
-	cfg.logger = &TestLogger{}
+	cfg := NewConfig(test.NewTestLogger())
+	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 	cfg.ExecJobs = make(map[string]*ExecJobConfig)
 
@@ -115,10 +116,10 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 
 // Test dockerLabelsUpdate removes local and service jobs when containers disappear.
 func (s *SuiteConfig) TestDockerLabelsUpdateStaleJobs(c *C) {
-	cfg := NewConfig(&TestLogger{})
-	cfg.logger = &TestLogger{}
+	cfg := NewConfig(test.NewTestLogger())
+	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 	cfg.LocalJobs = make(map[string]*LocalJobConfig)
 	cfg.ServiceJobs = make(map[string]*RunServiceConfig)
@@ -151,11 +152,11 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	_, _ = tmp.WriteString(iniFoo)
 	tmp.Close()
 
-	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
 	c.Assert(err, IsNil)
-	cfg.logger = &TestLogger{}
+	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	// register initial jobs
@@ -207,11 +208,11 @@ func (s *SuiteConfig) TestIniConfigUpdateEnvChange(c *C) {
 	c.Assert(err, IsNil)
 	tmp.Close()
 
-	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
 	c.Assert(err, IsNil)
-	cfg.logger = &TestLogger{}
+	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	for name, j := range cfg.RunJobs {
@@ -245,11 +246,11 @@ func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 	c.Assert(err, IsNil)
 	tmp.Close()
 
-	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
 	c.Assert(err, IsNil)
-	cfg.logger = &TestLogger{}
+	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	for name, j := range cfg.RunJobs {
@@ -278,11 +279,11 @@ func (s *SuiteConfig) TestIniConfigUpdateLabelConflict(c *C) {
 	c.Assert(err, IsNil)
 	tmp.Close()
 
-	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
 	c.Assert(err, IsNil)
-	cfg.logger = &TestLogger{}
+	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	cfg.RunJobs["foo"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo lbl"}}, JobSource: JobSourceLabel}
@@ -322,11 +323,11 @@ func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
 	err = os.WriteFile(file2, []byte("[job-run \"bar\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo bar\n"), 0o644)
 	c.Assert(err, IsNil)
 
-	cfg, err := BuildFromFile(filepath.Join(dir, "*.ini"), &TestLogger{})
+	cfg, err := BuildFromFile(filepath.Join(dir, "*.ini"), test.NewTestLogger())
 	c.Assert(err, IsNil)
-	cfg.logger = &TestLogger{}
+	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	for name, j := range cfg.RunJobs {
@@ -369,11 +370,11 @@ func (s *SuiteConfig) TestIniConfigUpdateGlobalChange(c *C) {
 
 	logrus.SetLevel(logrus.InfoLevel)
 
-	cfg, err := BuildFromFile(tmp.Name(), &TestLogger{})
+	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
 	c.Assert(err, IsNil)
-	cfg.logger = &TestLogger{}
+	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	ApplyLogLevel(cfg.Global.LogLevel)
