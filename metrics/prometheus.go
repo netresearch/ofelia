@@ -169,6 +169,40 @@ func (mc *MetricsCollector) RecordJobRetry(jobName string, attempt int, success 
 	}
 }
 
+// RecordContainerEvent records a container event received
+func (mc *MetricsCollector) RecordContainerEvent() {
+	mc.IncrementCounter("ofelia_container_monitor_events_total", 1)
+}
+
+// RecordContainerMonitorFallback records a fallback to polling
+func (mc *MetricsCollector) RecordContainerMonitorFallback() {
+	mc.IncrementCounter("ofelia_container_monitor_fallbacks_total", 1)
+}
+
+// RecordContainerMonitorMethod records the monitoring method being used
+func (mc *MetricsCollector) RecordContainerMonitorMethod(usingEvents bool) {
+	if usingEvents {
+		mc.SetGauge("ofelia_container_monitor_method", 1)
+	} else {
+		mc.SetGauge("ofelia_container_monitor_method", 0)
+	}
+}
+
+// RecordContainerWaitDuration records the time spent waiting for a container
+func (mc *MetricsCollector) RecordContainerWaitDuration(seconds float64) {
+	mc.ObserveHistogram("ofelia_container_wait_duration_seconds", seconds)
+}
+
+// RecordDockerOperation records a Docker API operation
+func (mc *MetricsCollector) RecordDockerOperation(operation string) {
+	mc.IncrementCounter("ofelia_docker_operations_total", 1)
+}
+
+// RecordDockerError records a Docker API error
+func (mc *MetricsCollector) RecordDockerError(operation string) {
+	mc.IncrementCounter("ofelia_docker_errors_total", 1)
+}
+
 // Export formats metrics in Prometheus text format
 func (mc *MetricsCollector) Export() string {
 	mc.mu.RLock()
@@ -233,6 +267,13 @@ func (mc *MetricsCollector) InitDefaultMetrics() {
 	// Docker metrics
 	mc.RegisterCounter("ofelia_docker_operations_total", "Total Docker API operations")
 	mc.RegisterCounter("ofelia_docker_errors_total", "Total Docker API errors")
+	
+	// Container monitoring metrics
+	mc.RegisterCounter("ofelia_container_monitor_events_total", "Total container events received")
+	mc.RegisterCounter("ofelia_container_monitor_fallbacks_total", "Total fallbacks to polling")
+	mc.RegisterGauge("ofelia_container_monitor_method", "Container monitoring method (1=events, 0=polling)")
+	mc.RegisterHistogram("ofelia_container_wait_duration_seconds", "Container wait duration in seconds",
+		[]float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10})
 	
 	// Retry metrics
 	mc.RegisterCounter("ofelia_job_retries_total", "Total job retry attempts")

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/netresearch/ofelia/core"
 )
@@ -53,11 +52,17 @@ func (m *Save) Run(ctx *core.Context) error {
 }
 
 func (m *Save) saveToDisk(ctx *core.Context) error {
+	// Validate save folder before use
+	if err := DefaultSanitizer.ValidateSaveFolder(m.SaveFolder); err != nil {
+		return fmt.Errorf("invalid save folder: %w", err)
+	}
+	
 	if err := os.MkdirAll(m.SaveFolder, 0o750); err != nil {
 		return fmt.Errorf("mkdir %q: %w", m.SaveFolder, err)
 	}
 
-	safeName := strings.NewReplacer("/", "_", "\\", "_").Replace(ctx.Job.GetName())
+	// Use enhanced sanitization for job name
+	safeName := SanitizeJobName(ctx.Job.GetName())
 
 	root := filepath.Join(m.SaveFolder, fmt.Sprintf(
 		"%s_%s",

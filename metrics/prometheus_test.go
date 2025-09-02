@@ -213,6 +213,10 @@ func TestDefaultMetricsInitialization(t *testing.T) {
 		"ofelia_http_request_duration_seconds",
 		"ofelia_docker_operations_total",
 		"ofelia_docker_errors_total",
+		"ofelia_container_monitor_events_total",
+		"ofelia_container_monitor_fallbacks_total",
+		"ofelia_container_monitor_method",
+		"ofelia_container_wait_duration_seconds",
 	}
 	
 	for _, name := range expectedMetrics {
@@ -231,4 +235,47 @@ func TestDefaultMetricsInitialization(t *testing.T) {
 	}
 	
 	t.Log("Default metrics initialization test passed")
+}
+
+func TestContainerMonitorMetrics(t *testing.T) {
+	mc := NewMetricsCollector()
+	mc.InitDefaultMetrics()
+	
+	// Test recording container monitor events
+	mc.RecordContainerEvent()
+	if mc.metrics["ofelia_container_monitor_events_total"].Value != 1 {
+		t.Error("Expected container monitor event counter to be 1")
+	}
+	
+	// Test recording fallbacks
+	mc.RecordContainerMonitorFallback()
+	if mc.metrics["ofelia_container_monitor_fallbacks_total"].Value != 1 {
+		t.Error("Expected container monitor fallback counter to be 1")
+	}
+	
+	// Test setting monitor method
+	mc.RecordContainerMonitorMethod(true) // events API
+	if mc.getGaugeValue("ofelia_container_monitor_method") != 1 {
+		t.Error("Expected container monitor method to be 1 (events)")
+	}
+	
+	mc.RecordContainerMonitorMethod(false) // polling
+	if mc.getGaugeValue("ofelia_container_monitor_method") != 0 {
+		t.Error("Expected container monitor method to be 0 (polling)")
+	}
+	
+	// Test recording wait duration
+	mc.RecordContainerWaitDuration(0.5)
+	mc.RecordContainerWaitDuration(1.5)
+	mc.RecordContainerWaitDuration(2.5)
+	
+	hist := mc.metrics["ofelia_container_wait_duration_seconds"].Histogram
+	if hist.Count != 3 {
+		t.Errorf("Expected 3 observations, got %d", hist.Count)
+	}
+	if hist.Sum != 4.5 {
+		t.Errorf("Expected sum of 4.5, got %f", hist.Sum)
+	}
+	
+	t.Log("Container monitor metrics test passed")
 }
