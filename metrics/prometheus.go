@@ -137,6 +137,32 @@ func (mc *MetricsCollector) ObserveHistogram(name string, value float64) {
 	}
 }
 
+// RecordJobRetry records a job retry attempt
+func (mc *MetricsCollector) RecordJobRetry(jobName string, attempt int, success bool) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	
+	// Increment total retries counter
+	if counter, exists := mc.metrics["ofelia_job_retries_total"]; exists {
+		counter.Value++
+	}
+	
+	// Record success or failure
+	if success {
+		if counter, exists := mc.metrics["ofelia_job_retry_success_total"]; exists {
+			counter.Value++
+		}
+	} else {
+		if counter, exists := mc.metrics["ofelia_job_retry_failed_total"]; exists {
+			counter.Value++
+		}
+	}
+	
+	// Record retry delay (exponential backoff calculation)
+	// Note: For simplicity, we're just tracking the count of retries
+	// Actual delay tracking would require histogram support
+}
+
 // Export formats metrics in Prometheus text format
 func (mc *MetricsCollector) Export() string {
 	mc.mu.RLock()
@@ -201,6 +227,13 @@ func (mc *MetricsCollector) InitDefaultMetrics() {
 	// Docker metrics
 	mc.RegisterCounter("ofelia_docker_operations_total", "Total Docker API operations")
 	mc.RegisterCounter("ofelia_docker_errors_total", "Total Docker API errors")
+	
+	// Retry metrics
+	mc.RegisterCounter("ofelia_job_retries_total", "Total job retry attempts")
+	mc.RegisterCounter("ofelia_job_retry_success_total", "Total successful job retries")
+	mc.RegisterCounter("ofelia_job_retry_failed_total", "Total failed job retries")
+	mc.RegisterHistogram("ofelia_job_retry_delay_seconds", "Retry delay in seconds",
+		[]float64{0.1, 0.5, 1, 2, 5, 10, 30, 60})
 	
 	// Set initial values
 	mc.SetGauge("ofelia_up", 1)

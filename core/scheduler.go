@@ -26,6 +26,7 @@ type Scheduler struct {
 	mu               sync.RWMutex // Protect isRunning and wg/removed operations
 	maxConcurrentJobs int
 	jobSemaphore     chan struct{} // Limits concurrent job execution
+	retryExecutor    *RetryExecutor
 }
 
 func NewScheduler(l Logger) *Scheduler {
@@ -49,6 +50,7 @@ func NewScheduler(l Logger) *Scheduler {
 		cron:              cron,
 		maxConcurrentJobs: maxConcurrent,
 		jobSemaphore:      make(chan struct{}, maxConcurrent),
+		retryExecutor:     NewRetryExecutor(l),
 	}
 }
 
@@ -254,7 +256,12 @@ func (w *jobWrapper) Run() {
 	ctx := NewContext(w.s, w.j, e)
 
 	w.start(ctx)
-	err = ctx.Next()
+	
+	// Execute with retry logic
+	err = w.s.retryExecutor.ExecuteWithRetry(w.j, ctx, func(c *Context) error {
+		return c.Next()
+	})
+	
 	w.stop(ctx, err)
 }
 
