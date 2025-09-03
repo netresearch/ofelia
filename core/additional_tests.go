@@ -27,10 +27,16 @@ func TestSchedulerMoreEntries(t *testing.T) {
 		},
 	}
 
-	s.AddJob(job1)
-	s.AddJob(job2)
-	s.Start()
-	defer s.Stop()
+	if err := s.AddJob(job1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddJob(job2); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Stop() }()
 
 	// Get entries
 	entries := s.Entries()
@@ -54,11 +60,17 @@ func TestSchedulerMoreGetDisabledJobs(t *testing.T) {
 		},
 	}
 
-	s.AddJob(job)
-	s.Start()
+	if err := s.AddJob(job); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Start(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Disable the job
-	s.RemoveJob(job)
+	if err := s.RemoveJob(job); err != nil {
+		t.Error(err)
+	}
 
 	// Get disabled jobs
 	disabledJobs := s.GetDisabledJobs()
@@ -67,7 +79,7 @@ func TestSchedulerMoreGetDisabledJobs(t *testing.T) {
 		t.Errorf("Expected 1 disabled job, got %d", len(disabledJobs))
 	}
 
-	s.Stop()
+	_ = s.Stop()
 }
 
 // TestSchedulerMoreRunJob tests the RunJob method
@@ -83,9 +95,13 @@ func TestSchedulerMoreRunJob(t *testing.T) {
 		},
 	}
 
-	s.AddJob(job)
-	s.Start()
-	defer s.Stop()
+	if err := s.AddJob(job); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Stop() }()
 
 	// Run job manually
 	err := s.RunJob("manual-run-job")

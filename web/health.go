@@ -235,7 +235,7 @@ func (hc *HealthChecker) LivenessHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Liveness just checks if the service is running
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	}
 }
 
@@ -252,7 +252,7 @@ func (hc *HealthChecker) ReadinessHandler() http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
-		json.NewEncoder(w).Encode(health)
+		_ = json.NewEncoder(w).Encode(health)
 	}
 }
 
@@ -264,6 +264,6 @@ func (hc *HealthChecker) HealthHandler() http.HandlerFunc {
 		// Always return 200 for health endpoint (monitoring tools expect this)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(health)
+		_ = json.NewEncoder(w).Encode(health)
 	}
 }

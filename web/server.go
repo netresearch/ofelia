@@ -217,14 +217,22 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 				if lr.Error != nil {
 					errStr = lr.Error.Error()
 				}
+				stdout := ""
+				if lr.OutputStream != nil {
+					stdout = lr.OutputStream.String()
+				}
+				stderr := ""
+				if lr.ErrorStream != nil {
+					stderr = lr.ErrorStream.String()
+				}
 				execInfo = &apiExecution{
 					Date:     lr.Date,
 					Duration: lr.Duration,
 					Failed:   lr.Failed,
 					Skipped:  lr.Skipped,
 					Error:    errStr,
-					Stdout:   lr.OutputStream.String(),
-					Stderr:   lr.ErrorStream.String(),
+					Stdout:   stdout,
+					Stderr:   stderr,
 				}
 			}
 		}

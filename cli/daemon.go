@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // #nosec G108
-	"os"
 	"time"
 
 	dockerclient "github.com/fsouza/go-dockerclient"
@@ -27,7 +26,6 @@ type DaemonCommand struct {
 	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
 
 	scheduler       *core.Scheduler
-	signals         chan os.Signal
 	pprofServer     *http.Server
 	webServer       *web.Server
 	dockerHandler   *DockerHandler
@@ -161,16 +159,6 @@ func (c *DaemonCommand) start() error {
 	return nil
 }
 
-func (c *DaemonCommand) setSignals() {
-	// Create done channel to wait for shutdown
-	c.done = make(chan struct{})
-
-	// Monitor shutdown manager
-	go func() {
-		<-c.shutdownManager.ShutdownChan()
-		close(c.done)
-	}()
-}
 
 func (c *DaemonCommand) shutdown() error {
 	<-c.done

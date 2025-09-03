@@ -147,36 +147,36 @@ func (d *DockerOperations) NewImageOperations() *ImageOperations {
 }
 
 // PullImage pulls an image with authentication and consistent error handling
-func (io *ImageOperations) PullImage(image string) error {
-	if io.metricsRecorder != nil {
-		io.metricsRecorder.RecordDockerOperation("pull_image")
+func (imgOps *ImageOperations) PullImage(image string) error {
+	if imgOps.metricsRecorder != nil {
+		imgOps.metricsRecorder.RecordDockerOperation("pull_image")
 	}
 
 	opts, auth := buildPullOptions(image)
-	if err := io.client.PullImage(opts, auth); err != nil {
-		if io.metricsRecorder != nil {
-			io.metricsRecorder.RecordDockerError("pull_image")
+	if err := imgOps.client.PullImage(opts, auth); err != nil {
+		if imgOps.metricsRecorder != nil {
+			imgOps.metricsRecorder.RecordDockerError("pull_image")
 		}
 		return WrapImageError("pull", image, err)
 	}
 
-	if io.logger != nil {
-		io.logger.Noticef("Pulled image %s", image)
+	if imgOps.logger != nil {
+		imgOps.logger.Noticef("Pulled image %s", image)
 	}
 	return nil
 }
 
 // ListImages lists images matching the given image name
-func (io *ImageOperations) ListImages(image string) ([]docker.APIImages, error) {
-	if io.metricsRecorder != nil {
-		io.metricsRecorder.RecordDockerOperation("list_images")
+func (imgOps *ImageOperations) ListImages(image string) ([]docker.APIImages, error) {
+	if imgOps.metricsRecorder != nil {
+		imgOps.metricsRecorder.RecordDockerOperation("list_images")
 	}
 
 	opts := buildFindLocalImageOptions(image)
-	images, err := io.client.ListImages(opts)
+	images, err := imgOps.client.ListImages(opts)
 	if err != nil {
-		if io.metricsRecorder != nil {
-			io.metricsRecorder.RecordDockerError("list_images")
+		if imgOps.metricsRecorder != nil {
+			imgOps.metricsRecorder.RecordDockerError("list_images")
 		}
 		return nil, WrapImageError("list", image, err)
 	}
@@ -185,8 +185,8 @@ func (io *ImageOperations) ListImages(image string) ([]docker.APIImages, error) 
 }
 
 // HasImageLocally checks if an image exists locally
-func (io *ImageOperations) HasImageLocally(image string) (bool, error) {
-	images, err := io.ListImages(image)
+func (imgOps *ImageOperations) HasImageLocally(image string) (bool, error) {
+	images, err := imgOps.ListImages(image)
 	if err != nil {
 		return false, err
 	}
@@ -194,28 +194,28 @@ func (io *ImageOperations) HasImageLocally(image string) (bool, error) {
 }
 
 // EnsureImage ensures an image is available locally, pulling if necessary
-func (io *ImageOperations) EnsureImage(image string, forcePull bool) error {
+func (imgOps *ImageOperations) EnsureImage(image string, forcePull bool) error {
 	var pullError error
 
 	// Pull if forced or if not found locally
 	if forcePull {
-		if pullError = io.PullImage(image); pullError == nil {
+		if pullError = imgOps.PullImage(image); pullError == nil {
 			return nil
 		}
 	}
 
 	// Check if available locally
-	hasImage, checkErr := io.HasImageLocally(image)
+	hasImage, checkErr := imgOps.HasImageLocally(image)
 	if checkErr == nil && hasImage {
-		if io.logger != nil {
-			io.logger.Noticef("Found image %s locally", image)
+		if imgOps.logger != nil {
+			imgOps.logger.Noticef("Found image %s locally", image)
 		}
 		return nil
 	}
 
 	// Try to pull if not found locally and not already attempted
 	if !forcePull {
-		if pullError = io.PullImage(image); pullError == nil {
+		if pullError = imgOps.PullImage(image); pullError == nil {
 			return nil
 		}
 	}

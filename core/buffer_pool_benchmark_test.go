@@ -26,8 +26,8 @@ func BenchmarkExecutionMemoryWithPool(b *testing.B) {
 		}
 
 		// Simulate some work
-		e.OutputStream.Write([]byte("test output"))
-		e.ErrorStream.Write([]byte("test error"))
+		_, _ = e.OutputStream.Write([]byte("test output"))
+		_, _ = e.ErrorStream.Write([]byte("test error"))
 
 		// Clean up - returns buffers to pool
 		e.Cleanup()
@@ -61,8 +61,8 @@ func BenchmarkExecutionMemoryWithoutPool(b *testing.B) {
 		bufErr, _ := circbuf.NewBuffer(maxStreamSize)
 
 		// Simulate some work
-		bufOut.Write([]byte("test output"))
-		bufErr.Write([]byte("test error"))
+		_, _ = bufOut.Write([]byte("test output"))
+		_, _ = bufErr.Write([]byte("test error"))
 
 		// No cleanup in old version - relies on GC
 	}
@@ -94,8 +94,8 @@ func TestMemoryUsageComparison(t *testing.T) {
 	for i := 0; i < iterations; i++ {
 		bufOut, _ := circbuf.NewBuffer(maxStreamSize) // 10MB
 		bufErr, _ := circbuf.NewBuffer(maxStreamSize) // 10MB
-		bufOut.Write([]byte("test"))
-		bufErr.Write([]byte("test"))
+		_, _ = bufOut.Write([]byte("test"))
+		_, _ = bufErr.Write([]byte("test"))
 		oldBuffers = append(oldBuffers, bufOut, bufErr)
 	}
 
@@ -111,8 +111,8 @@ func TestMemoryUsageComparison(t *testing.T) {
 
 	for i := 0; i < iterations; i++ {
 		e, _ := NewExecution()
-		e.OutputStream.Write([]byte("test"))
-		e.ErrorStream.Write([]byte("test"))
+		_, _ = e.OutputStream.Write([]byte("test"))
+		_, _ = e.ErrorStream.Write([]byte("test"))
 		e.Cleanup()
 	}
 

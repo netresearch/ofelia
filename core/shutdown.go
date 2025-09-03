@@ -71,7 +71,7 @@ func (sm *ShutdownManager) ListenForShutdown() {
 	go func() {
 		sig := <-sigChan
 		sm.logger.Warningf("Received shutdown signal: %v", sig)
-		sm.Shutdown()
+		_ = sm.Shutdown()
 	}()
 }
 
@@ -220,7 +220,7 @@ func (gs *GracefulScheduler) gracefulStop(ctx context.Context) error {
 	gs.Scheduler.Logger.Noticef("Stopping scheduler gracefully")
 
 	// Stop accepting new jobs
-	gs.Scheduler.Stop()
+	_ = gs.Scheduler.Stop()
 
 	// Wait for active jobs to complete
 	done := make(chan struct{})

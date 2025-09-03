@@ -40,7 +40,6 @@ func versionDockerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(envs)
-
 }
 
 func (s *SuiteExecJob) SetUpTest(c *C) {
@@ -129,5 +128,4 @@ func (s *SuiteExecJob) buildContainer(c *C) {
 		Name:   ContainerFixture,
 		Config: &docker.Config{Image: "test"},
 	})
-
 }

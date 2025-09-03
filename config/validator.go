@@ -134,8 +134,10 @@ func (v *Validator) ValidateCronExpression(field string, value string) {
 
 	// Allow special expressions
 	if strings.HasPrefix(value, "@") {
-		validSpecial := []string{"@yearly", "@annually", "@monthly", "@weekly",
-			"@daily", "@midnight", "@hourly", "@every"}
+		validSpecial := []string{
+			"@yearly", "@annually", "@monthly", "@weekly",
+			"@daily", "@midnight", "@hourly", "@every",
+		}
 
 		isValid := false
 		for _, special := range validSpecial {
@@ -277,63 +279,73 @@ func (cv *ConfigValidator) validateStruct(v *Validator, obj interface{}, path st
 func (cv *ConfigValidator) validateField(v *Validator, field reflect.Value, fieldType reflect.StructField, path string, defaultTag string) {
 	switch field.Kind() {
 	case reflect.String:
-		str := field.String()
-
-		// Skip validation for fields with defaults when they're empty
-		// The application will use the default value
-		if defaultTag != "" && str == "" {
-			return
-		}
-
-		// Check for required fields (non-empty strings without defaults)
-		if defaultTag == "" && str == "" {
-			// Special cases where empty is allowed
-			if !cv.isOptionalField(path) {
-				v.ValidateRequired(path, str)
-			}
-		}
-
-		// Validate specific string fields
-		switch path {
-		case "schedule", "cron":
-			if str != "" {
-				v.ValidateCronExpression(path, str)
-			}
-		case "email-to", "email-from":
-			if str != "" {
-				v.ValidateEmail(path, str)
-			}
-		case "web-address", "pprof-address":
-			if str != "" && !cv.isValidAddress(str) {
-				v.AddError(path, str, "invalid address format")
-			}
-		case "log-level":
-			if str != "" && !cv.isValidLogLevel(str) {
-				v.AddError(path, str, "invalid log level (use: debug, info, warning, error, critical)")
-			}
-		}
-
+		cv.validateStringField(v, field, path, defaultTag)
 	case reflect.Int, reflect.Int64:
-		val := field.Int()
-
-		// Validate port numbers
-		if strings.Contains(path, "port") && val > 0 {
-			v.ValidateRange(path, int(val), 1, 65535)
-		}
-
-		// Validate positive values for counts/sizes
-		if strings.Contains(path, "max") || strings.Contains(path, "size") {
-			if val < 0 {
-				v.AddError(path, val, "must be non-negative")
-			}
-		}
-
+		cv.validateIntField(v, field, path)
 	case reflect.Slice:
-		// Validate slice fields (e.g., dependencies)
-		if field.Len() > 0 && strings.Contains(path, "dependencies") {
-			// Dependencies should reference valid job names
-			// This would need access to all job names, skipping for now
+		cv.validateSliceField(v, field, path)
+	}
+}
+
+// validateStringField validates string type fields
+func (cv *ConfigValidator) validateStringField(v *Validator, field reflect.Value, path string, defaultTag string) {
+	str := field.String()
+
+	// Skip validation for fields with defaults when they're empty
+	if defaultTag != "" && str == "" {
+		return
+	}
+
+	// Check for required fields
+	if defaultTag == "" && str == "" && !cv.isOptionalField(path) {
+		v.ValidateRequired(path, str)
+	}
+
+	// Validate specific string fields
+	if str != "" {
+		cv.validateSpecificStringField(v, path, str)
+	}
+}
+
+// validateSpecificStringField validates specific string field formats
+func (cv *ConfigValidator) validateSpecificStringField(v *Validator, path string, str string) {
+	switch path {
+	case "schedule", "cron":
+		v.ValidateCronExpression(path, str)
+	case "email-to", "email-from":
+		v.ValidateEmail(path, str)
+	case "web-address", "pprof-address":
+		if !cv.isValidAddress(str) {
+			v.AddError(path, str, "invalid address format")
 		}
+	case "log-level":
+		if !cv.isValidLogLevel(str) {
+			v.AddError(path, str, "invalid log level (use: debug, info, warning, error, critical)")
+		}
+	}
+}
+
+// validateIntField validates integer type fields
+func (cv *ConfigValidator) validateIntField(v *Validator, field reflect.Value, path string) {
+	val := field.Int()
+
+	// Validate port numbers
+	if strings.Contains(path, "port") && val > 0 {
+		v.ValidateRange(path, int(val), 1, 65535)
+	}
+
+	// Validate positive values for counts/sizes
+	if (strings.Contains(path, "max") || strings.Contains(path, "size")) && val < 0 {
+		v.AddError(path, val, "must be non-negative")
+	}
+}
+
+// validateSliceField validates slice type fields
+func (cv *ConfigValidator) validateSliceField(v *Validator, field reflect.Value, path string) {
+	// Validate slice fields (e.g., dependencies)
+	if field.Len() > 0 && strings.Contains(path, "dependencies") {
+		// Dependencies should reference valid job names
+		// This would need access to all job names, skipping for now
 	}
 }
 

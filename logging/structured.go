@@ -191,7 +191,7 @@ func (l *StructuredLogger) log(level LogLevel, message string, fields map[string
 	// Format and write
 	if l.jsonFormat {
 		encoder := json.NewEncoder(l.output)
-		encoder.Encode(entry)
+		_ = encoder.Encode(entry)
 	} else {
 		fmt.Fprintf(l.output, "%s [%s] %s",
 			entry.Timestamp.Format(time.RFC3339),

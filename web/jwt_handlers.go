@@ -88,7 +88,7 @@ func (h *JWTLoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // JWTLogoutHandler handles logout requests
@@ -110,7 +110,7 @@ func (h *JWTLogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"message": "Logged out successfully",
 	})
 }
@@ -164,7 +164,7 @@ func (h *JWTRefreshHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // JWTAuthStatus handles authentication status checks
@@ -204,5 +204,5 @@ func (h *JWTAuthStatus) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }

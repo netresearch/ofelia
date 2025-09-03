@@ -39,7 +39,7 @@ func NewTokenManager(secretKey string, expiryHours int) *TokenManager {
 	if secretKey == "" {
 		// Generate a random key if not provided
 		key := make([]byte, 32)
-		rand.Read(key)
+		_, _ = rand.Read(key)
 		secretKey = base64.StdEncoding.EncodeToString(key)
 	}
 
@@ -217,7 +217,7 @@ func (h *LoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Return token in response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"token":      token,
 		"expires_in": h.tokenManager.tokenExpiry.Seconds(),
 	})

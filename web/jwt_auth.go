@@ -83,7 +83,6 @@ func (jm *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
 		}
 		return jm.secretKey, nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}

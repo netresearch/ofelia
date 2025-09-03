@@ -7,10 +7,8 @@ import (
 	"os"
 )
 
-var (
-	// ErrInvalidToken is returned when a token is invalid
-	ErrInvalidToken = errors.New("invalid token")
-)
+// ErrInvalidToken is returned when a token is invalid
+var ErrInvalidToken = errors.New("invalid token")
 
 // AuthProvider interface for authentication implementations
 type AuthProvider interface {

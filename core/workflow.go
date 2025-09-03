@@ -217,7 +217,7 @@ func (wo *WorkflowOrchestrator) triggerDependentJobs(jobName string, executionID
 	for _, triggerJob := range jobsToTrigger {
 		if wo.CanExecute(triggerJob, executionID) {
 			wo.logger.Noticef("Triggering job %s from workflow", triggerJob)
-			wo.scheduler.RunJob(triggerJob)
+			_ = wo.scheduler.RunJob(triggerJob)
 		}
 	}
 
@@ -226,7 +226,7 @@ func (wo *WorkflowOrchestrator) triggerDependentJobs(jobName string, executionID
 		for _, dependent := range node.Dependents {
 			if wo.CanExecute(dependent, executionID) {
 				wo.logger.Noticef("Dependency satisfied, triggering job %s", dependent)
-				wo.scheduler.RunJob(dependent)
+				_ = wo.scheduler.RunJob(dependent)
 			}
 		}
 	}

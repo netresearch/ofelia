@@ -13,11 +13,9 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 )
 
-var (
-	// ErrSkippedExecution pass this error to `Execution.Stop` if you wish to mark
-	// it as skipped.
-	ErrSkippedExecution = errors.New("skipped execution")
-)
+// ErrSkippedExecution pass this error to `Execution.Stop` if you wish to mark
+// it as skipped.
+var ErrSkippedExecution = errors.New("skipped execution")
 
 const (
 	// maximum size of a stdout/stderr stream to be kept in memory and optional stored/sent via mail
