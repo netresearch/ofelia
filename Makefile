@@ -91,7 +91,10 @@ security-check:
 		gosec ./...; \
 		echo "✅ Security check passed"; \
 	else \
-		echo "❌ gosec not found. Install with: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest"; \
+		echo "❌ gosec not found. Install with:"; \
+		echo "   - Snap: sudo snap install gosec"; \
+		echo "   - Binary: https://github.com/securecodewarrior/gosec/releases"; \
+		echo "   - Or run: make dev-setup"; \
 		exit 1; \
 	fi
 
@@ -147,8 +150,21 @@ dev-setup:
 	@echo "🔧 Setting up development environment..."
 	@echo "📦 Installing required tools..."
 	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	@go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+	@echo "✅ golangci-lint installed"
+	@if command -v gosec >/dev/null 2>&1; then \
+		echo "✅ gosec already available"; \
+	else \
+		echo "📥 Installing gosec via snap..."; \
+		if command -v snap >/dev/null 2>&1; then \
+			sudo snap install gosec; \
+		else \
+			echo "⚠️  gosec not found and snap unavailable. Install manually:"; \
+			echo "   - Snap: sudo snap install gosec"; \
+			echo "   - Binary: https://github.com/securecodewarrior/gosec/releases"; \
+		fi; \
+	fi
 	@go install github.com/daixiang0/gci@latest
+	@echo "✅ gci installed"
 	@echo "🪝 Installing Git hooks..."
 	@./scripts/install-hooks.sh
 	@echo "✅ Development environment setup complete!"
