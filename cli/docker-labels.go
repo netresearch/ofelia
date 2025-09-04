@@ -28,11 +28,13 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 	// Security check: filter out host-based jobs from Docker labels unless explicitly allowed
 	if !c.Global.AllowHostJobsFromLabels {
 		if len(localJobs) > 0 {
-			c.logger.Warningf("Ignoring %d local jobs from Docker labels due to security policy. Set allow-host-jobs-from-labels=true to enable", len(localJobs))
+			c.logger.Warningf("Ignoring %d local jobs from Docker labels due to security policy. "+
+				"Set allow-host-jobs-from-labels=true to enable", len(localJobs))
 			localJobs = make(map[string]map[string]interface{})
 		}
 		if len(composeJobs) > 0 {
-			c.logger.Warningf("Ignoring %d compose jobs from Docker labels due to security policy. Set allow-host-jobs-from-labels=true to enable", len(composeJobs))
+			c.logger.Warningf("Ignoring %d compose jobs from Docker labels due to security policy. "+
+				"Set allow-host-jobs-from-labels=true to enable", len(composeJobs))
 			composeJobs = make(map[string]map[string]interface{})
 		}
 	}

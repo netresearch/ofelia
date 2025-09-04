@@ -11,7 +11,7 @@ type ExecJob struct {
 	BareJob     `mapstructure:",squash"`
 	Client      *docker.Client `json:"-"`
 	Container   string         `hash:"true"`
-	User        string         `default:"root" hash:"true"`
+	User        string         `default:"nobody" hash:"true"`
 	TTY         bool           `default:"false" hash:"true"`
 	Environment []string       `mapstructure:"environment" hash:"true"`
 

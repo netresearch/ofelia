@@ -22,7 +22,7 @@ type RunJob struct {
 	Client    *docker.Client    `json:"-"`
 	monitor   *ContainerMonitor `json:"-"` // Container monitor for efficient watching
 	dockerOps *DockerOperations `json:"-"` // High-level Docker operations wrapper
-	User      string            `default:"root" hash:"true"`
+	User      string            `default:"nobody" hash:"true"`
 
 	// ContainerName specifies the name of the container to be created. If
 	// nil, the job name will be used. If set to an empty string, Docker
@@ -167,20 +167,6 @@ func (j *RunJob) startAndWait(ctx *Context) error {
 		ctx.Warn("failed to fetch container logs: " + logsErr.Error())
 	}
 	return err
-}
-
-func (j *RunJob) searchLocalImage() error {
-	imageOps := j.dockerOps.NewImageOperations()
-	imgs, err := imageOps.ListImages(j.Image)
-	if err != nil {
-		return err
-	}
-
-	if len(imgs) != 1 {
-		return ErrLocalImageNotFound
-	}
-
-	return nil
 }
 
 func (j *RunJob) buildContainer() (*docker.Container, error) {

@@ -51,11 +51,10 @@ func (sm *ShutdownManager) RegisterHook(hook ShutdownHook) {
 
 	// Sort hooks by priority
 	for i := len(sm.hooks) - 1; i > 0; i-- {
-		if sm.hooks[i].Priority < sm.hooks[i-1].Priority {
-			sm.hooks[i], sm.hooks[i-1] = sm.hooks[i-1], sm.hooks[i]
-		} else {
+		if sm.hooks[i].Priority >= sm.hooks[i-1].Priority {
 			break
 		}
+		sm.hooks[i], sm.hooks[i-1] = sm.hooks[i-1], sm.hooks[i]
 	}
 }
 
@@ -131,7 +130,7 @@ func (sm *ShutdownManager) Shutdown() error {
 
 	// Check for errors
 	close(errChan)
-	var errors []error
+	errors := make([]error, 0, 5) // Pre-allocate with reasonable capacity
 	for err := range errChan {
 		errors = append(errors, err)
 	}
@@ -160,7 +159,6 @@ type GracefulScheduler struct {
 	*Scheduler
 	shutdownManager *ShutdownManager
 	activeJobs      sync.WaitGroup
-	mu              sync.RWMutex
 }
 
 // NewGracefulScheduler creates a scheduler with graceful shutdown support
@@ -190,7 +188,7 @@ func (gs *GracefulScheduler) RunJobWithTracking(job Job, ctx *Context) error {
 	gs.activeJobs.Add(1)
 	defer gs.activeJobs.Done()
 
-	// Create a context that can be cancelled during shutdown
+	// Create a context that can be canceled during shutdown
 	jobCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -210,8 +208,8 @@ func (gs *GracefulScheduler) RunJobWithTracking(job Job, ctx *Context) error {
 	case err := <-done:
 		return err
 	case <-jobCtx.Done():
-		gs.Scheduler.Logger.Warningf("Job %s cancelled due to shutdown", job.GetName())
-		return fmt.Errorf("job cancelled: shutdown in progress")
+		gs.Scheduler.Logger.Warningf("Job %s canceled due to shutdown", job.GetName())
+		return fmt.Errorf("job canceled: shutdown in progress")
 	}
 }
 
@@ -272,7 +270,7 @@ func (gs *GracefulServer) gracefulStop(ctx context.Context) error {
 	// Stop accepting new connections
 	if err := gs.server.Shutdown(ctx); err != nil {
 		gs.logger.Errorf("HTTP server shutdown error: %v", err)
-		return err
+		return fmt.Errorf("failed to shutdown HTTP server gracefully: %w", err)
 	}
 
 	gs.logger.Noticef("HTTP server stopped successfully")

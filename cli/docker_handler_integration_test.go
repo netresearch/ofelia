@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fsouza/go-dockerclient/testing"
+	"github.com/netresearch/ofelia/test"
 	. "gopkg.in/check.v1"
 )
 
@@ -42,7 +43,7 @@ func (s *DockerHandlerSuite) TestPollingDisabled(c *C) {
 	defer os.Unsetenv("DOCKER_HOST")
 
 	cfg := &DockerConfig{Filters: []string{}, PollInterval: time.Millisecond * 50, UseEvents: false, DisablePolling: true}
-	_, err = NewDockerHandler(context.Background(), notifier, &TestLogger{}, cfg, nil)
+	_, err = NewDockerHandler(context.Background(), notifier, &test.Logger{}, cfg, nil)
 	c.Assert(err, IsNil)
 
 	select {

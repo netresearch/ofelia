@@ -159,7 +159,6 @@ func (c *DaemonCommand) start() error {
 	return nil
 }
 
-
 func (c *DaemonCommand) shutdown() error {
 	<-c.done
 	// Shutdown manager handles everything through registered hooks

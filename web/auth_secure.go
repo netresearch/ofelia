@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -18,10 +19,10 @@ import (
 type SecureAuthConfig struct {
 	Enabled      bool   `json:"enabled"`
 	Username     string `json:"username"`
-	PasswordHash string `json:"password_hash"` // bcrypt hash of password
-	SecretKey    string `json:"secret_key"`
-	TokenExpiry  int    `json:"token_expiry"` // in hours
-	MaxAttempts  int    `json:"max_attempts"` // max login attempts per minute
+	PasswordHash string `json:"passwordHash"` // bcrypt hash of password
+	SecretKey    string `json:"secretKey"`
+	TokenExpiry  int    `json:"tokenExpiry"` // in hours
+	MaxAttempts  int    `json:"maxAttempts"` // max login attempts per minute
 }
 
 // RateLimiter manages login attempt rate limiting
@@ -74,12 +75,12 @@ type SecureTokenManager struct {
 	csrfMu      sync.RWMutex
 }
 
-func NewSecureTokenManager(secretKey string, expiryHours int) *SecureTokenManager {
+func NewSecureTokenManager(secretKey string, expiryHours int) (*SecureTokenManager, error) {
 	if secretKey == "" {
 		// Generate a cryptographically secure random key
 		key := make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
-			panic("failed to generate secret key: " + err.Error())
+			return nil, fmt.Errorf("failed to generate secret key: %w", err)
 		}
 		secretKey = base64.StdEncoding.EncodeToString(key)
 	}
@@ -91,10 +92,10 @@ func NewSecureTokenManager(secretKey string, expiryHours int) *SecureTokenManage
 		csrfTokens:  make(map[string]time.Time),
 	}
 
-	// Start cleanup goroutine
+	// Start cleanup routine
 	go tm.cleanupRoutine()
 
-	return tm
+	return tm, nil
 }
 
 // GenerateCSRFToken creates a new CSRF token
@@ -104,7 +105,7 @@ func (tm *SecureTokenManager) GenerateCSRFToken() (string, error) {
 
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate CSRF token: %w", err)
 	}
 
 	token := base64.URLEncoding.EncodeToString(b)
@@ -140,7 +141,7 @@ func (tm *SecureTokenManager) GenerateToken(username string) (string, error) {
 	// Generate random token
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate authentication token: %w", err)
 	}
 
 	token := base64.URLEncoding.EncodeToString(b)
@@ -343,40 +344,7 @@ func HashPassword(password string) (string, error) {
 	// Use cost 12 for good security/performance balance
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate password hash: %w", err)
 	}
 	return string(hash), nil
-}
-
-// csrfMiddleware adds CSRF protection to requests
-func csrfMiddleware(tm *SecureTokenManager) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip CSRF check for safe methods
-			if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Skip for API calls with proper authentication
-			if r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Validate CSRF token
-			csrfToken := r.Header.Get("X-CSRF-Token")
-			if csrfToken == "" {
-				// Try to get from form data
-				csrfToken = r.FormValue("csrf_token")
-			}
-
-			if csrfToken == "" || !tm.ValidateCSRFToken(csrfToken) {
-				http.Error(w, "Invalid CSRF token", http.StatusForbidden)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
-	}
 }

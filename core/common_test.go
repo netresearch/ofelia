@@ -38,8 +38,8 @@ type hashJob struct {
 func TestGetHash_SupportedKinds(t *testing.T) {
 	var h string
 	val := &hashJob{Str: "x", Num: 7, Flg: true}
-	if err := getHash(reflect.TypeOf(val).Elem(), reflect.ValueOf(val).Elem(), &h); err != nil {
-		t.Fatalf("getHash error: %v", err)
+	if err := GetHash(reflect.TypeOf(val).Elem(), reflect.ValueOf(val).Elem(), &h); err != nil {
+		t.Fatalf("GetHash error: %v", err)
 	}
 	if h == "" {
 		t.Fatalf("expected non-empty hash")

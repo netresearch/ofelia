@@ -7,6 +7,7 @@ import (
 
 // TestSchedulerMoreEntries tests the Entries method
 func TestSchedulerMoreEntries(t *testing.T) {
+	t.Parallel()
 	logger := &LogrusAdapter{}
 	s := NewScheduler(logger)
 
@@ -48,6 +49,7 @@ func TestSchedulerMoreEntries(t *testing.T) {
 
 // TestSchedulerMoreGetDisabledJobs tests the GetDisabledJobs method
 func TestSchedulerMoreGetDisabledJobs(t *testing.T) {
+	t.Parallel()
 	logger := &LogrusAdapter{}
 	s := NewScheduler(logger)
 
@@ -84,6 +86,7 @@ func TestSchedulerMoreGetDisabledJobs(t *testing.T) {
 
 // TestSchedulerMoreRunJob tests the RunJob method
 func TestSchedulerMoreRunJob(t *testing.T) {
+	t.Parallel()
 	logger := &LogrusAdapter{}
 	s := NewScheduler(logger)
 
@@ -121,6 +124,7 @@ func TestSchedulerMoreRunJob(t *testing.T) {
 
 // TestLocalJobFunctions tests LocalJob functions
 func TestLocalJobFunctions(t *testing.T) {
+	t.Parallel()
 	job := NewLocalJob()
 
 	if job == nil {
@@ -155,6 +159,7 @@ func TestLocalJobFunctions(t *testing.T) {
 
 // TestComposeJobFunctions tests ComposeJob functions
 func TestComposeJobFunctions(t *testing.T) {
+	t.Parallel()
 	job := NewComposeJob()
 
 	if job == nil {
@@ -178,6 +183,7 @@ func TestComposeJobFunctions(t *testing.T) {
 
 // TestExecJobFunctions tests ExecJob functions
 func TestExecJobFunctions(t *testing.T) {
+	t.Parallel()
 	job := NewExecJob(nil)
 
 	if job == nil {
@@ -201,6 +207,7 @@ func TestExecJobFunctions(t *testing.T) {
 
 // TestRunJobFunctions tests RunJob functions
 func TestRunJobFunctions(t *testing.T) {
+	t.Parallel()
 	job := NewRunJob(nil)
 
 	if job == nil {
@@ -224,6 +231,7 @@ func TestRunJobFunctions(t *testing.T) {
 
 // TestRunServiceJobFunctions tests RunServiceJob functions
 func TestRunServiceJobFunctions(t *testing.T) {
+	t.Parallel()
 	job := NewRunServiceJob(nil)
 
 	if job == nil {
@@ -247,6 +255,7 @@ func TestRunServiceJobFunctions(t *testing.T) {
 
 // TestBufferPoolMoreGetSized tests GetSized method
 func TestBufferPoolMoreGetSized(t *testing.T) {
+	t.Parallel()
 	pool := NewBufferPool(10, 1024, 4096)
 
 	// Get a sized buffer
@@ -279,6 +288,7 @@ func TestBufferPoolMoreGetSized(t *testing.T) {
 
 // TestContextCreation tests Context creation
 func TestContextCreation(t *testing.T) {
+	t.Parallel()
 	s := NewScheduler(&LogrusAdapter{})
 	job := &LocalJob{
 		BareJob: BareJob{
@@ -309,6 +319,7 @@ func TestContextCreation(t *testing.T) {
 
 // TestLogrusAdapterFunctions tests logrus adapter functions
 func TestLogrusAdapterFunctions(t *testing.T) {
+	t.Parallel()
 	adapter := &LogrusAdapter{}
 
 	// Test that methods can be called without panicking

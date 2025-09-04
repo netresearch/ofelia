@@ -32,7 +32,7 @@ type LoginRequest struct {
 // LoginResponse represents the login response
 type LoginResponse struct {
 	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ExpiresAt time.Time `json:"expiresAt"`
 	Username  string    `json:"username"`
 }
 
@@ -130,7 +130,7 @@ func NewJWTRefreshHandler(jm *JWTManager) *JWTRefreshHandler {
 // RefreshResponse represents the refresh token response
 type RefreshResponse struct {
 	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // ServeHTTP handles the token refresh request
@@ -183,7 +183,7 @@ func NewJWTAuthStatus(jm *JWTManager) *JWTAuthStatus {
 type AuthStatusResponse struct {
 	Authenticated bool      `json:"authenticated"`
 	Username      string    `json:"username,omitempty"`
-	ExpiresAt     time.Time `json:"expires_at,omitempty"`
+	ExpiresAt     time.Time `json:"expiresAt,omitempty"`
 }
 
 // ServeHTTP handles the auth status request

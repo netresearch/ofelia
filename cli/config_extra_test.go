@@ -118,6 +118,7 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 func (s *SuiteConfig) TestDockerLabelsUpdateStaleJobs(c *C) {
 	cfg := NewConfig(test.NewTestLogger())
 	cfg.logger = test.NewTestLogger()
+	cfg.Global.AllowHostJobsFromLabels = true // Enable local jobs from labels for testing
 	cfg.dockerHandler = &DockerHandler{}
 	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)

@@ -66,7 +66,7 @@ func (bp *BufferPool) Put(buf *circbuf.Buffer) {
 
 	// Only return to pool if it's the standard size
 	// Custom-sized buffers are let go for GC
-	if int64(buf.Size()) == bp.size {
+	if buf.Size() == bp.size {
 		bp.pool.Put(buf)
 	}
 }

@@ -7,8 +7,13 @@ import (
 	"time"
 )
 
-// MetricsCollector handles Prometheus-style metrics
-type MetricsCollector struct {
+const (
+	// Metric type constants
+	MetricTypeGauge = "gauge"
+)
+
+// Collector handles Prometheus-style metrics
+type Collector struct {
 	mu      sync.RWMutex
 	metrics map[string]*Metric
 }
@@ -31,48 +36,41 @@ type Histogram struct {
 	Bucket map[float64]int64 // bucket threshold -> count
 }
 
-// NewMetricsCollector creates a new metrics collector
-func NewMetricsCollector() *MetricsCollector {
-	return &MetricsCollector{
+// NewCollector creates a new metrics collector
+func NewCollector() *Collector {
+	return &Collector{
 		metrics: make(map[string]*Metric),
 	}
 }
 
 // RegisterCounter registers a new counter metric
-func (mc *MetricsCollector) RegisterCounter(name, help string) {
-	mc.mu.Lock()
-	defer mc.mu.Unlock()
-
-	mc.metrics[name] = &Metric{
-		Name:        name,
-		Type:        "counter",
-		Help:        help,
-		Value:       0,
-		Labels:      make(map[string]string),
-		LastUpdated: time.Now(),
-	}
+func (mc *Collector) RegisterCounter(name, help string) {
+	mc.registerMetric(name, "counter", help, nil)
 }
 
 // RegisterGauge registers a new gauge metric
-func (mc *MetricsCollector) RegisterGauge(name, help string) {
+func (mc *Collector) RegisterGauge(name, help string) {
+	mc.registerMetric(name, MetricTypeGauge, help, nil)
+}
+
+// registerMetric is a helper function to register a new metric
+func (mc *Collector) registerMetric(name, metricType, help string, histogram *Histogram) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
 
 	mc.metrics[name] = &Metric{
 		Name:        name,
-		Type:        "gauge",
+		Type:        metricType,
 		Help:        help,
 		Value:       0,
 		Labels:      make(map[string]string),
+		Histogram:   histogram,
 		LastUpdated: time.Now(),
 	}
 }
 
 // RegisterHistogram registers a new histogram metric
-func (mc *MetricsCollector) RegisterHistogram(name, help string, buckets []float64) {
-	mc.mu.Lock()
-	defer mc.mu.Unlock()
-
+func (mc *Collector) RegisterHistogram(name, help string, buckets []float64) {
 	hist := &Histogram{
 		Count:  0,
 		Sum:    0,
@@ -84,40 +82,41 @@ func (mc *MetricsCollector) RegisterHistogram(name, help string, buckets []float
 		hist.Bucket[b] = 0
 	}
 
-	mc.metrics[name] = &Metric{
-		Name:        name,
-		Type:        "histogram",
-		Help:        help,
-		Histogram:   hist,
-		Labels:      make(map[string]string),
-		LastUpdated: time.Now(),
-	}
+	mc.registerMetric(name, "histogram", help, hist)
 }
 
 // IncrementCounter increments a counter metric
-func (mc *MetricsCollector) IncrementCounter(name string, value float64) {
-	mc.mu.Lock()
-	defer mc.mu.Unlock()
-
-	if metric, exists := mc.metrics[name]; exists && metric.Type == "counter" {
-		metric.Value += value
-		metric.LastUpdated = time.Now()
-	}
+func (mc *Collector) IncrementCounter(name string, value float64) {
+	mc.updateMetric(name, func(metric *Metric) {
+		if metric.Type == "counter" {
+			metric.Value += value
+			metric.LastUpdated = time.Now()
+		}
+	})
 }
 
 // SetGauge sets a gauge metric value
-func (mc *MetricsCollector) SetGauge(name string, value float64) {
+func (mc *Collector) SetGauge(name string, value float64) {
+	mc.updateMetric(name, func(metric *Metric) {
+		if metric.Type == MetricTypeGauge {
+			metric.Value = value
+			metric.LastUpdated = time.Now()
+		}
+	})
+}
+
+// updateMetric is a helper function to safely update a metric
+func (mc *Collector) updateMetric(name string, updateFn func(*Metric)) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
 
-	if metric, exists := mc.metrics[name]; exists && metric.Type == "gauge" {
-		metric.Value = value
-		metric.LastUpdated = time.Now()
+	if metric, exists := mc.metrics[name]; exists {
+		updateFn(metric)
 	}
 }
 
 // ObserveHistogram records a value in a histogram
-func (mc *MetricsCollector) ObserveHistogram(name string, value float64) {
+func (mc *Collector) ObserveHistogram(name string, value float64) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
 
@@ -138,49 +137,35 @@ func (mc *MetricsCollector) ObserveHistogram(name string, value float64) {
 }
 
 // RecordJobRetry records a job retry attempt
-func (mc *MetricsCollector) RecordJobRetry(jobName string, attempt int, success bool) {
-	mc.mu.Lock()
-	defer mc.mu.Unlock()
-
+func (mc *Collector) RecordJobRetry(jobName string, attempt int, success bool) {
 	// Increment total retries counter
-	if counter, exists := mc.metrics["ofelia_job_retries_total"]; exists {
-		counter.Value++
-		counter.LastUpdated = time.Now()
-	}
+	mc.IncrementCounter("ofelia_job_retries_total", 1)
 
 	// Record success or failure
 	if success {
-		if counter, exists := mc.metrics["ofelia_job_retry_success_total"]; exists {
-			counter.Value++
-			counter.LastUpdated = time.Now()
-		}
+		mc.IncrementCounter("ofelia_job_retry_success_total", 1)
 	} else {
-		if counter, exists := mc.metrics["ofelia_job_retry_failed_total"]; exists {
-			counter.Value++
-			counter.LastUpdated = time.Now()
-		}
+		mc.IncrementCounter("ofelia_job_retry_failed_total", 1)
 	}
 
 	// Record attempt number in histogram (simplified - just track the attempt count)
-	if hist, exists := mc.metrics["ofelia_job_retry_delay_seconds"]; exists && hist.Histogram != nil {
-		// Use attempt number as a proxy for delay (higher attempts = longer delays)
-		delaySeconds := float64(attempt) // Simplified: each attempt represents increasing delay
-		mc.ObserveHistogram("ofelia_job_retry_delay_seconds", delaySeconds)
-	}
+	// Use attempt number as a proxy for delay (higher attempts = longer delays)
+	delaySeconds := float64(attempt) // Simplified: each attempt represents increasing delay
+	mc.ObserveHistogram("ofelia_job_retry_delay_seconds", delaySeconds)
 }
 
 // RecordContainerEvent records a container event received
-func (mc *MetricsCollector) RecordContainerEvent() {
+func (mc *Collector) RecordContainerEvent() {
 	mc.IncrementCounter("ofelia_container_monitor_events_total", 1)
 }
 
 // RecordContainerMonitorFallback records a fallback to polling
-func (mc *MetricsCollector) RecordContainerMonitorFallback() {
+func (mc *Collector) RecordContainerMonitorFallback() {
 	mc.IncrementCounter("ofelia_container_monitor_fallbacks_total", 1)
 }
 
 // RecordContainerMonitorMethod records the monitoring method being used
-func (mc *MetricsCollector) RecordContainerMonitorMethod(usingEvents bool) {
+func (mc *Collector) RecordContainerMonitorMethod(usingEvents bool) {
 	if usingEvents {
 		mc.SetGauge("ofelia_container_monitor_method", 1)
 	} else {
@@ -189,22 +174,22 @@ func (mc *MetricsCollector) RecordContainerMonitorMethod(usingEvents bool) {
 }
 
 // RecordContainerWaitDuration records the time spent waiting for a container
-func (mc *MetricsCollector) RecordContainerWaitDuration(seconds float64) {
+func (mc *Collector) RecordContainerWaitDuration(seconds float64) {
 	mc.ObserveHistogram("ofelia_container_wait_duration_seconds", seconds)
 }
 
 // RecordDockerOperation records a Docker API operation
-func (mc *MetricsCollector) RecordDockerOperation(operation string) {
+func (mc *Collector) RecordDockerOperation(operation string) {
 	mc.IncrementCounter("ofelia_docker_operations_total", 1)
 }
 
 // RecordDockerError records a Docker API error
-func (mc *MetricsCollector) RecordDockerError(operation string) {
+func (mc *Collector) RecordDockerError(operation string) {
 	mc.IncrementCounter("ofelia_docker_errors_total", 1)
 }
 
 // Export formats metrics in Prometheus text format
-func (mc *MetricsCollector) Export() string {
+func (mc *Collector) Export() string {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()
 
@@ -216,7 +201,7 @@ func (mc *MetricsCollector) Export() string {
 		output += fmt.Sprintf("# TYPE %s %s\n", metric.Name, metric.Type)
 
 		switch metric.Type {
-		case "counter", "gauge":
+		case "counter", MetricTypeGauge:
 			output += fmt.Sprintf("%s %f\n", metric.Name, metric.Value)
 
 		case "histogram":
@@ -238,7 +223,7 @@ func (mc *MetricsCollector) Export() string {
 }
 
 // Handler returns an HTTP handler for the metrics endpoint
-func (mc *MetricsCollector) Handler() http.HandlerFunc {
+func (mc *Collector) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		w.WriteHeader(http.StatusOK)
@@ -247,7 +232,7 @@ func (mc *MetricsCollector) Handler() http.HandlerFunc {
 }
 
 // DefaultMetrics initializes common metrics
-func (mc *MetricsCollector) InitDefaultMetrics() {
+func (mc *Collector) InitDefaultMetrics() {
 	// Job metrics
 	mc.RegisterCounter("ofelia_jobs_total", "Total number of jobs executed")
 	mc.RegisterCounter("ofelia_jobs_failed_total", "Total number of failed jobs")
@@ -289,13 +274,13 @@ func (mc *MetricsCollector) InitDefaultMetrics() {
 
 // JobMetrics tracks job execution metrics
 type JobMetrics struct {
-	collector *MetricsCollector
+	collector *Collector
 	startTime map[string]time.Time
 	mu        sync.Mutex
 }
 
 // NewJobMetrics creates a job metrics tracker
-func NewJobMetrics(collector *MetricsCollector) *JobMetrics {
+func NewJobMetrics(collector *Collector) *JobMetrics {
 	return &JobMetrics{
 		collector: collector,
 		startTime: make(map[string]time.Time),
@@ -333,18 +318,18 @@ func (jm *JobMetrics) JobCompleted(jobID string, success bool) {
 }
 
 // Helper method to get gauge value
-func (mc *MetricsCollector) getGaugeValue(name string) float64 {
+func (mc *Collector) getGaugeValue(name string) float64 {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()
 
-	if metric, exists := mc.metrics[name]; exists && metric.Type == "gauge" {
+	if metric, exists := mc.metrics[name]; exists && metric.Type == MetricTypeGauge {
 		return metric.Value
 	}
 	return 0
 }
 
 // HTTPMetrics middleware for tracking HTTP requests
-func HTTPMetrics(mc *MetricsCollector) func(http.Handler) http.Handler {
+func HTTPMetrics(mc *Collector) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()

@@ -22,7 +22,7 @@ type SuiteConfig struct{}
 var _ = Suite(&SuiteConfig{})
 
 // Use shared TestLogger from test package
-type TestLogger = test.TestLogger
+type TestLogger = test.Logger
 
 func (s *SuiteConfig) TestBuildFromString(c *C) {
 	mockLogger := TestLogger{}
@@ -480,14 +480,27 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 
 	for _, t := range testcases {
 		conf := Config{}
-		conf.logger = test.NewTestLogger() // Initialize logger for tests
+		conf.logger = test.NewTestLogger()         // Initialize logger for tests
+		conf.Global.AllowHostJobsFromLabels = true // Enable local jobs from labels for testing
 		err := conf.buildFromDockerLabels(t.Labels)
 		c.Assert(err, IsNil)
 		setJobSource(&conf, JobSourceLabel)
 		setJobSource(&t.ExpectedConfig, JobSourceLabel)
+
+		// Clear logger for comparison to avoid message count mismatches
+		actualLogger := conf.logger
+		conf.logger = nil
+		t.ExpectedConfig.logger = nil
+
+		// Set the same security flag on expected config
+		t.ExpectedConfig.Global.AllowHostJobsFromLabels = true
+
 		if !c.Check(conf, DeepEquals, t.ExpectedConfig) {
 			c.Errorf("Test %q\nExpected %s, but got %s", t.Comment, toJSON(t.ExpectedConfig), toJSON(conf))
 		}
+
+		// Restore logger
+		conf.logger = actualLogger
 	}
 }
 

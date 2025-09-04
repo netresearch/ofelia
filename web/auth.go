@@ -12,14 +12,19 @@ import (
 	"time"
 )
 
+const (
+	// Authorization constants
+	BearerPrefix = "Bearer"
+)
+
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
 	Enabled      bool   `json:"enabled"`
 	Username     string `json:"username"`
-	Password     string `json:"password"`      // Deprecated: use PasswordHash instead
-	PasswordHash string `json:"password_hash"` // bcrypt hash of password (preferred)
-	SecretKey    string `json:"secret_key"`
-	TokenExpiry  int    `json:"token_expiry"` // in hours
+	Password     string `json:"password"`     // Deprecated: use PasswordHash instead
+	PasswordHash string `json:"passwordHash"` // bcrypt hash of password (preferred)
+	SecretKey    string `json:"secretKey"`
+	TokenExpiry  int    `json:"tokenExpiry"` // in hours
 }
 
 // Simple JWT implementation (for demonstration - in production use a proper JWT library)
@@ -32,7 +37,7 @@ type TokenManager struct {
 
 type TokenData struct {
 	Username  string    `json:"username"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 func NewTokenManager(secretKey string, expiryHours int) *TokenManager {
@@ -58,7 +63,7 @@ func (tm *TokenManager) GenerateToken(username string) (string, error) {
 	// Generate random token
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate random token: %w", err)
 	}
 
 	token := base64.URLEncoding.EncodeToString(b)
@@ -131,12 +136,12 @@ func authMiddleware(tm *TokenManager, required bool) func(http.Handler) http.Han
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
-				authHeader = "Bearer " + cookie.Value
+				authHeader = BearerPrefix + " " + cookie.Value
 			}
 
 			// Validate Bearer token
 			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || parts[0] != "Bearer" {
+			if len(parts) != 2 || parts[0] != BearerPrefix {
 				http.Error(w, "Invalid authorization header", http.StatusUnauthorized)
 				return
 			}
@@ -238,7 +243,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "" {
 		parts := strings.Split(authHeader, " ")
-		if len(parts) == 2 && parts[0] == "Bearer" {
+		if len(parts) == 2 && parts[0] == BearerPrefix {
 			token = parts[1]
 		}
 	} else {

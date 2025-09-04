@@ -76,11 +76,11 @@ func (wo *WorkflowOrchestrator) BuildDependencyGraph(jobs []Job) error {
 	// Second pass: build dependent relationships
 	for jobName, node := range wo.dependencies {
 		for _, dep := range node.Dependencies {
-			if depNode, exists := wo.dependencies[dep]; exists {
-				depNode.Dependents = append(depNode.Dependents, jobName)
-			} else {
+			depNode, exists := wo.dependencies[dep]
+			if !exists {
 				return fmt.Errorf("job %s depends on non-existent job %s", jobName, dep)
 			}
+			depNode.Dependents = append(depNode.Dependents, jobName)
 		}
 	}
 

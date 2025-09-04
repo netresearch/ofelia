@@ -24,15 +24,15 @@ type HealthCheck struct {
 	Name        string        `json:"name"`
 	Status      HealthStatus  `json:"status"`
 	Message     string        `json:"message,omitempty"`
-	LastChecked time.Time     `json:"last_checked"`
-	Duration    time.Duration `json:"duration_ms"`
+	LastChecked time.Time     `json:"lastChecked"`
+	Duration    time.Duration `json:"durationMs"`
 }
 
 // HealthResponse represents the health check response
 type HealthResponse struct {
 	Status    HealthStatus           `json:"status"`
 	Timestamp time.Time              `json:"timestamp"`
-	Uptime    float64                `json:"uptime_seconds"`
+	Uptime    float64                `json:"uptimeSeconds"`
 	Version   string                 `json:"version"`
 	Checks    map[string]HealthCheck `json:"checks"`
 	System    SystemInfo             `json:"system"`
@@ -40,12 +40,12 @@ type HealthResponse struct {
 
 // SystemInfo contains system-level information
 type SystemInfo struct {
-	GoVersion    string `json:"go_version"`
+	GoVersion    string `json:"goVersion"`
 	NumGoroutine int    `json:"goroutines"`
 	NumCPU       int    `json:"cpus"`
-	MemoryAlloc  uint64 `json:"memory_alloc_bytes"`
-	MemoryTotal  uint64 `json:"memory_total_bytes"`
-	GCRuns       uint32 `json:"gc_runs"`
+	MemoryAlloc  uint64 `json:"memoryAllocBytes"`
+	MemoryTotal  uint64 `json:"memoryTotalBytes"`
+	GCRuns       uint32 `json:"gcRuns"`
 }
 
 // HealthChecker performs health checks
@@ -171,13 +171,14 @@ func (hc *HealthChecker) checkSystemResources() {
 	// Check memory usage
 	memoryUsagePercent := float64(m.Alloc) / float64(m.Sys) * 100
 
-	if memoryUsagePercent > 90 {
+	switch {
+	case memoryUsagePercent > 90:
 		check.Status = HealthStatusUnhealthy
 		check.Message = "Memory usage critical"
-	} else if memoryUsagePercent > 75 {
+	case memoryUsagePercent > 75:
 		check.Status = HealthStatusDegraded
 		check.Message = "Memory usage high"
-	} else {
+	default:
 		check.Status = HealthStatusHealthy
 		check.Message = "System resources normal"
 	}

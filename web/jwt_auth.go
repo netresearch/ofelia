@@ -1,8 +1,6 @@
 package web
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -26,14 +24,8 @@ type Claims struct {
 // NewJWTManager creates a new JWT manager
 func NewJWTManager(secretKey string, expiryHours int) (*JWTManager, error) {
 	if secretKey == "" {
-		// Generate a random key if not provided
-		key := make([]byte, 32)
-		if _, err := rand.Read(key); err != nil {
-			return nil, fmt.Errorf("failed to generate secure random key: %w", err)
-		}
-		secretKey = base64.StdEncoding.EncodeToString(key)
-		// This is a security risk as the key will be different on each restart
-		fmt.Println("WARNING: Using auto-generated JWT secret key - provide explicit secret for production")
+		// Require explicit secret key for security
+		return nil, fmt.Errorf("JWT secret key is required for security - set OFELIA_JWT_SECRET environment variable or provide via config")
 	}
 
 	// Validate key length for security

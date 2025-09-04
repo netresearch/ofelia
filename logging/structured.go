@@ -45,8 +45,8 @@ type LogEntry struct {
 	Message       string                 `json:"message"`
 	Fields        map[string]interface{} `json:"fields,omitempty"`
 	Caller        string                 `json:"caller,omitempty"`
-	StackTrace    string                 `json:"stack_trace,omitempty"`
-	CorrelationID string                 `json:"correlation_id,omitempty"`
+	StackTrace    string                 `json:"stackTrace,omitempty"`
+	CorrelationID string                 `json:"correlationId,omitempty"`
 }
 
 // StructuredLogger provides structured logging capabilities
@@ -141,9 +141,15 @@ func (l *StructuredLogger) WithCorrelationID(id string) *StructuredLogger {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	newLogger := *l
-	newLogger.correlationID = id
-	return &newLogger
+	newLogger := &StructuredLogger{
+		level:         l.level,
+		output:        l.output,
+		fields:        l.fields,
+		correlationID: id,
+		includeCaller: l.includeCaller,
+		jsonFormat:    l.jsonFormat,
+	}
+	return newLogger
 }
 
 // log writes a log entry
@@ -270,22 +276,25 @@ func (l *StructuredLogger) ErrorWithFields(message string, fields map[string]int
 	l.log(ErrorLevel, message, fields)
 }
 
-// Fatal logs a fatal message and exits
+// Fatal logs a fatal message. Note: Does not exit automatically.
+// Caller should handle the fatal condition appropriately.
 func (l *StructuredLogger) Fatal(message string) {
 	l.log(FatalLevel, message, nil)
-	os.Exit(1)
+	// Removed os.Exit(1) - let caller decide how to handle fatal errors
 }
 
-// Fatalf logs a formatted fatal message and exits
+// Fatalf logs a formatted fatal message. Note: Does not exit automatically.
+// Caller should handle the fatal condition appropriately.
 func (l *StructuredLogger) Fatalf(format string, args ...interface{}) {
 	l.log(FatalLevel, fmt.Sprintf(format, args...), nil)
-	os.Exit(1)
+	// Removed os.Exit(1) - let caller decide how to handle fatal errors
 }
 
-// FatalWithFields logs a fatal message with fields and exits
+// FatalWithFields logs a fatal message with fields. Note: Does not exit automatically.
+// Caller should handle the fatal condition appropriately.
 func (l *StructuredLogger) FatalWithFields(message string, fields map[string]interface{}) {
 	l.log(FatalLevel, message, fields)
-	os.Exit(1)
+	// Removed os.Exit(1) - let caller decide how to handle fatal errors
 }
 
 // JobLogger provides job-specific logging
@@ -293,6 +302,7 @@ type JobLogger struct {
 	*StructuredLogger
 	jobID   string
 	jobName string
+	metrics MetricsCollector
 }
 
 // NewJobLogger creates a logger for a specific job
@@ -308,11 +318,22 @@ func NewJobLogger(jobID, jobName string) *JobLogger {
 	}
 }
 
+// SetMetricsCollector sets the metrics collector for the job logger
+func (jl *JobLogger) SetMetricsCollector(metrics MetricsCollector) {
+	jl.metrics = metrics
+}
+
 // LogStart logs job start
 func (jl *JobLogger) LogStart() {
 	jl.InfoWithFields("Job started", map[string]interface{}{
 		"event": "job_start",
 	})
+
+	// Update metrics if available
+	if jl.metrics != nil {
+		jl.metrics.IncrementCounter("jobs_started_total", 1)
+		jl.metrics.SetGauge("jobs_running", 1)
+	}
 }
 
 // LogComplete logs job completion
@@ -325,8 +346,20 @@ func (jl *JobLogger) LogComplete(duration time.Duration, success bool) {
 
 	if success {
 		jl.InfoWithFields("Job completed successfully", fields)
+		if jl.metrics != nil {
+			jl.metrics.IncrementCounter("jobs_success_total", 1)
+		}
 	} else {
 		jl.ErrorWithFields("Job failed", fields)
+		if jl.metrics != nil {
+			jl.metrics.IncrementCounter("jobs_failed_total", 1)
+		}
+	}
+
+	// Record duration in metrics
+	if jl.metrics != nil {
+		jl.metrics.ObserveHistogram("job_duration_seconds", duration.Seconds())
+		jl.metrics.SetGauge("jobs_running", -1)
 	}
 }
 
@@ -336,10 +369,49 @@ func (jl *JobLogger) LogProgress(message string, percentComplete float64) {
 		"event":    "job_progress",
 		"progress": percentComplete,
 	})
+
+	// Update progress gauge
+	if jl.metrics != nil {
+		jl.metrics.SetGauge("job_progress_percent", percentComplete)
+	}
+}
+
+// LogError logs an error with context
+func (jl *JobLogger) LogError(err error, context string) {
+	jl.ErrorWithFields("Job error occurred", map[string]interface{}{
+		"event":   "job_error",
+		"error":   err.Error(),
+		"context": context,
+	})
+
+	if jl.metrics != nil {
+		jl.metrics.IncrementCounter("job_errors_total", 1)
+	}
+}
+
+// LogRetry logs a retry attempt
+func (jl *JobLogger) LogRetry(attempt int, maxAttempts int, err error) {
+	jl.WarnWithFields("Retrying job execution", map[string]interface{}{
+		"event":        "job_retry",
+		"attempt":      attempt,
+		"max_attempts": maxAttempts,
+		"error":        err.Error(),
+	})
+
+	if jl.metrics != nil {
+		jl.metrics.IncrementCounter("job_retries_total", 1)
+	}
 }
 
 // Default logger instance
 var DefaultLogger = NewStructuredLogger()
+
+// MetricsCollector interface for logging metrics integration
+type MetricsCollector interface {
+	IncrementCounter(name string, value float64)
+	SetGauge(name string, value float64)
+	ObserveHistogram(name string, value float64)
+}
 
 // Package-level convenience functions
 func Debug(message string) { DefaultLogger.Debug(message) }

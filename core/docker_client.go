@@ -255,7 +255,9 @@ func (lo *LogsOperations) GetLogs(containerID string, opts docker.LogsOptions) e
 }
 
 // GetLogsSince retrieves container logs since a specific time
-func (lo *LogsOperations) GetLogsSince(containerID string, since time.Time, stdout, stderr bool, outputStream, errorStream io.Writer) error {
+func (lo *LogsOperations) GetLogsSince(
+	containerID string, since time.Time, stdout, stderr bool, outputStream, errorStream io.Writer,
+) error {
 	opts := docker.LogsOptions{
 		Container:   containerID,
 		Stdout:      stdout,

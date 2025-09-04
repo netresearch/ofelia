@@ -25,7 +25,7 @@ func (e ValidationError) Error() string {
 type ValidationErrors []ValidationError
 
 func (e ValidationErrors) Error() string {
-	var messages []string
+	messages := make([]string, 0, len(e))
 	for _, err := range e {
 		messages = append(messages, err.Error())
 	}
@@ -71,23 +71,23 @@ func (v *Validator) ValidateRequired(field string, value string) {
 }
 
 // ValidateMinLength validates minimum string length
-func (v *Validator) ValidateMinLength(field string, value string, min int) {
-	if len(value) < min {
-		v.AddError(field, value, fmt.Sprintf("must be at least %d characters", min))
+func (v *Validator) ValidateMinLength(field string, value string, minLength int) {
+	if len(value) < minLength {
+		v.AddError(field, value, fmt.Sprintf("must be at least %d characters", minLength))
 	}
 }
 
 // ValidateMaxLength validates maximum string length
-func (v *Validator) ValidateMaxLength(field string, value string, max int) {
-	if len(value) > max {
-		v.AddError(field, value, fmt.Sprintf("must be at most %d characters", max))
+func (v *Validator) ValidateMaxLength(field string, value string, maxLength int) {
+	if len(value) > maxLength {
+		v.AddError(field, value, fmt.Sprintf("must be at most %d characters", maxLength))
 	}
 }
 
 // ValidateRange validates that a number is within range
-func (v *Validator) ValidateRange(field string, value int, min, max int) {
-	if value < min || value > max {
-		v.AddError(field, value, fmt.Sprintf("must be between %d and %d", min, max))
+func (v *Validator) ValidateRange(field string, value int, minVal, maxVal int) {
+	if value < minVal || value > maxVal {
+		v.AddError(field, value, fmt.Sprintf("must be between %d and %d", minVal, maxVal))
 	}
 }
 
@@ -196,19 +196,21 @@ func (v *Validator) ValidatePath(field string, value string) {
 }
 
 // ConfigValidator validates complete configuration
-type ConfigValidator struct {
-	config interface{}
+type Validator2 struct {
+	config    interface{}
+	sanitizer *Sanitizer
 }
 
 // NewConfigValidator creates a configuration validator
-func NewConfigValidator(config interface{}) *ConfigValidator {
-	return &ConfigValidator{
-		config: config,
+func NewConfigValidator(config interface{}) *Validator2 {
+	return &Validator2{
+		config:    config,
+		sanitizer: NewSanitizer(),
 	}
 }
 
 // Validate performs validation on the configuration
-func (cv *ConfigValidator) Validate() error {
+func (cv *Validator2) Validate() error {
 	v := NewValidator()
 
 	// Validate the configuration using reflection to check struct tags and values
@@ -222,7 +224,7 @@ func (cv *ConfigValidator) Validate() error {
 }
 
 // validateStruct recursively validates struct fields based on tags
-func (cv *ConfigValidator) validateStruct(v *Validator, obj interface{}, path string) {
+func (cv *Validator2) validateStruct(v *Validator, obj interface{}, path string) {
 	val := reflect.ValueOf(obj)
 	if val.Kind() == reflect.Ptr {
 		if val.IsNil() {
@@ -271,12 +273,12 @@ func (cv *ConfigValidator) validateStruct(v *Validator, obj interface{}, path st
 		}
 
 		// Validate based on field type and value
-		cv.validateField(v, field, fieldType, fieldPath, defaultTag)
+		cv.validateField(v, field, fieldPath, defaultTag)
 	}
 }
 
 // validateField validates individual fields based on their type and tags
-func (cv *ConfigValidator) validateField(v *Validator, field reflect.Value, fieldType reflect.StructField, path string, defaultTag string) {
+func (cv *Validator2) validateField(v *Validator, field reflect.Value, path string, defaultTag string) {
 	switch field.Kind() {
 	case reflect.String:
 		cv.validateStringField(v, field, path, defaultTag)
@@ -284,11 +286,21 @@ func (cv *ConfigValidator) validateField(v *Validator, field reflect.Value, fiel
 		cv.validateIntField(v, field, path)
 	case reflect.Slice:
 		cv.validateSliceField(v, field, path)
+	case reflect.Invalid, reflect.Bool, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
+		reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
+		reflect.Ptr, reflect.Struct, reflect.UnsafePointer:
+		// These types are not currently validated or are handled elsewhere (e.g., structs)
+		// No validation needed for these field types in this context
+	default:
+		// Handle any future or unexpected types gracefully
+		// No validation performed for unrecognized types
 	}
 }
 
 // validateStringField validates string type fields
-func (cv *ConfigValidator) validateStringField(v *Validator, field reflect.Value, path string, defaultTag string) {
+func (cv *Validator2) validateStringField(v *Validator, field reflect.Value, path string, defaultTag string) {
 	str := field.String()
 
 	// Skip validation for fields with defaults when they're empty
@@ -308,25 +320,108 @@ func (cv *ConfigValidator) validateStringField(v *Validator, field reflect.Value
 }
 
 // validateSpecificStringField validates specific string field formats
-func (cv *ConfigValidator) validateSpecificStringField(v *Validator, path string, str string) {
+func (cv *Validator2) validateSpecificStringField(v *Validator, path string, str string) {
+	// First perform general security validation
+	if !cv.performSecurityValidation(v, path, str) {
+		return // Stop validation if security check fails
+	}
+
+	// Validate based on field type
 	switch path {
 	case "schedule", "cron":
-		v.ValidateCronExpression(path, str)
+		cv.validateCronField(v, path, str)
 	case "email-to", "email-from":
-		v.ValidateEmail(path, str)
+		cv.validateEmailField(v, path, str)
 	case "web-address", "pprof-address":
-		if !cv.isValidAddress(str) {
-			v.AddError(path, str, "invalid address format")
-		}
+		cv.validateAddressField(v, path, str)
 	case "log-level":
-		if !cv.isValidLogLevel(str) {
-			v.AddError(path, str, "invalid log level (use: debug, info, warning, error, critical)")
+		cv.validateLogLevelField(v, path, str)
+	case "command", "cmd":
+		cv.validateCommandField(v, path, str)
+	case "image":
+		cv.validateImageField(v, path, str)
+	case "save-folder", "working_dir":
+		cv.validatePathField(v, path, str)
+	}
+}
+
+// performSecurityValidation performs general security validation for all string fields
+func (cv *Validator2) performSecurityValidation(v *Validator, path string, str string) bool {
+	if cv.sanitizer == nil {
+		return true
+	}
+
+	// General string sanitization for all fields
+	if _, err := cv.sanitizer.SanitizeString(str, 1024); err != nil {
+		v.AddError(path, str, fmt.Sprintf("input validation failed: %v", err))
+		return false
+	}
+	return true
+}
+
+// validateCronField validates cron expression fields
+func (cv *Validator2) validateCronField(v *Validator, path string, str string) {
+	v.ValidateCronExpression(path, str)
+	if cv.sanitizer != nil {
+		if err := cv.sanitizer.ValidateCronExpression(str); err != nil {
+			v.AddError(path, str, fmt.Sprintf("cron validation failed: %v", err))
+		}
+	}
+}
+
+// validateEmailField validates email fields
+func (cv *Validator2) validateEmailField(v *Validator, path string, str string) {
+	v.ValidateEmail(path, str)
+	if cv.sanitizer != nil {
+		if err := cv.sanitizer.ValidateEmailList(str); err != nil {
+			v.AddError(path, str, fmt.Sprintf("email validation failed: %v", err))
+		}
+	}
+}
+
+// validateAddressField validates address fields
+func (cv *Validator2) validateAddressField(v *Validator, path string, str string) {
+	if !cv.isValidAddress(str) {
+		v.AddError(path, str, "invalid address format")
+	}
+}
+
+// validateLogLevelField validates log level fields
+func (cv *Validator2) validateLogLevelField(v *Validator, path string, str string) {
+	if !cv.isValidLogLevel(str) {
+		v.AddError(path, str, "invalid log level (use: debug, info, warning, error, critical)")
+	}
+}
+
+// validateCommandField validates command fields
+func (cv *Validator2) validateCommandField(v *Validator, path string, str string) {
+	if cv.sanitizer != nil {
+		if err := cv.sanitizer.ValidateCommand(str); err != nil {
+			v.AddError(path, str, fmt.Sprintf("command validation failed: %v", err))
+		}
+	}
+}
+
+// validateImageField validates Docker image fields
+func (cv *Validator2) validateImageField(v *Validator, path string, str string) {
+	if cv.sanitizer != nil {
+		if err := cv.sanitizer.ValidateDockerImage(str); err != nil {
+			v.AddError(path, str, fmt.Sprintf("Docker image validation failed: %v", err))
+		}
+	}
+}
+
+// validatePathField validates path fields
+func (cv *Validator2) validatePathField(v *Validator, path string, str string) {
+	if cv.sanitizer != nil {
+		if err := cv.sanitizer.ValidatePath(str, ""); err != nil {
+			v.AddError(path, str, fmt.Sprintf("path validation failed: %v", err))
 		}
 	}
 }
 
 // validateIntField validates integer type fields
-func (cv *ConfigValidator) validateIntField(v *Validator, field reflect.Value, path string) {
+func (cv *Validator2) validateIntField(v *Validator, field reflect.Value, path string) {
 	val := field.Int()
 
 	// Validate port numbers
@@ -341,16 +436,13 @@ func (cv *ConfigValidator) validateIntField(v *Validator, field reflect.Value, p
 }
 
 // validateSliceField validates slice type fields
-func (cv *ConfigValidator) validateSliceField(v *Validator, field reflect.Value, path string) {
+func (cv *Validator2) validateSliceField(v *Validator, field reflect.Value, path string) {
 	// Validate slice fields (e.g., dependencies)
-	if field.Len() > 0 && strings.Contains(path, "dependencies") {
-		// Dependencies should reference valid job names
-		// This would need access to all job names, skipping for now
-	}
+	// Dependencies validation would need access to all job names - deferred to runtime
 }
 
 // isOptionalField checks if a field is optional (can be empty)
-func (cv *ConfigValidator) isOptionalField(path string) bool {
+func (cv *Validator2) isOptionalField(path string) bool {
 	optionalFields := []string{
 		"smtp-user", "smtp-password", "email-to", "email-from",
 		"slack-webhook", "slack-channel", "save-folder",
@@ -368,7 +460,7 @@ func (cv *ConfigValidator) isOptionalField(path string) bool {
 }
 
 // isValidAddress checks if an address string is valid
-func (cv *ConfigValidator) isValidAddress(addr string) bool {
+func (cv *Validator2) isValidAddress(addr string) bool {
 	// Allow formats like ":8080", "localhost:8080", "127.0.0.1:8080"
 	if addr == "" {
 		return false
@@ -390,7 +482,7 @@ func (cv *ConfigValidator) isValidAddress(addr string) bool {
 }
 
 // isValidLogLevel checks if a log level is valid
-func (cv *ConfigValidator) isValidLogLevel(level string) bool {
+func (cv *Validator2) isValidLogLevel(level string) bool {
 	validLevels := []string{"debug", "info", "notice", "warning", "error", "critical"}
 	level = strings.ToLower(level)
 	for _, valid := range validLevels {

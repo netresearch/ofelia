@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-func TestMetricsCollector(t *testing.T) {
-	mc := NewMetricsCollector()
+func TestCollector(t *testing.T) {
+	mc := NewCollector()
 
 	// Test counter registration and increment
 	mc.RegisterCounter("test_counter", "A test counter")
@@ -46,7 +46,7 @@ func TestMetricsCollector(t *testing.T) {
 }
 
 func TestMetricsExport(t *testing.T) {
-	mc := NewMetricsCollector()
+	mc := NewCollector()
 
 	// Register and set some metrics
 	mc.RegisterCounter("requests_total", "Total requests")
@@ -85,7 +85,7 @@ func TestMetricsExport(t *testing.T) {
 }
 
 func TestJobMetrics(t *testing.T) {
-	mc := NewMetricsCollector()
+	mc := NewCollector()
 	mc.InitDefaultMetrics()
 
 	jm := NewJobMetrics(mc)
@@ -127,7 +127,7 @@ func TestJobMetrics(t *testing.T) {
 }
 
 func TestHTTPMetricsMiddleware(t *testing.T) {
-	mc := NewMetricsCollector()
+	mc := NewCollector()
 	mc.InitDefaultMetrics()
 
 	// Create test handler
@@ -162,7 +162,7 @@ func TestHTTPMetricsMiddleware(t *testing.T) {
 }
 
 func TestMetricsHandler(t *testing.T) {
-	mc := NewMetricsCollector()
+	mc := NewCollector()
 	mc.InitDefaultMetrics()
 
 	// Set some values
@@ -198,7 +198,7 @@ func TestMetricsHandler(t *testing.T) {
 }
 
 func TestDefaultMetricsInitialization(t *testing.T) {
-	mc := NewMetricsCollector()
+	mc := NewCollector()
 	mc.InitDefaultMetrics()
 
 	// Check all default metrics are registered
@@ -238,7 +238,7 @@ func TestDefaultMetricsInitialization(t *testing.T) {
 }
 
 func TestContainerMonitorMetrics(t *testing.T) {
-	mc := NewMetricsCollector()
+	mc := NewCollector()
 	mc.InitDefaultMetrics()
 
 	// Test recording container monitor events

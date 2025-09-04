@@ -63,7 +63,7 @@ func (j *BareJob) SetCronJobID(id int) {
 // Returns a hash of all the job attributes. Used to detect changes
 func (j *BareJob) Hash() (string, error) {
 	var hash string
-	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &hash); err != nil {
+	if err := GetHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &hash); err != nil {
 		return "", err
 	}
 	return hash, nil

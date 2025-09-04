@@ -17,7 +17,7 @@ import (
 type RunServiceJob struct {
 	BareJob `mapstructure:",squash"`
 	Client  *docker.Client `json:"-"`
-	User    string         `default:"root" hash:"true"`
+	User    string         `default:"nobody" hash:"true"`
 	TTY     bool           `default:"false" hash:"true"`
 	// do not use bool values with "default:true" because if
 	// user would set it to "false" explicitly, it still will be

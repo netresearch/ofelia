@@ -71,14 +71,14 @@ func NewScheduler(l Logger) *Scheduler {
 }
 
 // SetMaxConcurrentJobs configures the maximum number of concurrent jobs
-func (s *Scheduler) SetMaxConcurrentJobs(max int) {
-	if max < 1 {
-		max = 1
+func (s *Scheduler) SetMaxConcurrentJobs(maxJobs int) {
+	if maxJobs < 1 {
+		maxJobs = 1
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.maxConcurrentJobs = max
-	s.jobSemaphore = make(chan struct{}, max)
+	s.maxConcurrentJobs = maxJobs
+	s.jobSemaphore = make(chan struct{}, maxJobs)
 }
 
 // SetMetricsRecorder sets the metrics recorder for the scheduler
@@ -381,10 +381,8 @@ func (w *jobWrapper) start(ctx *Context) {
 	ctx.Log("Started - " + ctx.Job.GetCommand())
 
 	// Record job started metric if available
-	if w.s.metricsRecorder != nil {
-		// This could be extended to record job start metrics
-		// For now, the retry metrics are the main focus
-	}
+	// Note: Job start metrics could be recorded here when metricsRecorder is available
+	// Currently focusing on retry metrics (recorded elsewhere)
 }
 
 func (w *jobWrapper) stop(ctx *Context, err error) {

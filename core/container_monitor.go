@@ -144,7 +144,7 @@ func (cm *ContainerMonitor) waitWithEvents(containerID string, maxRuntime time.D
 			if maxRuntime > 0 {
 				return nil, ErrMaxTimeRunning
 			}
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("container monitoring context canceled: %w", ctx.Err())
 
 		case event, ok := <-eventChan:
 			if !ok {
@@ -169,69 +169,6 @@ func (cm *ContainerMonitor) waitWithEvents(containerID string, maxRuntime time.D
 				return &container.State, nil
 			}
 		}
-	}
-}
-
-// waitWithWaitAPI uses Docker's WaitContainer API for efficient blocking wait
-func (cm *ContainerMonitor) waitWithWaitAPI(containerID string, maxRuntime time.Duration) (*docker.State, error) {
-	// Note: go-dockerclient doesn't have native WaitContainer support,
-	// but we can implement it using the existing blocking wait pattern
-
-	// Create a channel to receive the exit code
-	exitCodeChan := make(chan int, 1)
-	errChan := make(chan error, 1)
-
-	// Set up timeout if specified
-	var timeoutChan <-chan time.Time
-	if maxRuntime > 0 {
-		timer := time.NewTimer(maxRuntime)
-		defer timer.Stop()
-		timeoutChan = timer.C
-	}
-
-	// Start waiting in a goroutine
-	go func() {
-		// The go-dockerclient library doesn't expose WaitContainer directly,
-		// but we can use a more efficient inspect loop with longer intervals
-		// This is still better than 100ms polling
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			container, err := cm.client.InspectContainerWithOptions(docker.InspectContainerOptions{
-				ID: containerID,
-			})
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			if !container.State.Running {
-				exitCodeChan <- container.State.ExitCode
-				return
-			}
-
-			<-ticker.C
-		}
-	}()
-
-	// Wait for result or timeout
-	select {
-	case <-exitCodeChan:
-		// Get final container state
-		container, err := cm.client.InspectContainerWithOptions(docker.InspectContainerOptions{
-			ID: containerID,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get final container state: %w", err)
-		}
-		return &container.State, nil
-
-	case err := <-errChan:
-		return nil, err
-
-	case <-timeoutChan:
-		return nil, ErrMaxTimeRunning
 	}
 }
 
@@ -273,5 +210,8 @@ func (cm *ContainerMonitor) MonitorContainerLogs(containerID string, stdout, std
 		Timestamps:   false,
 	}
 
-	return cm.client.Logs(opts)
+	if err := cm.client.Logs(opts); err != nil {
+		return fmt.Errorf("failed to get logs for container %s: %w", containerID, err)
+	}
+	return nil
 }

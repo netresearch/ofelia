@@ -7,7 +7,7 @@ BASE_PATH := $(shell pwd)
 BUILD_PATH := $(BASE_PATH)/bin
 SHA1 := $(shell git log --format='%H' -n 1 | cut -c1-10)
 BUILD := $(shell date +"%m-%d-%Y_%H_%M_%S")
-BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+BRANCH := $(shell git rev-parse --abbrev-ref HEAD | sed 's/\//-/g')
 
 # Packages content
 PKG_OS = darwin linux

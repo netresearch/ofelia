@@ -8,7 +8,7 @@ import (
 
 // TestLogger is a shared test logger implementation for use across test suites.
 // It implements the core.Logger interface and provides methods to capture and verify log output.
-type TestLogger struct {
+type Logger struct {
 	mu       sync.RWMutex
 	messages []LogEntry
 	verbose  bool // If true, print logs to stdout during tests
@@ -21,61 +21,61 @@ type LogEntry struct {
 }
 
 // NewTestLogger creates a new test logger
-func NewTestLogger(verbose ...bool) *TestLogger {
+func NewTestLogger(verbose ...bool) *Logger {
 	v := false
 	if len(verbose) > 0 {
 		v = verbose[0]
 	}
-	return &TestLogger{
+	return &Logger{
 		messages: make([]LogEntry, 0),
 		verbose:  v,
 	}
 }
 
 // Criticalf logs a critical message
-func (l *TestLogger) Criticalf(s string, v ...interface{}) {
+func (l *Logger) Criticalf(s string, v ...interface{}) {
 	l.log("CRITICAL", s, v...)
 }
 
 // Errorf logs an error message
-func (l *TestLogger) Errorf(s string, v ...interface{}) {
+func (l *Logger) Errorf(s string, v ...interface{}) {
 	l.log("ERROR", s, v...)
 }
 
 // Warningf logs a warning message
-func (l *TestLogger) Warningf(s string, v ...interface{}) {
+func (l *Logger) Warningf(s string, v ...interface{}) {
 	l.log("WARN", s, v...)
 }
 
 // Noticef logs a notice message
-func (l *TestLogger) Noticef(s string, v ...interface{}) {
+func (l *Logger) Noticef(s string, v ...interface{}) {
 	l.log("NOTICE", s, v...)
 }
 
 // Infof logs an info message
-func (l *TestLogger) Infof(s string, v ...interface{}) {
+func (l *Logger) Infof(s string, v ...interface{}) {
 	l.log("INFO", s, v...)
 }
 
 // Debugf logs a debug message
-func (l *TestLogger) Debugf(s string, v ...interface{}) {
+func (l *Logger) Debugf(s string, v ...interface{}) {
 	l.log("DEBUG", s, v...)
 }
 
 // Deprecated methods for backward compatibility
-func (l *TestLogger) Error(s string)   { l.Errorf("%s", s) }
-func (l *TestLogger) Warning(s string) { l.Warningf("%s", s) }
-func (l *TestLogger) Notice(s string)  { l.Noticef("%s", s) }
-func (l *TestLogger) Info(s string)    { l.Infof("%s", s) }
-func (l *TestLogger) Debug(s string)   { l.Debugf("%s", s) }
+func (l *Logger) Error(s string)   { l.Errorf("%s", s) }
+func (l *Logger) Warning(s string) { l.Warningf("%s", s) }
+func (l *Logger) Notice(s string)  { l.Noticef("%s", s) }
+func (l *Logger) Info(s string)    { l.Infof("%s", s) }
+func (l *Logger) Debug(s string)   { l.Debugf("%s", s) }
 
 // Shortened names for brevity
-func (l *TestLogger) Err(s string)  { l.Errorf("%s", s) }
-func (l *TestLogger) Warn(s string) { l.Warningf("%s", s) }
-func (l *TestLogger) Log(s string)  { l.Infof("%s", s) }
+func (l *Logger) Err(s string)  { l.Errorf("%s", s) }
+func (l *Logger) Warn(s string) { l.Warningf("%s", s) }
+func (l *Logger) Log(s string)  { l.Infof("%s", s) }
 
 // log is the internal logging method
-func (l *TestLogger) log(level, format string, v ...interface{}) {
+func (l *Logger) log(level, format string, v ...interface{}) {
 	msg := fmt.Sprintf(format, v...)
 
 	l.mu.Lock()
@@ -85,13 +85,11 @@ func (l *TestLogger) log(level, format string, v ...interface{}) {
 	})
 	l.mu.Unlock()
 
-	if l.verbose {
-		fmt.Printf("[%s] %s\n", level, msg)
-	}
+	// Verbose output is disabled to avoid using forbidden fmt.Print functions
 }
 
 // GetMessages returns all logged messages
-func (l *TestLogger) GetMessages() []LogEntry {
+func (l *Logger) GetMessages() []LogEntry {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -101,7 +99,7 @@ func (l *TestLogger) GetMessages() []LogEntry {
 }
 
 // HasMessage checks if a message containing the substring was logged
-func (l *TestLogger) HasMessage(substr string) bool {
+func (l *Logger) HasMessage(substr string) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -114,7 +112,7 @@ func (l *TestLogger) HasMessage(substr string) bool {
 }
 
 // HasError checks if an error containing the substring was logged
-func (l *TestLogger) HasError(substr string) bool {
+func (l *Logger) HasError(substr string) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -127,7 +125,7 @@ func (l *TestLogger) HasError(substr string) bool {
 }
 
 // HasWarning checks if a warning containing the substring was logged
-func (l *TestLogger) HasWarning(substr string) bool {
+func (l *Logger) HasWarning(substr string) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -140,21 +138,21 @@ func (l *TestLogger) HasWarning(substr string) bool {
 }
 
 // Clear clears all logged messages
-func (l *TestLogger) Clear() {
+func (l *Logger) Clear() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.messages = l.messages[:0]
 }
 
 // MessageCount returns the number of logged messages
-func (l *TestLogger) MessageCount() int {
+func (l *Logger) MessageCount() int {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return len(l.messages)
 }
 
 // ErrorCount returns the number of error messages
-func (l *TestLogger) ErrorCount() int {
+func (l *Logger) ErrorCount() int {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 

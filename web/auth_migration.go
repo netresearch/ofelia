@@ -106,7 +106,11 @@ func MigrateAuthToken(legacyProvider *LegacyAuthProvider, jwtProvider AuthProvid
 	}
 
 	// Generate new JWT token
-	return jwtProvider.GenerateToken(tokenData.Username)
+	token, err := jwtProvider.GenerateToken(tokenData.Username)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate JWT token during migration for user %s: %w", tokenData.Username, err)
+	}
+	return token, nil
 }
 
 // AuthMigrationMiddleware handles gradual migration from legacy to JWT
