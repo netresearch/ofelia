@@ -503,14 +503,24 @@ func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
 		if e.Error != nil {
 			errStr = e.Error.Error()
 		}
+		// Safely get output streams, handling nil buffers
+		stdout := ""
+		if e.OutputStream != nil {
+			stdout = e.OutputStream.String()
+		}
+		stderr := ""
+		if e.ErrorStream != nil {
+			stderr = e.ErrorStream.String()
+		}
+		
 		out = append(out, apiExecution{
 			Date:     e.Date,
 			Duration: e.Duration,
 			Failed:   e.Failed,
 			Skipped:  e.Skipped,
 			Error:    errStr,
-			Stdout:   e.OutputStream.String(),
-			Stderr:   e.ErrorStream.String(),
+			Stdout:   stdout,
+			Stderr:   stderr,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
