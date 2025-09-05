@@ -1,21 +1,16 @@
 # Gitleaks configuration file
 [allowlist]
 description = "Allowlist for test files and legitimate test constants"
-  
-# Allow test files that contain test secrets
-[[allowlist.paths]]
-regex = '''web.*_test\.go'''
-description = "Test files with test constants"
 
-[[allowlist.paths]]
-regex = '''.*test.*\.go'''
-description = "All test files"
+# Allow test files that contain test secrets
+paths = [
+    '''web/.*_test\.go''',
+    '''.*test.*\.go'''
+]
 
 # Allow specific test secret patterns
-[[allowlist.regexes]]
-regex = '''test-secret.*'''
-description = "Test secret constants"
-
-[[allowlist.regexes]]
-regex = '''testSecretKey'''
-description = "Test secret key constant"
+regexes = [
+    '''test-secret.*''',
+    '''testSecretKey''',
+    '''test-secret-key.*'''
+]

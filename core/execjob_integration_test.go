@@ -11,6 +11,7 @@ import (
 
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/fsouza/go-dockerclient/testing"
+	"github.com/sirupsen/logrus"
 	. "gopkg.in/check.v1"
 )
 
@@ -61,7 +62,7 @@ func (s *SuiteExecJob) TestRun(c *C) {
 		executed = true
 	})
 
-	job := &ExecJob{Client: s.client}
+	job := NewExecJob(s.client)
 	job.Container = ContainerFixture
 	job.Command = `echo -a "foo bar"`
 	job.Environment = []string{"test_Key1=value1", "test_Key2=value2"}
@@ -71,7 +72,10 @@ func (s *SuiteExecJob) TestRun(c *C) {
 	e, err := NewExecution()
 	c.Assert(err, IsNil)
 
-	err = job.Run(&Context{Execution: e})
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
+	err = job.Run(&Context{Execution: e, Logger: &LogrusAdapter{Logger: logger}})
 	c.Assert(err, IsNil)
 	c.Assert(executed, Equals, true)
 
@@ -92,13 +96,17 @@ func (s *SuiteExecJob) TestRunStartExecError(c *C) {
 	failureID := "startfail"
 	s.server.PrepareFailure(failureID, "/exec/.*/start")
 
-	job := &ExecJob{Client: s.client}
+	job := NewExecJob(s.client)
 	job.Container = ContainerFixture
 	job.Command = "echo foo"
 
 	e, err := NewExecution()
 	c.Assert(err, IsNil)
-	ctx := &Context{Execution: e, Job: job}
+
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
+	ctx := &Context{Execution: e, Job: job, Logger: &LogrusAdapter{Logger: logger}}
 
 	ctx.Start()
 	err = job.Run(ctx)
