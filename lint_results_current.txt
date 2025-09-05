@@ -1,0 +1,61 @@
+cli/config.go:51:1: File is not properly formatted (gci)
+		AllowHostJobsFromLabels bool `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels" default:"false"`
+^
+cli/daemon.go:162:1: File is not properly formatted (gci)
+
+^
+cli/config.go:544:14: error returned from external package is unwrapped: sig: func github.com/netresearch/ofelia/core.GetHash(t reflect.Type, v reflect.Value, hash *string) error (wrapcheck)
+		return "", err
+		           ^
+metrics/prometheus.go:143:1: File is not properly formatted (gci)
+	
+^
+test/testlogger.go:89:3: use of `fmt.Printf` forbidden by pattern `^fmt\.Print.*$` (forbidigo)
+		fmt.Printf("[%s] %s\n", level, msg)
+		^
+core/container_monitor.go:176:29: func `(*ContainerMonitor).waitWithWaitAPI` is unused (unused)
+func (cm *ContainerMonitor) waitWithWaitAPI(containerID string, maxRuntime time.Duration) (*docker.State, error) {
+                            ^
+core/runjob.go:172:18: func `(*RunJob).searchLocalImage` is unused (unused)
+func (j *RunJob) searchLocalImage() error {
+                 ^
+core/resilient_job.go:45:24: type assertion on error will fail on wrapped errors. Use errors.As to check for specific errors (errorlint)
+			if dockerErr, ok := err.(*docker.Error); ok {
+			                    ^
+core/shutdown.go:211:40: `cancelled` is a misspelling of `canceled` (misspell)
+		gs.Scheduler.Logger.Warningf("Job %s cancelled due to shutdown", job.GetName())
+		                                     ^
+core/shutdown.go:212:26: `cancelled` is a misspelling of `canceled` (misspell)
+		return fmt.Errorf("job cancelled: shutdown in progress")
+		                       ^
+core/additional_tests.go:321:1: Function TestLogrusAdapterFunctions missing the call to method parallel (paralleltest)
+func TestLogrusAdapterFunctions(t *testing.T) {
+^
+core/resilient_job.go:148:48: `(*ResilientJobExecutor).recordMetrics` - `success` is unused (unparam)
+func (rje *ResilientJobExecutor) recordMetrics(success bool) {
+                                               ^
+config/sanitizer.go:281:1: cyclomatic complexity 18 of func `(*Sanitizer).validateCronField` is high (> 15) (gocyclo)
+func (s *Sanitizer) validateCronField(field string, minVal, maxVal int, fieldName string) error {
+^
+config/validator.go:281:72: `(*Validator2).validateField` - `fieldType` is unused (unparam)
+func (cv *Validator2) validateField(v *Validator, field reflect.Value, fieldType reflect.StructField, path string, defaultTag string) {
+                                                                       ^
+web/auth_secure.go:353:6: func `csrfMiddleware` is unused (unused)
+func csrfMiddleware(tm *SecureTokenManager) func(http.Handler) http.Handler {
+     ^
+web/auth.go:66:14: error returned from external package is unwrapped: sig: func crypto/rand.Read(b []byte) (n int, err error) (wrapcheck)
+		return "", err
+		           ^
+web/auth_migration.go:109:9: error returned from interface method should be wrapped: sig: func (github.com/netresearch/ofelia/web.AuthProvider).GenerateToken(username string) (string, error) (wrapcheck)
+	return jwtProvider.GenerateToken(tokenData.Username)
+	       ^
+web/auth_secure.go:108:14: error returned from external package is unwrapped: sig: func crypto/rand.Read(b []byte) (n int, err error) (wrapcheck)
+		return "", err
+		           ^
+web/auth_secure.go:144:14: error returned from external package is unwrapped: sig: func crypto/rand.Read(b []byte) (n int, err error) (wrapcheck)
+		return "", err
+		           ^
+web/auth_secure.go:347:14: error returned from external package is unwrapped: sig: func golang.org/x/crypto/bcrypt.GenerateFromPassword(password []byte, cost int) ([]byte, error) (wrapcheck)
+		return "", err
+		           ^
+make: *** [Makefile:52: lint] Error 1
