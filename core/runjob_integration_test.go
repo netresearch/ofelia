@@ -39,7 +39,7 @@ func (s *SuiteRunJob) SetUpTest(c *C) {
 }
 
 func (s *SuiteRunJob) TestRun(c *C) {
-	job := &RunJob{Client: s.client}
+	job := NewRunJob(s.client)
 	job.Image = ImageFixture
 	job.Command = `echo -a "foo bar"`
 	job.User = "foo"
@@ -97,7 +97,7 @@ func (s *SuiteRunJob) TestRun(c *C) {
 }
 
 func (s *SuiteRunJob) TestRunFailed(c *C) {
-	job := &RunJob{Client: s.client}
+	job := NewRunJob(s.client)
 	job.Image = ImageFixture
 	job.Command = "echo fail"
 	job.Delete = "true"
@@ -132,7 +132,7 @@ func (s *SuiteRunJob) TestRunFailed(c *C) {
 
 func (s *SuiteRunJob) TestRunWithEntrypoint(c *C) {
 	ep := ""
-	job := &RunJob{Client: s.client}
+	job := NewRunJob(s.client)
 	job.Image = ImageFixture
 	job.Entrypoint = &ep
 	job.Command = `echo -a "foo bar"`
