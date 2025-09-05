@@ -39,6 +39,15 @@ fi
 
 echo "📁 Staged Go files: $staged_go_files"
 
+# Check if go.mod is clean (no missing/unused dependencies)
+echo "🧹 Checking go.mod cleanliness..."
+if ! go mod tidy -diff >/dev/null 2>&1; then
+    echo "❌ go.mod is not clean. Running go mod tidy shows differences:"
+    go mod tidy -diff
+    echo "Please run 'go mod tidy' and commit the changes."
+    exit 1
+fi
+
 # Run linters in parallel for faster execution (~5-8s vs ~15-20s)
 echo "⚡ Running linters in parallel..."
 
@@ -176,6 +185,7 @@ echo ""
 echo "🚀 Performance optimized with parallel execution (~5-8s vs ~15-20s sequential)"
 echo ""
 echo "The hook will automatically run the following checks on each commit:"
+echo "  • go mod tidy (dependency hygiene)"
 echo "  • go vet (static analysis) - parallel"
 echo "  • gofmt (code formatting) - parallel" 
 echo "  • golangci-lint (comprehensive linting) - parallel"
