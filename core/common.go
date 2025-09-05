@@ -148,6 +148,9 @@ type Execution struct {
 	Error     error
 
 	OutputStream, ErrorStream *circbuf.Buffer `json:"-"`
+
+	// Captured output for persistence after buffer cleanup
+	CapturedStdout, CapturedStderr string `json:"-"`
 }
 
 // NewExecution returns a new Execution, with a random ID
@@ -197,13 +200,32 @@ func (e *Execution) Stop(err error) {
 	}
 }
 
+// GetStdout returns stdout content, preferring live buffer if available
+func (e *Execution) GetStdout() string {
+	if e.OutputStream != nil {
+		return e.OutputStream.String()
+	}
+	return e.CapturedStdout
+}
+
+// GetStderr returns stderr content, preferring live buffer if available
+func (e *Execution) GetStderr() string {
+	if e.ErrorStream != nil {
+		return e.ErrorStream.String()
+	}
+	return e.CapturedStderr
+}
+
 // Cleanup returns execution buffers to the pool for reuse
 func (e *Execution) Cleanup() {
+	// Capture buffer contents before cleanup for persistence
 	if e.OutputStream != nil {
+		e.CapturedStdout = e.OutputStream.String()
 		DefaultBufferPool.Put(e.OutputStream)
 		e.OutputStream = nil
 	}
 	if e.ErrorStream != nil {
+		e.CapturedStderr = e.ErrorStream.String()
 		DefaultBufferPool.Put(e.ErrorStream)
 		e.ErrorStream = nil
 	}

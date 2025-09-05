@@ -217,14 +217,8 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 				if lr.Error != nil {
 					errStr = lr.Error.Error()
 				}
-				stdout := ""
-				if lr.OutputStream != nil {
-					stdout = lr.OutputStream.String()
-				}
-				stderr := ""
-				if lr.ErrorStream != nil {
-					stderr = lr.ErrorStream.String()
-				}
+				stdout := lr.GetStdout()
+				stderr := lr.GetStderr()
 				execInfo = &apiExecution{
 					Date:     lr.Date,
 					Duration: lr.Duration,
@@ -503,15 +497,9 @@ func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
 		if e.Error != nil {
 			errStr = e.Error.Error()
 		}
-		// Safely get output streams, handling nil buffers
-		stdout := ""
-		if e.OutputStream != nil {
-			stdout = e.OutputStream.String()
-		}
-		stderr := ""
-		if e.ErrorStream != nil {
-			stderr = e.ErrorStream.String()
-		}
+		// Get output streams using execution methods
+		stdout := e.GetStdout()
+		stderr := e.GetStderr()
 
 		out = append(out, apiExecution{
 			Date:     e.Date,
