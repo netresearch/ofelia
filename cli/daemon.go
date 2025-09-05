@@ -49,6 +49,9 @@ func (c *DaemonCommand) Execute(_ []string) error {
 }
 
 func (c *DaemonCommand) boot() (err error) {
+	// Initialize done channel for clean shutdown
+	c.done = make(chan struct{})
+
 	// Apply CLI log level before reading config
 	ApplyLogLevel(c.LogLevel)
 
@@ -127,6 +130,14 @@ func (c *DaemonCommand) boot() (err error) {
 func (c *DaemonCommand) start() error {
 	// Start listening for shutdown signals
 	c.shutdownManager.ListenForShutdown()
+
+	// Set up a goroutine to close done channel when shutdown completes
+	go func() {
+		<-c.shutdownManager.ShutdownChan()
+		// Give some time for graceful shutdown to complete
+		// The shutdown manager handles the actual shutdown process
+		close(c.done)
+	}()
 
 	if err := c.scheduler.Start(); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)

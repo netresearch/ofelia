@@ -512,7 +512,7 @@ func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
 		if e.ErrorStream != nil {
 			stderr = e.ErrorStream.String()
 		}
-		
+
 		out = append(out, apiExecution{
 			Date:     e.Date,
 			Duration: e.Duration,
