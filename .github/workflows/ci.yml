@@ -44,17 +44,6 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
 
-      - name: Vet
-        run: go vet ./...
-
-      - name: Format check
-        run: |
-          unformatted=$(gofmt -l $(git ls-files '*.go'))
-          if [ -n "$unformatted" ]; then
-            echo "The following files are not formatted:" >&2
-            echo "$unformatted" >&2
-            exit 1
-          fi
 
       - name: Unit tests
         run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
@@ -76,7 +65,7 @@ jobs:
           path: coverage.out
 
   lint:
-    name: golangci-lint
+    name: golangci-lint (all linters)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -189,42 +178,6 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
 
-  lint-extra:
-    name: extra linters
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Download modules
-        run: go mod download
-
-      - name: Warm build cache
-        run: go build ./...
-
-      - name: Run extra linters
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          install-mode: goinstall
-          args: >-
-            --timeout=5m --out-format=github-actions
-            --disable-all
-            --enable=gocritic
-            --enable=bodyclose
-            --enable=contextcheck
-            --enable=errorlint
-            --enable=errname
-            --enable=asciicheck
-            --enable=gci
-          only-new-issues: false
 
   gosec:
     name: gosec
