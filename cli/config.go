@@ -219,6 +219,7 @@ func (c *Config) registerAllJobs() {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
 		j.Client = client
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -358,6 +359,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 	}
 	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel, "run")
@@ -456,6 +458,7 @@ func (c *Config) iniConfigUpdate() error {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 	}
 	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI, "run")

@@ -76,6 +76,33 @@ func NewRunJob(c *docker.Client) *RunJob {
 	}
 }
 
+// InitializeRuntimeFields initializes fields that depend on the Docker client
+// This should be called after the Client field is set, typically during configuration loading
+func (j *RunJob) InitializeRuntimeFields() {
+	if j.Client == nil {
+		return // Cannot initialize without client
+	}
+
+	// Only initialize if not already done
+	if j.monitor == nil {
+		logger := &SimpleLogger{} // Will be set properly when job runs
+		j.monitor = NewContainerMonitor(j.Client, logger)
+
+		// Check for Docker events configuration
+		if useEvents := os.Getenv("OFELIA_USE_DOCKER_EVENTS"); useEvents != "" {
+			// Default is true, so only disable if explicitly set to false
+			if useEvents == "false" || useEvents == "0" || useEvents == "no" {
+				j.monitor.SetUseEventsAPI(false)
+			}
+		}
+	}
+
+	if j.dockerOps == nil {
+		logger := &SimpleLogger{} // Will be set properly when job runs
+		j.dockerOps = NewDockerOperations(j.Client, logger, nil)
+	}
+}
+
 func (j *RunJob) setContainerID(id string) {
 	j.mu.Lock()
 	j.containerID = id
