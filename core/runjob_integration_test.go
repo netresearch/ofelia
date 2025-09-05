@@ -14,7 +14,10 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-const ImageFixture = "test-image"
+const (
+	ImageFixture  = "test-image"
+	watchDuration = time.Millisecond * 500 // Match the duration used in runjob.go
+)
 
 type SuiteRunJob struct {
 	server *testing.DockerServer
