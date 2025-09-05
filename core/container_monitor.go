@@ -120,7 +120,7 @@ func (cm *ContainerMonitor) waitWithEvents(containerID string, maxRuntime time.D
 		if err := cm.client.RemoveEventListener(eventChan); err != nil {
 			cm.logger.Warningf("Failed to remove event listener: %v", err)
 		}
-		close(eventChan)
+		cm.safeCloseChannel(eventChan)
 	}()
 
 	// Check if container is already stopped
@@ -214,4 +214,14 @@ func (cm *ContainerMonitor) MonitorContainerLogs(containerID string, stdout, std
 		return fmt.Errorf("failed to get logs for container %s: %w", containerID, err)
 	}
 	return nil
+}
+
+// safeCloseChannel safely closes a channel with panic recovery
+func (cm *ContainerMonitor) safeCloseChannel(ch chan *docker.APIEvents) {
+	defer func() {
+		if r := recover(); r != nil {
+			cm.logger.Debugf("Channel already closed: %v", r)
+		}
+	}()
+	close(ch)
 }
