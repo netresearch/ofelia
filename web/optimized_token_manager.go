@@ -76,7 +76,7 @@ type OptimizedTokenManager struct {
 	tokens        map[string]*TokenEntry // Fast token lookup
 	expiryHeap    *TokenExpiryHeap       // Efficient expiry tracking
 	mutex         sync.RWMutex           // Protect concurrent access
-	ctx           context.Context        // For graceful shutdown
+	ctx           context.Context        // For graceful shutdown //nolint:containedctx // Valid pattern for goroutine lifecycle management
 	cancel        context.CancelFunc     // Cancel background worker
 	cleanupActive int32                  // Atomic flag to prevent concurrent cleanups
 

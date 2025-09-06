@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
 )
@@ -44,11 +46,11 @@ type UnifiedJobConfig struct {
 	MiddlewareConfig `mapstructure:",squash"`
 
 	// Core job configurations (embedded via union)
-	ExecJob       *core.ExecJob       `json:"exec_job,omitempty" mapstructure:",squash"`
-	RunJob        *core.RunJob        `json:"run_job,omitempty" mapstructure:",squash"`
-	RunServiceJob *core.RunServiceJob `json:"service_job,omitempty" mapstructure:",squash"`
-	LocalJob      *core.LocalJob      `json:"local_job,omitempty" mapstructure:",squash"`
-	ComposeJob    *core.ComposeJob    `json:"compose_job,omitempty" mapstructure:",squash"`
+	ExecJob       *core.ExecJob       `json:"execJob,omitempty" mapstructure:",squash"`
+	RunJob        *core.RunJob        `json:"runJob,omitempty" mapstructure:",squash"`
+	RunServiceJob *core.RunServiceJob `json:"serviceJob,omitempty" mapstructure:",squash"`
+	LocalJob      *core.LocalJob      `json:"localJob,omitempty" mapstructure:",squash"`
+	ComposeJob    *core.ComposeJob    `json:"composeJob,omitempty" mapstructure:",squash"`
 }
 
 // GetCoreJob returns the appropriate core job based on the job type
@@ -106,7 +108,11 @@ func (u *UnifiedJobConfig) SetJobSource(source JobSource) {
 // Hash returns a hash of the job configuration for change detection
 func (u *UnifiedJobConfig) Hash() (string, error) {
 	if job := u.GetCoreJob(); job != nil {
-		return job.Hash()
+		hash, err := job.Hash()
+		if err != nil {
+			return "", fmt.Errorf("failed to hash %s job: %w", u.Type, err)
+		}
+		return hash, nil
 	}
 	return "", nil
 }
@@ -117,7 +123,10 @@ func (u *UnifiedJobConfig) Run(ctx *core.Context) error {
 	if job == nil {
 		return core.ErrUnexpected
 	}
-	return job.Run(ctx)
+	if err := job.Run(ctx); err != nil {
+		return fmt.Errorf("%s job execution failed: %w", u.Type, err)
+	}
+	return nil
 }
 
 // Use implements the core.Job interface for middleware support

@@ -42,7 +42,10 @@ func (c *Config) decodeGlobals(globals map[string]interface{}) error {
 	if len(globals) == 0 {
 		return nil
 	}
-	return mapstructure.WeakDecode(globals, &c.Global)
+	if err := mapstructure.WeakDecode(globals, &c.Global); err != nil {
+		return fmt.Errorf("failed to decode global configuration from labels: %w", err)
+	}
+	return nil
 }
 
 // applyHostJobSecurityPolicy enforces security policy for host-based jobs

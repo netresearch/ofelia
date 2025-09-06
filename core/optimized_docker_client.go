@@ -265,7 +265,10 @@ func (c *OptimizedDockerClient) Info() (*docker.DockerInfo, error) {
 
 	err = c.circuitBreaker.Execute(func() error {
 		result, err = c.client.Info()
-		return err
+		if err != nil {
+			return fmt.Errorf("docker info request failed: %w", err)
+		}
+		return nil
 	})
 
 	return result, err
@@ -291,7 +294,10 @@ func (c *OptimizedDockerClient) ListContainers(opts docker.ListContainersOptions
 
 	err = c.circuitBreaker.Execute(func() error {
 		result, err = c.client.ListContainers(opts)
-		return err
+		if err != nil {
+			return fmt.Errorf("docker list containers failed: %w", err)
+		}
+		return nil
 	})
 
 	return result, err
@@ -317,7 +323,10 @@ func (c *OptimizedDockerClient) CreateContainer(opts docker.CreateContainerOptio
 
 	err = c.circuitBreaker.Execute(func() error {
 		result, err = c.client.CreateContainer(opts)
-		return err
+		if err != nil {
+			return fmt.Errorf("docker create container failed: %w", err)
+		}
+		return nil
 	})
 
 	return result, err

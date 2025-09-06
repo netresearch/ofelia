@@ -430,8 +430,8 @@ func (s *Sanitizer) isClass172Private(host string) bool {
 // isLinkLocalOrIPv6Private checks for link-local and IPv6 private addresses
 func (s *Sanitizer) isLinkLocalOrIPv6Private(host string) bool {
 	return strings.HasPrefix(host, "169.254.") || // Link-local IPv4
-		strings.HasPrefix(host, "fd") ||           // IPv6 unique local
-		strings.HasPrefix(host, "fe80:")           // IPv6 link-local
+		strings.HasPrefix(host, "fd") || // IPv6 unique local
+		strings.HasPrefix(host, "fe80:") // IPv6 link-local
 }
 
 // validateURLPort validates the URL port

@@ -303,7 +303,7 @@ func (m *UnifiedConfigManager) updateJobUnsafe(name string, oldJob, newJob *Unif
 
 	if m.scheduler != nil {
 		if err := m.scheduler.AddJob(newJob); err != nil {
-			return err
+			return fmt.Errorf("failed to add job %s to scheduler: %w", name, err)
 		}
 	}
 
@@ -325,7 +325,7 @@ func (m *UnifiedConfigManager) addJobUnsafe(name string, job *UnifiedJobConfig, 
 
 	if m.scheduler != nil {
 		if err := m.scheduler.AddJob(job); err != nil {
-			return err
+			return fmt.Errorf("failed to replace job %s in scheduler: %w", name, err)
 		}
 	}
 
