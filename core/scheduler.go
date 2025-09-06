@@ -110,7 +110,6 @@ func (s *Scheduler) AddJob(j Job) error {
 	s.mu.Lock()
 	s.Jobs = append(s.Jobs, j)
 	s.mu.Unlock()
-	
 	s.Logger.Noticef(
 		"New job registered %q - %q - %q - ID: %v",
 		j.GetName(), j.GetCommand(), j.GetSchedule(), id,
@@ -269,12 +268,16 @@ func getJob(jobs []Job, name string) (Job, int) {
 
 // GetJob returns an active job by name.
 func (s *Scheduler) GetJob(name string) Job {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	j, _ := getJob(s.Jobs, name)
 	return j
 }
 
 // GetDisabledJob returns a disabled job by name.
 func (s *Scheduler) GetDisabledJob(name string) Job {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	j, _ := getJob(s.Disabled, name)
 	return j
 }
