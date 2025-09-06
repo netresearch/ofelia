@@ -387,14 +387,32 @@ func (uc *UnifiedConfig) FromLegacyConfig(legacy *Config) {
 func convertExecJobs(legacy map[string]*ExecJobConfig) map[string]*config.ExecJobConfigLegacy {
 	result := make(map[string]*config.ExecJobConfigLegacy)
 	for name, job := range legacy {
-		result[name] = &config.ExecJobConfigLegacy{
-			ExecJob:       job.ExecJob,
+		legacyJob := &config.ExecJobConfigLegacy{
 			OverlapConfig: job.OverlapConfig,
 			SlackConfig:   job.SlackConfig,
 			SaveConfig:    job.SaveConfig,
 			MailConfig:    job.MailConfig,
 			JobSource:     config.JobSource(job.JobSource),
 		}
+		// Copy ExecJob fields individually to avoid copying mutex from BareJob
+		legacyJob.Schedule = job.ExecJob.Schedule
+		legacyJob.Name = job.ExecJob.Name
+		legacyJob.Command = job.ExecJob.Command
+		legacyJob.HistoryLimit = job.ExecJob.HistoryLimit
+		legacyJob.MaxRetries = job.ExecJob.MaxRetries
+		legacyJob.RetryDelayMs = job.ExecJob.RetryDelayMs
+		legacyJob.RetryExponential = job.ExecJob.RetryExponential
+		legacyJob.RetryMaxDelayMs = job.ExecJob.RetryMaxDelayMs
+		legacyJob.Dependencies = job.ExecJob.Dependencies
+		legacyJob.OnSuccess = job.ExecJob.OnSuccess
+		legacyJob.OnFailure = job.ExecJob.OnFailure
+		legacyJob.AllowParallel = job.ExecJob.AllowParallel
+		// ExecJob-specific fields
+		legacyJob.Container = job.ExecJob.Container
+		legacyJob.User = job.ExecJob.User
+		legacyJob.TTY = job.ExecJob.TTY
+		legacyJob.Environment = job.ExecJob.Environment
+		result[name] = legacyJob
 	}
 	return result
 }
@@ -402,14 +420,42 @@ func convertExecJobs(legacy map[string]*ExecJobConfig) map[string]*config.ExecJo
 func convertRunJobs(legacy map[string]*RunJobConfig) map[string]*config.RunJobConfigLegacy {
 	result := make(map[string]*config.RunJobConfigLegacy)
 	for name, job := range legacy {
-		result[name] = &config.RunJobConfigLegacy{
-			RunJob:        job.RunJob,
+		legacyJob := &config.RunJobConfigLegacy{
 			OverlapConfig: job.OverlapConfig,
 			SlackConfig:   job.SlackConfig,
 			SaveConfig:    job.SaveConfig,
 			MailConfig:    job.MailConfig,
 			JobSource:     config.JobSource(job.JobSource),
 		}
+		// Copy RunJob fields individually to avoid copying mutex from BareJob
+		legacyJob.Schedule = job.RunJob.Schedule
+		legacyJob.Name = job.RunJob.Name
+		legacyJob.Command = job.RunJob.Command
+		legacyJob.HistoryLimit = job.RunJob.HistoryLimit
+		legacyJob.MaxRetries = job.RunJob.MaxRetries
+		legacyJob.RetryDelayMs = job.RunJob.RetryDelayMs
+		legacyJob.RetryExponential = job.RunJob.RetryExponential
+		legacyJob.RetryMaxDelayMs = job.RunJob.RetryMaxDelayMs
+		legacyJob.Dependencies = job.RunJob.Dependencies
+		legacyJob.OnSuccess = job.RunJob.OnSuccess
+		legacyJob.OnFailure = job.RunJob.OnFailure
+		legacyJob.AllowParallel = job.RunJob.AllowParallel
+		// RunJob-specific fields
+		legacyJob.User = job.RunJob.User
+		legacyJob.ContainerName = job.RunJob.ContainerName
+		legacyJob.TTY = job.RunJob.TTY
+		legacyJob.Delete = job.RunJob.Delete
+		legacyJob.Pull = job.RunJob.Pull
+		legacyJob.Image = job.RunJob.Image
+		legacyJob.Network = job.RunJob.Network
+		legacyJob.Hostname = job.RunJob.Hostname
+		legacyJob.Entrypoint = job.RunJob.Entrypoint
+		legacyJob.Container = job.RunJob.Container
+		legacyJob.Volume = job.RunJob.Volume
+		legacyJob.VolumesFrom = job.RunJob.VolumesFrom
+		legacyJob.Environment = job.RunJob.Environment
+		legacyJob.MaxRuntime = job.RunJob.MaxRuntime
+		result[name] = legacyJob
 	}
 	return result
 }
@@ -417,14 +463,34 @@ func convertRunJobs(legacy map[string]*RunJobConfig) map[string]*config.RunJobCo
 func convertServiceJobs(legacy map[string]*RunServiceConfig) map[string]*config.RunServiceConfigLegacy {
 	result := make(map[string]*config.RunServiceConfigLegacy)
 	for name, job := range legacy {
-		result[name] = &config.RunServiceConfigLegacy{
-			RunServiceJob: job.RunServiceJob,
+		legacyJob := &config.RunServiceConfigLegacy{
 			OverlapConfig: job.OverlapConfig,
 			SlackConfig:   job.SlackConfig,
 			SaveConfig:    job.SaveConfig,
 			MailConfig:    job.MailConfig,
 			JobSource:     config.JobSource(job.JobSource),
 		}
+		// Copy RunServiceJob fields individually to avoid copying mutex from BareJob
+		legacyJob.Schedule = job.RunServiceJob.Schedule
+		legacyJob.Name = job.RunServiceJob.Name
+		legacyJob.Command = job.RunServiceJob.Command
+		legacyJob.HistoryLimit = job.RunServiceJob.HistoryLimit
+		legacyJob.MaxRetries = job.RunServiceJob.MaxRetries
+		legacyJob.RetryDelayMs = job.RunServiceJob.RetryDelayMs
+		legacyJob.RetryExponential = job.RunServiceJob.RetryExponential
+		legacyJob.RetryMaxDelayMs = job.RunServiceJob.RetryMaxDelayMs
+		legacyJob.Dependencies = job.RunServiceJob.Dependencies
+		legacyJob.OnSuccess = job.RunServiceJob.OnSuccess
+		legacyJob.OnFailure = job.RunServiceJob.OnFailure
+		legacyJob.AllowParallel = job.RunServiceJob.AllowParallel
+		// RunServiceJob-specific fields
+		legacyJob.User = job.RunServiceJob.User
+		legacyJob.TTY = job.RunServiceJob.TTY
+		legacyJob.Delete = job.RunServiceJob.Delete
+		legacyJob.Image = job.RunServiceJob.Image
+		legacyJob.Network = job.RunServiceJob.Network
+		legacyJob.MaxRuntime = job.RunServiceJob.MaxRuntime
+		result[name] = legacyJob
 	}
 	return result
 }
@@ -432,14 +498,30 @@ func convertServiceJobs(legacy map[string]*RunServiceConfig) map[string]*config.
 func convertLocalJobs(legacy map[string]*LocalJobConfig) map[string]*config.LocalJobConfigLegacy {
 	result := make(map[string]*config.LocalJobConfigLegacy)
 	for name, job := range legacy {
-		result[name] = &config.LocalJobConfigLegacy{
-			LocalJob:      job.LocalJob,
+		legacyJob := &config.LocalJobConfigLegacy{
 			OverlapConfig: job.OverlapConfig,
 			SlackConfig:   job.SlackConfig,
 			SaveConfig:    job.SaveConfig,
 			MailConfig:    job.MailConfig,
 			JobSource:     config.JobSource(job.JobSource),
 		}
+		// Copy LocalJob fields individually to avoid copying mutex from BareJob
+		legacyJob.Schedule = job.LocalJob.Schedule
+		legacyJob.Name = job.LocalJob.Name
+		legacyJob.Command = job.LocalJob.Command
+		legacyJob.HistoryLimit = job.LocalJob.HistoryLimit
+		legacyJob.MaxRetries = job.LocalJob.MaxRetries
+		legacyJob.RetryDelayMs = job.LocalJob.RetryDelayMs
+		legacyJob.RetryExponential = job.LocalJob.RetryExponential
+		legacyJob.RetryMaxDelayMs = job.LocalJob.RetryMaxDelayMs
+		legacyJob.Dependencies = job.LocalJob.Dependencies
+		legacyJob.OnSuccess = job.LocalJob.OnSuccess
+		legacyJob.OnFailure = job.LocalJob.OnFailure
+		legacyJob.AllowParallel = job.LocalJob.AllowParallel
+		// LocalJob-specific fields
+		legacyJob.Dir = job.LocalJob.Dir
+		legacyJob.Environment = job.LocalJob.Environment
+		result[name] = legacyJob
 	}
 	return result
 }
@@ -447,14 +529,31 @@ func convertLocalJobs(legacy map[string]*LocalJobConfig) map[string]*config.Loca
 func convertComposeJobs(legacy map[string]*ComposeJobConfig) map[string]*config.ComposeJobConfigLegacy {
 	result := make(map[string]*config.ComposeJobConfigLegacy)
 	for name, job := range legacy {
-		result[name] = &config.ComposeJobConfigLegacy{
-			ComposeJob:    job.ComposeJob,
+		legacyJob := &config.ComposeJobConfigLegacy{
 			OverlapConfig: job.OverlapConfig,
 			SlackConfig:   job.SlackConfig,
 			SaveConfig:    job.SaveConfig,
 			MailConfig:    job.MailConfig,
 			JobSource:     config.JobSource(job.JobSource),
 		}
+		// Copy ComposeJob fields individually to avoid copying mutex from BareJob
+		legacyJob.Schedule = job.ComposeJob.Schedule
+		legacyJob.Name = job.ComposeJob.Name
+		legacyJob.Command = job.ComposeJob.Command
+		legacyJob.HistoryLimit = job.ComposeJob.HistoryLimit
+		legacyJob.MaxRetries = job.ComposeJob.MaxRetries
+		legacyJob.RetryDelayMs = job.ComposeJob.RetryDelayMs
+		legacyJob.RetryExponential = job.ComposeJob.RetryExponential
+		legacyJob.RetryMaxDelayMs = job.ComposeJob.RetryMaxDelayMs
+		legacyJob.Dependencies = job.ComposeJob.Dependencies
+		legacyJob.OnSuccess = job.ComposeJob.OnSuccess
+		legacyJob.OnFailure = job.ComposeJob.OnFailure
+		legacyJob.AllowParallel = job.ComposeJob.AllowParallel
+		// ComposeJob-specific fields
+		legacyJob.File = job.ComposeJob.File
+		legacyJob.Service = job.ComposeJob.Service
+		legacyJob.Exec = job.ComposeJob.Exec
+		result[name] = legacyJob
 	}
 	return result
 }

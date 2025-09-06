@@ -326,7 +326,7 @@ func (ebp *EnhancedBufferPool) performAdaptiveManagement() {
 
 	// Find underutilized pools and consider shrinking
 	ebp.poolsMutex.RLock()
-	for size, _ := range ebp.pools {
+	for size := range ebp.pools {
 		usageCount := usage[size]
 		utilizationRate := float64(usageCount) / float64(totalUsage)
 

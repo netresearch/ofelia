@@ -93,11 +93,14 @@ type OptimizedTokenManager struct {
 }
 
 // NewOptimizedTokenManager creates a new optimized token manager
-func NewOptimizedTokenManager(config *OptimizedTokenManagerConfig, logger interface {
-	Debugf(format string, args ...interface{})
-	Warningf(format string, args ...interface{})
-	Noticef(format string, args ...interface{})
-}) *OptimizedTokenManager {
+func NewOptimizedTokenManager(
+	config *OptimizedTokenManagerConfig,
+	logger interface {
+		Debugf(format string, args ...interface{})
+		Warningf(format string, args ...interface{})
+		Noticef(format string, args ...interface{})
+	},
+) *OptimizedTokenManager {
 	if config == nil {
 		config = DefaultOptimizedTokenManagerConfig()
 	}

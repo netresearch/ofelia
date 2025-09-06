@@ -352,11 +352,7 @@ func (s *Sanitizer) ValidateURL(rawURL string) error {
 		return err
 	}
 
-	if err := s.validateURLSuspiciousPatterns(u.Hostname(), u.Path); err != nil {
-		return err
-	}
-
-	return nil
+	return s.validateURLSuspiciousPatterns(u.Hostname(), u.Path)
 }
 
 // validateURLScheme validates the URL scheme
@@ -392,14 +388,50 @@ func (s *Sanitizer) validateURLHost(hostname string) error {
 
 // isInternalNetwork checks if a host is an internal/local network address
 func (s *Sanitizer) isInternalNetwork(host string) bool {
-	return host == LocalhostName || host == LocalhostIPv4 || host == AnyAddress || host == LocalhostIPv6 ||
-		strings.HasPrefix(host, "192.168.") || strings.HasPrefix(host, "10.") ||
-		strings.HasPrefix(host, "172.16.") || strings.HasPrefix(host, "172.17.") ||
+	// Check localhost variants
+	if s.isLocalhostAddress(host) {
+		return true
+	}
+
+	// Check private IPv4 ranges
+	if s.isPrivateIPv4Range(host) {
+		return true
+	}
+
+	// Check link-local and IPv6 ranges
+	if s.isLinkLocalOrIPv6Private(host) {
+		return true
+	}
+
+	// Check local domain suffix
+	return strings.HasSuffix(host, LocalDomainSuffix)
+}
+
+// isLocalhostAddress checks for localhost variants
+func (s *Sanitizer) isLocalhostAddress(host string) bool {
+	return host == LocalhostName || host == LocalhostIPv4 || host == AnyAddress || host == LocalhostIPv6
+}
+
+// isPrivateIPv4Range checks for private IPv4 address ranges
+func (s *Sanitizer) isPrivateIPv4Range(host string) bool {
+	return strings.HasPrefix(host, "192.168.") ||
+		strings.HasPrefix(host, "10.") ||
+		s.isClass172Private(host)
+}
+
+// isClass172Private checks for Class B private range (172.16.0.0/12)
+func (s *Sanitizer) isClass172Private(host string) bool {
+	return strings.HasPrefix(host, "172.16.") || strings.HasPrefix(host, "172.17.") ||
 		strings.HasPrefix(host, "172.18.") || strings.HasPrefix(host, "172.19.") ||
 		strings.HasPrefix(host, "172.2") || strings.HasPrefix(host, "172.30.") ||
-		strings.HasPrefix(host, "172.31.") || strings.HasSuffix(host, LocalDomainSuffix) ||
-		strings.HasPrefix(host, "169.254.") || strings.HasPrefix(host, "fd") ||
-		strings.HasPrefix(host, "fe80:")
+		strings.HasPrefix(host, "172.31.")
+}
+
+// isLinkLocalOrIPv6Private checks for link-local and IPv6 private addresses
+func (s *Sanitizer) isLinkLocalOrIPv6Private(host string) bool {
+	return strings.HasPrefix(host, "169.254.") || // Link-local IPv4
+		strings.HasPrefix(host, "fd") ||           // IPv6 unique local
+		strings.HasPrefix(host, "fe80:")           // IPv6 link-local
 }
 
 // validateURLPort validates the URL port
