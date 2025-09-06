@@ -17,18 +17,18 @@ import (
 type UnifiedConfigManager struct {
 	// Unified job storage (replaces 5 separate maps)
 	jobs map[string]*UnifiedJobConfig
-	
+
 	// Configuration metadata
 	configPath    string
 	configFiles   []string
 	configModTime time.Time
-	
+
 	// Core dependencies
 	scheduler         *core.Scheduler
 	dockerHandler     DockerHandlerInterface // Interface for testability
 	middlewareBuilder *MiddlewareBuilder
 	logger            core.Logger
-	
+
 	// Thread safety
 	mutex sync.RWMutex
 }
@@ -75,7 +75,7 @@ func (m *UnifiedConfigManager) GetJob(name string) (*UnifiedJobConfig, bool) {
 func (m *UnifiedConfigManager) ListJobs() map[string]*UnifiedJobConfig {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	result := make(map[string]*UnifiedJobConfig, len(m.jobs))
 	for name, job := range m.jobs {
 		result[name] = job
@@ -87,7 +87,7 @@ func (m *UnifiedConfigManager) ListJobs() map[string]*UnifiedJobConfig {
 func (m *UnifiedConfigManager) ListJobsByType(jobType JobType) map[string]*UnifiedJobConfig {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	result := make(map[string]*UnifiedJobConfig)
 	for name, job := range m.jobs {
 		if job.Type == jobType {
@@ -102,28 +102,28 @@ func (m *UnifiedConfigManager) AddJob(name string, job *UnifiedJobConfig) error 
 	if job == nil {
 		return fmt.Errorf("cannot add nil job")
 	}
-	
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	// Set defaults and prepare the job
 	if err := m.prepareJob(name, job); err != nil {
 		return fmt.Errorf("failed to prepare job %q: %w", name, err)
 	}
-	
+
 	// Build middlewares
 	job.buildMiddlewares()
-	
+
 	// Add to scheduler if available
 	if m.scheduler != nil {
 		if err := m.scheduler.AddJob(job); err != nil {
 			return fmt.Errorf("failed to add job %q to scheduler: %w", name, err)
 		}
 	}
-	
+
 	// Store in manager
 	m.jobs[name] = job
-	
+
 	m.logger.Debugf("Added %s job: %s", job.Type, name)
 	return nil
 }
@@ -132,22 +132,22 @@ func (m *UnifiedConfigManager) AddJob(name string, job *UnifiedJobConfig) error 
 func (m *UnifiedConfigManager) RemoveJob(name string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	job, exists := m.jobs[name]
 	if !exists {
 		return fmt.Errorf("job %q not found", name)
 	}
-	
+
 	// Remove from scheduler if available
 	if m.scheduler != nil {
 		if err := m.scheduler.RemoveJob(job); err != nil {
 			m.logger.Errorf("Failed to remove job %q from scheduler: %v", name, err)
 		}
 	}
-	
+
 	// Remove from manager
 	delete(m.jobs, name)
-	
+
 	m.logger.Debugf("Removed %s job: %s", job.Type, name)
 	return nil
 }
@@ -155,23 +155,23 @@ func (m *UnifiedConfigManager) RemoveJob(name string) error {
 // SyncJobs synchronizes jobs from external sources (INI files, Docker labels)
 // This replaces the complex syncJobMap logic
 func (m *UnifiedConfigManager) SyncJobs(
-	parsed map[string]*UnifiedJobConfig, 
+	parsed map[string]*UnifiedJobConfig,
 	source JobSource,
 ) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	// Remove jobs that no longer exist in the source
 	for name, job := range m.jobs {
 		if source != "" && job.JobSource != source && job.JobSource != "" {
 			continue // Skip jobs from different sources
 		}
-		
+
 		if _, exists := parsed[name]; !exists {
 			m.removeJobUnsafe(name, job)
 		}
 	}
-	
+
 	// Add or update jobs from the parsed configuration
 	for name, job := range parsed {
 		if err := m.syncSingleJob(name, job, source); err != nil {
@@ -179,14 +179,14 @@ func (m *UnifiedConfigManager) SyncJobs(
 			continue
 		}
 	}
-	
+
 	return nil
 }
 
 // syncSingleJob handles syncing a single job with source prioritization
 func (m *UnifiedConfigManager) syncSingleJob(name string, newJob *UnifiedJobConfig, source JobSource) error {
 	existing, exists := m.jobs[name]
-	
+
 	if exists {
 		// Handle source priority (INI overrides labels)
 		switch {
@@ -206,7 +206,7 @@ func (m *UnifiedConfigManager) syncSingleJob(name string, newJob *UnifiedJobConf
 			return nil // Skip - unknown priority case
 		}
 	}
-	
+
 	// New job - add it
 	return m.addJobUnsafe(name, newJob, source)
 }
@@ -215,12 +215,12 @@ func (m *UnifiedConfigManager) syncSingleJob(name string, newJob *UnifiedJobConf
 func (m *UnifiedConfigManager) hasJobChanged(oldJob, newJob *UnifiedJobConfig) bool {
 	oldHash, err1 := oldJob.Hash()
 	newHash, err2 := newJob.Hash()
-	
+
 	if err1 != nil || err2 != nil {
 		m.logger.Errorf("Failed to calculate job hash for change detection")
 		return true // Assume changed if we can't calculate hash
 	}
-	
+
 	return oldHash != newHash
 }
 
@@ -230,18 +230,18 @@ func (m *UnifiedConfigManager) prepareJob(name string, job *UnifiedJobConfig) er
 	if err := defaults.Set(job); err != nil {
 		return fmt.Errorf("failed to set defaults: %w", err)
 	}
-	
+
 	// Set the job name on the core job
 	coreJob := job.GetCoreJob()
 	if coreJob == nil {
 		return fmt.Errorf("core job is nil for type %s", job.Type)
 	}
-	
+
 	// Set name using reflection (since core jobs don't have a common SetName interface)
 	if err := m.setJobName(coreJob, name); err != nil {
 		return fmt.Errorf("failed to set job name: %w", err)
 	}
-	
+
 	// Type-specific preparation
 	return m.prepareJobByType(job)
 }
@@ -250,11 +250,11 @@ func (m *UnifiedConfigManager) prepareJob(name string, job *UnifiedJobConfig) er
 func (m *UnifiedConfigManager) setJobName(job core.Job, name string) error {
 	jobValue := reflect.ValueOf(job).Elem()
 	nameField := jobValue.FieldByName("Name")
-	
+
 	if !nameField.IsValid() || !nameField.CanSet() {
 		return fmt.Errorf("cannot set Name field on job")
 	}
-	
+
 	nameField.SetString(name)
 	return nil
 }
@@ -280,7 +280,7 @@ func (m *UnifiedConfigManager) prepareJobByType(job *UnifiedJobConfig) error {
 	case JobTypeCompose:
 		// Compose jobs don't need special preparation
 	}
-	
+
 	return nil
 }
 
@@ -298,21 +298,21 @@ func (m *UnifiedConfigManager) updateJobUnsafe(name string, oldJob, newJob *Unif
 	if m.scheduler != nil {
 		_ = m.scheduler.RemoveJob(oldJob)
 	}
-	
+
 	// Prepare and add new job
 	if err := m.prepareJob(name, newJob); err != nil {
 		return err
 	}
-	
+
 	newJob.SetJobSource(source)
 	newJob.buildMiddlewares()
-	
+
 	if m.scheduler != nil {
 		if err := m.scheduler.AddJob(newJob); err != nil {
 			return err
 		}
 	}
-	
+
 	m.jobs[name] = newJob
 	return nil
 }
@@ -325,16 +325,16 @@ func (m *UnifiedConfigManager) addJobUnsafe(name string, job *UnifiedJobConfig, 
 	if err := m.prepareJob(name, job); err != nil {
 		return err
 	}
-	
+
 	job.SetJobSource(source)
 	job.buildMiddlewares()
-	
+
 	if m.scheduler != nil {
 		if err := m.scheduler.AddJob(job); err != nil {
 			return err
 		}
 	}
-	
+
 	m.jobs[name] = job
 	return nil
 }
@@ -350,7 +350,7 @@ func (m *UnifiedConfigManager) GetJobCount() int {
 func (m *UnifiedConfigManager) GetJobCountByType() map[JobType]int {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	
+
 	counts := make(map[JobType]int)
 	for _, job := range m.jobs {
 		counts[job.Type]++

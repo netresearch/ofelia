@@ -191,14 +191,31 @@ func (uc *UnifiedConfig) ToLegacyConfig() *Config {
 		case config.JobTypeExec:
 			if legacyJob := config.ConvertToExecJobConfig(unifiedJob); legacyJob != nil {
 				// Convert from config.ExecJobConfigLegacy to cli.ExecJobConfig
-				legacy.ExecJobs[name] = &ExecJobConfig{
-					ExecJob:       legacyJob.ExecJob,
+				cliJob := &ExecJobConfig{
 					OverlapConfig: legacyJob.OverlapConfig,
 					SlackConfig:   legacyJob.SlackConfig,
 					SaveConfig:    legacyJob.SaveConfig,
 					MailConfig:    legacyJob.MailConfig,
 					JobSource:     JobSource(legacyJob.JobSource),
 				}
+				// Copy job fields individually to avoid copying mutex
+				cliJob.Schedule = legacyJob.Schedule
+				cliJob.Name = legacyJob.Name
+				cliJob.Command = legacyJob.Command
+				cliJob.Container = legacyJob.Container
+				cliJob.User = legacyJob.User
+				cliJob.TTY = legacyJob.TTY
+				cliJob.Environment = legacyJob.Environment
+				cliJob.HistoryLimit = legacyJob.HistoryLimit
+				cliJob.MaxRetries = legacyJob.MaxRetries
+				cliJob.RetryDelayMs = legacyJob.RetryDelayMs
+				cliJob.RetryExponential = legacyJob.RetryExponential
+				cliJob.RetryMaxDelayMs = legacyJob.RetryMaxDelayMs
+				cliJob.Dependencies = legacyJob.Dependencies
+				cliJob.OnSuccess = legacyJob.OnSuccess
+				cliJob.OnFailure = legacyJob.OnFailure
+				cliJob.AllowParallel = legacyJob.AllowParallel
+				legacy.ExecJobs[name] = cliJob
 			}
 		case config.JobTypeRun:
 			if legacyJob := config.ConvertToRunJobConfig(unifiedJob); legacyJob != nil {
@@ -371,4 +388,3 @@ func (da *DockerHandlerAdapter) GetInternalDockerClient() *docker.Client {
 func (da *DockerHandlerAdapter) GetDockerLabels() (map[string]map[string]string, error) {
 	return da.handler.GetDockerLabels()
 }
-

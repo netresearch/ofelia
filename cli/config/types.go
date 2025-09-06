@@ -224,4 +224,3 @@ func NewUnifiedJobConfig(jobType JobType) *UnifiedJobConfig {
 
 	return config
 }
-

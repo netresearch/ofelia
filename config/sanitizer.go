@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"html"
+	"net"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -82,14 +83,8 @@ func (s *Sanitizer) SanitizeString(input string, maxLength int) (string, error) 
 		return "", fmt.Errorf("input exceeds maximum length of %d characters", maxLength)
 	}
 
-	// Remove null bytes and other dangerous control characters
+	// Remove null bytes first (these are silently removed, not errors)
 	input = strings.ReplaceAll(input, "\x00", "")
-	input = strings.ReplaceAll(input, "\x01", "")
-	input = strings.ReplaceAll(input, "\x02", "")
-	input = strings.ReplaceAll(input, "\x03", "")
-
-	// Trim whitespace
-	input = strings.TrimSpace(input)
 
 	// Check for dangerous control characters (allow tab, newline, carriage return)
 	for _, r := range input {
@@ -97,6 +92,14 @@ func (s *Sanitizer) SanitizeString(input string, maxLength int) (string, error) 
 			return "", fmt.Errorf("input contains invalid control characters")
 		}
 	}
+
+	// Remove other dangerous control characters after the check
+	input = strings.ReplaceAll(input, "\x01", "")
+	input = strings.ReplaceAll(input, "\x02", "")
+	input = strings.ReplaceAll(input, "\x03", "")
+
+	// Trim whitespace
+	input = strings.TrimSpace(input)
 
 	// Check for encoding attacks
 	if strings.Contains(input, "%") {
@@ -146,23 +149,23 @@ func (s *Sanitizer) ValidateCommand(command string) error {
 	dangerousCommands := []string{
 		// File system destruction
 		"rm -rf /", "rm -rf /*", "rm -rf ~", "mkfs", "format", "fdisk",
-		
+
 		// Network operations
 		"wget ", "curl ", "nc ", "ncat ", "netcat ", "telnet ", "ssh ", "scp ", "rsync ",
-		
+
 		// System manipulation
 		"chmod 777", "chmod +x /", "chown root", "sudo", "su -", "passwd", "usermod",
 		"mount ", "umount ", "modprobe ", "insmod ", "rmmod ",
-		
-		// Process manipulation  
+
+		// Process manipulation
 		"kill -9", "killall", "pkill", "shutdown", "reboot", "halt", "init 0", "init 6",
-		
+
 		// Fork bombs and resource exhaustion
 		":(){:|:&};:", ":(){ :|:& };:", "fork bomb", "/dev/null &", "> /dev/null &",
-		
+
 		// Privilege escalation
 		"/etc/passwd", "/etc/shadow", "/etc/sudoers", "/root/", "SUID", "setuid",
-		
+
 		// Container escapes
 		"docker.sock", "/var/run/docker.sock", "/proc/self/root", "/sys/fs/cgroup",
 		"--privileged", "--pid host", "--network host", "--cap-add SYS_ADMIN",
@@ -348,8 +351,10 @@ func (s *Sanitizer) ValidateURL(rawURL string) error {
 		return fmt.Errorf("URL scheme %s is not allowed (only https/http permitted)", u.Scheme)
 	}
 
-	// Enhanced SSRF prevention - block internal networks
+	// Enhanced SSRF prevention - block internal networks and direct IP addresses
 	host := strings.ToLower(u.Hostname())
+
+	// Block internal/local networks
 	if host == LocalhostName || host == LocalhostIPv4 || host == AnyAddress || host == LocalhostIPv6 ||
 		strings.HasPrefix(host, "192.168.") || strings.HasPrefix(host, "10.") ||
 		strings.HasPrefix(host, "172.16.") || strings.HasPrefix(host, "172.17.") ||
@@ -359,6 +364,11 @@ func (s *Sanitizer) ValidateURL(rawURL string) error {
 		strings.HasPrefix(host, "169.254.") || strings.HasPrefix(host, "fd") ||
 		strings.HasPrefix(host, "fe80:") {
 		return fmt.Errorf("URL points to internal/local network address")
+	}
+
+	// Block direct IP addresses (public IPs can be used for attacks)
+	if net.ParseIP(host) != nil {
+		return fmt.Errorf("direct IP addresses are not allowed in URLs")
 	}
 
 	// Block suspicious patterns
@@ -460,12 +470,12 @@ func (s *Sanitizer) ValidateCronExpression(expr string) error {
 			// Extract number and unit
 			numStr := duration[:len(duration)-1]
 			unit := duration[len(duration)-1:]
-			
+
 			num, err := strconv.Atoi(numStr)
 			if err != nil {
 				return fmt.Errorf("invalid number in @every duration: %s", numStr)
 			}
-			
+
 			// Prevent excessively frequent executions (less than 1 second) or too infrequent
 			switch unit {
 			case TimeUnitSecond:
@@ -637,7 +647,7 @@ func (s *Sanitizer) validateCronList(field string, minVal, maxVal int, fieldName
 		if val == "" {
 			return fmt.Errorf("empty value in %s field list", fieldName)
 		}
-		
+
 		intVal, err := strconv.Atoi(val)
 		if err != nil || intVal < minVal || intVal > maxVal {
 			return fmt.Errorf("invalid value %s in %s field list (must be %d-%d)", val, fieldName, minVal, maxVal)
@@ -658,9 +668,9 @@ func (s *Sanitizer) ValidateJobName(name string) error {
 		return fmt.Errorf("job name must be between 1 and 100 characters")
 	}
 
-	// Allow only alphanumeric, dash, underscore, and dots
-	if !regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`).MatchString(name) {
-		return fmt.Errorf("job name can only contain letters, numbers, dashes, underscores, and dots")
+	// Allow only alphanumeric, dash, underscore (no dots to avoid confusion)
+	if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(name) {
+		return fmt.Errorf("job name can only contain letters, numbers, dashes, and underscores")
 	}
 
 	// Prevent names that could cause confusion or security issues
@@ -700,11 +710,11 @@ func (s *Sanitizer) ValidateEmailList(emails string) error {
 		if email == "" {
 			return fmt.Errorf("empty email address in list")
 		}
-		
+
 		if len(email) > 254 { // RFC 5321 limit
 			return fmt.Errorf("email address too long: %s", email)
 		}
-		
+
 		if !emailRegex.MatchString(email) {
 			return fmt.Errorf("invalid email address format: %s", email)
 		}

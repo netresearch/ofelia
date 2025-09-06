@@ -44,11 +44,11 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 			// Prevent any compose job creation by clearing the map
 			composeJobs = make(map[string]map[string]interface{})
 		}
-		
+
 		// Log security enforcement action
 		if len(localJobs) > 0 || len(composeJobs) > 0 {
-			c.logger.Noticef("SECURITY: Container-to-host job execution blocked for security. "+
-				"This prevents containers from executing arbitrary commands on the host via labels. "+
+			c.logger.Noticef("SECURITY: Container-to-host job execution blocked for security. " +
+				"This prevents containers from executing arbitrary commands on the host via labels. " +
 				"Only enable allow-host-jobs-from-labels in trusted environments.")
 		}
 	} else {

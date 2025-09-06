@@ -32,7 +32,7 @@ func (b *MiddlewareBuilder) BuildMiddlewares(job core.Job, config *MiddlewareCon
 // BuildSchedulerMiddlewares builds middlewares for the global scheduler
 // This centralizes the scheduler middleware building logic
 func (b *MiddlewareBuilder) BuildSchedulerMiddlewares(
-	scheduler *core.Scheduler, 
+	scheduler *core.Scheduler,
 	slackConfig *middlewares.SlackConfig,
 	saveConfig *middlewares.SaveConfig,
 	mailConfig *middlewares.MailConfig,
@@ -50,8 +50,8 @@ func (b *MiddlewareBuilder) BuildSchedulerMiddlewares(
 // ResetJobMiddlewares resets and rebuilds middlewares for a job
 // This provides a centralized way to handle middleware updates
 func (b *MiddlewareBuilder) ResetJobMiddlewares(
-	job core.Job, 
-	middlewareConfig *MiddlewareConfig, 
+	job core.Job,
+	middlewareConfig *MiddlewareConfig,
 	schedulerMiddlewares []core.Middleware,
 ) {
 	if job == nil {

@@ -26,7 +26,7 @@ func (s *ConversionSuite) TestConvertFromExecJobConfig(c *C) {
 	}
 
 	unified := ConvertFromExecJobConfig(legacy)
-	
+
 	c.Assert(unified, NotNil)
 	c.Assert(unified.Type, Equals, JobTypeExec)
 	c.Assert(unified.JobSource, Equals, JobSourceINI)
@@ -53,7 +53,7 @@ func (s *ConversionSuite) TestConvertFromRunJobConfig(c *C) {
 	}
 
 	unified := ConvertFromRunJobConfig(legacy)
-	
+
 	c.Assert(unified, NotNil)
 	c.Assert(unified.Type, Equals, JobTypeRun)
 	c.Assert(unified.JobSource, Equals, JobSourceLabel)
@@ -78,7 +78,7 @@ func (s *ConversionSuite) TestConvertFromRunServiceConfig(c *C) {
 	}
 
 	unified := ConvertFromRunServiceConfig(legacy)
-	
+
 	c.Assert(unified, NotNil)
 	c.Assert(unified.Type, Equals, JobTypeService)
 	c.Assert(unified.JobSource, Equals, JobSourceINI)
@@ -102,7 +102,7 @@ func (s *ConversionSuite) TestConvertFromLocalJobConfig(c *C) {
 	}
 
 	unified := ConvertFromLocalJobConfig(legacy)
-	
+
 	c.Assert(unified, NotNil)
 	c.Assert(unified.Type, Equals, JobTypeLocal)
 	c.Assert(unified.JobSource, Equals, JobSourceLabel)
@@ -126,7 +126,7 @@ func (s *ConversionSuite) TestConvertFromComposeJobConfig(c *C) {
 	}
 
 	unified := ConvertFromComposeJobConfig(legacy)
-	
+
 	c.Assert(unified, NotNil)
 	c.Assert(unified.Type, Equals, JobTypeCompose)
 	c.Assert(unified.JobSource, Equals, JobSourceINI)
@@ -155,7 +155,7 @@ func (s *ConversionSuite) TestConvertToExecJobConfig(c *C) {
 	}
 
 	legacy := ConvertToExecJobConfig(unified)
-	
+
 	c.Assert(legacy, NotNil)
 	c.Assert(legacy.JobSource, Equals, JobSourceINI)
 	c.Assert(legacy.ExecJob.Name, Equals, "test-exec")
@@ -198,7 +198,7 @@ func (s *ConversionSuite) TestConvertLegacyJobMaps(c *C) {
 			JobSource: JobSourceINI,
 		},
 	}
-	
+
 	runJobs := map[string]*RunJobConfigLegacy{
 		"run1": {
 			RunJob: core.RunJob{
@@ -207,7 +207,7 @@ func (s *ConversionSuite) TestConvertLegacyJobMaps(c *C) {
 			JobSource: JobSourceLabel,
 		},
 	}
-	
+
 	serviceJobs := map[string]*RunServiceConfigLegacy{
 		"service1": {
 			RunServiceJob: core.RunServiceJob{
@@ -216,7 +216,7 @@ func (s *ConversionSuite) TestConvertLegacyJobMaps(c *C) {
 			JobSource: JobSourceINI,
 		},
 	}
-	
+
 	localJobs := map[string]*LocalJobConfigLegacy{
 		"local1": {
 			LocalJob: core.LocalJob{
@@ -225,7 +225,7 @@ func (s *ConversionSuite) TestConvertLegacyJobMaps(c *C) {
 			JobSource: JobSourceLabel,
 		},
 	}
-	
+
 	composeJobs := map[string]*ComposeJobConfigLegacy{
 		"compose1": {
 			ComposeJob: core.ComposeJob{
@@ -237,37 +237,37 @@ func (s *ConversionSuite) TestConvertLegacyJobMaps(c *C) {
 
 	// Convert to unified
 	unified := ConvertLegacyJobMaps(execJobs, runJobs, serviceJobs, localJobs, composeJobs)
-	
+
 	c.Assert(len(unified), Equals, 5)
-	
+
 	// Verify exec job conversion
 	execJob, exists := unified["exec1"]
 	c.Assert(exists, Equals, true)
 	c.Assert(execJob.Type, Equals, JobTypeExec)
 	c.Assert(execJob.JobSource, Equals, JobSourceINI)
 	c.Assert(execJob.GetName(), Equals, "exec1")
-	
+
 	// Verify run job conversion
 	runJob, exists := unified["run1"]
 	c.Assert(exists, Equals, true)
 	c.Assert(runJob.Type, Equals, JobTypeRun)
 	c.Assert(runJob.JobSource, Equals, JobSourceLabel)
 	c.Assert(runJob.GetName(), Equals, "run1")
-	
+
 	// Verify service job conversion
 	serviceJob, exists := unified["service1"]
 	c.Assert(exists, Equals, true)
 	c.Assert(serviceJob.Type, Equals, JobTypeService)
 	c.Assert(serviceJob.JobSource, Equals, JobSourceINI)
 	c.Assert(serviceJob.GetName(), Equals, "service1")
-	
+
 	// Verify local job conversion
 	localJob, exists := unified["local1"]
 	c.Assert(exists, Equals, true)
 	c.Assert(localJob.Type, Equals, JobTypeLocal)
 	c.Assert(localJob.JobSource, Equals, JobSourceLabel)
 	c.Assert(localJob.GetName(), Equals, "local1")
-	
+
 	// Verify compose job conversion
 	composeJob, exists := unified["compose1"]
 	c.Assert(exists, Equals, true)
@@ -285,6 +285,6 @@ func (s *ConversionSuite) TestConvertLegacyJobMapsEmpty(c *C) {
 		make(map[string]*LocalJobConfigLegacy),
 		make(map[string]*ComposeJobConfigLegacy),
 	)
-	
+
 	c.Assert(len(unified), Equals, 0)
 }

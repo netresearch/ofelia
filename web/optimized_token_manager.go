@@ -339,4 +339,3 @@ func (tm *OptimizedTokenManager) GetActiveTokenCount() int {
 func (tm *OptimizedTokenManager) ForceCleanup() {
 	go tm.performCleanup()
 }
-

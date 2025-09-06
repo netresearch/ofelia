@@ -187,7 +187,7 @@ func (c *Config) mergeJobsFromDockerLabels() {
 
 	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
 	mergeJobs(c, c.RunJobs, parsed.RunJobs, "run")
-	
+
 	// SECURITY HARDENING: Enforce AllowHostJobsFromLabels=false with hard block
 	if !c.Global.AllowHostJobsFromLabels {
 		if len(parsed.LocalJobs) > 0 {
@@ -204,12 +204,12 @@ func (c *Config) mergeJobsFromDockerLabels() {
 		parsed.LocalJobs = make(map[string]*LocalJobConfig)
 		parsed.ComposeJobs = make(map[string]*ComposeJobConfig)
 	} else {
-		c.logger.Warningf("SECURITY WARNING: Host jobs from labels are enabled. This allows containers to execute "+
+		c.logger.Warningf("SECURITY WARNING: Host jobs from labels are enabled. This allows containers to execute " +
 			"arbitrary commands on the host system. Only enable this in trusted environments.")
 		mergeJobs(c, c.LocalJobs, parsed.LocalJobs, "local")
 		mergeJobs(c, c.ComposeJobs, parsed.ComposeJobs, "compose")
 	}
-	
+
 	mergeJobs(c, c.ServiceJobs, parsed.ServiceJobs, "service")
 }
 
@@ -391,7 +391,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		_ = defaults.Set(j)
 		j.Name = name
 	}
-	
+
 	// SECURITY HARDENING: Enforce AllowHostJobsFromLabels=false with error blocking
 	if !c.Global.AllowHostJobsFromLabels {
 		if len(parsedLabelConfig.LocalJobs) > 0 {
@@ -400,7 +400,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				"This prevents container-to-host privilege escalation attacks.", len(parsedLabelConfig.LocalJobs))
 		}
 	} else {
-		c.logger.Warningf("SECURITY WARNING: Syncing host-based local jobs from container labels. "+
+		c.logger.Warningf("SECURITY WARNING: Syncing host-based local jobs from container labels. " +
 			"This allows containers to execute arbitrary commands on the host system.")
 		syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
 	}
@@ -419,7 +419,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		_ = defaults.Set(j)
 		j.Name = name
 	}
-	
+
 	// SECURITY HARDENING: Enforce AllowHostJobsFromLabels=false with error blocking
 	if !c.Global.AllowHostJobsFromLabels {
 		if len(parsedLabelConfig.ComposeJobs) > 0 {
@@ -428,7 +428,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				"This prevents container-to-host privilege escalation attacks.", len(parsedLabelConfig.ComposeJobs))
 		}
 	} else {
-		c.logger.Warningf("SECURITY WARNING: Syncing host-based compose jobs from container labels. "+
+		c.logger.Warningf("SECURITY WARNING: Syncing host-based compose jobs from container labels. " +
 			"This allows containers to execute arbitrary commands on the host system.")
 		syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
 	}

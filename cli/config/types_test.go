@@ -75,28 +75,28 @@ func (s *TypesSuite) TestUnifiedJobConfigGetCoreJob(c *C) {
 
 func (s *TypesSuite) TestUnifiedJobConfigJobSource(c *C) {
 	job := NewUnifiedJobConfig(JobTypeExec)
-	
+
 	// Test initial source
 	c.Assert(job.GetJobSource(), Equals, JobSource(""))
-	
+
 	// Test setting source
 	job.SetJobSource(JobSourceINI)
 	c.Assert(job.GetJobSource(), Equals, JobSourceINI)
-	
+
 	job.SetJobSource(JobSourceLabel)
 	c.Assert(job.GetJobSource(), Equals, JobSourceLabel)
 }
 
 func (s *TypesSuite) TestUnifiedJobConfigBuildMiddlewares(c *C) {
 	job := NewUnifiedJobConfig(JobTypeExec)
-	
+
 	// Set up middleware configuration
 	job.MiddlewareConfig.OverlapConfig.NoOverlap = true
 	job.MiddlewareConfig.SlackConfig.SlackWebhook = "http://example.com/webhook"
-	
+
 	// Build middlewares
 	job.buildMiddlewares()
-	
+
 	// Verify middlewares were applied
 	middlewares := job.Middlewares()
 	c.Assert(len(middlewares), Equals, 2) // overlap, slack (save and mail configs were not configured)
@@ -104,12 +104,12 @@ func (s *TypesSuite) TestUnifiedJobConfigBuildMiddlewares(c *C) {
 
 func (s *TypesSuite) TestUnifiedJobConfigGetters(c *C) {
 	job := NewUnifiedJobConfig(JobTypeExec)
-	
+
 	// Set values on the core job
 	job.ExecJob.Name = "test-job"
 	job.ExecJob.Schedule = "@every 5s"
 	job.ExecJob.Command = "echo test"
-	
+
 	// Test getters
 	c.Assert(job.GetName(), Equals, "test-job")
 	c.Assert(job.GetSchedule(), Equals, "@every 5s")
@@ -120,26 +120,26 @@ func (s *TypesSuite) TestUnifiedJobConfigHash(c *C) {
 	job1 := NewUnifiedJobConfig(JobTypeExec)
 	job1.ExecJob.Name = "test"
 	job1.ExecJob.Schedule = "@every 5s"
-	
+
 	job2 := NewUnifiedJobConfig(JobTypeExec)
 	job2.ExecJob.Name = "test"
 	job2.ExecJob.Schedule = "@every 5s"
-	
+
 	job3 := NewUnifiedJobConfig(JobTypeExec)
 	job3.ExecJob.Name = "test"
 	job3.ExecJob.Schedule = "@every 10s" // Different schedule
-	
+
 	hash1, err1 := job1.Hash()
 	hash2, err2 := job2.Hash()
 	hash3, err3 := job3.Hash()
-	
+
 	c.Assert(err1, IsNil)
 	c.Assert(err2, IsNil)
 	c.Assert(err3, IsNil)
-	
+
 	// Same configuration should produce same hash
 	c.Assert(hash1, Equals, hash2)
-	
+
 	// Different configuration should produce different hash
 	c.Assert(hash1, Not(Equals), hash3)
 }
@@ -151,7 +151,7 @@ func (s *TypesSuite) TestMiddlewareConfig(c *C) {
 		SaveConfig:    middlewares.SaveConfig{SaveFolder: "/tmp"},
 		MailConfig:    middlewares.MailConfig{EmailTo: "test@example.com"},
 	}
-	
+
 	c.Assert(config.OverlapConfig.NoOverlap, Equals, true)
 	c.Assert(config.SlackConfig.SlackWebhook, Equals, "http://example.com")
 	c.Assert(config.SaveConfig.SaveFolder, Equals, "/tmp")
@@ -174,7 +174,7 @@ func (s *TypesSuite) TestJobSourceConstants(c *C) {
 func (s *TypesSuite) TestUnifiedJobConfigRun(c *C) {
 	// Test with nil core job (invalid state) - this tests method delegation without Docker client
 	invalidJob := &UnifiedJobConfig{Type: JobType("invalid")}
-	
+
 	// Create minimal context for testing
 	logger := &test.Logger{}
 	scheduler := core.NewScheduler(logger)
@@ -184,10 +184,10 @@ func (s *TypesSuite) TestUnifiedJobConfigRun(c *C) {
 		Scheduler: scheduler,
 		Execution: execution,
 	}
-	
+
 	err := invalidJob.Run(ctx)
 	c.Assert(err, Equals, core.ErrUnexpected)
-	
+
 	// Test that a valid job config has a non-nil core job
 	execJob := NewUnifiedJobConfig(JobTypeExec)
 	c.Assert(execJob.GetCoreJob(), NotNil)
@@ -196,11 +196,11 @@ func (s *TypesSuite) TestUnifiedJobConfigRun(c *C) {
 
 func (s *TypesSuite) TestUnifiedJobConfigMiddlewareOperations(c *C) {
 	job := NewUnifiedJobConfig(JobTypeExec)
-	
+
 	// Test Use method
 	testMiddleware := &mockMiddleware{}
 	job.Use(testMiddleware)
-	
+
 	// Verify middleware was added
 	middlewares := job.Middlewares()
 	c.Assert(len(middlewares), Equals, 1)

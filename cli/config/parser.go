@@ -19,9 +19,9 @@ const (
 	jobLocal      = "job-local"
 	jobCompose    = "job-compose"
 
-	labelPrefix      = "ofelia"
-	requiredLabel    = labelPrefix + ".enabled"
-	serviceLabel     = labelPrefix + ".service"
+	labelPrefix   = "ofelia"
+	requiredLabel = labelPrefix + ".enabled"
+	serviceLabel  = labelPrefix + ".service"
 )
 
 // ConfigurationParser handles parsing of unified job configurations from various sources
@@ -42,10 +42,10 @@ func (p *ConfigurationParser) ParseINI(cfg *ini.File) (map[string]*UnifiedJobCon
 
 	for _, section := range cfg.Sections() {
 		name := strings.TrimSpace(section.Name())
-		
+
 		var jobType JobType
 		var jobName string
-		
+
 		switch {
 		case strings.HasPrefix(name, jobExec):
 			jobType = JobTypeExec
@@ -236,16 +236,16 @@ func (p *ConfigurationParser) splitLabelsByType(labels map[string]map[string]str
 		}
 
 		isService := hasServiceLabel(labelSet)
-		
+
 		for k, v := range labelSet {
 			parts := strings.Split(k, ".")
 			if len(parts) < 4 || parts[0] != "ofelia" {
 				continue
 			}
-			
+
 			jobType, jobName, jobParam := parts[1], parts[2], parts[3]
 			scopedName := jobName
-			
+
 			// For exec jobs, include container name in scope
 			if jobType == "job-exec" {
 				scopedName = containerName + "." + jobName
