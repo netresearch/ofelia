@@ -8,31 +8,6 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 )
 
-// MockLogger for testing
-type MockLogger struct {
-	logs []string
-}
-
-func (m *MockLogger) Criticalf(format string, args ...interface{}) {
-	m.logs = append(m.logs, "CRITICAL: "+format)
-}
-
-func (m *MockLogger) Debugf(format string, args ...interface{}) {
-	m.logs = append(m.logs, "DEBUG: "+format)
-}
-
-func (m *MockLogger) Errorf(format string, args ...interface{}) {
-	m.logs = append(m.logs, "ERROR: "+format)
-}
-
-func (m *MockLogger) Noticef(format string, args ...interface{}) {
-	m.logs = append(m.logs, "NOTICE: "+format)
-}
-
-func (m *MockLogger) Warningf(format string, args ...interface{}) {
-	m.logs = append(m.logs, "WARNING: "+format)
-}
-
 // MockMetricsRecorder for testing
 type MockMetricsRecorder struct {
 	operations map[string]int
