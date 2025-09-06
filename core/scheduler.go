@@ -322,6 +322,13 @@ type jobWrapper struct {
 }
 
 func (w *jobWrapper) Run() {
+	// Add panic recovery to handle job panics gracefully
+	defer func() {
+		if r := recover(); r != nil {
+			w.s.Logger.Errorf("Job %q panicked: %v", w.j.GetName(), r)
+		}
+	}()
+
 	// Generate workflow execution ID
 	executionID := fmt.Sprintf("sched-%d-%s", time.Now().Unix(), w.j.GetName())
 
