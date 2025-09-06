@@ -29,6 +29,8 @@ func NewExtendedMockMetricsRecorder() *ExtendedMockMetricsRecorder {
 }
 
 func (m *ExtendedMockMetricsRecorder) RecordDockerLatency(operation string, duration time.Duration) {
+	m.MockMetricsRecorder.mu.Lock()
+	defer m.MockMetricsRecorder.mu.Unlock()
 	if m.dockerLatencies == nil {
 		m.dockerLatencies = make(map[string][]time.Duration)
 	}
@@ -36,6 +38,8 @@ func (m *ExtendedMockMetricsRecorder) RecordDockerLatency(operation string, dura
 }
 
 func (m *ExtendedMockMetricsRecorder) RecordJobExecution(jobName string, duration time.Duration, success bool) {
+	m.MockMetricsRecorder.mu.Lock()
+	defer m.MockMetricsRecorder.mu.Unlock()
 	if m.jobExecutions == nil {
 		m.jobExecutions = make(map[string][]JobExecutionRecord)
 	}
@@ -52,6 +56,8 @@ func (m *ExtendedMockMetricsRecorder) RecordMemoryUsage(bytes int64) {}
 func (m *ExtendedMockMetricsRecorder) RecordBufferPoolStats(stats map[string]interface{}) {}
 
 func (m *ExtendedMockMetricsRecorder) RecordCustomMetric(name string, value interface{}) {
+	m.MockMetricsRecorder.mu.Lock()
+	defer m.MockMetricsRecorder.mu.Unlock()
 	if m.customMetrics == nil {
 		m.customMetrics = make(map[string]interface{})
 	}
@@ -68,8 +74,8 @@ func (m *ExtendedMockMetricsRecorder) GetMetrics() map[string]interface{} {
 
 func (m *ExtendedMockMetricsRecorder) GetDockerMetrics() map[string]interface{} {
 	return map[string]interface{}{
-		"operations": m.operations, // Use the inherited operations field
-		"errors":     m.errors,     // Use the inherited errors field
+		"operations": m.MockMetricsRecorder.operations, // Use the inherited operations field
+		"errors":     m.MockMetricsRecorder.errors,     // Use the inherited errors field
 		"latencies":  m.dockerLatencies,
 	}
 }
@@ -81,8 +87,10 @@ func (m *ExtendedMockMetricsRecorder) GetJobMetrics() map[string]interface{} {
 }
 
 func (m *ExtendedMockMetricsRecorder) Reset() {
-	m.operations = make(map[string]int)
-	m.errors = make(map[string]int)
+	m.MockMetricsRecorder.mu.Lock()
+	defer m.MockMetricsRecorder.mu.Unlock()
+	m.MockMetricsRecorder.operations = make(map[string]int)
+	m.MockMetricsRecorder.errors = make(map[string]int)
 	m.dockerLatencies = make(map[string][]time.Duration)
 	m.jobExecutions = make(map[string][]JobExecutionRecord)
 	m.customMetrics = make(map[string]interface{})
@@ -332,9 +340,9 @@ func TestPerformanceMetricsIntegration(t *testing.T) {
 	metrics.RecordDockerLatency("list_containers", 50*time.Millisecond)
 	
 	// Check using the inherited operations field
-	if metrics.operations["list_containers"] != 1 {
+	if metrics.MockMetricsRecorder.operations["list_containers"] != 1 {
 		t.Errorf("Expected 1 list_containers operation, got %d", 
-			metrics.operations["list_containers"])
+			metrics.MockMetricsRecorder.operations["list_containers"])
 	}
 	
 	if len(metrics.dockerLatencies["list_containers"]) != 1 {

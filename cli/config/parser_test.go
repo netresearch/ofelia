@@ -1,8 +1,6 @@
 package config
 
 import (
-	"strings"
-
 	"github.com/netresearch/ofelia/test"
 	ini "gopkg.in/ini.v1"
 	. "gopkg.in/check.v1"
@@ -44,7 +42,7 @@ save-folder = /tmp/logs
 [job-local "test-local"]
 schedule = @every 20s
 command = echo "test local"
-mail-to = admin@example.com
+email-to = admin@example.com
 
 [job-compose "test-compose"]
 schedule = @every 30s
