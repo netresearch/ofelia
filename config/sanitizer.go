@@ -11,6 +11,26 @@ import (
 	"unicode"
 )
 
+// Time unit constants for cron expression validation
+const (
+	TimeUnitSecond = "s"
+	TimeUnitMinute = "m"
+	TimeUnitHour   = "h"
+	TimeUnitDay    = "d"
+)
+
+// Network security constants
+const (
+	LocalhostIPv4     = "127.0.0.1"
+	LocalhostIPv6     = "::1"
+	LocalhostName     = "localhost"
+	LocalDomainSuffix = ".local"
+	AnyAddress        = "0.0.0.0"
+	CronEveryPrefix   = "@every "
+	PathSeparator     = ".."
+	DoublePath        = "//"
+)
+
 // Sanitizer provides input sanitization and validation for security
 type Sanitizer struct {
 	// Patterns for detecting potentially malicious input
@@ -330,12 +350,12 @@ func (s *Sanitizer) ValidateURL(rawURL string) error {
 
 	// Enhanced SSRF prevention - block internal networks
 	host := strings.ToLower(u.Hostname())
-	if host == "localhost" || host == "127.0.0.1" || host == "0.0.0.0" || host == "::1" ||
+	if host == LocalhostName || host == LocalhostIPv4 || host == AnyAddress || host == LocalhostIPv6 ||
 		strings.HasPrefix(host, "192.168.") || strings.HasPrefix(host, "10.") ||
 		strings.HasPrefix(host, "172.16.") || strings.HasPrefix(host, "172.17.") ||
 		strings.HasPrefix(host, "172.18.") || strings.HasPrefix(host, "172.19.") ||
 		strings.HasPrefix(host, "172.2") || strings.HasPrefix(host, "172.30.") ||
-		strings.HasPrefix(host, "172.31.") || strings.HasSuffix(host, ".local") ||
+		strings.HasPrefix(host, "172.31.") || strings.HasSuffix(host, LocalDomainSuffix) ||
 		strings.HasPrefix(host, "169.254.") || strings.HasPrefix(host, "fd") ||
 		strings.HasPrefix(host, "fe80:") {
 		return fmt.Errorf("URL points to internal/local network address")
@@ -383,7 +403,7 @@ func (s *Sanitizer) ValidateDockerImage(image string) error {
 	}
 
 	// Check for suspicious patterns that could indicate attacks
-	if strings.Contains(image, "..") || strings.Contains(image, "//") {
+	if strings.Contains(image, PathSeparator) || strings.Contains(image, DoublePath) {
 		return fmt.Errorf("Docker image name contains suspicious traversal patterns")
 	}
 
@@ -431,8 +451,8 @@ func (s *Sanitizer) ValidateCronExpression(expr string) error {
 		}
 
 		// Handle @every expressions with validation
-		if strings.HasPrefix(expr, "@every ") {
-			duration := strings.TrimPrefix(expr, "@every ")
+		if strings.HasPrefix(expr, CronEveryPrefix) {
+			duration := strings.TrimPrefix(expr, CronEveryPrefix)
 			// Strict validation for duration format
 			if !regexp.MustCompile(`^\d+[smhd]$`).MatchString(duration) {
 				return fmt.Errorf("invalid @every duration format, use: 1s, 5m, 1h, 1d")
@@ -448,19 +468,19 @@ func (s *Sanitizer) ValidateCronExpression(expr string) error {
 			
 			// Prevent excessively frequent executions (less than 1 second) or too infrequent
 			switch unit {
-			case "s":
+			case TimeUnitSecond:
 				if num < 1 || num > 86400 { // 1 second to 1 day in seconds
 					return fmt.Errorf("@every seconds value must be between 1 and 86400")
 				}
-			case "m":
+			case TimeUnitMinute:
 				if num < 1 || num > 1440 { // 1 minute to 1 day in minutes
 					return fmt.Errorf("@every minutes value must be between 1 and 1440")
 				}
-			case "h":
+			case TimeUnitHour:
 				if num < 1 || num > 24 { // 1 hour to 1 day
 					return fmt.Errorf("@every hours value must be between 1 and 24")
 				}
-			case "d":
+			case TimeUnitDay:
 				if num < 1 || num > 365 { // 1 day to 1 year
 					return fmt.Errorf("@every days value must be between 1 and 365")
 				}
@@ -690,7 +710,7 @@ func (s *Sanitizer) ValidateEmailList(emails string) error {
 		}
 
 		// Additional security checks
-		if strings.Contains(email, "..") {
+		if strings.Contains(email, PathSeparator) {
 			return fmt.Errorf("email address contains consecutive dots: %s", email)
 		}
 	}

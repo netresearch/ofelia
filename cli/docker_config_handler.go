@@ -38,7 +38,9 @@ type dockerLabelsUpdate interface {
 	dockerLabelsUpdate(map[string]map[string]string)
 }
 
-// TODO: Implement an interface so the code does not have to use third parties directly
+// GetInternalDockerClient returns the internal Docker client.
+// Note: This exposes the underlying docker client for compatibility with existing code.
+// Future versions may introduce an abstraction layer to reduce third-party coupling.
 func (c *DockerHandler) GetInternalDockerClient() *docker.Client {
 	if client, ok := c.dockerClient.(*docker.Client); ok {
 		return client

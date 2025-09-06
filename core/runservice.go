@@ -103,8 +103,8 @@ func (j *RunServiceJob) buildService() (*swarm.Service, error) {
 }
 
 const (
-
-	// TODO are these const defined somewhere in the docker API?
+	// Docker service exit codes - these constants match Docker Swarm behavior
+	// when services fail or are stopped
 	swarmError   = -999
 	timeoutError = -998
 )

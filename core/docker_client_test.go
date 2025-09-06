@@ -2,6 +2,7 @@ package core
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 // MockMetricsRecorder for testing
 type MockMetricsRecorder struct {
+	mu         sync.RWMutex
 	operations map[string]int
 	errors     map[string]int
 }
@@ -25,6 +27,8 @@ func (m *MockMetricsRecorder) RecordContainerMonitorMethod(usingEvents bool) {}
 func (m *MockMetricsRecorder) RecordContainerWaitDuration(seconds float64) {}
 
 func (m *MockMetricsRecorder) RecordDockerOperation(operation string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.operations == nil {
 		m.operations = make(map[string]int)
 	}
@@ -32,6 +36,8 @@ func (m *MockMetricsRecorder) RecordDockerOperation(operation string) {
 }
 
 func (m *MockMetricsRecorder) RecordDockerError(operation string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.errors == nil {
 		m.errors = make(map[string]int)
 	}
