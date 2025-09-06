@@ -340,29 +340,45 @@ func (s *Sanitizer) ValidateURL(rawURL string) error {
 		return fmt.Errorf("invalid URL format: %w", err)
 	}
 
-	// Check scheme - only allow HTTPS in production
+	if err := s.validateURLScheme(u.Scheme); err != nil {
+		return err
+	}
+
+	if err := s.validateURLHost(u.Hostname()); err != nil {
+		return err
+	}
+
+	if err := s.validateURLPort(u.Port()); err != nil {
+		return err
+	}
+
+	if err := s.validateURLSuspiciousPatterns(u.Hostname(), u.Path); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateURLScheme validates the URL scheme
+func (s *Sanitizer) validateURLScheme(scheme string) error {
 	allowedSchemes := map[string]bool{
 		"https": true,
 		// HTTP only allowed for development - should be disabled in production
 		"http": true,
 	}
 
-	if !allowedSchemes[strings.ToLower(u.Scheme)] {
-		return fmt.Errorf("URL scheme %s is not allowed (only https/http permitted)", u.Scheme)
+	if !allowedSchemes[strings.ToLower(scheme)] {
+		return fmt.Errorf("URL scheme %s is not allowed (only https/http permitted)", scheme)
 	}
+	return nil
+}
 
-	// Enhanced SSRF prevention - block internal networks and direct IP addresses
-	host := strings.ToLower(u.Hostname())
+// validateURLHost validates the URL host for SSRF protection
+func (s *Sanitizer) validateURLHost(hostname string) error {
+	host := strings.ToLower(hostname)
 
 	// Block internal/local networks
-	if host == LocalhostName || host == LocalhostIPv4 || host == AnyAddress || host == LocalhostIPv6 ||
-		strings.HasPrefix(host, "192.168.") || strings.HasPrefix(host, "10.") ||
-		strings.HasPrefix(host, "172.16.") || strings.HasPrefix(host, "172.17.") ||
-		strings.HasPrefix(host, "172.18.") || strings.HasPrefix(host, "172.19.") ||
-		strings.HasPrefix(host, "172.2") || strings.HasPrefix(host, "172.30.") ||
-		strings.HasPrefix(host, "172.31.") || strings.HasSuffix(host, LocalDomainSuffix) ||
-		strings.HasPrefix(host, "169.254.") || strings.HasPrefix(host, "fd") ||
-		strings.HasPrefix(host, "fe80:") {
+	if s.isInternalNetwork(host) {
 		return fmt.Errorf("URL points to internal/local network address")
 	}
 
@@ -371,29 +387,51 @@ func (s *Sanitizer) ValidateURL(rawURL string) error {
 		return fmt.Errorf("direct IP addresses are not allowed in URLs")
 	}
 
+	return nil
+}
+
+// isInternalNetwork checks if a host is an internal/local network address
+func (s *Sanitizer) isInternalNetwork(host string) bool {
+	return host == LocalhostName || host == LocalhostIPv4 || host == AnyAddress || host == LocalhostIPv6 ||
+		strings.HasPrefix(host, "192.168.") || strings.HasPrefix(host, "10.") ||
+		strings.HasPrefix(host, "172.16.") || strings.HasPrefix(host, "172.17.") ||
+		strings.HasPrefix(host, "172.18.") || strings.HasPrefix(host, "172.19.") ||
+		strings.HasPrefix(host, "172.2") || strings.HasPrefix(host, "172.30.") ||
+		strings.HasPrefix(host, "172.31.") || strings.HasSuffix(host, LocalDomainSuffix) ||
+		strings.HasPrefix(host, "169.254.") || strings.HasPrefix(host, "fd") ||
+		strings.HasPrefix(host, "fe80:")
+}
+
+// validateURLPort validates the URL port
+func (s *Sanitizer) validateURLPort(portStr string) error {
+	if portStr == "" {
+		return nil
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return fmt.Errorf("invalid port number: %s", portStr)
+	}
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("port number out of valid range: %d", port)
+	}
+
+	// Block common internal service ports
+	dangerousPorts := []int{22, 23, 25, 53, 135, 139, 445, 1433, 1521, 3306, 3389, 5432, 5984, 6379, 9200, 11211, 27017}
+	for _, dangerousPort := range dangerousPorts {
+		if port == dangerousPort {
+			return fmt.Errorf("port %d is restricted for security", port)
+		}
+	}
+	return nil
+}
+
+// validateURLSuspiciousPatterns validates for suspicious URL patterns
+func (s *Sanitizer) validateURLSuspiciousPatterns(host, path string) error {
 	// Block suspicious patterns
-	if strings.Contains(host, "amazonaws.com") && strings.Contains(u.Path, "169.254.169.254") {
+	if strings.Contains(host, "amazonaws.com") && strings.Contains(path, "169.254.169.254") {
 		return fmt.Errorf("URL appears to target cloud metadata service")
 	}
-
-	// Validate port range
-	if u.Port() != "" {
-		port, err := strconv.Atoi(u.Port())
-		if err != nil {
-			return fmt.Errorf("invalid port number: %s", u.Port())
-		}
-		if port < 1 || port > 65535 {
-			return fmt.Errorf("port number out of valid range: %d", port)
-		}
-		// Block common internal service ports
-		dangerousPorts := []int{22, 23, 25, 53, 135, 139, 445, 1433, 1521, 3306, 3389, 5432, 5984, 6379, 9200, 11211, 27017}
-		for _, dangerousPort := range dangerousPorts {
-			if port == dangerousPort {
-				return fmt.Errorf("port %d is restricted for security", port)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -450,85 +488,88 @@ func (s *Sanitizer) ValidateCronExpression(expr string) error {
 
 	// Handle special expressions
 	if strings.HasPrefix(expr, "@") {
-		validSpecial := map[string]bool{
-			"@yearly":   true,
-			"@annually": true,
-			"@monthly":  true,
-			"@weekly":   true,
-			"@daily":    true,
-			"@midnight": true,
-			"@hourly":   true,
-		}
-
-		// Handle @every expressions with validation
-		if strings.HasPrefix(expr, CronEveryPrefix) {
-			duration := strings.TrimPrefix(expr, CronEveryPrefix)
-			// Strict validation for duration format
-			if !regexp.MustCompile(`^\d+[smhd]$`).MatchString(duration) {
-				return fmt.Errorf("invalid @every duration format, use: 1s, 5m, 1h, 1d")
-			}
-			// Extract number and unit
-			numStr := duration[:len(duration)-1]
-			unit := duration[len(duration)-1:]
-
-			num, err := strconv.Atoi(numStr)
-			if err != nil {
-				return fmt.Errorf("invalid number in @every duration: %s", numStr)
-			}
-
-			// Prevent excessively frequent executions (less than 1 second) or too infrequent
-			switch unit {
-			case TimeUnitSecond:
-				if num < 1 || num > 86400 { // 1 second to 1 day in seconds
-					return fmt.Errorf("@every seconds value must be between 1 and 86400")
-				}
-			case TimeUnitMinute:
-				if num < 1 || num > 1440 { // 1 minute to 1 day in minutes
-					return fmt.Errorf("@every minutes value must be between 1 and 1440")
-				}
-			case TimeUnitHour:
-				if num < 1 || num > 24 { // 1 hour to 1 day
-					return fmt.Errorf("@every hours value must be between 1 and 24")
-				}
-			case TimeUnitDay:
-				if num < 1 || num > 365 { // 1 day to 1 year
-					return fmt.Errorf("@every days value must be between 1 and 365")
-				}
-			}
-			return nil
-		}
-
-		if !validSpecial[expr] {
-			return fmt.Errorf("invalid special cron expression: %s", expr)
-		}
-		return nil
+		return s.validateSpecialCronExpression(expr)
 	}
 
 	// Standard cron expression validation
+	return s.validateStandardCronExpression(expr)
+}
+
+// validateSpecialCronExpression handles @ prefixed cron expressions
+func (s *Sanitizer) validateSpecialCronExpression(expr string) error {
+	validSpecial := map[string]bool{
+		"@yearly":   true,
+		"@annually": true,
+		"@monthly":  true,
+		"@weekly":   true,
+		"@daily":    true,
+		"@midnight": true,
+		"@hourly":   true,
+	}
+
+	// Handle @every expressions with validation
+	if strings.HasPrefix(expr, CronEveryPrefix) {
+		return s.validateEveryExpression(expr)
+	}
+
+	if !validSpecial[expr] {
+		return fmt.Errorf("invalid special cron expression: %s", expr)
+	}
+	return nil
+}
+
+// validateEveryExpression validates @every duration expressions
+func (s *Sanitizer) validateEveryExpression(expr string) error {
+	duration := strings.TrimPrefix(expr, CronEveryPrefix)
+	// Strict validation for duration format
+	if !regexp.MustCompile(`^\d+[smhd]$`).MatchString(duration) {
+		return fmt.Errorf("invalid @every duration format, use: 1s, 5m, 1h, 1d")
+	}
+
+	// Extract number and unit
+	numStr := duration[:len(duration)-1]
+	unit := duration[len(duration)-1:]
+
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		return fmt.Errorf("invalid number in @every duration: %s", numStr)
+	}
+
+	return s.validateEveryDurationLimits(num, unit)
+}
+
+// validateEveryDurationLimits validates @every duration limits
+func (s *Sanitizer) validateEveryDurationLimits(num int, unit string) error {
+	switch unit {
+	case TimeUnitSecond:
+		if num < 1 || num > 86400 { // 1 second to 1 day in seconds
+			return fmt.Errorf("@every seconds value must be between 1 and 86400")
+		}
+	case TimeUnitMinute:
+		if num < 1 || num > 1440 { // 1 minute to 1 day in minutes
+			return fmt.Errorf("@every minutes value must be between 1 and 1440")
+		}
+	case TimeUnitHour:
+		if num < 1 || num > 24 { // 1 hour to 1 day
+			return fmt.Errorf("@every hours value must be between 1 and 24")
+		}
+	case TimeUnitDay:
+		if num < 1 || num > 365 { // 1 day to 1 year
+			return fmt.Errorf("@every days value must be between 1 and 365")
+		}
+	}
+	return nil
+}
+
+// validateStandardCronExpression validates standard 5 or 6 field cron expressions
+func (s *Sanitizer) validateStandardCronExpression(expr string) error {
 	fields := strings.Fields(expr)
 	if len(fields) < 5 || len(fields) > 6 {
 		return fmt.Errorf("cron expression must have 5 or 6 fields, got %d", len(fields))
 	}
 
 	// Validate each field according to cron specifications
-	limits := []struct {
-		min, max int
-		name     string
-	}{
-		{0, 59, "minute"},     // Minutes
-		{0, 23, "hour"},       // Hours
-		{1, 31, "day"},        // Day of month
-		{1, 12, "month"},      // Month
-		{0, 7, "day of week"}, // Day of week (0 and 7 are Sunday)
-	}
-
-	// If 6 fields, first is seconds
-	if len(fields) == 6 {
-		limits = append([]struct {
-			min, max int
-			name     string
-		}{{0, 59, "second"}}, limits...)
-	}
+	limits := s.getCronFieldLimits(len(fields))
 
 	for i, field := range fields {
 		if i >= len(limits) {
@@ -541,6 +582,33 @@ func (s *Sanitizer) ValidateCronExpression(expr string) error {
 	}
 
 	return nil
+}
+
+// getCronFieldLimits returns field validation limits based on number of fields
+func (s *Sanitizer) getCronFieldLimits(numFields int) []struct {
+	min, max int
+	name     string
+} {
+	limits := []struct {
+		min, max int
+		name     string
+	}{
+		{0, 59, "minute"},     // Minutes
+		{0, 23, "hour"},       // Hours
+		{1, 31, "day"},        // Day of month
+		{1, 12, "month"},      // Month
+		{0, 7, "day of week"}, // Day of week (0 and 7 are Sunday)
+	}
+
+	// If 6 fields, first is seconds
+	if numFields == 6 {
+		limits = append([]struct {
+			min, max int
+			name     string
+		}{{0, 59, "second"}}, limits...)
+	}
+
+	return limits
 }
 
 // validateCronField validates a single cron field with comprehensive checks

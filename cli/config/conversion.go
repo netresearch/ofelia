@@ -187,7 +187,7 @@ func ConvertToRunJobConfig(unified *UnifiedJobConfig) *RunJobConfigLegacy {
 		MailConfig:    unified.MiddlewareConfig.MailConfig,
 		JobSource:     unified.JobSource,
 	}
-	// Copy job fields individually to avoid copying mutex  
+	// Copy job fields individually to avoid copying mutex
 	if unified.RunJob != nil {
 		legacy.Schedule = unified.RunJob.Schedule
 		legacy.Name = unified.RunJob.Name

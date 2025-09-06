@@ -1,6 +1,7 @@
 package web
 
 import (
+	"container/heap"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -8,8 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"container/heap"
 )
 
 // TokenEntry represents a token with expiration for efficient cleanup

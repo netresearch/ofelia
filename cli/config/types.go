@@ -121,9 +121,9 @@ func (u *UnifiedJobConfig) Run(ctx *core.Context) error {
 }
 
 // Use implements the core.Job interface for middleware support
-func (u *UnifiedJobConfig) Use(middlewares ...core.Middleware) {
+func (u *UnifiedJobConfig) Use(mws ...core.Middleware) {
 	if job := u.GetCoreJob(); job != nil {
-		job.Use(middlewares...)
+		job.Use(mws...)
 	}
 }
 
@@ -136,9 +136,9 @@ func (u *UnifiedJobConfig) Middlewares() []core.Middleware {
 }
 
 // ResetMiddlewares implements the jobConfig interface
-func (u *UnifiedJobConfig) ResetMiddlewares(middlewares ...core.Middleware) {
+func (u *UnifiedJobConfig) ResetMiddlewares(mws ...core.Middleware) {
 	if job := u.GetCoreJob(); job != nil {
-		job.Use(middlewares...)
+		job.Use(mws...)
 	}
 }
 

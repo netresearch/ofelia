@@ -230,51 +230,81 @@ func (p *ConfigurationParser) splitLabelsByType(labels map[string]map[string]str
 	composeJobs = make(map[string]map[string]interface{})
 
 	for containerName, labelSet := range labels {
-		// Check if this container has the required label
-		if enabled, exists := labelSet[requiredLabel]; !exists || enabled != "true" {
+		if !p.shouldProcessContainer(labelSet) {
 			continue
 		}
 
 		isService := hasServiceLabel(labelSet)
-
-		for k, v := range labelSet {
-			parts := strings.Split(k, ".")
-			if len(parts) < 4 || parts[0] != "ofelia" {
-				continue
-			}
-
-			jobType, jobName, jobParam := parts[1], parts[2], parts[3]
-			scopedName := jobName
-
-			// For exec jobs, include container name in scope
-			if jobType == "job-exec" {
-				scopedName = containerName + "." + jobName
-			}
-
-			switch {
-			case jobType == "job-exec":
-				ensureJob(execJobs, scopedName)
-				setJobParam(execJobs[scopedName], jobParam, v)
-				if !isService {
-					execJobs[scopedName]["container"] = containerName
-				}
-			case jobType == "job-local" && isService:
-				ensureJob(localJobs, jobName)
-				setJobParam(localJobs[jobName], jobParam, v)
-			case jobType == "job-service-run" && isService:
-				ensureJob(serviceJobs, jobName)
-				setJobParam(serviceJobs[jobName], jobParam, v)
-			case jobType == "job-run":
-				ensureJob(runJobs, jobName)
-				setJobParam(runJobs[jobName], jobParam, v)
-			case jobType == "job-compose":
-				ensureJob(composeJobs, jobName)
-				setJobParam(composeJobs[jobName], jobParam, v)
-			}
-		}
+		p.processContainerLabels(containerName, labelSet, isService, execJobs, localJobs, runJobs, serviceJobs, composeJobs)
 	}
 
 	return
+}
+
+// shouldProcessContainer checks if a container should be processed
+func (p *ConfigurationParser) shouldProcessContainer(labelSet map[string]string) bool {
+	enabled, exists := labelSet[requiredLabel]
+	return exists && enabled == "true"
+}
+
+// processContainerLabels processes all labels for a single container
+func (p *ConfigurationParser) processContainerLabels(
+	containerName string,
+	labelSet map[string]string,
+	isService bool,
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]interface{},
+) {
+	for k, v := range labelSet {
+		parts := strings.Split(k, ".")
+		if len(parts) < 4 || parts[0] != "ofelia" {
+			continue
+		}
+
+		jobType, jobName, jobParam := parts[1], parts[2], parts[3]
+		p.assignJobToType(containerName, jobType, jobName, jobParam, v, isService, execJobs, localJobs, runJobs, serviceJobs, composeJobs)
+	}
+}
+
+// assignJobToType assigns a job parameter to the appropriate job type
+func (p *ConfigurationParser) assignJobToType(
+	containerName, jobType, jobName, jobParam, value string,
+	isService bool,
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]interface{},
+) {
+	switch jobType {
+	case "job-exec":
+		p.handleExecJob(containerName, jobName, jobParam, value, isService, execJobs)
+	case "job-local":
+		if isService {
+			ensureJob(localJobs, jobName)
+			setJobParam(localJobs[jobName], jobParam, value)
+		}
+	case "job-service-run":
+		if isService {
+			ensureJob(serviceJobs, jobName)
+			setJobParam(serviceJobs[jobName], jobParam, value)
+		}
+	case "job-run":
+		ensureJob(runJobs, jobName)
+		setJobParam(runJobs[jobName], jobParam, value)
+	case "job-compose":
+		ensureJob(composeJobs, jobName)
+		setJobParam(composeJobs[jobName], jobParam, value)
+	}
+}
+
+// handleExecJob handles exec job specific processing
+func (p *ConfigurationParser) handleExecJob(
+	containerName, jobName, jobParam, value string,
+	isService bool,
+	execJobs map[string]map[string]interface{},
+) {
+	scopedName := containerName + "." + jobName
+	ensureJob(execJobs, scopedName)
+	setJobParam(execJobs[scopedName], jobParam, value)
+	if !isService {
+		execJobs[scopedName]["container"] = containerName
+	}
 }
 
 // Helper functions

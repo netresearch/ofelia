@@ -373,6 +373,8 @@ func (ebp *EnhancedBufferPool) GetStats() map[string]interface{} {
 		"total_misses":     totalMisses,
 		"hit_rate_percent": hitRate,
 		"custom_buffers":   atomic.LoadInt64(&ebp.customBuffers),
+		"total_shrinks":    atomic.LoadInt64(&ebp.totalShrinks),
+		"total_grows":      atomic.LoadInt64(&ebp.totalGrows),
 		"pool_count":       poolCount,
 		"pool_sizes":       poolSizes,
 		"current_usage":    currentUsage,

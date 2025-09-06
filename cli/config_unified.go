@@ -156,7 +156,9 @@ func (uc *UnifiedConfig) dockerLabelsUpdate(labels map[string]map[string]string)
 		}
 
 		if job.GetJobSource() == config.JobSourceLabel {
-			uc.sh.AddJob(job)
+			if err := uc.sh.AddJob(job); err != nil {
+				uc.logger.Errorf("Failed to add job %q to scheduler: %v", name, err)
+			}
 		}
 	}
 
@@ -220,50 +222,131 @@ func (uc *UnifiedConfig) ToLegacyConfig() *Config {
 		case config.JobTypeRun:
 			if legacyJob := config.ConvertToRunJobConfig(unifiedJob); legacyJob != nil {
 				// Convert from config.RunJobConfigLegacy to cli.RunJobConfig
-				legacy.RunJobs[name] = &RunJobConfig{
-					RunJob:        legacyJob.RunJob,
+				cliJob := &RunJobConfig{
 					OverlapConfig: legacyJob.OverlapConfig,
 					SlackConfig:   legacyJob.SlackConfig,
 					SaveConfig:    legacyJob.SaveConfig,
 					MailConfig:    legacyJob.MailConfig,
 					JobSource:     JobSource(legacyJob.JobSource),
 				}
+				// Copy RunJob fields individually to avoid copying mutex from BareJob
+				cliJob.RunJob.Schedule = legacyJob.Schedule
+				cliJob.RunJob.Name = legacyJob.Name
+				cliJob.RunJob.Command = legacyJob.Command
+				cliJob.RunJob.HistoryLimit = legacyJob.HistoryLimit
+				cliJob.RunJob.MaxRetries = legacyJob.MaxRetries
+				cliJob.RunJob.RetryDelayMs = legacyJob.RetryDelayMs
+				cliJob.RunJob.RetryExponential = legacyJob.RetryExponential
+				cliJob.RunJob.RetryMaxDelayMs = legacyJob.RetryMaxDelayMs
+				cliJob.RunJob.Dependencies = legacyJob.Dependencies
+				cliJob.RunJob.OnSuccess = legacyJob.OnSuccess
+				cliJob.RunJob.OnFailure = legacyJob.OnFailure
+				cliJob.RunJob.AllowParallel = legacyJob.AllowParallel
+				// RunJob-specific fields
+				cliJob.RunJob.User = legacyJob.User
+				cliJob.RunJob.ContainerName = legacyJob.ContainerName
+				cliJob.RunJob.TTY = legacyJob.TTY
+				cliJob.RunJob.Delete = legacyJob.Delete
+				cliJob.RunJob.Pull = legacyJob.Pull
+				cliJob.RunJob.Image = legacyJob.Image
+				cliJob.RunJob.Network = legacyJob.Network
+				cliJob.RunJob.Hostname = legacyJob.Hostname
+				cliJob.RunJob.Entrypoint = legacyJob.Entrypoint
+				cliJob.RunJob.Container = legacyJob.Container
+				cliJob.RunJob.Volume = legacyJob.Volume
+				cliJob.RunJob.VolumesFrom = legacyJob.VolumesFrom
+				cliJob.RunJob.Environment = legacyJob.Environment
+				cliJob.RunJob.MaxRuntime = legacyJob.MaxRuntime
+				legacy.RunJobs[name] = cliJob
 			}
 		case config.JobTypeService:
 			if legacyJob := config.ConvertToRunServiceConfig(unifiedJob); legacyJob != nil {
 				// Convert from config.RunServiceConfigLegacy to cli.RunServiceConfig
-				legacy.ServiceJobs[name] = &RunServiceConfig{
-					RunServiceJob: legacyJob.RunServiceJob,
+				cliJob := &RunServiceConfig{
 					OverlapConfig: legacyJob.OverlapConfig,
 					SlackConfig:   legacyJob.SlackConfig,
 					SaveConfig:    legacyJob.SaveConfig,
 					MailConfig:    legacyJob.MailConfig,
 					JobSource:     JobSource(legacyJob.JobSource),
 				}
+				// Copy RunServiceJob fields individually to avoid copying mutex from BareJob
+				cliJob.RunServiceJob.Schedule = legacyJob.Schedule
+				cliJob.RunServiceJob.Name = legacyJob.Name
+				cliJob.RunServiceJob.Command = legacyJob.Command
+				cliJob.RunServiceJob.HistoryLimit = legacyJob.HistoryLimit
+				cliJob.RunServiceJob.MaxRetries = legacyJob.MaxRetries
+				cliJob.RunServiceJob.RetryDelayMs = legacyJob.RetryDelayMs
+				cliJob.RunServiceJob.RetryExponential = legacyJob.RetryExponential
+				cliJob.RunServiceJob.RetryMaxDelayMs = legacyJob.RetryMaxDelayMs
+				cliJob.RunServiceJob.Dependencies = legacyJob.Dependencies
+				cliJob.RunServiceJob.OnSuccess = legacyJob.OnSuccess
+				cliJob.RunServiceJob.OnFailure = legacyJob.OnFailure
+				cliJob.RunServiceJob.AllowParallel = legacyJob.AllowParallel
+				// RunServiceJob-specific fields
+				cliJob.RunServiceJob.User = legacyJob.User
+				cliJob.RunServiceJob.TTY = legacyJob.TTY
+				cliJob.RunServiceJob.Delete = legacyJob.Delete
+				cliJob.RunServiceJob.Image = legacyJob.Image
+				cliJob.RunServiceJob.Network = legacyJob.Network
+				cliJob.RunServiceJob.MaxRuntime = legacyJob.MaxRuntime
+				legacy.ServiceJobs[name] = cliJob
 			}
 		case config.JobTypeLocal:
 			if legacyJob := config.ConvertToLocalJobConfig(unifiedJob); legacyJob != nil {
 				// Convert from config.LocalJobConfigLegacy to cli.LocalJobConfig
-				legacy.LocalJobs[name] = &LocalJobConfig{
-					LocalJob:      legacyJob.LocalJob,
+				cliJob := &LocalJobConfig{
 					OverlapConfig: legacyJob.OverlapConfig,
 					SlackConfig:   legacyJob.SlackConfig,
 					SaveConfig:    legacyJob.SaveConfig,
 					MailConfig:    legacyJob.MailConfig,
 					JobSource:     JobSource(legacyJob.JobSource),
 				}
+				// Copy LocalJob fields individually to avoid copying mutex from BareJob
+				cliJob.LocalJob.Schedule = legacyJob.Schedule
+				cliJob.LocalJob.Name = legacyJob.Name
+				cliJob.LocalJob.Command = legacyJob.Command
+				cliJob.LocalJob.HistoryLimit = legacyJob.HistoryLimit
+				cliJob.LocalJob.MaxRetries = legacyJob.MaxRetries
+				cliJob.LocalJob.RetryDelayMs = legacyJob.RetryDelayMs
+				cliJob.LocalJob.RetryExponential = legacyJob.RetryExponential
+				cliJob.LocalJob.RetryMaxDelayMs = legacyJob.RetryMaxDelayMs
+				cliJob.LocalJob.Dependencies = legacyJob.Dependencies
+				cliJob.LocalJob.OnSuccess = legacyJob.OnSuccess
+				cliJob.LocalJob.OnFailure = legacyJob.OnFailure
+				cliJob.LocalJob.AllowParallel = legacyJob.AllowParallel
+				// LocalJob-specific fields
+				cliJob.LocalJob.Dir = legacyJob.Dir
+				cliJob.LocalJob.Environment = legacyJob.Environment
+				legacy.LocalJobs[name] = cliJob
 			}
 		case config.JobTypeCompose:
 			if legacyJob := config.ConvertToComposeJobConfig(unifiedJob); legacyJob != nil {
 				// Convert from config.ComposeJobConfigLegacy to cli.ComposeJobConfig
-				legacy.ComposeJobs[name] = &ComposeJobConfig{
-					ComposeJob:    legacyJob.ComposeJob,
+				cliJob := &ComposeJobConfig{
 					OverlapConfig: legacyJob.OverlapConfig,
 					SlackConfig:   legacyJob.SlackConfig,
 					SaveConfig:    legacyJob.SaveConfig,
 					MailConfig:    legacyJob.MailConfig,
 					JobSource:     JobSource(legacyJob.JobSource),
 				}
+				// Copy ComposeJob fields individually to avoid copying mutex from BareJob
+				cliJob.ComposeJob.Schedule = legacyJob.Schedule
+				cliJob.ComposeJob.Name = legacyJob.Name
+				cliJob.ComposeJob.Command = legacyJob.Command
+				cliJob.ComposeJob.HistoryLimit = legacyJob.HistoryLimit
+				cliJob.ComposeJob.MaxRetries = legacyJob.MaxRetries
+				cliJob.ComposeJob.RetryDelayMs = legacyJob.RetryDelayMs
+				cliJob.ComposeJob.RetryExponential = legacyJob.RetryExponential
+				cliJob.ComposeJob.RetryMaxDelayMs = legacyJob.RetryMaxDelayMs
+				cliJob.ComposeJob.Dependencies = legacyJob.Dependencies
+				cliJob.ComposeJob.OnSuccess = legacyJob.OnSuccess
+				cliJob.ComposeJob.OnFailure = legacyJob.OnFailure
+				cliJob.ComposeJob.AllowParallel = legacyJob.AllowParallel
+				// ComposeJob-specific fields
+				cliJob.ComposeJob.File = legacyJob.File
+				cliJob.ComposeJob.Service = legacyJob.Service
+				cliJob.ComposeJob.Exec = legacyJob.Exec
+				legacy.ComposeJobs[name] = cliJob
 			}
 		}
 	}

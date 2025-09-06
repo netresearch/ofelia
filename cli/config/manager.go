@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
-	"time"
 
 	defaults "github.com/creasty/defaults"
 	docker "github.com/fsouza/go-dockerclient"
@@ -17,11 +16,6 @@ import (
 type UnifiedConfigManager struct {
 	// Unified job storage (replaces 5 separate maps)
 	jobs map[string]*UnifiedJobConfig
-
-	// Configuration metadata
-	configPath    string
-	configFiles   []string
-	configModTime time.Time
 
 	// Core dependencies
 	scheduler         *core.Scheduler
