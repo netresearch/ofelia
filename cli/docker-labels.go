@@ -25,17 +25,43 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 		}
 	}
 
-	// Security check: filter out host-based jobs from Docker labels unless explicitly allowed
+	// SECURITY HARDENING: Hard block host-based jobs from Docker labels unless explicitly allowed
+	// This prevents container-to-host privilege escalation attacks through Docker labels
 	if !c.Global.AllowHostJobsFromLabels {
 		if len(localJobs) > 0 {
-			c.logger.Warningf("Ignoring %d local jobs from Docker labels due to security policy. "+
-				"Set allow-host-jobs-from-labels=true to enable", len(localJobs))
+			c.logger.Errorf("SECURITY POLICY VIOLATION: Blocked %d local jobs from Docker labels. "+
+				"Host job execution from container labels is disabled for security. "+
+				"Local jobs allow arbitrary command execution on the host system. "+
+				"Set allow-host-jobs-from-labels=true only if you understand the privilege escalation risks.", len(localJobs))
+			// Prevent any local job creation by clearing the map
 			localJobs = make(map[string]map[string]interface{})
 		}
 		if len(composeJobs) > 0 {
-			c.logger.Warningf("Ignoring %d compose jobs from Docker labels due to security policy. "+
-				"Set allow-host-jobs-from-labels=true to enable", len(composeJobs))
+			c.logger.Errorf("SECURITY POLICY VIOLATION: Blocked %d compose jobs from Docker labels. "+
+				"Host job execution from container labels is disabled for security. "+
+				"Compose jobs allow arbitrary Docker Compose operations on the host system. "+
+				"Set allow-host-jobs-from-labels=true only if you understand the privilege escalation risks.", len(composeJobs))
+			// Prevent any compose job creation by clearing the map
 			composeJobs = make(map[string]map[string]interface{})
+		}
+		
+		// Log security enforcement action
+		if len(localJobs) > 0 || len(composeJobs) > 0 {
+			c.logger.Noticef("SECURITY: Container-to-host job execution blocked for security. "+
+				"This prevents containers from executing arbitrary commands on the host via labels. "+
+				"Only enable allow-host-jobs-from-labels in trusted environments.")
+		}
+	} else {
+		// Warn about security implications when allowing host jobs from labels
+		if len(localJobs) > 0 {
+			c.logger.Warningf("SECURITY WARNING: Processing %d local jobs from Docker labels. "+
+				"This allows containers to execute arbitrary commands on the host system. "+
+				"Only enable this in trusted environments with verified container security.", len(localJobs))
+		}
+		if len(composeJobs) > 0 {
+			c.logger.Warningf("SECURITY WARNING: Processing %d compose jobs from Docker labels. "+
+				"This allows containers to execute Docker Compose operations on the host system. "+
+				"Only enable this in trusted environments with verified container security.", len(composeJobs))
 		}
 	}
 

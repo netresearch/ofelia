@@ -48,7 +48,7 @@ type Config struct {
 		EnablePprof             bool          `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
 		PprofAddr               string        `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
 		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`
-		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels"`
+		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels" default:"false"`
 	}
 	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
@@ -187,9 +187,30 @@ func (c *Config) mergeJobsFromDockerLabels() {
 
 	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
 	mergeJobs(c, c.RunJobs, parsed.RunJobs, "run")
-	mergeJobs(c, c.LocalJobs, parsed.LocalJobs, "local")
+	
+	// SECURITY HARDENING: Enforce AllowHostJobsFromLabels=false with hard block
+	if !c.Global.AllowHostJobsFromLabels {
+		if len(parsed.LocalJobs) > 0 {
+			c.logger.Errorf("SECURITY POLICY VIOLATION: %d local jobs from Docker labels blocked. "+
+				"Host job execution from container labels is disabled for security. "+
+				"Set allow-host-jobs-from-labels=true only if you understand the privilege escalation risks.", len(parsed.LocalJobs))
+		}
+		if len(parsed.ComposeJobs) > 0 {
+			c.logger.Errorf("SECURITY POLICY VIOLATION: %d compose jobs from Docker labels blocked. "+
+				"Host job execution from container labels is disabled for security. "+
+				"Set allow-host-jobs-from-labels=true only if you understand the privilege escalation risks.", len(parsed.ComposeJobs))
+		}
+		// Clear the jobs completely - don't merge them
+		parsed.LocalJobs = make(map[string]*LocalJobConfig)
+		parsed.ComposeJobs = make(map[string]*ComposeJobConfig)
+	} else {
+		c.logger.Warningf("SECURITY WARNING: Host jobs from labels are enabled. This allows containers to execute "+
+			"arbitrary commands on the host system. Only enable this in trusted environments.")
+		mergeJobs(c, c.LocalJobs, parsed.LocalJobs, "local")
+		mergeJobs(c, c.ComposeJobs, parsed.ComposeJobs, "compose")
+	}
+	
 	mergeJobs(c, c.ServiceJobs, parsed.ServiceJobs, "service")
-	mergeJobs(c, c.ComposeJobs, parsed.ComposeJobs, "compose")
 }
 
 // mergeJobs copies jobs from src into dst while respecting INI precedence.
@@ -370,8 +391,17 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		_ = defaults.Set(j)
 		j.Name = name
 	}
-	// Security check: only sync local jobs from labels if explicitly allowed
-	if c.Global.AllowHostJobsFromLabels {
+	
+	// SECURITY HARDENING: Enforce AllowHostJobsFromLabels=false with error blocking
+	if !c.Global.AllowHostJobsFromLabels {
+		if len(parsedLabelConfig.LocalJobs) > 0 {
+			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d local jobs from Docker labels. "+
+				"Host job execution from container labels is disabled for security. "+
+				"This prevents container-to-host privilege escalation attacks.", len(parsedLabelConfig.LocalJobs))
+		}
+	} else {
+		c.logger.Warningf("SECURITY WARNING: Syncing host-based local jobs from container labels. "+
+			"This allows containers to execute arbitrary commands on the host system.")
 		syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
 	}
 
@@ -389,8 +419,17 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		_ = defaults.Set(j)
 		j.Name = name
 	}
-	// Security check: only sync compose jobs from labels if explicitly allowed
-	if c.Global.AllowHostJobsFromLabels {
+	
+	// SECURITY HARDENING: Enforce AllowHostJobsFromLabels=false with error blocking
+	if !c.Global.AllowHostJobsFromLabels {
+		if len(parsedLabelConfig.ComposeJobs) > 0 {
+			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d compose jobs from Docker labels. "+
+				"Host job execution from container labels is disabled for security. "+
+				"This prevents container-to-host privilege escalation attacks.", len(parsedLabelConfig.ComposeJobs))
+		}
+	} else {
+		c.logger.Warningf("SECURITY WARNING: Syncing host-based compose jobs from container labels. "+
+			"This allows containers to execute arbitrary commands on the host system.")
 		syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
 	}
 }
