@@ -71,14 +71,14 @@ func NewScheduler(l Logger) *Scheduler {
 }
 
 // SetMaxConcurrentJobs configures the maximum number of concurrent jobs
-func (s *Scheduler) SetMaxConcurrentJobs(max int) {
-	if max < 1 {
-		max = 1
+func (s *Scheduler) SetMaxConcurrentJobs(maxJobs int) {
+	if maxJobs < 1 {
+		maxJobs = 1
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.maxConcurrentJobs = max
-	s.jobSemaphore = make(chan struct{}, max)
+	s.maxConcurrentJobs = maxJobs
+	s.jobSemaphore = make(chan struct{}, maxJobs)
 }
 
 // SetMetricsRecorder sets the metrics recorder for the scheduler
@@ -107,7 +107,9 @@ func (s *Scheduler) AddJob(j Job) error {
 	}
 	j.SetCronJobID(int(id)) // Cast to int in order to avoid pushing cron external to common
 	j.Use(s.Middlewares()...)
+	s.mu.Lock()
 	s.Jobs = append(s.Jobs, j)
+	s.mu.Unlock()
 	s.Logger.Noticef(
 		"New job registered %q - %q - %q - ID: %v",
 		j.GetName(), j.GetCommand(), j.GetSchedule(), id,
@@ -121,13 +123,13 @@ func (s *Scheduler) RemoveJob(j Job) error {
 		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
 	)
 	s.cron.Remove(cron.EntryID(j.GetCronJobID()))
+	s.mu.Lock()
 	for i, job := range s.Jobs {
 		if job == j || job.GetCronJobID() == j.GetCronJobID() {
 			s.Jobs = append(s.Jobs[:i], s.Jobs[i+1:]...)
 			break
 		}
 	}
-	s.mu.Lock()
 	s.Removed = append(s.Removed, j)
 	s.mu.Unlock()
 	return nil
@@ -266,18 +268,24 @@ func getJob(jobs []Job, name string) (Job, int) {
 
 // GetJob returns an active job by name.
 func (s *Scheduler) GetJob(name string) Job {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	j, _ := getJob(s.Jobs, name)
 	return j
 }
 
 // GetDisabledJob returns a disabled job by name.
 func (s *Scheduler) GetDisabledJob(name string) Job {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	j, _ := getJob(s.Disabled, name)
 	return j
 }
 
 // DisableJob stops scheduling the job but keeps it for later enabling.
 func (s *Scheduler) DisableJob(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	j, idx := getJob(s.Jobs, name)
 	if j == nil {
 		return fmt.Errorf("job %q not found", name)
@@ -290,11 +298,14 @@ func (s *Scheduler) DisableJob(name string) error {
 
 // EnableJob schedules a previously disabled job.
 func (s *Scheduler) EnableJob(name string) error {
+	s.mu.Lock()
 	j, idx := getJob(s.Disabled, name)
 	if j == nil {
+		s.mu.Unlock()
 		return fmt.Errorf("job %q not found", name)
 	}
 	s.Disabled = append(s.Disabled[:idx], s.Disabled[idx+1:]...)
+	s.mu.Unlock()
 	return s.AddJob(j)
 }
 
@@ -313,6 +324,13 @@ type jobWrapper struct {
 }
 
 func (w *jobWrapper) Run() {
+	// Add panic recovery to handle job panics gracefully
+	defer func() {
+		if r := recover(); r != nil {
+			w.s.Logger.Errorf("Job %q panicked: %v", w.j.GetName(), r)
+		}
+	}()
+
 	// Generate workflow execution ID
 	executionID := fmt.Sprintf("sched-%d-%s", time.Now().Unix(), w.j.GetName())
 
@@ -381,10 +399,8 @@ func (w *jobWrapper) start(ctx *Context) {
 	ctx.Log("Started - " + ctx.Job.GetCommand())
 
 	// Record job started metric if available
-	if w.s.metricsRecorder != nil {
-		// This could be extended to record job start metrics
-		// For now, the retry metrics are the main focus
-	}
+	// Note: Job start metrics could be recorded here when metricsRecorder is available
+	// Currently focusing on retry metrics (recorded elsewhere)
 }
 
 func (w *jobWrapper) stop(ctx *Context, err error) {

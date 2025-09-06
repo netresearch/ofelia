@@ -28,7 +28,6 @@ func TestRetryExecutor(t *testing.T) {
 			attempts++
 			return nil // Success
 		})
-
 		if err != nil {
 			t.Errorf("Expected success, got error: %v", err)
 		}
@@ -59,7 +58,6 @@ func TestRetryExecutor(t *testing.T) {
 			}
 			return nil // Success on third attempt
 		})
-
 		if err != nil {
 			t.Errorf("Expected success after retries, got error: %v", err)
 		}
@@ -159,7 +157,6 @@ func TestRetryExecutor(t *testing.T) {
 			t.Errorf("Expected 1 attempt (no retries), got %d", attempts)
 		}
 	})
-
 }
 
 // testRetryJob implements RetryableJob for testing

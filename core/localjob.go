@@ -48,4 +48,3 @@ func (j *LocalJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 		Dir: j.Dir,
 	}, nil
 }
-

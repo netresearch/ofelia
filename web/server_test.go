@@ -97,6 +97,229 @@ func TestHistoryEndpoint(t *testing.T) {
 	}
 }
 
+func TestJobsEndpointWithRuntimeData(t *testing.T) {
+	// Create test job with execution output
+	job := &testJob{}
+	job.Name = "test-job"
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
+
+	// Create execution with output
+	e, err := core.NewExecution()
+	if err != nil {
+		t.Fatalf("NewExecution error: %v", err)
+	}
+
+	// Write test data to buffers
+	stdoutData := "job completed successfully"
+	stderrData := "warning: deprecated flag used"
+
+	_, err = e.OutputStream.Write([]byte(stdoutData))
+	if err != nil {
+		t.Fatalf("Write stdout error: %v", err)
+	}
+
+	_, err = e.ErrorStream.Write([]byte(stderrData))
+	if err != nil {
+		t.Fatalf("Write stderr error: %v", err)
+	}
+
+	e.Start()
+	time.Sleep(1 * time.Millisecond) // Ensure duration > 0
+	e.Stop(nil)                      // Success
+
+	job.SetLastRun(e)
+
+	// Create scheduler and server
+	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
+	srv := webpkg.NewServer("", sched, nil, nil)
+
+	// Test with live buffers
+	req := httptest.NewRequest("GET", "/api/jobs", nil)
+	rr := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var jobs []apiJob
+	if err := json.Unmarshal(rr.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("json unmarshal error: %v", err)
+	}
+
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	job1 := jobs[0]
+	if job1.LastRun == nil {
+		t.Fatal("expected LastRun to be set")
+	}
+
+	// Verify runtime data is present
+	if job1.LastRun.Stdout != stdoutData {
+		t.Errorf("LastRun.Stdout = %q, want %q", job1.LastRun.Stdout, stdoutData)
+	}
+	if job1.LastRun.Stderr != stderrData {
+		t.Errorf("LastRun.Stderr = %q, want %q", job1.LastRun.Stderr, stderrData)
+	}
+	if job1.LastRun.Duration <= 0 {
+		t.Errorf("LastRun.Duration = %v, want > 0", job1.LastRun.Duration)
+	}
+	if job1.LastRun.Date.IsZero() {
+		t.Error("LastRun.Date should not be zero")
+	}
+	if job1.LastRun.Failed {
+		t.Error("LastRun.Failed should be false for successful execution")
+	}
+}
+
+func TestJobsEndpointAfterBufferCleanup(t *testing.T) {
+	// Create test job with execution output
+	job := &testJob{}
+	job.Name = "cleaned-job"
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
+
+	// Create execution with output
+	e, err := core.NewExecution()
+	if err != nil {
+		t.Fatalf("NewExecution error: %v", err)
+	}
+
+	// Write test data to buffers
+	stdoutData := "cleanup test output"
+	stderrData := "cleanup test error"
+
+	_, err = e.OutputStream.Write([]byte(stdoutData))
+	if err != nil {
+		t.Fatalf("Write stdout error: %v", err)
+	}
+
+	_, err = e.ErrorStream.Write([]byte(stderrData))
+	if err != nil {
+		t.Fatalf("Write stderr error: %v", err)
+	}
+
+	e.Start()
+	time.Sleep(1 * time.Millisecond) // Ensure duration > 0
+	e.Stop(nil)                      // Success
+
+	// Cleanup buffers to simulate real-world scenario
+	e.Cleanup()
+
+	job.SetLastRun(e)
+
+	// Create scheduler and server
+	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
+	srv := webpkg.NewServer("", sched, nil, nil)
+
+	// Test with cleaned buffers (should use captured content)
+	req := httptest.NewRequest("GET", "/api/jobs", nil)
+	rr := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var jobs []apiJob
+	if err := json.Unmarshal(rr.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("json unmarshal error: %v", err)
+	}
+
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	job1 := jobs[0]
+	if job1.LastRun == nil {
+		t.Fatal("expected LastRun to be set")
+	}
+
+	// Verify runtime data is still available after cleanup
+	if job1.LastRun.Stdout != stdoutData {
+		t.Errorf("LastRun.Stdout after cleanup = %q, want %q", job1.LastRun.Stdout, stdoutData)
+	}
+	if job1.LastRun.Stderr != stderrData {
+		t.Errorf("LastRun.Stderr after cleanup = %q, want %q", job1.LastRun.Stderr, stderrData)
+	}
+	if job1.LastRun.Duration <= 0 {
+		t.Errorf("LastRun.Duration = %v, want > 0", job1.LastRun.Duration)
+	}
+}
+
+func TestHistoryEndpointWithCapturedOutput(t *testing.T) {
+	job := &testJob{}
+	job.Name = "history-job"
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
+
+	// Create execution with output that will be cleaned up
+	e, err := core.NewExecution()
+	if err != nil {
+		t.Fatalf("NewExecution error: %v", err)
+	}
+
+	historyStdout := "historical output"
+	historyStderr := "historical error"
+
+	_, err = e.OutputStream.Write([]byte(historyStdout))
+	if err != nil {
+		t.Fatalf("Write stdout error: %v", err)
+	}
+
+	_, err = e.ErrorStream.Write([]byte(historyStderr))
+	if err != nil {
+		t.Fatalf("Write stderr error: %v", err)
+	}
+
+	e.Start()
+	time.Sleep(1 * time.Millisecond)
+	e.Stop(fmt.Errorf("test error"))
+
+	// Cleanup to simulate buffer pool return
+	e.Cleanup()
+
+	job.SetLastRun(e)
+	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
+	srv := webpkg.NewServer("", sched, nil, nil)
+
+	req := httptest.NewRequest("GET", "/api/jobs/history-job/history", nil)
+	rr := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var history []apiExecution
+	if err := json.Unmarshal(rr.Body.Bytes(), &history); err != nil {
+		t.Fatalf("json unmarshal error: %v", err)
+	}
+
+	if len(history) != 1 {
+		t.Fatalf("expected 1 execution in history, got %d", len(history))
+	}
+
+	exec := history[0]
+
+	// Verify captured output is available in history
+	if exec.Stdout != historyStdout {
+		t.Errorf("History Stdout = %q, want %q", exec.Stdout, historyStdout)
+	}
+	if exec.Stderr != historyStderr {
+		t.Errorf("History Stderr = %q, want %q", exec.Stderr, historyStderr)
+	}
+	if !exec.Failed {
+		t.Error("Execution should be marked as failed")
+	}
+	if exec.Error != "test error" {
+		t.Errorf("Error = %q, want %q", exec.Error, "test error")
+	}
+}
+
 func TestJobsHandlerIncludesOutput(t *testing.T) {
 	job := &testJob{}
 	job.Name = "job1"

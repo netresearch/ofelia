@@ -22,7 +22,7 @@ type RunJob struct {
 	Client    *docker.Client    `json:"-"`
 	monitor   *ContainerMonitor `json:"-"` // Container monitor for efficient watching
 	dockerOps *DockerOperations `json:"-"` // High-level Docker operations wrapper
-	User      string            `default:"root" hash:"true"`
+	User      string            `default:"nobody" hash:"true"`
 
 	// ContainerName specifies the name of the container to be created. If
 	// nil, the job name will be used. If set to an empty string, Docker
@@ -73,6 +73,33 @@ func NewRunJob(c *docker.Client) *RunJob {
 		Client:    c,
 		monitor:   monitor,
 		dockerOps: dockerOps,
+	}
+}
+
+// InitializeRuntimeFields initializes fields that depend on the Docker client
+// This should be called after the Client field is set, typically during configuration loading
+func (j *RunJob) InitializeRuntimeFields() {
+	if j.Client == nil {
+		return // Cannot initialize without client
+	}
+
+	// Only initialize if not already done
+	if j.monitor == nil {
+		logger := &SimpleLogger{} // Will be set properly when job runs
+		j.monitor = NewContainerMonitor(j.Client, logger)
+
+		// Check for Docker events configuration
+		if useEvents := os.Getenv("OFELIA_USE_DOCKER_EVENTS"); useEvents != "" {
+			// Default is true, so only disable if explicitly set to false
+			if useEvents == "false" || useEvents == "0" || useEvents == "no" {
+				j.monitor.SetUseEventsAPI(false)
+			}
+		}
+	}
+
+	if j.dockerOps == nil {
+		logger := &SimpleLogger{} // Will be set properly when job runs
+		j.dockerOps = NewDockerOperations(j.Client, logger, nil)
 	}
 }
 
@@ -167,20 +194,6 @@ func (j *RunJob) startAndWait(ctx *Context) error {
 		ctx.Warn("failed to fetch container logs: " + logsErr.Error())
 	}
 	return err
-}
-
-func (j *RunJob) searchLocalImage() error {
-	imageOps := j.dockerOps.NewImageOperations()
-	imgs, err := imageOps.ListImages(j.Image)
-	if err != nil {
-		return err
-	}
-
-	if len(imgs) != 1 {
-		return ErrLocalImageNotFound
-	}
-
-	return nil
 }
 
 func (j *RunJob) buildContainer() (*docker.Container, error) {
@@ -314,4 +327,3 @@ func (j *RunJob) deleteContainer() error {
 	containerOps := j.dockerOps.NewContainerLifecycle()
 	return containerOps.RemoveContainer(j.getContainerID(), false)
 }
-

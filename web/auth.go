@@ -12,14 +12,19 @@ import (
 	"time"
 )
 
+const (
+	// Authorization constants
+	BearerPrefix = "Bearer"
+)
+
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
 	Enabled      bool   `json:"enabled"`
 	Username     string `json:"username"`
 	Password     string `json:"password"`     // Deprecated: use PasswordHash instead
-	PasswordHash string `json:"password_hash"` // bcrypt hash of password (preferred)
-	SecretKey    string `json:"secret_key"`
-	TokenExpiry  int    `json:"token_expiry"` // in hours
+	PasswordHash string `json:"passwordHash"` // bcrypt hash of password (preferred)
+	SecretKey    string `json:"secretKey"`
+	TokenExpiry  int    `json:"tokenExpiry"` // in hours
 }
 
 // Simple JWT implementation (for demonstration - in production use a proper JWT library)
@@ -32,17 +37,17 @@ type TokenManager struct {
 
 type TokenData struct {
 	Username  string    `json:"username"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 func NewTokenManager(secretKey string, expiryHours int) *TokenManager {
 	if secretKey == "" {
 		// Generate a random key if not provided
 		key := make([]byte, 32)
-		rand.Read(key)
+		_, _ = rand.Read(key)
 		secretKey = base64.StdEncoding.EncodeToString(key)
 	}
-	
+
 	return &TokenManager{
 		secretKey:   []byte(secretKey),
 		tokens:      make(map[string]*TokenData),
@@ -54,24 +59,24 @@ func NewTokenManager(secretKey string, expiryHours int) *TokenManager {
 func (tm *TokenManager) GenerateToken(username string) (string, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	
+
 	// Generate random token
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate random token: %w", err)
 	}
-	
+
 	token := base64.URLEncoding.EncodeToString(b)
-	
+
 	// Store token data
 	tm.tokens[token] = &TokenData{
 		Username:  username,
 		ExpiresAt: time.Now().Add(tm.tokenExpiry),
 	}
-	
+
 	// Clean up expired tokens periodically
 	go tm.cleanupExpiredTokens()
-	
+
 	return token, nil
 }
 
@@ -79,16 +84,16 @@ func (tm *TokenManager) GenerateToken(username string) (string, error) {
 func (tm *TokenManager) ValidateToken(token string) (*TokenData, bool) {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
-	
+
 	data, exists := tm.tokens[token]
 	if !exists {
 		return nil, false
 	}
-	
+
 	if time.Now().After(data.ExpiresAt) {
 		return nil, false
 	}
-	
+
 	return data, true
 }
 
@@ -103,7 +108,7 @@ func (tm *TokenManager) RevokeToken(token string) {
 func (tm *TokenManager) cleanupExpiredTokens() {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	
+
 	now := time.Now()
 	for token, data := range tm.tokens {
 		if now.After(data.ExpiresAt) {
@@ -121,7 +126,7 @@ func authMiddleware(tm *TokenManager, required bool) func(http.Handler) http.Han
 				next.ServeHTTP(w, r)
 				return
 			}
-			
+
 			// Extract token from Authorization header
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
@@ -131,26 +136,26 @@ func authMiddleware(tm *TokenManager, required bool) func(http.Handler) http.Han
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
-				authHeader = "Bearer " + cookie.Value
+				authHeader = BearerPrefix + " " + cookie.Value
 			}
-			
+
 			// Validate Bearer token
 			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || parts[0] != "Bearer" {
+			if len(parts) != 2 || parts[0] != BearerPrefix {
 				http.Error(w, "Invalid authorization header", http.StatusUnauthorized)
 				return
 			}
-			
+
 			// Validate token
 			tokenData, valid := tm.ValidateToken(parts[1])
 			if !valid {
 				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 				return
 			}
-			
+
 			// Add username to request context
 			r.Header.Set("X-Auth-User", tokenData.Username)
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -174,36 +179,36 @@ func (h *LoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	var credentials struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Validate credentials using secure comparison
 	// This is legacy auth - use JWT for production
 	usernameMatch := subtle.ConstantTimeCompare([]byte(credentials.Username), []byte(h.config.Username)) == 1
 	passwordMatch := subtle.ConstantTimeCompare([]byte(credentials.Password), []byte(h.config.Password)) == 1
-	
+
 	if !usernameMatch || !passwordMatch {
 		// Add slight delay to prevent timing attacks
 		time.Sleep(100 * time.Millisecond)
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
-	
+
 	// Generate token
 	token, err := h.tokenManager.GenerateToken(credentials.Username)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Set cookie for web UI
 	http.SetCookie(w, &http.Cookie{
 		Name:     "auth_token",
@@ -214,10 +219,10 @@ func (h *LoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(h.tokenManager.tokenExpiry.Seconds()),
 	})
-	
+
 	// Return token in response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"token":      token,
 		"expires_in": h.tokenManager.tokenExpiry.Seconds(),
 	})
@@ -238,7 +243,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "" {
 		parts := strings.Split(authHeader, " ")
-		if len(parts) == 2 && parts[0] == "Bearer" {
+		if len(parts) == 2 && parts[0] == BearerPrefix {
 			token = parts[1]
 		}
 	} else {
@@ -247,12 +252,12 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			token = cookie.Value
 		}
 	}
-	
+
 	// Revoke token if found
 	if token != "" {
 		h.tokenManager.RevokeToken(token)
 	}
-	
+
 	// Clear cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "auth_token",
@@ -261,7 +266,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		MaxAge:   -1,
 	})
-	
+
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Logged out successfully")
 }

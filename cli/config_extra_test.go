@@ -118,6 +118,7 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 func (s *SuiteConfig) TestDockerLabelsUpdateStaleJobs(c *C) {
 	cfg := NewConfig(test.NewTestLogger())
 	cfg.logger = test.NewTestLogger()
+	cfg.Global.AllowHostJobsFromLabels = true // Enable local jobs from labels for testing
 	cfg.dockerHandler = &DockerHandler{}
 	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
@@ -163,6 +164,7 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
 		_ = cfg.sh.AddJob(j)
@@ -218,6 +220,7 @@ func (s *SuiteConfig) TestIniConfigUpdateEnvChange(c *C) {
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
 		_ = cfg.sh.AddJob(j)
@@ -256,6 +259,7 @@ func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
 		_ = cfg.sh.AddJob(j)
@@ -290,6 +294,7 @@ func (s *SuiteConfig) TestIniConfigUpdateLabelConflict(c *C) {
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
 		_ = cfg.sh.AddJob(j)
@@ -333,6 +338,7 @@ func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
 		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
 		_ = cfg.sh.AddJob(j)

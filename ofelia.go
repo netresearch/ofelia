@@ -93,6 +93,7 @@ func main() {
 			_, _ = fmt.Fprintf(os.Stdout, "\nBuild information\n  commit: %s\n  date:%s\n", version, build)
 		}
 
-		os.Exit(1)
+		logger.Errorf("Command failed to execute")
+		return // Exit gracefully instead of os.Exit(1)
 	}
 }

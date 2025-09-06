@@ -48,7 +48,7 @@ type Config struct {
 		EnablePprof             bool          `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
 		PprofAddr               string        `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
 		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`
-		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels" default:"false"`
+		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels"`
 	}
 	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
@@ -121,13 +121,13 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	c.configPath = filename
 	c.configFiles = files
 	c.configModTime = latest
-	
+
 	// Validate the loaded configuration
 	validator := config.NewConfigValidator(c)
 	if err := validator.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
-	
+
 	return c, nil
 }
 
@@ -145,13 +145,13 @@ func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
 	if err := parseIni(cfg, c); err != nil {
 		return nil, fmt.Errorf("parse ini from string: %w", err)
 	}
-	
+
 	// Validate the loaded configuration
 	validator := config.NewConfigValidator(c)
 	if err := validator.Validate(); err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
-	
+
 	return c, nil
 }
 
@@ -179,7 +179,10 @@ func (c *Config) mergeJobsFromDockerLabels() {
 	if err != nil {
 		return
 	}
-	parsed := Config{logger: c.logger}
+	parsed := Config{
+		logger: c.logger,
+		Global: c.Global, // Copy Global settings including AllowHostJobsFromLabels
+	}
 	_ = parsed.buildFromDockerLabels(dockerLabels)
 
 	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
@@ -216,6 +219,7 @@ func (c *Config) registerAllJobs() {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
 		j.Client = client
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -336,7 +340,10 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	c.logger.Debugf("dockerLabelsUpdate started")
 
-	parsedLabelConfig := Config{logger: c.logger}
+	parsedLabelConfig := Config{
+		logger: c.logger,
+		Global: c.Global, // Copy Global settings including AllowHostJobsFromLabels
+	}
 	_ = parsedLabelConfig.buildFromDockerLabels(labels)
 
 	execPrep := func(name string, j *ExecJobConfig) {
@@ -352,6 +359,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 	}
 	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel, "run")
@@ -450,6 +458,7 @@ func (c *Config) iniConfigUpdate() error {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
 		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 	}
 	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI, "run")
@@ -530,6 +539,15 @@ func (c *RunJobConfig) buildMiddlewares() {
 
 func (c *RunJobConfig) GetJobSource() JobSource  { return c.JobSource }
 func (c *RunJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
+
+// Hash overrides BareJob.Hash() to include RunJob-specific fields
+func (c *RunJobConfig) Hash() (string, error) {
+	var hash string
+	if err := core.GetHash(reflect.TypeOf(&c.RunJob).Elem(), reflect.ValueOf(&c.RunJob).Elem(), &hash); err != nil {
+		return "", fmt.Errorf("failed to generate hash for RunJob config: %w", err)
+	}
+	return hash, nil
+}
 
 // LocalJobConfig contains all configuration params needed to build a RunJob
 type LocalJobConfig struct {

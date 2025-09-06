@@ -63,7 +63,7 @@ func (j *BareJob) SetCronJobID(id int) {
 // Returns a hash of all the job attributes. Used to detect changes
 func (j *BareJob) Hash() (string, error) {
 	var hash string
-	if err := getHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &hash); err != nil {
+	if err := GetHash(reflect.TypeOf(j).Elem(), reflect.ValueOf(j).Elem(), &hash); err != nil {
 		return "", err
 	}
 	return hash, nil
@@ -100,5 +100,8 @@ func (j *BareJob) GetHistory() []*Execution {
 func (j *BareJob) Run(ctx *Context) error {
 	// This method is typically not called directly
 	// The scheduler's jobWrapper handles the actual execution
-	return ctx.Next()
+	// For BareJob, we don't execute anything directly - it's just a container
+	// Calling ctx.Next() here would create infinite recursion when BareJob is the main job
+	// So we return nil to indicate successful "execution" of this bare container
+	return nil
 }

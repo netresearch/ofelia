@@ -13,11 +13,9 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 )
 
-var (
-	// ErrSkippedExecution pass this error to `Execution.Stop` if you wish to mark
-	// it as skipped.
-	ErrSkippedExecution = errors.New("skipped execution")
-)
+// ErrSkippedExecution pass this error to `Execution.Stop` if you wish to mark
+// it as skipped.
+var ErrSkippedExecution = errors.New("skipped execution")
 
 const (
 	// maximum size of a stdout/stderr stream to be kept in memory and optional stored/sent via mail
@@ -150,6 +148,9 @@ type Execution struct {
 	Error     error
 
 	OutputStream, ErrorStream *circbuf.Buffer `json:"-"`
+
+	// Captured output for persistence after buffer cleanup
+	CapturedStdout, CapturedStderr string `json:"-"`
 }
 
 // NewExecution returns a new Execution, with a random ID
@@ -199,13 +200,32 @@ func (e *Execution) Stop(err error) {
 	}
 }
 
+// GetStdout returns stdout content, preferring live buffer if available
+func (e *Execution) GetStdout() string {
+	if e.OutputStream != nil {
+		return e.OutputStream.String()
+	}
+	return e.CapturedStdout
+}
+
+// GetStderr returns stderr content, preferring live buffer if available
+func (e *Execution) GetStderr() string {
+	if e.ErrorStream != nil {
+		return e.ErrorStream.String()
+	}
+	return e.CapturedStderr
+}
+
 // Cleanup returns execution buffers to the pool for reuse
 func (e *Execution) Cleanup() {
+	// Capture buffer contents before cleanup for persistence
 	if e.OutputStream != nil {
+		e.CapturedStdout = e.OutputStream.String()
 		DefaultBufferPool.Put(e.OutputStream)
 		e.OutputStream = nil
 	}
 	if e.ErrorStream != nil {
+		e.CapturedStderr = e.ErrorStream.String()
 		DefaultBufferPool.Put(e.ErrorStream)
 		e.ErrorStream = nil
 	}
@@ -310,16 +330,6 @@ func buildPullOptions(image string) (docker.PullImageOptions, docker.AuthConfigu
 }
 
 // pullImage downloads a Docker image if it is not available locally.
-// It uses the provided client to fetch the image with authentication
-// details from the Docker configuration file.
-func pullImage(client *docker.Client, image string) error {
-	opts, auth := buildPullOptions(image)
-	if err := client.PullImage(opts, auth); err != nil {
-		return fmt.Errorf("error pulling image %q: %w", image, err)
-	}
-	return nil
-}
-
 func parseRegistry(repository string) string {
 	parts := strings.Split(repository, "/")
 	if len(parts) < 2 {
@@ -359,14 +369,14 @@ func buildAuthConfiguration(registry string) docker.AuthConfiguration {
 
 const HashmeTagName = "hash"
 
-func getHash(t reflect.Type, v reflect.Value, hash *string) error {
+func GetHash(t reflect.Type, v reflect.Value, hash *string) error {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		fieldv := v.Field(i)
 		kind := field.Type.Kind()
 
 		if kind == reflect.Struct && field.Type != reflect.TypeOf(time.Duration(0)) {
-			if err := getHash(field.Type, fieldv, hash); err != nil {
+			if err := GetHash(field.Type, fieldv, hash); err != nil {
 				return err
 			}
 			continue

@@ -2,6 +2,7 @@ package core
 
 import (
 	"runtime"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -9,6 +10,7 @@ import (
 // LogrusAdapter wraps a logrus.Logger to satisfy the Logger interface.
 type LogrusAdapter struct {
 	*logrus.Logger
+	mu sync.Mutex // Protects ReportCaller modifications
 }
 
 var _ Logger = (*LogrusAdapter)(nil)
@@ -19,9 +21,13 @@ func (l *LogrusAdapter) logf(level logrus.Level, format string, args ...interfac
 		frame = &runtime.Frame{PC: pc, File: file, Line: line, Function: runtime.FuncForPC(pc).Name()}
 	}
 
+	l.mu.Lock()
 	prev := l.Logger.ReportCaller
 	l.Logger.ReportCaller = false
-	defer func() { l.Logger.ReportCaller = prev }()
+	defer func() {
+		l.Logger.ReportCaller = prev
+		l.mu.Unlock()
+	}()
 
 	entry := logrus.NewEntry(l.Logger)
 	entry.Caller = frame

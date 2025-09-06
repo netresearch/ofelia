@@ -11,7 +11,7 @@ type ExecJob struct {
 	BareJob     `mapstructure:",squash"`
 	Client      *docker.Client `json:"-"`
 	Container   string         `hash:"true"`
-	User        string         `default:"root" hash:"true"`
+	User        string         `default:"nobody" hash:"true"`
 	TTY         bool           `default:"false" hash:"true"`
 	Environment []string       `mapstructure:"environment" hash:"true"`
 
@@ -67,7 +67,7 @@ func (j *ExecJob) buildExec(ctx *Context) (*docker.Exec, error) {
 	}
 
 	execOps := j.dockerOps.NewExecOperations()
-	
+
 	exec, err := execOps.CreateExec(docker.CreateExecOptions{
 		AttachStdin:  false,
 		AttachStdout: true,
@@ -87,7 +87,7 @@ func (j *ExecJob) buildExec(ctx *Context) (*docker.Exec, error) {
 
 func (j *ExecJob) startExec(e *Execution) error {
 	execOps := j.dockerOps.NewExecOperations()
-	
+
 	err := execOps.StartExec(j.execID, docker.StartExecOptions{
 		Tty:          j.TTY,
 		OutputStream: e.OutputStream,
@@ -103,7 +103,7 @@ func (j *ExecJob) startExec(e *Execution) error {
 
 func (j *ExecJob) inspectExec() (*docker.ExecInspect, error) {
 	execOps := j.dockerOps.NewExecOperations()
-	
+
 	inspect, err := execOps.InspectExec(j.execID)
 	if err != nil {
 		return nil, fmt.Errorf("inspect exec: %w", err)
@@ -111,4 +111,3 @@ func (j *ExecJob) inspectExec() (*docker.ExecInspect, error) {
 
 	return inspect, nil
 }
-

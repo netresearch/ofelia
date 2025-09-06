@@ -14,15 +14,15 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		
+
 		// Basic CSP - can be adjusted based on needs
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'")
-		
+
 		// HSTS - only in production with HTTPS
 		if r.TLS != nil {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -41,7 +41,7 @@ func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 		limit:    limit,
 		window:   window,
 	}
-	
+
 	// Clean up old entries periodically
 	go func() {
 		ticker := time.NewTicker(window)
@@ -50,14 +50,14 @@ func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 			rl.cleanup()
 		}
 	}()
-	
+
 	return rl
 }
 
 func (rl *rateLimiter) cleanup() {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	
+
 	now := time.Now()
 	for ip, times := range rl.requests {
 		// Keep only requests within the window
@@ -81,15 +81,15 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 		if xForwarded := r.Header.Get("X-Forwarded-For"); xForwarded != "" {
 			ip = xForwarded
 		}
-		
+
 		rl.mu.Lock()
 		now := time.Now()
-		
+
 		// Get or create request history for this IP
 		if rl.requests[ip] == nil {
 			rl.requests[ip] = []time.Time{}
 		}
-		
+
 		// Filter out old requests
 		var valid []time.Time
 		for _, t := range rl.requests[ip] {
@@ -97,18 +97,18 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 				valid = append(valid, t)
 			}
 		}
-		
+
 		// Check if limit exceeded
 		if len(valid) >= rl.limit {
 			rl.mu.Unlock()
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
-		
+
 		// Add current request
 		rl.requests[ip] = append(valid, now)
 		rl.mu.Unlock()
-		
+
 		next.ServeHTTP(w, r)
 	})
 }

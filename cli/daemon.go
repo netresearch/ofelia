@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // #nosec G108
-	"os"
 	"time"
 
 	dockerclient "github.com/fsouza/go-dockerclient"
@@ -26,16 +25,15 @@ type DaemonCommand struct {
 	EnableWeb          bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
 	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
 
-	scheduler        *core.Scheduler
-	signals          chan os.Signal
-	pprofServer      *http.Server
-	webServer        *web.Server
-	dockerHandler    *DockerHandler
-	config           *Config
-	done             chan struct{}
-	Logger           core.Logger
-	shutdownManager  *core.ShutdownManager
-	healthChecker    *web.HealthChecker
+	scheduler       *core.Scheduler
+	pprofServer     *http.Server
+	webServer       *web.Server
+	dockerHandler   *DockerHandler
+	config          *Config
+	done            chan struct{}
+	Logger          core.Logger
+	shutdownManager *core.ShutdownManager
+	healthChecker   *web.HealthChecker
 }
 
 // Execute runs the daemon
@@ -51,6 +49,9 @@ func (c *DaemonCommand) Execute(_ []string) error {
 }
 
 func (c *DaemonCommand) boot() (err error) {
+	// Initialize done channel for clean shutdown
+	c.done = make(chan struct{})
+
 	// Apply CLI log level before reading config
 	ApplyLogLevel(c.LogLevel)
 
@@ -100,24 +101,24 @@ func (c *DaemonCommand) boot() (err error) {
 	c.scheduler = config.sh
 	c.dockerHandler = config.dockerHandler
 	c.config = config
-	
+
 	// Initialize health checker
 	var dockerClient *dockerclient.Client
 	if c.dockerHandler != nil {
 		dockerClient = c.dockerHandler.GetInternalDockerClient()
 	}
 	c.healthChecker = web.NewHealthChecker(dockerClient, "1.0.0")
-	
+
 	// Create graceful scheduler with shutdown support
 	gracefulScheduler := core.NewGracefulScheduler(c.scheduler, c.shutdownManager)
 	c.scheduler = gracefulScheduler.Scheduler
-	
+
 	if c.EnableWeb {
 		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, dockerClient)
-		
+
 		// Register health endpoints
 		c.webServer.RegisterHealthEndpoints(c.healthChecker)
-		
+
 		// Create graceful server with shutdown support
 		gracefulServer := core.NewGracefulServer(c.webServer.GetHTTPServer(), c.shutdownManager, c.Logger)
 		_ = gracefulServer // The hooks are registered internally
@@ -129,7 +130,15 @@ func (c *DaemonCommand) boot() (err error) {
 func (c *DaemonCommand) start() error {
 	// Start listening for shutdown signals
 	c.shutdownManager.ListenForShutdown()
-	
+
+	// Set up a goroutine to close done channel when shutdown completes
+	go func() {
+		<-c.shutdownManager.ShutdownChan()
+		// Give some time for graceful shutdown to complete
+		// The shutdown manager handles the actual shutdown process
+		close(c.done)
+	}()
+
 	if err := c.scheduler.Start(); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)
 	}
@@ -159,17 +168,6 @@ func (c *DaemonCommand) start() error {
 	}
 
 	return nil
-}
-
-func (c *DaemonCommand) setSignals() {
-	// Create done channel to wait for shutdown
-	c.done = make(chan struct{})
-	
-	// Monitor shutdown manager
-	go func() {
-		<-c.shutdownManager.ShutdownChan()
-		close(c.done)
-	}()
 }
 
 func (c *DaemonCommand) shutdown() error {

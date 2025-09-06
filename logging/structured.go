@@ -40,13 +40,13 @@ func (l LogLevel) String() string {
 
 // LogEntry represents a structured log entry
 type LogEntry struct {
-	Timestamp   time.Time              `json:"timestamp"`
-	Level       string                 `json:"level"`
-	Message     string                 `json:"message"`
-	Fields      map[string]interface{} `json:"fields,omitempty"`
-	Caller      string                 `json:"caller,omitempty"`
-	StackTrace  string                 `json:"stack_trace,omitempty"`
-	CorrelationID string               `json:"correlation_id,omitempty"`
+	Timestamp     time.Time              `json:"timestamp"`
+	Level         string                 `json:"level"`
+	Message       string                 `json:"message"`
+	Fields        map[string]interface{} `json:"fields,omitempty"`
+	Caller        string                 `json:"caller,omitempty"`
+	StackTrace    string                 `json:"stackTrace,omitempty"`
+	CorrelationID string                 `json:"correlationId,omitempty"`
 }
 
 // StructuredLogger provides structured logging capabilities
@@ -96,13 +96,13 @@ func (l *StructuredLogger) SetJSONFormat(enabled bool) {
 func (l *StructuredLogger) WithField(key string, value interface{}) *StructuredLogger {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	newFields := make(map[string]interface{})
 	for k, v := range l.fields {
 		newFields[k] = v
 	}
 	newFields[key] = value
-	
+
 	return &StructuredLogger{
 		level:         l.level,
 		output:        l.output,
@@ -117,7 +117,7 @@ func (l *StructuredLogger) WithField(key string, value interface{}) *StructuredL
 func (l *StructuredLogger) WithFields(fields map[string]interface{}) *StructuredLogger {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	newFields := make(map[string]interface{})
 	for k, v := range l.fields {
 		newFields[k] = v
@@ -125,7 +125,7 @@ func (l *StructuredLogger) WithFields(fields map[string]interface{}) *Structured
 	for k, v := range fields {
 		newFields[k] = v
 	}
-	
+
 	return &StructuredLogger{
 		level:         l.level,
 		output:        l.output,
@@ -140,21 +140,27 @@ func (l *StructuredLogger) WithFields(fields map[string]interface{}) *Structured
 func (l *StructuredLogger) WithCorrelationID(id string) *StructuredLogger {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
-	newLogger := *l
-	newLogger.correlationID = id
-	return &newLogger
+
+	newLogger := &StructuredLogger{
+		level:         l.level,
+		output:        l.output,
+		fields:        l.fields,
+		correlationID: id,
+		includeCaller: l.includeCaller,
+		jsonFormat:    l.jsonFormat,
+	}
+	return newLogger
 }
 
 // log writes a log entry
 func (l *StructuredLogger) log(level LogLevel, message string, fields map[string]interface{}) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	if level < l.level {
 		return
 	}
-	
+
 	entry := LogEntry{
 		Timestamp:     time.Now(),
 		Level:         level.String(),
@@ -162,17 +168,17 @@ func (l *StructuredLogger) log(level LogLevel, message string, fields map[string
 		Fields:        make(map[string]interface{}),
 		CorrelationID: l.correlationID,
 	}
-	
+
 	// Merge logger fields
 	for k, v := range l.fields {
 		entry.Fields[k] = v
 	}
-	
+
 	// Merge provided fields
 	for k, v := range fields {
 		entry.Fields[k] = v
 	}
-	
+
 	// Add caller information
 	if l.includeCaller {
 		if pc, file, line, ok := runtime.Caller(2); ok {
@@ -180,32 +186,32 @@ func (l *StructuredLogger) log(level LogLevel, message string, fields map[string
 			entry.Caller = fmt.Sprintf("%s:%d %s", file, line, f.Name())
 		}
 	}
-	
+
 	// Add stack trace for errors
 	if level >= ErrorLevel {
 		buf := make([]byte, 4096)
 		n := runtime.Stack(buf, false)
 		entry.StackTrace = string(buf[:n])
 	}
-	
+
 	// Format and write
 	if l.jsonFormat {
 		encoder := json.NewEncoder(l.output)
-		encoder.Encode(entry)
+		_ = encoder.Encode(entry)
 	} else {
-		fmt.Fprintf(l.output, "%s [%s] %s", 
+		fmt.Fprintf(l.output, "%s [%s] %s",
 			entry.Timestamp.Format(time.RFC3339),
 			entry.Level,
 			entry.Message)
-		
+
 		if len(entry.Fields) > 0 {
 			fmt.Fprintf(l.output, " %v", entry.Fields)
 		}
-		
+
 		if entry.CorrelationID != "" {
 			fmt.Fprintf(l.output, " [%s]", entry.CorrelationID)
 		}
-		
+
 		fmt.Fprintln(l.output)
 	}
 }
@@ -270,22 +276,25 @@ func (l *StructuredLogger) ErrorWithFields(message string, fields map[string]int
 	l.log(ErrorLevel, message, fields)
 }
 
-// Fatal logs a fatal message and exits
+// Fatal logs a fatal message. Note: Does not exit automatically.
+// Caller should handle the fatal condition appropriately.
 func (l *StructuredLogger) Fatal(message string) {
 	l.log(FatalLevel, message, nil)
-	os.Exit(1)
+	// Removed os.Exit(1) - let caller decide how to handle fatal errors
 }
 
-// Fatalf logs a formatted fatal message and exits
+// Fatalf logs a formatted fatal message. Note: Does not exit automatically.
+// Caller should handle the fatal condition appropriately.
 func (l *StructuredLogger) Fatalf(format string, args ...interface{}) {
 	l.log(FatalLevel, fmt.Sprintf(format, args...), nil)
-	os.Exit(1)
+	// Removed os.Exit(1) - let caller decide how to handle fatal errors
 }
 
-// FatalWithFields logs a fatal message with fields and exits
+// FatalWithFields logs a fatal message with fields. Note: Does not exit automatically.
+// Caller should handle the fatal condition appropriately.
 func (l *StructuredLogger) FatalWithFields(message string, fields map[string]interface{}) {
 	l.log(FatalLevel, message, fields)
-	os.Exit(1)
+	// Removed os.Exit(1) - let caller decide how to handle fatal errors
 }
 
 // JobLogger provides job-specific logging
@@ -293,6 +302,7 @@ type JobLogger struct {
 	*StructuredLogger
 	jobID   string
 	jobName string
+	metrics MetricsCollector
 }
 
 // NewJobLogger creates a logger for a specific job
@@ -308,11 +318,22 @@ func NewJobLogger(jobID, jobName string) *JobLogger {
 	}
 }
 
+// SetMetricsCollector sets the metrics collector for the job logger
+func (jl *JobLogger) SetMetricsCollector(metrics MetricsCollector) {
+	jl.metrics = metrics
+}
+
 // LogStart logs job start
 func (jl *JobLogger) LogStart() {
 	jl.InfoWithFields("Job started", map[string]interface{}{
 		"event": "job_start",
 	})
+
+	// Update metrics if available
+	if jl.metrics != nil {
+		jl.metrics.IncrementCounter("jobs_started_total", 1)
+		jl.metrics.SetGauge("jobs_running", 1)
+	}
 }
 
 // LogComplete logs job completion
@@ -322,11 +343,23 @@ func (jl *JobLogger) LogComplete(duration time.Duration, success bool) {
 		"duration": duration.Seconds(),
 		"success":  success,
 	}
-	
+
 	if success {
 		jl.InfoWithFields("Job completed successfully", fields)
+		if jl.metrics != nil {
+			jl.metrics.IncrementCounter("jobs_success_total", 1)
+		}
 	} else {
 		jl.ErrorWithFields("Job failed", fields)
+		if jl.metrics != nil {
+			jl.metrics.IncrementCounter("jobs_failed_total", 1)
+		}
+	}
+
+	// Record duration in metrics
+	if jl.metrics != nil {
+		jl.metrics.ObserveHistogram("job_duration_seconds", duration.Seconds())
+		jl.metrics.SetGauge("jobs_running", -1)
 	}
 }
 
@@ -336,14 +369,53 @@ func (jl *JobLogger) LogProgress(message string, percentComplete float64) {
 		"event":    "job_progress",
 		"progress": percentComplete,
 	})
+
+	// Update progress gauge
+	if jl.metrics != nil {
+		jl.metrics.SetGauge("job_progress_percent", percentComplete)
+	}
+}
+
+// LogError logs an error with context
+func (jl *JobLogger) LogError(err error, context string) {
+	jl.ErrorWithFields("Job error occurred", map[string]interface{}{
+		"event":   "job_error",
+		"error":   err.Error(),
+		"context": context,
+	})
+
+	if jl.metrics != nil {
+		jl.metrics.IncrementCounter("job_errors_total", 1)
+	}
+}
+
+// LogRetry logs a retry attempt
+func (jl *JobLogger) LogRetry(attempt int, maxAttempts int, err error) {
+	jl.WarnWithFields("Retrying job execution", map[string]interface{}{
+		"event":        "job_retry",
+		"attempt":      attempt,
+		"max_attempts": maxAttempts,
+		"error":        err.Error(),
+	})
+
+	if jl.metrics != nil {
+		jl.metrics.IncrementCounter("job_retries_total", 1)
+	}
 }
 
 // Default logger instance
 var DefaultLogger = NewStructuredLogger()
 
+// MetricsCollector interface for logging metrics integration
+type MetricsCollector interface {
+	IncrementCounter(name string, value float64)
+	SetGauge(name string, value float64)
+	ObserveHistogram(name string, value float64)
+}
+
 // Package-level convenience functions
 func Debug(message string) { DefaultLogger.Debug(message) }
-func Info(message string) { DefaultLogger.Info(message) }
-func Warn(message string) { DefaultLogger.Warn(message) }
+func Info(message string)  { DefaultLogger.Info(message) }
+func Warn(message string)  { DefaultLogger.Warn(message) }
 func Error(message string) { DefaultLogger.Error(message) }
 func Fatal(message string) { DefaultLogger.Fatal(message) }

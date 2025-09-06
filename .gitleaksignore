@@ -1,0 +1,13 @@
+# Ignore test constants and non-sensitive values - these are not actual secrets
+# but rather test constants used in unit tests
+
+# File-level ignores (specific files that contain test secrets)
+web/missing_coverage_test.go
+web/jwt_auth_test.go  
+web/auth_test.go
+
+# Pattern-based ignores for test constants
+test-secret-for-testing
+test-secret-key
+test-secret-key-that-is-long-enough-for-jwt
+testSecretKey
