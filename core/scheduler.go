@@ -121,13 +121,14 @@ func (s *Scheduler) RemoveJob(j Job) error {
 		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
 	)
 	s.cron.Remove(cron.EntryID(j.GetCronJobID()))
+	
+	s.mu.Lock()
 	for i, job := range s.Jobs {
 		if job == j || job.GetCronJobID() == j.GetCronJobID() {
 			s.Jobs = append(s.Jobs[:i], s.Jobs[i+1:]...)
 			break
 		}
 	}
-	s.mu.Lock()
 	s.Removed = append(s.Removed, j)
 	s.mu.Unlock()
 	return nil
@@ -278,6 +279,9 @@ func (s *Scheduler) GetDisabledJob(name string) Job {
 
 // DisableJob stops scheduling the job but keeps it for later enabling.
 func (s *Scheduler) DisableJob(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
 	j, idx := getJob(s.Jobs, name)
 	if j == nil {
 		return fmt.Errorf("job %q not found", name)
@@ -290,11 +294,15 @@ func (s *Scheduler) DisableJob(name string) error {
 
 // EnableJob schedules a previously disabled job.
 func (s *Scheduler) EnableJob(name string) error {
+	s.mu.Lock()
 	j, idx := getJob(s.Disabled, name)
 	if j == nil {
+		s.mu.Unlock()
 		return fmt.Errorf("job %q not found", name)
 	}
 	s.Disabled = append(s.Disabled[:idx], s.Disabled[idx+1:]...)
+	s.mu.Unlock()
+	
 	return s.AddJob(j)
 }
 
