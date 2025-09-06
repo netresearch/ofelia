@@ -107,7 +107,11 @@ func (s *Scheduler) AddJob(j Job) error {
 	}
 	j.SetCronJobID(int(id)) // Cast to int in order to avoid pushing cron external to common
 	j.Use(s.Middlewares()...)
+	
+	s.mu.Lock()
 	s.Jobs = append(s.Jobs, j)
+	s.mu.Unlock()
+	
 	s.Logger.Noticef(
 		"New job registered %q - %q - %q - ID: %v",
 		j.GetName(), j.GetCommand(), j.GetSchedule(), id,
