@@ -121,7 +121,6 @@ func (s *Scheduler) RemoveJob(j Job) error {
 		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
 	)
 	s.cron.Remove(cron.EntryID(j.GetCronJobID()))
-	
 	s.mu.Lock()
 	for i, job := range s.Jobs {
 		if job == j || job.GetCronJobID() == j.GetCronJobID() {
@@ -281,7 +280,6 @@ func (s *Scheduler) GetDisabledJob(name string) Job {
 func (s *Scheduler) DisableJob(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
 	j, idx := getJob(s.Jobs, name)
 	if j == nil {
 		return fmt.Errorf("job %q not found", name)
@@ -302,7 +300,6 @@ func (s *Scheduler) EnableJob(name string) error {
 	}
 	s.Disabled = append(s.Disabled[:idx], s.Disabled[idx+1:]...)
 	s.mu.Unlock()
-	
 	return s.AddJob(j)
 }
 
