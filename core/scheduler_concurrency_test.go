@@ -482,9 +482,13 @@ func TestSchedulerRaceConditions(t *testing.T) {
 
 	// Create jobs for concurrent operations
 	const numJobs = 10
-	jobs := make([]*MockControlledJob, numJobs)
+	jobs := make([]*LocalJob, numJobs)
 	for i := 0; i < numJobs; i++ {
-		jobs[i] = NewMockControlledJob(fmt.Sprintf("race-job%d", i), "@daily")
+		job := NewLocalJob()
+		job.Name = fmt.Sprintf("race-job%d", i)
+		job.Schedule = "@daily"
+		job.Command = "echo test"  // Simple, fast command
+		jobs[i] = job
 	}
 
 	var wg sync.WaitGroup
@@ -536,9 +540,8 @@ func TestSchedulerRaceConditions(t *testing.T) {
 					// This might fail if job was removed/disabled concurrently, which is OK
 					t.Logf("RunJob failed for %s (may be expected): %v", jobName, err)
 				} else {
-					// If job started, allow it to complete quickly
-					jobs[idx].AllowStart()
-					jobs[idx].AllowFinish()
+					// LocalJob will complete quickly with "echo test" command
+					// No need to manually control execution
 				}
 			}
 		}(i)
