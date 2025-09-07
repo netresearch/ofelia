@@ -265,13 +265,13 @@ func (c *OptimizedDockerClient) Info() (*docker.DockerInfo, error) {
 
 	err = c.circuitBreaker.Execute(func() error {
 		result, err = c.client.Info()
-		if err != nil {
-			return fmt.Errorf("docker info request failed: %w", err)
-		}
-		return nil
+		return err
 	})
 
-	return result, err
+	if err != nil {
+		return result, fmt.Errorf("docker info request failed: %w", err)
+	}
+	return result, nil
 }
 
 // ListContainers wraps the Docker ListContainers call with optimizations
@@ -294,13 +294,13 @@ func (c *OptimizedDockerClient) ListContainers(opts docker.ListContainersOptions
 
 	err = c.circuitBreaker.Execute(func() error {
 		result, err = c.client.ListContainers(opts)
-		if err != nil {
-			return fmt.Errorf("docker list containers failed: %w", err)
-		}
-		return nil
+		return err
 	})
 
-	return result, err
+	if err != nil {
+		return result, fmt.Errorf("docker list containers failed: %w", err)
+	}
+	return result, nil
 }
 
 // CreateContainer wraps container creation with optimizations
@@ -323,13 +323,13 @@ func (c *OptimizedDockerClient) CreateContainer(opts docker.CreateContainerOptio
 
 	err = c.circuitBreaker.Execute(func() error {
 		result, err = c.client.CreateContainer(opts)
-		if err != nil {
-			return fmt.Errorf("docker create container failed: %w", err)
-		}
-		return nil
+		return err
 	})
 
-	return result, err
+	if err != nil {
+		return result, fmt.Errorf("docker create container failed: %w", err)
+	}
+	return result, nil
 }
 
 // StartContainer wraps container start with optimizations
