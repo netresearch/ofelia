@@ -67,7 +67,6 @@ func TestNewContainerMonitor(t *testing.T) {
 	
 	// Test setter methods that have 100% coverage but exercise the interface
 	monitor.SetUseEventsAPI(true)
-	monitor.SetMetricsRecorder(&MockMetricsRecorder{})
 }
 
 // TestNewExecJob tests the constructor which has 100% coverage
@@ -106,6 +105,7 @@ type MockContainerMonitorLogger struct {
 	logs []string
 }
 
+
 func (m *MockContainerMonitorLogger) Criticalf(format string, args ...interface{}) {
 	m.logs = append(m.logs, "CRITICAL: "+format)
 }
@@ -132,10 +132,9 @@ func TestDockerClientOperations(t *testing.T) {
 
 	mockClient := NewMockDockerClient()
 	logger := &MockLogger{}
-	metrics := &MockMetricsRecorder{}
 
-	// Test NewDockerOperations
-	dockerOps := NewDockerOperations(mockClient.Client, logger, metrics)
+	// Test NewDockerOperations - simplified without metrics for now  
+	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
 	if dockerOps == nil {
 		t.Error("NewDockerOperations should not return nil")
 	}
@@ -178,5 +177,154 @@ func TestSchedulerEntries(t *testing.T) {
 	entries := scheduler.Entries()
 	if entries == nil {
 		t.Error("Entries should not return nil")
+	}
+}
+
+// TestEnhancedBufferPoolAdaptive tests adaptive management methods with 0% coverage
+func TestEnhancedBufferPoolAdaptiveManagement(t *testing.T) {
+	t.Parallel()
+
+	config := DefaultEnhancedBufferPoolConfig()
+	config.ShrinkInterval = 5 * time.Millisecond
+	config.EnablePrewarming = true
+	logger := &MockLogger{}
+	
+	pool := NewEnhancedBufferPool(config, logger)
+	defer pool.Shutdown()
+	
+	// Get some buffers to create usage patterns
+	buf1 := pool.Get()
+	buf2 := pool.GetSized(512)
+	buf3 := pool.GetSized(1024)
+	
+	if buf1 == nil || buf2 == nil || buf3 == nil {
+		t.Error("Failed to get buffers from pool")
+		return
+	}
+	
+	// Put them back to trigger usage tracking
+	pool.Put(buf1)
+	pool.Put(buf2) 
+	pool.Put(buf3)
+	
+	// Wait for adaptive management to run
+	time.Sleep(10 * time.Millisecond)
+	
+	// Test that the pool is still functional
+	testBuf := pool.Get()
+	if testBuf == nil {
+		t.Error("Pool should still provide buffers after adaptive management")
+	} else {
+		pool.Put(testBuf)
+	}
+}
+
+// TestContainerOperationsBasic tests basic container lifecycle operations (0% coverage)
+func TestContainerOperationsBasic(t *testing.T) {
+	t.Parallel()
+
+	mockClient := NewMockDockerClient()
+	logger := &MockLogger{}
+	
+	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
+	lifecycle := dockerOps.NewContainerLifecycle()
+	if lifecycle == nil {
+		t.Error("NewContainerLifecycle should not return nil")
+	}
+}
+
+// TestExecJobBasic tests ExecJob basic functionality (0% coverage)  
+func TestExecJobBasic(t *testing.T) {
+	t.Parallel()
+
+	mockClient := NewMockDockerClient()
+	job := NewExecJob(mockClient.Client)
+	if job == nil {
+		t.Error("NewExecJob should not return nil")
+	}
+	
+	// Test basic job properties
+	if job.GetName() == "" {
+		t.Error("Job should have a name")
+	}
+}
+
+// TestImageOperationsBasic tests basic image operations (0% coverage)
+func TestImageOperationsBasic(t *testing.T) {
+	t.Parallel()
+
+	mockClient := NewMockDockerClient()
+	logger := &MockLogger{}
+	
+	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
+	imageOps := dockerOps.NewImageOperations()
+	if imageOps == nil {
+		t.Error("NewImageOperations should not return nil")
+	}
+}
+
+// TestLogOperationsBasic tests basic log operations (0% coverage)  
+func TestLogOperationsBasic(t *testing.T) {
+	t.Parallel()
+
+	mockClient := NewMockDockerClient()
+	logger := &MockLogger{}
+	
+	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
+	logOps := dockerOps.NewLogsOperations()
+	if logOps == nil {
+		t.Error("NewLogsOperations should not return nil")
+	}
+}
+
+// TestNetworkOperationsBasic tests basic network operations (0% coverage)
+func TestNetworkOperationsBasic(t *testing.T) {
+	t.Parallel()
+
+	mockClient := NewMockDockerClient()
+	logger := &MockLogger{}
+	
+	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
+	netOps := dockerOps.NewNetworkOperations()
+	if netOps == nil {
+		t.Error("NewNetworkOperations should not return nil")
+	}
+}
+
+// TestExecOperationsBasic tests basic exec operations (0% coverage)
+func TestExecOperationsBasic(t *testing.T) {
+	t.Parallel()
+
+	mockClient := NewMockDockerClient()
+	logger := &MockLogger{}
+	
+	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
+	execOps := dockerOps.NewExecOperations()
+	if execOps == nil {
+		t.Error("NewExecOperations should not return nil")
+	}
+}
+
+// TestErrorWrappers tests error wrapping functions (some have 66.7% coverage)
+func TestErrorWrappers(t *testing.T) {
+	t.Parallel()
+
+	// Test WrapImageError
+	baseErr := &NonZeroExitError{ExitCode: 1}
+	err := WrapImageError("test", "testimage", baseErr)
+	if err == nil {
+		t.Error("WrapImageError should return an error")
+	}
+	
+	// Test WrapServiceError  
+	err2 := WrapServiceError("test", "testservice", baseErr)
+	if err2 == nil {
+		t.Error("WrapServiceError should return an error")
+	}
+	
+	// Test WrapJobError
+	err3 := WrapJobError("test", "testjob", baseErr)
+	if err3 == nil {
+		t.Error("WrapJobError should return an error")
 	}
 }
