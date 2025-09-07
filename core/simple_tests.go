@@ -1,8 +1,11 @@
 package core
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/armon/circbuf"
 )
 
 // TestEnhancedBufferPoolShutdown tests the Shutdown method with 0% coverage
@@ -406,4 +409,108 @@ func TestContextOperations(t *testing.T) {
 	
 	// Stop the context with error
 	ctx.Stop(nil)
+}
+
+// TestAdaptiveBufferPoolManagement tests performAdaptiveManagement function (0% coverage)
+func TestAdaptiveBufferPoolManagement(t *testing.T) {
+	t.Parallel()
+
+	config := DefaultEnhancedBufferPoolConfig()
+	// Set very short intervals for testing
+	config.ShrinkInterval = 1 * time.Millisecond
+	config.PoolSize = 5
+	config.MaxPoolSize = 10
+	config.EnablePrewarming = true
+	config.EnableMetrics = true
+	logger := &MockLogger{}
+	
+	pool := NewEnhancedBufferPool(config, logger)
+	defer pool.Shutdown()
+	
+	// Create heavy usage to trigger adaptive management
+	var buffers []*circbuf.Buffer
+	for i := 0; i < 8; i++ {
+		buf := pool.Get()
+		if buf != nil {
+			buffers = append(buffers, buf)
+		}
+	}
+	
+	// Return buffers
+	for _, buf := range buffers {
+		pool.Put(buf)
+	}
+	
+	// Force sleep to allow adaptive management goroutine to run
+	time.Sleep(15 * time.Millisecond)
+	
+	// Get stats to exercise GetStats method
+	stats := pool.GetStats()
+	if stats == nil {
+		t.Error("GetStats should not return nil")
+	}
+}
+
+// TestOptimizedDockerClientOperations tests optimized docker client methods
+func TestOptimizedDockerClientOperations(t *testing.T) {
+	t.Parallel()
+
+	config := DefaultDockerClientConfig()
+	if config == nil {
+		t.Error("DefaultDockerClientConfig should not return nil")
+	}
+	
+	logger := &MockLogger{}
+	breaker := NewDockerCircuitBreaker(config, logger)
+	if breaker == nil {
+		t.Error("NewDockerCircuitBreaker should not return nil")
+	}
+	
+	// Test basic circuit breaker functionality
+	canExecute := breaker.canExecute()
+	if !canExecute {
+		t.Error("Circuit breaker should initially allow execution")
+	}
+}
+
+// TestCronUtilsOperations tests cron utilities (100% coverage but exercise interface)
+func TestCronUtilsOperations(t *testing.T) {
+	t.Parallel()
+
+	logger := &MockLogger{}
+	cronUtils := NewCronUtils(logger)
+	if cronUtils == nil {
+		t.Error("NewCronUtils should not return nil")
+	}
+	
+	// Test Info and Error methods
+	cronUtils.Info("test info message")
+	cronUtils.Error(errors.New("test error"), "test error message")
+}
+
+// TestRandomIdGeneration tests randomID function (75% coverage)
+func TestRandomIdGeneration(t *testing.T) {
+	t.Parallel()
+
+	// Test randomID generation by creating multiple contexts
+	logger := &MockLogger{}
+	scheduler := NewScheduler(logger)
+	job := NewLocalJob()
+	
+	execution1, err1 := NewExecution()
+	if err1 != nil {
+		t.Fatalf("Failed to create first execution: %v", err1)
+	}
+	
+	execution2, err2 := NewExecution()
+	if err2 != nil {
+		t.Fatalf("Failed to create second execution: %v", err2)
+	}
+	
+	ctx1 := NewContext(scheduler, job, execution1)
+	ctx2 := NewContext(scheduler, job, execution2)
+	
+	if ctx1 == nil || ctx2 == nil {
+		t.Error("Contexts should not be nil")
+	}
 }
