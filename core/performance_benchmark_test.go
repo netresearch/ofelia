@@ -318,7 +318,7 @@ func TestPerformanceRegressionDetection(t *testing.T) {
 	t.Logf("Metrics recording (10k): %v (%.2f μs/op)", metricsDuration, float64(metricsDuration.Nanoseconds())/10000/1000)
 
 	// Set performance thresholds (adjust based on expected performance in containerized environment)
-	bufferPoolThreshold := 1 * time.Second       // 100 μs per operation (relaxed for Docker overhead)
+	bufferPoolThreshold := 1 * time.Second            // 100 μs per operation (relaxed for Docker overhead)
 	circuitBreakerThreshold := 200 * time.Millisecond // 20 μs per operation
 	metricsThreshold := 100 * time.Millisecond        // 10 μs per operation
 

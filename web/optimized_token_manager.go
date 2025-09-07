@@ -76,7 +76,6 @@ type OptimizedTokenManager struct {
 	tokens        map[string]*TokenEntry // Fast token lookup
 	expiryHeap    *TokenExpiryHeap       // Efficient expiry tracking
 	mutex         sync.RWMutex           // Protect concurrent access
-	ctx           context.Context        // For graceful shutdown //nolint:containedctx
 	cancel        context.CancelFunc     // Cancel background worker
 	cleanupActive int32                  // Atomic flag to prevent concurrent cleanups
 
@@ -121,13 +120,12 @@ func NewOptimizedTokenManager(
 		config:     config,
 		tokens:     make(map[string]*TokenEntry),
 		expiryHeap: heapInstance,
-		ctx:        ctx,
 		cancel:     cancel,
 		logger:     logger,
 	}
 
 	// Start single background cleanup worker
-	go tm.backgroundCleanupWorker()
+	go tm.backgroundCleanupWorker(ctx)
 
 	return tm
 }
@@ -210,13 +208,13 @@ func (tm *OptimizedTokenManager) RevokeToken(token string) {
 }
 
 // backgroundCleanupWorker runs a single background goroutine for token cleanup
-func (tm *OptimizedTokenManager) backgroundCleanupWorker() {
+func (tm *OptimizedTokenManager) backgroundCleanupWorker(ctx context.Context) {
 	ticker := time.NewTicker(tm.config.CleanupInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-tm.ctx.Done():
+		case <-ctx.Done():
 			tm.logger.Debugf("Token manager cleanup worker shutting down")
 			return
 

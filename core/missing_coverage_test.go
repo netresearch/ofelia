@@ -240,7 +240,7 @@ func TestExecJobMethods(t *testing.T) {
 	if job == nil {
 		t.Fatal("NewExecJob(nil) returned nil")
 	}
-	
+
 	job.Name = "test-exec-methods"
 	job.Command = "echo test"
 	job.Container = "test-container"
@@ -268,7 +268,7 @@ func TestLogrusLoggerMethods(t *testing.T) {
 
 	// Test all logger methods - they should not panic
 	logger.Criticalf("test critical: %s", "message")
-	logger.Debugf("test debug: %s", "message") 
+	logger.Debugf("test debug: %s", "message")
 	logger.Errorf("test error: %s", "message")
 	logger.Noticef("test notice: %s", "message")
 	logger.Warningf("test warning: %s", "message")
@@ -315,7 +315,6 @@ func TestDockerOperationMethods(t *testing.T) {
 		t.Error("NewContainerLifecycle() returned nil")
 	}
 }
-
 
 // TestResilientJobExecutor tests resilient job executor methods with 0% coverage
 func TestResilientJobExecutor(t *testing.T) {
@@ -413,7 +412,7 @@ func TestAdditionalCoverage(t *testing.T) {
 	// Test more PerformanceMetrics functions if they exist
 	logger := &SimpleLogger{}
 	scheduler := NewScheduler(logger)
-	
+
 	// Test default retry policy
 	retryPolicy := DefaultRetryPolicy()
 	if retryPolicy == nil {
@@ -434,7 +433,7 @@ func TestAdditionalCoverage(t *testing.T) {
 	if circuitBreaker == nil {
 		t.Error("NewCircuitBreaker should not return nil")
 	}
-	
+
 	// Test circuit breaker execution
 	executed := false
 	err := circuitBreaker.Execute(func() error {
@@ -464,13 +463,13 @@ func TestAdditionalCoverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := NewContext(scheduler, job, exec)
-	
+
 	// Test context methods
 	ctx.Start()
 	if !exec.IsRunning {
 		t.Error("Execution should be running after ctx.Start()")
 	}
-	
+
 	// Test context logging
 	ctx.Log("test log message")
 	ctx.Warn("test warning message")
