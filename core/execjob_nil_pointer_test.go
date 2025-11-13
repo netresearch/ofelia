@@ -99,3 +99,110 @@ func TestExecJob_NoNilPointerAfterInitialization(t *testing.T) {
 	}
 }
 
+// TestExecJob_RunWithoutNewExecJob_NoPanic is a critical regression test
+// that verifies the exact issue from the bug report is fixed:
+// ExecJob.Run() should not panic when the job was created via config deserialization
+func TestExecJob_RunWithoutNewExecJob_NoPanic(t *testing.T) {
+	client, _ := docker.NewClient("unix:///var/run/docker.sock")
+
+	// Simulate exactly how mapstructure creates an ExecJob from config
+	job := &ExecJob{
+		BareJob: BareJob{
+			Name:     "test-job",
+			Command:  "echo test",
+			Schedule: "@every 1h",
+		},
+		Client:    client,
+		Container: "nonexistent-container-for-test",
+		User:      "nobody",
+		TTY:       false,
+	}
+
+	// This is what the config loader does after deserialization
+	job.InitializeRuntimeFields()
+
+	// Verify critical preconditions
+	if job.dockerOps == nil {
+		t.Fatal("dockerOps should be initialized after InitializeRuntimeFields")
+	}
+
+	// Create execution context
+	scheduler := NewScheduler(&SimpleLogger{})
+	exec, err := NewExecution()
+	if err != nil {
+		t.Fatalf("Failed to create execution: %v", err)
+	}
+	defer exec.Cleanup()
+
+	ctx := NewContext(scheduler, job, exec)
+
+	// This is the critical test: Run() should not panic
+	// We wrap in a recover to catch any panic
+	didPanic := false
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				didPanic = true
+				t.Errorf("ExecJob.Run() panicked: %v", r)
+			}
+		}()
+		// Call Run() - this was causing nil pointer panic before the fix
+		_ = job.Run(ctx)
+	}()
+
+	if didPanic {
+		t.Error("ExecJob.Run() should not panic even when container doesn't exist")
+	}
+
+	// Verify dockerOps is still valid after Run()
+	if job.dockerOps == nil {
+		t.Error("dockerOps should remain initialized after Run()")
+	}
+}
+
+// TestExecJob_StartExec_WithoutInitialization_Panics verifies that without
+// InitializeRuntimeFields(), the job would indeed panic (regression safety)
+func TestExecJob_StartExec_WithoutInitialization_Panics(t *testing.T) {
+	client, _ := docker.NewClient("unix:///var/run/docker.sock")
+
+	// Create job WITHOUT calling InitializeRuntimeFields()
+	job := &ExecJob{
+		BareJob: BareJob{
+			Name:    "uninit-job",
+			Command: "echo test",
+		},
+		Client:    client,
+		Container: "test",
+		User:      "nobody",
+	}
+
+	// Verify dockerOps is nil (not initialized)
+	if job.dockerOps != nil {
+		t.Fatal("dockerOps should be nil for this test to be valid")
+	}
+
+	// Create execution context
+	scheduler := NewScheduler(&SimpleLogger{})
+	exec, err := NewExecution()
+	if err != nil {
+		t.Fatalf("Failed to create execution: %v", err)
+	}
+	defer exec.Cleanup()
+
+	ctx := NewContext(scheduler, job, exec)
+
+	// Verify that buildExec() WOULD panic without initialization
+	didPanic := false
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				didPanic = true
+			}
+		}()
+		_, _ = job.buildExec(ctx)
+	}()
+
+	if !didPanic {
+		t.Error("Expected buildExec() to panic when dockerOps is nil (verifies test validity)")
+	}
+}
