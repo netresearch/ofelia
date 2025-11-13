@@ -47,7 +47,9 @@ func (c *DockerHandler) GetInternalDockerClient() *docker.Client {
 }
 
 func (c *DockerHandler) buildDockerClient() (dockerClient, error) {
-	client, err := docker.NewClientFromEnv()
+	// Use API version 1.44 (Docker Engine 26.0) as minimum
+	// This respects DOCKER_API_VERSION environment variable if set
+	client, err := docker.NewVersionedClientFromEnv("1.44")
 	if err != nil {
 		return nil, fmt.Errorf("create docker client from env: %w", err)
 	}
