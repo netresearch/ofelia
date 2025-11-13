@@ -209,6 +209,7 @@ func (c *Config) registerAllJobs() {
 	for name, j := range c.ExecJobs {
 		_ = defaults.Set(j)
 		j.Client = client
+		j.InitializeRuntimeFields() // Initialize dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -349,6 +350,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize dockerOps after client is set
 		j.Name = name
 	}
 	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep, JobSourceLabel, "exec")
@@ -448,6 +450,7 @@ func (c *Config) iniConfigUpdate() error {
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
 		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.InitializeRuntimeFields() // Initialize dockerOps after client is set
 		j.Name = name
 	}
 	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep, JobSourceINI, "exec")
