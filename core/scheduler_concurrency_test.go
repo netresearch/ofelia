@@ -116,7 +116,7 @@ func (j *MockControlledJob) SetShouldError(shouldError bool, message string) {
 	j.errorMessage = message
 }
 
-// TestSchedulerConcurrentJobExecution tests the scheduler's ability to manage concurrent job execution  
+// TestSchedulerConcurrentJobExecution tests the scheduler's ability to manage concurrent job execution
 // DISABLED: Test hangs due to MockControlledJob synchronization issues - needs investigation
 func XTestSchedulerConcurrentJobExecution(t *testing.T) {
 	scheduler := NewScheduler(&TestLogger{})
@@ -156,7 +156,7 @@ func XTestSchedulerConcurrentJobExecution(t *testing.T) {
 	// Wait for first two jobs to start (within concurrency limit)
 	job1.WaitForRunning()
 	job2.WaitForRunning()
-	
+
 	// Allow the running jobs to proceed past their start gate
 	job1.AllowStart()
 	job2.AllowStart()
@@ -487,7 +487,7 @@ func TestSchedulerRaceConditions(t *testing.T) {
 		job := NewLocalJob()
 		job.Name = fmt.Sprintf("race-job%d", i)
 		job.Schedule = "@daily"
-		job.Command = "echo test"  // Simple, fast command
+		job.Command = "echo test" // Simple, fast command
 		jobs[i] = job
 	}
 

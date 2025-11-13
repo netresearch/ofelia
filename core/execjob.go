@@ -30,6 +30,20 @@ func NewExecJob(c *docker.Client) *ExecJob {
 	}
 }
 
+// InitializeRuntimeFields initializes fields that depend on the Docker client
+// This should be called after the Client field is set, typically during configuration loading
+func (j *ExecJob) InitializeRuntimeFields() {
+	if j.Client == nil {
+		return // Cannot initialize without client
+	}
+
+	// Only initialize if not already done
+	if j.dockerOps == nil {
+		logger := &SimpleLogger{} // Will be set properly when job runs
+		j.dockerOps = NewDockerOperations(j.Client, logger, nil)
+	}
+}
+
 func (j *ExecJob) Run(ctx *Context) error {
 	exec, err := j.buildExec(ctx)
 	if err != nil {
