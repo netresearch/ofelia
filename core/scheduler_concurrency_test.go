@@ -361,69 +361,6 @@ func TestSchedulerJobManagementOperations(t *testing.T) {
 	}
 }
 
-// TestSchedulerLifecycleWithRunningJobs tests scheduler Start/Stop with concurrent jobs
-func TestSchedulerLifecycleWithRunningJobs(t *testing.T) {
-	scheduler := NewScheduler(&TestLogger{})
-	scheduler.SetMaxConcurrentJobs(2)
-
-	job1 := NewMockControlledJob("job1", "@every 1s")
-	job2 := NewMockControlledJob("job2", "@every 1s")
-
-	if err := scheduler.AddJob(job1); err != nil {
-		t.Fatalf("Failed to add job1: %v", err)
-	}
-	if err := scheduler.AddJob(job2); err != nil {
-		t.Fatalf("Failed to add job2: %v", err)
-	}
-
-	// Start scheduler
-	if err := scheduler.Start(); err != nil {
-		t.Fatalf("Failed to start scheduler: %v", err)
-	}
-
-	if !scheduler.IsRunning() {
-		t.Error("Scheduler should be running after Start()")
-	}
-
-	// Trigger jobs
-	go scheduler.RunJob("job1")
-	go scheduler.RunJob("job2")
-
-	// Wait for jobs to start
-	job1.WaitForRunning()
-	job2.WaitForRunning()
-
-	// Allow jobs to start processing
-	job1.AllowStart()
-	job2.AllowStart()
-
-	// Stop scheduler while jobs are running
-	stopDone := make(chan struct{})
-	go func() {
-		scheduler.Stop()
-		close(stopDone)
-	}()
-
-	// Verify scheduler stops gracefully by allowing jobs to finish
-	time.Sleep(100 * time.Millisecond)
-
-	// Allow jobs to finish
-	job1.AllowFinish()
-	job2.AllowFinish()
-
-	// Wait for jobs to complete and scheduler to stop
-	select {
-	case <-stopDone:
-		// Good, scheduler stopped
-	case <-time.After(5 * time.Second):
-		t.Error("Scheduler failed to stop within timeout")
-	}
-
-	if scheduler.IsRunning() {
-		t.Error("Scheduler should not be running after Stop()")
-	}
-}
-
 // TestSchedulerGracefulShutdown tests that scheduler waits for running jobs during shutdown
 func TestSchedulerGracefulShutdown(t *testing.T) {
 	scheduler := NewScheduler(&TestLogger{})
