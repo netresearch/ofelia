@@ -13,7 +13,7 @@ Thank you for your interest in contributing to Ofelia! This document provides gu
 
 ### Prerequisites
 
-- Go 1.18 or higher
+- Go 1.25 or higher
 - Docker (for integration and E2E tests)
 - Docker Swarm enabled (for service job tests)
 

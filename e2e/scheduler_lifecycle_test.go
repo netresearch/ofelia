@@ -4,10 +4,6 @@
 package e2e
 
 import (
-	"context"
-	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -53,20 +49,6 @@ func TestScheduler_BasicLifecycle(t *testing.T) {
 		t.Fatalf("Failed to start container: %v", err)
 	}
 
-	// Create temporary config file
-	configContent := fmt.Sprintf(`
-[job-exec "test-exec-job"]
-schedule = @every 2s
-container = %s
-command = echo "E2E test executed at $(date)"
-`, container.ID)
-
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.ini")
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
-		t.Fatalf("Failed to write config file: %v", err)
-	}
-
 	// Create scheduler with logger
 	logger := &core.LogrusAdapter{Logger: logrus.New()}
 	scheduler := core.NewScheduler(logger)
@@ -88,9 +70,6 @@ command = echo "E2E test executed at $(date)"
 	}
 
 	// Start scheduler in background
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- scheduler.Start()
@@ -108,11 +87,13 @@ command = echo "E2E test executed at $(date)"
 		if err != nil {
 			t.Errorf("Scheduler returned error: %v", err)
 		}
-	case <-ctx.Done():
+	case <-time.After(30 * time.Second):
 		t.Error("Scheduler did not stop within timeout")
 	}
 
 	// Verify job executed by checking history
+	// Safe to access scheduler.Jobs after Stop() completes and errChan signals,
+	// as all scheduler goroutines have exited
 	jobs := scheduler.Jobs
 	if len(jobs) == 0 {
 		t.Fatal("No jobs found in scheduler")
@@ -201,9 +182,6 @@ func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 	}
 
 	// Start scheduler
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- scheduler.Start()
@@ -220,11 +198,12 @@ func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 		if err != nil {
 			t.Errorf("Scheduler returned error: %v", err)
 		}
-	case <-ctx.Done():
+	case <-time.After(15 * time.Second):
 		t.Error("Scheduler did not stop within timeout")
 	}
 
 	// Verify all jobs executed
+	// Safe to access scheduler.Jobs after Stop() completes and errChan signals
 	schedulerJobs := scheduler.Jobs
 	if len(schedulerJobs) != 3 {
 		t.Fatalf("Expected 3 jobs, got %d", len(schedulerJobs))
@@ -284,9 +263,6 @@ func TestScheduler_JobFailureHandling(t *testing.T) {
 	}
 
 	// Start scheduler
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- scheduler.Start()
@@ -301,11 +277,12 @@ func TestScheduler_JobFailureHandling(t *testing.T) {
 	select {
 	case <-errChan:
 		// Scheduler should not crash even with failing jobs
-	case <-ctx.Done():
+	case <-time.After(10 * time.Second):
 		t.Error("Scheduler did not stop within timeout")
 	}
 
 	// Verify job executed but failed
+	// Safe to access scheduler.Jobs after Stop() completes and errChan signals
 	jobs := scheduler.Jobs
 	if len(jobs) == 0 {
 		t.Fatal("No jobs found in scheduler")
