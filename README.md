@@ -10,6 +10,7 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 
 ## Table of Contents
 
+- [Requirements](#requirements)
 - [Features](#features)
 - [Using it](#using-it)
 - [Environment variables](#environment-variables)
@@ -17,6 +18,36 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 - [Configuration](#configuration)
 - [Development](#development)
 - [License](#license)
+
+## Requirements
+
+### For Docker-based jobs (job-exec, job-run, job-service-run)
+
+**Docker Engine**: Version 17.06 or later (API 1.30+)
+- Ofelia requires Docker API 1.30 because it uses the `Env` parameter for exec operations
+- The Docker client automatically negotiates the API version with your daemon
+- Tested with Docker Engine 29.0+ (API 1.44+)
+
+**Docker socket access**:
+- Mount `/var/run/docker.sock` into the Ofelia container (read-only recommended)
+- Or set `DOCKER_HOST` environment variable to your Docker daemon
+
+### For Compose jobs (job-compose)
+
+**Docker Compose**: Version 2.0 or later
+- Required only if using `job-compose` type
+- Must be available in the container's PATH or host system
+
+### For local jobs only (job-local)
+
+No Docker required - runs commands directly on the host system.
+
+### Optional environment variables
+
+- `DOCKER_API_VERSION`: Force a specific Docker API version (not recommended, auto-negotiation works)
+- `DOCKER_HOST`: Docker daemon socket/host (default: `unix:///var/run/docker.sock`)
+- `DOCKER_CERT_PATH`: Path to Docker TLS certificates
+- `DOCKER_TLS_VERIFY`: Enable TLS verification
 
 ## Features
 
