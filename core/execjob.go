@@ -14,6 +14,7 @@ type ExecJob struct {
 	User        string         `default:"nobody" hash:"true"`
 	TTY         bool           `default:"false" hash:"true"`
 	Environment []string       `mapstructure:"environment" hash:"true"`
+	WorkingDir  string         `mapstructure:"working-dir" hash:"true"`
 
 	dockerOps *DockerOperations `json:"-"` // High-level Docker operations wrapper
 	execID    string
@@ -91,6 +92,7 @@ func (j *ExecJob) buildExec(ctx *Context) (*docker.Exec, error) {
 		Container:    j.Container,
 		User:         j.User,
 		Env:          j.Environment,
+		WorkingDir:   j.WorkingDir,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create exec: %w", err)
