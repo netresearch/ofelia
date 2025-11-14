@@ -244,6 +244,17 @@ func TestExecJob_OptionsConfiguration(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "working_directory",
+			setupJob: func(job *ExecJob) {
+				job.WorkingDir = "/var/log"
+			},
+			checkOpts: func(t *testing.T, job *ExecJob) {
+				if job.WorkingDir != "/var/log" {
+					t.Errorf("Expected working directory '/var/log', got %q", job.WorkingDir)
+				}
+			},
+		},
 	}
 
 	for _, tc := range testCases {

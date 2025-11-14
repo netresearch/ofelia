@@ -23,10 +23,13 @@ This job is executed inside a running container, similar to `docker exec`.
 - `tty`: boolean = `false`
   - Allocate a pseudo-tty, similar to `docker exec -t`. See this [Stack Overflow answer](https://stackoverflow.com/questions/30137135/confused-about-docker-t-option-to-allocate-a-pseudo-tty) for more info.
 - `environment`
-  - Environment variables you want to set in the running container. **Note:** only supported in Docker API v1.25 and above
+  - Environment variables you want to set in the running container. **Note:** only supported in Docker API v1.30 and above
   - Same format as used with `-e` flag within `docker run`. For example: `FOO=bar`
     - **INI config**: `Environment` setting can be provided multiple times for multiple environment variables.
     - **Labels config**: multiple environment variables has to be provided as JSON array: `["FOO=bar", "BAZ=qux"]`
+- `working-dir`: string
+  - Working directory for the command execution, similar to `docker exec --workdir <dir>`. **Note:** only supported in Docker API v1.35 and above (Docker Engine 17.09+)
+  - If not specified, uses the working directory defined in the container image
 - `no-overlap`: boolean = `false`
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
@@ -41,6 +44,12 @@ container = nginx-proxy
 command = /bin/bash /flush-logs.sh
 user = www-data
 tty = false
+
+[job-exec "backup-logs"]
+schedule = @daily
+container = web-app
+command = tar czf /backups/logs.tar.gz .
+working-dir = /var/log
 ```
 
 ### Docker labels example
@@ -53,6 +62,13 @@ docker run -it --rm \
     --label ofelia.job-exec.flush-nginx-logs.user="www-data" \
     --label ofelia.job-exec.flush-nginx-logs.tty="false" \
         nginx
+
+docker run -it --rm \
+    --label ofelia.enabled=true \
+    --label ofelia.job-exec.backup-logs.schedule="@daily" \
+    --label ofelia.job-exec.backup-logs.command="tar czf /backups/logs.tar.gz ." \
+    --label ofelia.job-exec.backup-logs.working-dir="/var/log" \
+        web-app
 ```
 
 When specifying exec jobs via labels, Ofelia adds the container name as a prefix to the job name. This prevents jobs from different containers with the same label from clashing. In the example above, the job will be called `nginx.flush-nginx-logs`.
