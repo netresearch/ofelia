@@ -28,7 +28,8 @@ This job is executed inside a running container, similar to `docker exec`.
     - **INI config**: `Environment` setting can be provided multiple times for multiple environment variables.
     - **Labels config**: multiple environment variables has to be provided as JSON array: `["FOO=bar", "BAZ=qux"]`
 - `working-dir`: string
-  - Working directory for the command execution, similar to `docker exec --workdir <dir>`. **Note:** only supported in Docker API v1.35 and above (Docker Engine 17.09+)
+  - Working directory for the command execution, similar to `docker exec --workdir <dir>`
+  - **Backward compatibility:** Requires Docker API v1.35+ (Docker Engine 17.09+). On older Docker versions, this parameter is silently ignored and the exec runs in the container's default working directory
   - If not specified, uses the working directory defined in the container image
 - `no-overlap`: boolean = `false`
   - Prevent that the job runs concurrently
