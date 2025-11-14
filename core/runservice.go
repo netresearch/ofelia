@@ -23,10 +23,11 @@ type RunServiceJob struct {
 	// user would set it to "false" explicitly, it still will be
 	// changed to "true" https://github.com/netresearch/ofelia/issues/135
 	// so lets use strings here as workaround
-	Delete     string        `default:"true" hash:"true"`
-	Image      string        `hash:"true"`
-	Network    string        `hash:"true"`
-	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
+	Delete      string        `default:"true" hash:"true"`
+	Image       string        `hash:"true"`
+	Network     string        `hash:"true"`
+	Annotations []string      `mapstructure:"annotations" hash:"true"`
+	MaxRuntime  time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 }
 
 func NewRunServiceJob(c *docker.Client) *RunServiceJob {
@@ -68,6 +69,11 @@ func (j *RunServiceJob) buildService() (*swarm.Service, error) {
 	createSvcOpts.ServiceSpec.TaskTemplate.ContainerSpec = &swarm.ContainerSpec{
 		Image: j.Image,
 	}
+
+	// Add annotations as service labels (swarm services use Labels for metadata)
+	defaults := getDefaultAnnotations(j.Name, "service")
+	annotations := mergeAnnotations(j.Annotations, defaults)
+	createSvcOpts.ServiceSpec.Labels = annotations
 
 	// Make the service run once and not restart
 	createSvcOpts.ServiceSpec.TaskTemplate.RestartPolicy = &swarm.RestartPolicy{
