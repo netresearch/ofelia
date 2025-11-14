@@ -46,6 +46,7 @@ type RunJob struct {
 	Volume      []string `hash:"true"`
 	VolumesFrom []string `gcfg:"volumes-from" mapstructure:"volumes-from," hash:"true"`
 	Environment []string `mapstructure:"environment" hash:"true"`
+	Annotations []string `mapstructure:"annotations" hash:"true"`
 
 	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 
@@ -202,6 +203,10 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 		name = *j.ContainerName
 	}
 
+	// Merge user annotations with default Ofelia annotations
+	defaults := getDefaultAnnotations(j.Name, "run")
+	annotations := mergeAnnotations(j.Annotations, defaults)
+
 	containerOps := j.dockerOps.NewContainerLifecycle()
 	opts := docker.CreateContainerOptions{
 		Name: name,
@@ -221,6 +226,7 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 		HostConfig: &docker.HostConfig{
 			Binds:       j.Volume,
 			VolumesFrom: j.VolumesFrom,
+			Annotations: annotations,
 		},
 	}
 

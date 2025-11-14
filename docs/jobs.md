@@ -118,6 +118,19 @@ This job can be used in 2 situations:
   - Same format as used with `-e` flag within `docker run`. For example: `FOO=bar`
     - **INI config**: `Environment` setting can be provided multiple times for multiple environment variables.
     - **Labels config**: multiple environment variables has to be provided as JSON array: `["FOO=bar", "BAZ=qux"]`
+- `annotations`
+  - Container annotations for metadata tracking, audit trails, and observability. Unlike labels, annotations don't affect Docker behavior.
+  - Format: `key=value` strings. For example: `team=platform`, `cost-center=12345`
+    - **INI config**: `Annotations` setting can be provided multiple times for multiple annotations.
+    - **Labels config**: multiple annotations must be provided as JSON array: `["team=platform", "env=prod"]`
+  - **Auto-populated annotations**: Ofelia automatically adds metadata to all containers:
+    - `ofelia.job.name` - The job name
+    - `ofelia.job.type` - Job type (run/service)
+    - `ofelia.execution.time` - Execution timestamp (RFC3339)
+    - `ofelia.scheduler.host` - Hostname running Ofelia
+    - `ofelia.version` - Ofelia version
+  - User annotations take precedence over auto-populated ones
+  - **API requirement**: Docker API 1.43+ (Docker Engine 20.10.9+). On older versions, annotations are silently ignored.
 - `no-overlap`: boolean = `false`
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
@@ -135,6 +148,15 @@ command = sh -c 'date | tee -a /tmp/test/date'
 volume = /tmp/test:/tmp/test:rw
 environment = FOO=bar
 environment = BAZ=qux
+
+[job-run "backup-database"]
+schedule = @daily
+image = postgres:15
+command = pg_dump mydb
+annotations = team=platform
+annotations = project=core-infra
+annotations = environment=production
+annotations = cost-center=12345
 ```
 
 Then you can check output in host machine file `/tmp/test/date`
@@ -150,6 +172,16 @@ docker run -it --rm \
     --label ofelia.job-run.print-write-date.volume="/tmp/test:/tmp/test:rw" \
     --label ofelia.job-run.print-write-date.environment="FOO=bar" \
     --label ofelia.job-run.print-write-date.command="sh -c 'date | tee -a /tmp/test/date'" \
+        netresearch/ofelia:latest daemon
+
+# Example with annotations for tracking and observability
+docker run -it --rm \
+    -v /var/run/docker.sock:/var/run/docker.sock:ro \
+    --label ofelia.enabled=true \
+    --label ofelia.job-run.backup.schedule="@daily" \
+    --label ofelia.job-run.backup.image="postgres:15" \
+    --label ofelia.job-run.backup.command="pg_dump mydb" \
+    --label ofelia.job-run.backup.annotations='["team=platform", "project=core-infra", "env=prod"]' \
         netresearch/ofelia:latest daemon
 ```
 
@@ -209,6 +241,18 @@ This job can be used to:
   - User as which the command should be executed.
 - `tty`: boolean = `false` (1, 2)
   - Allocate a pseudo-tty, similar to `docker exec -t`. See this [Stack Overflow answer](https://stackoverflow.com/questions/30137135/confused-about-docker-t-option-to-allocate-a-pseudo-tty) for more info.
+- `annotations`
+  - Service annotations for metadata tracking and observability. Stored as service labels in Docker Swarm.
+  - Format: `key=value` strings. For example: `team=platform`, `environment=staging`
+    - **INI config**: `Annotations` setting can be provided multiple times for multiple annotations.
+    - **Labels config**: multiple annotations must be provided as JSON array: `["team=platform", "env=staging"]`
+  - **Auto-populated annotations**: Ofelia automatically adds metadata:
+    - `ofelia.job.name` - The job name
+    - `ofelia.job.type` - Always "service" for service-run jobs
+    - `ofelia.execution.time` - Execution timestamp (RFC3339)
+    - `ofelia.scheduler.host` - Hostname running Ofelia
+    - `ofelia.version` - Ofelia version
+  - User annotations take precedence over auto-populated ones
 - `no-overlap`: boolean = `false`
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
@@ -224,6 +268,15 @@ schedule = 0,20,40 * * * *
 image = ubuntu
 network = swarm_network
 command =  touch /tmp/example
+
+[job-service-run "swarm-backup"]
+schedule = @daily
+image = postgres:15
+network = swarm_network
+command = pg_dump mydb
+annotations = team=data-platform
+annotations = environment=staging
+annotations = service-tier=backend
 ```
 
 ## `compose`
