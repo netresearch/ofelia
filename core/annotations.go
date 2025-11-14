@@ -8,13 +8,14 @@ import (
 
 // parseAnnotations converts annotation strings in "key=value" format to a map.
 // Invalid entries (missing '=' separator) are silently skipped.
+// Leading/trailing whitespace in keys is trimmed, but whitespace in values is preserved.
 func parseAnnotations(annotations []string) map[string]string {
 	result := make(map[string]string)
 	for _, ann := range annotations {
 		parts := strings.SplitN(ann, "=", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
+			value := parts[1] // preserve whitespace in value
 			if key != "" {
 				result[key] = value
 			}
@@ -22,6 +23,10 @@ func parseAnnotations(annotations []string) map[string]string {
 	}
 	return result
 }
+
+// Version is the Ofelia version, set via ldflags during build.
+// Defaults to "dev" if not set.
+var Version = "dev"
 
 // getDefaultAnnotations returns default annotations that Ofelia automatically adds.
 // User-provided annotations take precedence over these defaults.
@@ -31,12 +36,17 @@ func getDefaultAnnotations(jobName, jobType string) map[string]string {
 		hostname = "unknown"
 	}
 
+	version := Version
+	if version == "" {
+		version = "dev"
+	}
+
 	return map[string]string{
 		"ofelia.job.name":       jobName,
 		"ofelia.job.type":       jobType,
 		"ofelia.execution.time": time.Now().UTC().Format(time.RFC3339),
 		"ofelia.scheduler.host": hostname,
-		"ofelia.version":        "3.x", // TODO: Extract from build info
+		"ofelia.version":        version,
 	}
 }
 

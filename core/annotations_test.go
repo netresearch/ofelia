@@ -52,10 +52,14 @@ func TestParseAnnotations(t *testing.T) {
 			input: []string{
 				"  key1  =  value1  ",
 				"key2=value with spaces",
+				"key3=  leading spaces preserved",
+				"key4=trailing spaces preserved  ",
 			},
 			expected: map[string]string{
-				"key1": "value1",
-				"key2": "value with spaces",
+				"key1": "  value1  ",                  // value whitespace preserved
+				"key2": "value with spaces",           // internal spaces always preserved
+				"key3": "  leading spaces preserved",  // leading spaces in value preserved
+				"key4": "trailing spaces preserved  ", // trailing spaces in value preserved
 			},
 		},
 		{
