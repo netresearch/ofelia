@@ -40,6 +40,11 @@ type dockerLabelsUpdate interface {
 
 // TODO: Implement an interface so the code does not have to use third parties directly
 func (c *DockerHandler) GetInternalDockerClient() *docker.Client {
+	// First try optimized client
+	if optimized, ok := c.dockerClient.(*core.OptimizedDockerClient); ok {
+		return optimized.GetClient()
+	}
+	// Fall back to plain client (for tests or backwards compatibility)
 	if client, ok := c.dockerClient.(*docker.Client); ok {
 		return client
 	}
@@ -47,17 +52,22 @@ func (c *DockerHandler) GetInternalDockerClient() *docker.Client {
 }
 
 func (c *DockerHandler) buildDockerClient() (dockerClient, error) {
-	client, err := docker.NewClientFromEnv()
+	// Create optimized Docker client with connection pooling and circuit breaker
+	optimizedClient, err := core.NewOptimizedDockerClient(
+		core.DefaultDockerClientConfig(),
+		c.logger,
+		core.GlobalPerformanceMetrics,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("create docker client from env: %w", err)
+		return nil, fmt.Errorf("create optimized docker client: %w", err)
 	}
 
 	// Sanity check Docker connection
-	if _, err := client.Info(); err != nil {
+	if _, err := optimizedClient.Info(); err != nil {
 		return nil, fmt.Errorf("docker client info: %w", err)
 	}
 
-	return client, nil
+	return optimizedClient, nil
 }
 
 func NewDockerHandler(
