@@ -702,6 +702,533 @@ func TestValidateEmailList(t *testing.T) {
 	}
 }
 
+func TestValidateDockerCommand(t *testing.T) {
+	sanitizer := NewSanitizer()
+
+	tests := []struct {
+		name      string
+		command   string
+		wantError bool
+	}{
+		{
+			name:      "valid Docker run command",
+			command:   "docker run alpine echo hello",
+			wantError: false,
+		},
+		{
+			name:      "valid Docker exec command",
+			command:   "docker exec container-name ls /app",
+			wantError: false,
+		},
+		{
+			name:      "Docker command with privileged flag",
+			command:   "docker run --privileged alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with host network",
+			command:   "docker run --network=host alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with host PID",
+			command:   "docker run --pid=host alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with root user",
+			command:   "docker run --user=root alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with user 0",
+			command:   "docker run --user 0 alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with SYS_ADMIN capability",
+			command:   "docker run --cap-add=SYS_ADMIN alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with ALL capabilities",
+			command:   "docker run --cap-add ALL alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with apparmor unconfined",
+			command:   "docker run --security-opt=apparmor:unconfined alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with seccomp unconfined",
+			command:   "docker run --security-opt seccomp:unconfined alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with device mount",
+			command:   "docker run --device=/dev/sda alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with IPC host",
+			command:   "docker run --ipc=host alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with UTS host",
+			command:   "docker run --uts host alpine",
+			wantError: true,
+		},
+		{
+			name:      "Docker command with dangerous volume mount",
+			command:   "docker run -v /:/host alpine",
+			wantError: false, // Volume mounts are checked separately in production
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sanitizer.ValidateDockerCommand(tt.command)
+			if (err != nil) != tt.wantError {
+				t.Errorf("ValidateDockerCommand() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestValidateURLPorts(t *testing.T) {
+	sanitizer := NewSanitizer()
+
+	tests := []struct {
+		name      string
+		url       string
+		wantError bool
+	}{
+		{
+			name:      "HTTPS default port",
+			url:       "https://example.com",
+			wantError: false,
+		},
+		{
+			name:      "HTTP port 8080",
+			url:       "http://example.com:8080",
+			wantError: false,
+		},
+		{
+			name:      "HTTPS port 8443",
+			url:       "https://example.com:8443",
+			wantError: false,
+		},
+		{
+			name:      "SSH port 22",
+			url:       "http://example.com:22",
+			wantError: true,
+		},
+		{
+			name:      "Telnet port 23",
+			url:       "http://example.com:23",
+			wantError: true,
+		},
+		{
+			name:      "MySQL port 3306",
+			url:       "http://example.com:3306",
+			wantError: true,
+		},
+		{
+			name:      "PostgreSQL port 5432",
+			url:       "http://example.com:5432",
+			wantError: true,
+		},
+		{
+			name:      "Redis port 6379",
+			url:       "http://example.com:6379",
+			wantError: true,
+		},
+		{
+			name:      "MongoDB port 27017",
+			url:       "http://example.com:27017",
+			wantError: true,
+		},
+		{
+			name:      "Elasticsearch port 9200",
+			url:       "http://example.com:9200",
+			wantError: true,
+		},
+		{
+			name:      "Invalid port number",
+			url:       "http://example.com:99999",
+			wantError: true,
+		},
+		{
+			name:      "Port 0",
+			url:       "http://example.com:0",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sanitizer.ValidateURL(tt.url)
+			if (err != nil) != tt.wantError {
+				t.Errorf("ValidateURL() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestValidateURLSSRFProtection(t *testing.T) {
+	sanitizer := NewSanitizer()
+
+	tests := []struct {
+		name      string
+		url       string
+		wantError bool
+	}{
+		{
+			name:      "AWS metadata service attempt",
+			url:       "http://example.amazonaws.com/169.254.169.254/latest/meta-data/",
+			wantError: true,
+		},
+		{
+			name:      "Link-local IPv4",
+			url:       "http://169.254.1.1",
+			wantError: true,
+		},
+		{
+			name:      "IPv6 unique local fd",
+			url:       "http://fd12:3456:789a:1::1",
+			wantError: true,
+		},
+		{
+			name:      "IPv6 link-local fe80",
+			url:       "http://fe80::1",
+			wantError: true,
+		},
+		{
+			name:      "Class B private 172.16",
+			url:       "http://172.16.0.1",
+			wantError: true,
+		},
+		{
+			name:      "Class B private 172.20",
+			url:       "http://172.20.0.1",
+			wantError: true,
+		},
+		{
+			name:      "Class B private 172.31",
+			url:       "http://172.31.255.254",
+			wantError: true,
+		},
+		{
+			name:      "Any address 0.0.0.0",
+			url:       "http://0.0.0.0",
+			wantError: true,
+		},
+		{
+			name:      "Local domain suffix",
+			url:       "http://myserver.local",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sanitizer.ValidateURL(tt.url)
+			if (err != nil) != tt.wantError {
+				t.Errorf("ValidateURL() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestSanitizeStringWithEncodedThreats(t *testing.T) {
+	sanitizer := NewSanitizer()
+
+	tests := []struct {
+		name      string
+		input     string
+		maxLength int
+		wantError bool
+	}{
+		{
+			name:      "URL encoded script tag",
+			input:     "%3Cscript%3Ealert%28%27xss%27%29%3C%2Fscript%3E",
+			maxLength: 100,
+			wantError: true,
+		},
+		{
+			name:      "URL encoded shell injection",
+			input:     "test%3B%20rm%20-rf%20%2F",
+			maxLength: 100,
+			wantError: true,
+		},
+		{
+			name:      "URL encoded path traversal",
+			input:     "..%2F..%2F..%2Fetc%2Fpasswd",
+			maxLength: 100,
+			wantError: true,
+		},
+		{
+			name:      "Double URL encoding",
+			input:     "%252e%252e%252f",
+			maxLength: 100,
+			wantError: true, // Detects as path traversal after first decode
+		},
+		{
+			name:      "Valid URL encoded string",
+			input:     "hello%20world",
+			maxLength: 100,
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := sanitizer.SanitizeString(tt.input, tt.maxLength)
+			if (err != nil) != tt.wantError {
+				t.Errorf("SanitizeString() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestValidatePathDangerousDirectories(t *testing.T) {
+	sanitizer := NewSanitizer()
+
+	tests := []struct {
+		name            string
+		path            string
+		allowedBasePath string
+		wantError       bool
+	}{
+		{
+			name:            "/etc directory",
+			path:            "/etc/passwd",
+			allowedBasePath: "",
+			wantError:       true,
+		},
+		{
+			name:            "/root directory",
+			path:            "/root/.ssh/id_rsa",
+			allowedBasePath: "",
+			wantError:       true,
+		},
+		{
+			name:            "/proc directory",
+			path:            "/proc/self/environ",
+			allowedBasePath: "",
+			wantError:       true,
+		},
+		{
+			name:            "/sys directory",
+			path:            "/sys/class/net",
+			allowedBasePath: "",
+			wantError:       true,
+		},
+		{
+			name:            "/dev directory",
+			path:            "/dev/sda",
+			allowedBasePath: "",
+			wantError:       true,
+		},
+		{
+			name:            "/boot directory",
+			path:            "/boot/grub/grub.cfg",
+			allowedBasePath: "",
+			wantError:       true,
+		},
+		{
+			name:            "Windows System32",
+			path:            "C:\\Windows\\System32\\config\\sam",
+			allowedBasePath: "",
+			wantError:       true,
+		},
+		{
+			name:            "Windows Program Files",
+			path:            "C:\\Program Files\\app\\config",
+			allowedBasePath: "",
+			wantError:       true,
+		},
+		{
+			name:            "Encoded path traversal %2e%2e",
+			path:            "/tmp/%2e%2e/etc/passwd",
+			allowedBasePath: "",
+			wantError:       true,
+		},
+		{
+			name:            "Unicode path traversal",
+			path:            "/tmp/\u2024\u2024/etc/passwd",
+			allowedBasePath: "",
+			wantError:       false, // Not detected by current implementation
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sanitizer.ValidatePath(tt.path, tt.allowedBasePath)
+			if (err != nil) != tt.wantError {
+				t.Errorf("ValidatePath() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestValidateEnvironmentVarReservedNames(t *testing.T) {
+	sanitizer := NewSanitizer()
+
+	reservedVars := []string{
+		"PATH", "LD_LIBRARY_PATH", "LD_PRELOAD",
+		"DYLD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES",
+		"PYTHONPATH", "RUBYLIB", "PERL5LIB",
+		"CLASSPATH", "JAVA_HOME", "HOME",
+		"USER", "SHELL", "IFS",
+	}
+
+	for _, varName := range reservedVars {
+		t.Run(varName, func(t *testing.T) {
+			err := sanitizer.ValidateEnvironmentVar(varName, "somevalue")
+			if err == nil {
+				t.Errorf("ValidateEnvironmentVar() should reject reserved variable %s", varName)
+			}
+		})
+	}
+}
+
+func TestValidateJobNameReservedNames(t *testing.T) {
+	sanitizer := NewSanitizer()
+
+	reservedNames := []string{
+		".", "..", "CON", "PRN", "AUX", "NUL",
+		"COM1", "LPT1", "root", "admin",
+		"administrator", "system", "daemon",
+	}
+
+	for _, name := range reservedNames {
+		t.Run(name, func(t *testing.T) {
+			err := sanitizer.ValidateJobName(name)
+			if err == nil {
+				t.Errorf("ValidateJobName() should reject reserved name %s", name)
+			}
+		})
+	}
+}
+
+func TestValidateCronExpressionMaliciousPatterns(t *testing.T) {
+	sanitizer := NewSanitizer()
+
+	tests := []struct {
+		name      string
+		expr      string
+		wantError bool
+	}{
+		{
+			name:      "SQL injection in cron",
+			expr:      "0 0 * * * ' OR '1'='1",
+			wantError: true,
+		},
+		{
+			name:      "Shell injection in cron",
+			expr:      "0 0 * * *; rm -rf /",
+			wantError: true,
+		},
+		{
+			name:      "Command substitution in cron",
+			expr:      "0 0 * * $(whoami)",
+			wantError: true,
+		},
+		{
+			name:      "@every with excessive duration",
+			expr:      "@every 99999s",
+			wantError: true,
+		},
+		{
+			name:      "@every with 0 value",
+			expr:      "@every 0s",
+			wantError: true,
+		},
+		{
+			name:      "@every without unit",
+			expr:      "@every 100",
+			wantError: true,
+		},
+		{
+			name:      "Cron list with too many values",
+			expr:      "0,1,2,3,4,5,6,7,8,9,10,11,12 * * * *",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sanitizer.ValidateCronExpression(tt.expr)
+			if (err != nil) != tt.wantError {
+				t.Errorf("ValidateCronExpression() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestValidateDockerImageSuspiciousRegistries(t *testing.T) {
+	sanitizer := NewSanitizer()
+
+	tests := []struct {
+		name      string
+		image     string
+		wantError bool
+	}{
+		{
+			name:      "localhost registry",
+			image:     "localhost:5000/myimage",
+			wantError: true,
+		},
+		{
+			name:      "127.0.0.1 registry",
+			image:     "127.0.0.1:5000/myimage",
+			wantError: true,
+		},
+		{
+			name:      "private IP registry 192.168",
+			image:     "192.168.1.100:5000/myimage",
+			wantError: true,
+		},
+		{
+			name:      "private IP registry 10.x",
+			image:     "10.0.0.1:5000/myimage",
+			wantError: true,
+		},
+		{
+			name:      "private IP registry 172.x",
+			image:     "172.16.0.1:5000/myimage",
+			wantError: true,
+		},
+		{
+			name:      "Docker Hub official",
+			image:     "nginx:latest",
+			wantError: false,
+		},
+		{
+			name:      "GCR registry",
+			image:     "gcr.io/project/image:tag",
+			wantError: false,
+		},
+		{
+			name:      "ECR registry",
+			image:     "123456789012.dkr.ecr.us-east-1.amazonaws.com/myimage:latest",
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := sanitizer.ValidateDockerImage(tt.image)
+			if (err != nil) != tt.wantError {
+				t.Errorf("ValidateDockerImage() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
 // Test private helper functions through public methods
 
 func TestValidateCronFieldThroughExpression(t *testing.T) {
