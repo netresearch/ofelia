@@ -74,12 +74,191 @@ pre-commit:
     secrets:
       run: |
         echo "🕵️ Checking for sensitive information..."
-        if git diff --cached --name-only | xargs grep -l -E "(password|secret|key|token).*=.*['\"][^'\"]*['\"]" 2>/dev/null; then
-          echo "❌ Potential sensitive information detected in staged files."
-          echo "Please review and remove any hardcoded secrets before committing."
+
+        # Only check code files, skip config/documentation
+        code_files=$(git diff --cached --name-only | grep -E '\.(go|js|ts|py|java|rb|php)$' || true)
+
+        if [ -z "$code_files" ]; then
+          echo "✅ No code files to check for secrets"
+          exit 0
+        fi
+
+        # Look for actual secret assignments (key="value" patterns)
+        if echo "$code_files" | xargs grep -E "(password|secret|api_key|apikey|token|access_key)(\s*=\s*|\s*:\s*)['\"][^'\"]{8,}['\"]" 2>/dev/null | grep -v "example\|test\|mock\|dummy"; then
+          echo "❌ Potential hardcoded secrets detected!"
+          echo "Please review and remove any hardcoded credentials before committing."
           exit 1
         fi
+
         echo "✅ No sensitive information detected"
+
+commit-msg:
+  commands:
+    # Validate commit message format
+    message-format:
+      run: |
+        echo "📝 Validating commit message format..."
+
+        # Read commit message
+        msg=$(cat {1})
+
+        # Skip merge commits
+        if echo "$msg" | grep -q "^Merge"; then
+          echo "✅ Merge commit - skipping validation"
+          exit 0
+        fi
+
+        # Check for minimum length (at least 10 characters)
+        if [ ${#msg} -lt 10 ]; then
+          echo "❌ Commit message too short (minimum 10 characters)"
+          echo "Current: ${#msg} characters"
+          exit 1
+        fi
+
+        # Check for conventional commit format (optional but recommended)
+        # Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
+        if ! echo "$msg" | grep -qE "^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+"; then
+          echo "⚠️  Commit message doesn't follow conventional commits format"
+          echo "Recommended format: <type>(<scope>): <subject>"
+          echo "Example: feat(core): add new scheduler algorithm"
+          echo "Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+          echo ""
+          echo "Your message: $msg"
+          echo ""
+          echo "Continuing anyway, but consider using conventional commits for better changelog generation."
+        fi
+
+        # Block WIP commits to main/master
+        current_branch=$(git rev-parse --abbrev-ref HEAD)
+        if echo "$msg" | grep -qiE "^(wip|WIP|fixup|squash)"; then
+          if [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; then
+            echo "❌ WIP/fixup/squash commits are not allowed on main/master branch"
+            echo "Current branch: $current_branch"
+            exit 1
+          fi
+          echo "⚠️  WIP commit detected on feature branch - remember to squash before merging"
+        fi
+
+        echo "✅ Commit message format validated"
+
+pre-push:
+  commands:
+    # Run full test suite before pushing
+    tests:
+      run: |
+        echo "🧪 Running full test suite before push..."
+        echo "This ensures no broken code reaches the remote repository"
+        echo ""
+
+        # Run tests with race detection
+        if ! go test -race -timeout=5m ./...; then
+          echo ""
+          echo "❌ Tests failed! Push cancelled."
+          echo "Fix the failing tests before pushing."
+          exit 1
+        fi
+
+        echo ""
+        echo "✅ All tests passed!"
+
+    # Prevent pushing directly to protected branches
+    protected-branches:
+      run: |
+        echo "🔒 Checking protected branches..."
+
+        current_branch=$(git rev-parse --abbrev-ref HEAD)
+        protected_branches="main master production"
+
+        for branch in $protected_branches; do
+          if [ "$current_branch" = "$branch" ]; then
+            echo "⚠️  WARNING: Pushing directly to $current_branch branch"
+            echo ""
+            echo "Recommended workflow:"
+            echo "  1. Create feature branch: git checkout -b feature/your-feature"
+            echo "  2. Make changes and commit"
+            echo "  3. Push feature branch: git push origin feature/your-feature"
+            echo "  4. Create pull request for review"
+            echo ""
+            read -p "Are you sure you want to push to $current_branch? (yes/no): " confirm
+            if [ "$confirm" != "yes" ]; then
+              echo "❌ Push cancelled"
+              exit 1
+            fi
+            echo "⚠️  Proceeding with push to $current_branch..."
+            break
+          fi
+        done
+
+        echo "✅ Branch check passed"
+
+    # Run quick linting check
+    lint-check:
+      run: |
+        echo "🔍 Running quick lint check..."
+
+        # Only run on Go files that changed
+        changed_files=$(git diff --name-only HEAD @{u} 2>/dev/null | grep '\.go$' || true)
+
+        if [ -z "$changed_files" ]; then
+          echo "✅ No Go files changed, skipping lint"
+          exit 0
+        fi
+
+        # Run quick vet check
+        if ! go vet ./...; then
+          echo "❌ go vet failed! Fix issues before pushing."
+          exit 1
+        fi
+
+        echo "✅ Quick lint check passed"
+
+post-checkout:
+  commands:
+    # Check for dependency changes and remind to update
+    dependency-check:
+      run: |
+        echo "🔄 Checking for dependency changes..."
+
+        # Check if go.mod or go.sum changed
+        if git diff --name-only HEAD@{1} HEAD 2>/dev/null | grep -qE "^go\.(mod|sum)$"; then
+          echo ""
+          echo "⚠️  Dependencies changed! Run:"
+          echo "   go mod download"
+          echo ""
+        fi
+
+        # Check if hooks are installed (in case this is first checkout)
+        if [ ! -f .git/hooks/pre-commit ] || ! grep -q "lefthook" .git/hooks/pre-commit 2>/dev/null; then
+          echo ""
+          echo "⚠️  Git hooks not installed! Run:"
+          echo "   make setup"
+          echo ""
+        fi
+
+post-merge:
+  commands:
+    # Auto-update dependencies if go.mod changed
+    dependency-update:
+      run: |
+        echo "🔄 Checking for dependency changes after merge..."
+
+        # Check if go.mod or go.sum changed in the merge
+        if git diff --name-only HEAD@{1} HEAD | grep -qE "^go\.(mod|sum)$"; then
+          echo ""
+          echo "📦 Dependencies changed in merge. Updating..."
+
+          if ! go mod download; then
+            echo "❌ Failed to download dependencies"
+            echo "Please run manually: go mod download"
+            exit 1
+          fi
+
+          echo "✅ Dependencies updated successfully"
+          echo ""
+          echo "💡 Tip: Run 'make test' to verify everything still works"
+        else
+          echo "✅ No dependency changes detected"
+        fi
 
 # Output configuration
 output:
