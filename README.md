@@ -436,13 +436,13 @@ make lint         # Run golangci-lint
 make test         # Run tests
 ```
 
-**Pre-commit hooks** (via lefthook) automatically run:
-- `go mod tidy` - Dependency hygiene
-- `go vet` - Static analysis
-- `gofmt` - Code formatting
-- `golangci-lint` - Comprehensive linting
-- `gosec` - Security scanning
-- Secret detection
+**Automated git hooks** (via lefthook):
+
+- **Pre-commit** (~4-6s): Quality gates (go mod tidy, go vet, gofmt, golangci-lint, gosec, secret detection)
+- **Commit-msg**: Message format validation (conventional commits recommended)
+- **Pre-push** (~10-30s): Full test suite with race detection + protected branch warnings
+- **Post-checkout**: Dependency change reminders
+- **Post-merge**: Auto-update dependencies
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed development guide.
 
