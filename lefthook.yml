@@ -1,0 +1,92 @@
+# Ofelia Git Hooks - Powered by lefthook
+# https://github.com/evilmartians/lefthook
+#
+# Fast, Go-native git hooks with automatic installation
+# Run 'make setup' after git clone to install hooks
+
+# Skip hooks on specific branches or conditions
+skip_output:
+  - meta
+  - success
+
+colors: true
+
+pre-commit:
+  parallel: true
+  commands:
+    # 1. Dependency hygiene - ensure go.mod is clean
+    go-mod-tidy:
+      priority: 1
+      run: |
+        echo "🧹 Checking go.mod cleanliness..."
+        if ! go mod tidy -diff >/dev/null 2>&1; then
+          echo "❌ go.mod is not clean. Running go mod tidy shows differences:"
+          go mod tidy -diff
+          echo "Please run 'go mod tidy' and commit the changes."
+          exit 1
+        fi
+        echo "✅ go.mod is clean"
+
+    # 2. Static analysis - go vet
+    go-vet:
+      glob: "*.go"
+      run: |
+        echo "🔧 Running go vet..."
+        go vet ./...
+
+    # 3. Code formatting check - gofmt
+    gofmt:
+      glob: "*.go"
+      run: |
+        echo "📝 Checking Go formatting..."
+        unformatted=$(gofmt -l $(git ls-files '*.go') 2>/dev/null || true)
+        if [ -n "$unformatted" ]; then
+          echo "❌ The following files are not properly formatted:"
+          echo "$unformatted"
+          echo "Please run: gofmt -w $unformatted"
+          exit 1
+        fi
+        echo "✅ All files properly formatted"
+
+    # 4. Comprehensive linting - golangci-lint
+    golangci-lint:
+      glob: "*.go"
+      run: |
+        echo "🔍 Running golangci-lint..."
+        golangci-lint run --timeout=3m
+
+    # 5. Additional linters for extra quality
+    golangci-lint-extra:
+      glob: "*.go"
+      run: |
+        echo "🛡️ Running additional linters..."
+        extra_linters="gci,wrapcheck,unparam,revive,misspell,paralleltest,gocyclo,unused,forbidigo,errorlint"
+        golangci-lint run --timeout=3m --enable="$extra_linters" --disable-all
+
+    # 6. Security scanning - gosec
+    gosec:
+      glob: "*.go"
+      run: |
+        echo "🔒 Running gosec security scanner..."
+        gosec -quiet ./...
+
+    # 7. Secret detection - basic check
+    secrets:
+      run: |
+        echo "🕵️ Checking for sensitive information..."
+        if git diff --cached --name-only | xargs grep -l -E "(password|secret|key|token).*=.*['\"][^'\"]*['\"]" 2>/dev/null; then
+          echo "❌ Potential sensitive information detected in staged files."
+          echo "Please review and remove any hardcoded secrets before committing."
+          exit 1
+        fi
+        echo "✅ No sensitive information detected"
+
+# Output configuration
+output:
+  - summary
+  - success
+
+# Skip configuration
+skip:
+  - merge
+  - rebase
