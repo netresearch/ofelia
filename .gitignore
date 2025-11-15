@@ -43,4 +43,12 @@ tasks.json
 tasks/
 
 # Claude Code documentation
-claudedocs/ 
+claudedocs/
+
+# AI Assistant artifacts and config
+.cursor/
+.roo/
+.serena/
+.taskmaster/
+.roomodes
+.windsurfrules 
