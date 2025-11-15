@@ -38,29 +38,67 @@ The `.envrc` file automatically:
 
 3. Install Git hooks for linting enforcement (if not using direnv auto-install):
 
-**Option A: Native Git Hooks (Recommended)**
 ```bash
-./scripts/install-hooks.sh
+make setup
+# or
+./scripts/install-hooks.sh  # legacy wrapper
 ```
 
-**Option B: Husky (for teams preferring Node.js toolchain)**
-```bash
-./scripts/install-husky.sh
-```
-
-Both options provide identical functionality with **parallel execution** (~5-8s vs ~15-20s sequential), automatically running all linters before each commit to ensure code quality and consistency with the CI pipeline.
+This installs **lefthook** (Go-native git hooks) with **fast parallel execution** (~4-6s typical), automatically running all linters before each commit to ensure code quality and consistency with the CI pipeline.
 
 ### Git Hooks
 
-The project uses Git pre-commit hooks to enforce code quality standards. The hook runs:
+The project uses **lefthook** (Go-native) for fast, parallel git hooks to enforce code quality standards and development workflow best practices.
 
+#### Pre-Commit (Quality Gates)
+
+Runs automatically before each commit (~4-6s with parallel execution):
+
+- **go mod tidy** - Dependency hygiene check
 - **go vet** - Static analysis for common Go programming errors
 - **gofmt** - Go code formatting validation
 - **golangci-lint** - Comprehensive linting with 45+ enabled rules
+- **golangci-lint (extra)** - Additional quality linters (gci, wrapcheck, etc.)
 - **gosec** - Security vulnerability scanning
-- **Secret detection** - Basic check for hardcoded credentials
+- **Secret detection** - Prevents hardcoded credentials in code files
 
-These are the same linters used in the GitHub CI pipeline, ensuring consistency between local development and CI/CD.
+#### Commit-Msg (Message Validation)
+
+Validates commit message format:
+
+- **Minimum length** - At least 10 characters required
+- **Conventional commits** - Recommends `type(scope): message` format
+  - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `ci`, `build`, `revert`
+  - Example: `feat(core): add new scheduler algorithm`
+- **WIP protection** - Blocks WIP commits to main/master branches
+
+#### Pre-Push (Final Safety Check)
+
+Runs before pushing to remote (~10-30s depending on test suite):
+
+- **Full test suite** - Runs all tests with race detection (`go test -race ./...`)
+- **Protected branches** - Warns when pushing to main/master/production
+- **Quick lint** - Fast go vet check on changed files
+
+#### Post-Checkout (Developer Reminders)
+
+Runs after checking out a branch:
+
+- **Dependency changes** - Reminds to run `go mod download` if go.mod changed
+- **Hook installation** - Reminds to run `make setup` if hooks not installed
+
+#### Post-Merge (Auto-Updates)
+
+Runs after merging branches:
+
+- **Dependency updates** - Automatically runs `go mod download` if dependencies changed
+- **Build reminder** - Suggests running tests after dependency updates
+
+**Configuration:** All hooks are defined in `lefthook.yml` in the project root.
+
+**Performance:** Pre-commit hooks use parallel execution (~4-6s), pre-push includes full test suite (~10-30s).
+
+These hooks mirror the GitHub CI pipeline, ensuring consistency between local development and CI/CD.
 
 ### Building
 

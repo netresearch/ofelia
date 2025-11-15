@@ -10,6 +10,10 @@ bin/
 coverage.txt
 *coverage*
 vendor/
+
+# Lint results
+lint_results*.json
+lint_results*.txt
 .cursor/mcp.json
 
 # Added by Task Master AI

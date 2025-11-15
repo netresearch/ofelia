@@ -415,16 +415,36 @@ docker run -it --rm \
 
 ## Development
 
-### Linting
+### Getting Started
 
-The CI workflow runs `go vet` and checks code formatting with `gofmt`. Run these checks locally with:
+Set up your development environment with automated git hooks:
 
 ```sh
-go vet ./...
-gofmt -l $(git ls-files '*.go')
+make setup
 ```
 
-The pipeline fails if any file is not properly formatted or if `go vet` reports issues.
+This installs [lefthook](https://github.com/evilmartians/lefthook) (Go-native git hooks) and configures all quality checks to run automatically before each commit.
+
+### Quality Checks
+
+The project enforces code quality through automated hooks and CI:
+
+```sh
+make help         # Show all available commands
+make dev-check    # Run all quality checks
+make lint         # Run golangci-lint
+make test         # Run tests
+```
+
+**Automated git hooks** (via lefthook):
+
+- **Pre-commit** (~4-6s): Quality gates (go mod tidy, go vet, gofmt, golangci-lint, gosec, secret detection)
+- **Commit-msg**: Message format validation (conventional commits recommended)
+- **Pre-push** (~10-30s): Full test suite with race detection + protected branch warnings
+- **Post-checkout**: Dependency change reminders
+- **Post-merge**: Auto-update dependencies
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed development guide.
 
 ### Testing
 

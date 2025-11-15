@@ -145,6 +145,10 @@ test-watch:
 	fi 
 
 # Development workflow commands
+.PHONY: setup
+setup: dev-setup
+	@echo "🎉 Setup complete! You're ready to develop."
+
 .PHONY: dev-setup
 dev-setup:
 	@echo "🔧 Setting up development environment..."
@@ -165,8 +169,10 @@ dev-setup:
 	fi
 	@go install github.com/daixiang0/gci@latest
 	@echo "✅ gci installed"
-	@echo "🪝 Installing Git hooks..."
-	@./scripts/install-hooks.sh
+	@echo "🪝 Installing lefthook (Go-native git hooks)..."
+	@go install github.com/evilmartians/lefthook@latest
+	@lefthook install
+	@echo "✅ Git hooks installed via lefthook"
 	@echo "✅ Development environment setup complete!"
 
 .PHONY: dev-check
@@ -214,7 +220,8 @@ help:
 	@echo "  security-check     - Run gosec security analysis"
 	@echo ""
 	@echo "🚀 Development Workflow:"
-	@echo "  dev-setup          - Set up development environment"
+	@echo "  setup              - Set up development environment (alias for dev-setup)"
+	@echo "  dev-setup          - Set up development environment with lefthook"
 	@echo "  dev-check          - Run all development checks"
 	@echo "  precommit          - Run pre-commit validation"
 	@echo "  ci                 - Run CI checks locally"
