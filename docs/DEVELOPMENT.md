@@ -38,27 +38,31 @@ The `.envrc` file automatically:
 
 3. Install Git hooks for linting enforcement (if not using direnv auto-install):
 
-**Option A: Native Git Hooks (Recommended)**
 ```bash
-./scripts/install-hooks.sh
+make setup
+# or
+./scripts/install-hooks.sh  # legacy wrapper
 ```
 
-**Option B: Husky (for teams preferring Node.js toolchain)**
-```bash
-./scripts/install-husky.sh
-```
-
-Both options provide identical functionality with **parallel execution** (~5-8s vs ~15-20s sequential), automatically running all linters before each commit to ensure code quality and consistency with the CI pipeline.
+This installs **lefthook** (Go-native git hooks) with **fast parallel execution** (~4-6s typical), automatically running all linters before each commit to ensure code quality and consistency with the CI pipeline.
 
 ### Git Hooks
 
-The project uses Git pre-commit hooks to enforce code quality standards. The hook runs:
+The project uses **lefthook** (Go-native) for fast, parallel pre-commit hooks to enforce code quality standards.
 
+**Hooks run automatically on every commit:**
+
+- **go mod tidy** - Dependency hygiene check
 - **go vet** - Static analysis for common Go programming errors
 - **gofmt** - Go code formatting validation
 - **golangci-lint** - Comprehensive linting with 45+ enabled rules
+- **golangci-lint (extra)** - Additional quality linters
 - **gosec** - Security vulnerability scanning
 - **Secret detection** - Basic check for hardcoded credentials
+
+**Configuration:** All hooks are defined in `lefthook.yml` in the project root.
+
+**Performance:** Parallel execution typically completes in ~4-6 seconds.
 
 These are the same linters used in the GitHub CI pipeline, ensuring consistency between local development and CI/CD.
 
