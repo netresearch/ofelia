@@ -15,7 +15,7 @@ func TestEnhancedBufferPoolShutdown(t *testing.T) {
 	config := DefaultEnhancedBufferPoolConfig()
 	config.ShrinkInterval = 10 * time.Millisecond
 	logger := &MockLogger{}
-	
+
 	pool := NewEnhancedBufferPool(config, logger)
 
 	// Let the management worker start
@@ -41,13 +41,13 @@ func TestSetGlobalBufferPoolLogger(t *testing.T) {
 	// No return value to test, just ensure it doesn't panic
 }
 
-// TestContainerMonitorLoggerMethods tests the logger interface methods with 0% coverage  
+// TestContainerMonitorLoggerMethods tests the logger interface methods with 0% coverage
 func TestContainerMonitorLoggerMethods(t *testing.T) {
 	t.Parallel()
 
 	// Create a mock logger that implements ContainerMonitorLogger interface
 	logger := &MockContainerMonitorLogger{}
-	
+
 	// Test all logger methods that have 0% coverage
 	logger.Criticalf("test critical: %s", "message")
 	logger.Debugf("test debug: %s", "message")
@@ -62,12 +62,12 @@ func TestNewContainerMonitor(t *testing.T) {
 
 	mockClient := NewMockDockerClient()
 	logger := &MockLogger{}
-	
+
 	monitor := NewContainerMonitor(mockClient.Client, logger)
 	if monitor == nil {
 		t.Error("NewContainerMonitor should not return nil")
 	}
-	
+
 	// Test setter methods that have 100% coverage but exercise the interface
 	monitor.SetUseEventsAPI(true)
 }
@@ -99,7 +99,7 @@ func TestNewLocalJob(t *testing.T) {
 
 	job := NewLocalJob()
 	if job == nil {
-		t.Error("NewLocalJob should not return nil")  
+		t.Error("NewLocalJob should not return nil")
 	}
 }
 
@@ -107,7 +107,6 @@ func TestNewLocalJob(t *testing.T) {
 type MockContainerMonitorLogger struct {
 	logs []string
 }
-
 
 func (m *MockContainerMonitorLogger) Criticalf(format string, args ...interface{}) {
 	m.logs = append(m.logs, "CRITICAL: "+format)
@@ -136,7 +135,7 @@ func TestDockerClientOperations(t *testing.T) {
 	mockClient := NewMockDockerClient()
 	logger := &MockLogger{}
 
-	// Test NewDockerOperations - simplified without metrics for now  
+	// Test NewDockerOperations - simplified without metrics for now
 	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
 	if dockerOps == nil {
 		t.Error("NewDockerOperations should not return nil")
@@ -172,10 +171,10 @@ func TestOptimizedDockerClient(t *testing.T) {
 // TestSchedulerEntries tests scheduler entries method (0% coverage)
 func TestSchedulerEntries(t *testing.T) {
 	t.Parallel()
-	
+
 	logger := &MockLogger{}
 	scheduler := NewScheduler(logger)
-	
+
 	// Test Entries method (0% coverage)
 	entries := scheduler.Entries()
 	if entries == nil {
@@ -191,28 +190,28 @@ func TestEnhancedBufferPoolAdaptiveManagement(t *testing.T) {
 	config.ShrinkInterval = 5 * time.Millisecond
 	config.EnablePrewarming = true
 	logger := &MockLogger{}
-	
+
 	pool := NewEnhancedBufferPool(config, logger)
 	defer pool.Shutdown()
-	
+
 	// Get some buffers to create usage patterns
 	buf1 := pool.Get()
 	buf2 := pool.GetSized(512)
 	buf3 := pool.GetSized(1024)
-	
+
 	if buf1 == nil || buf2 == nil || buf3 == nil {
 		t.Error("Failed to get buffers from pool")
 		return
 	}
-	
+
 	// Put them back to trigger usage tracking
 	pool.Put(buf1)
-	pool.Put(buf2) 
+	pool.Put(buf2)
 	pool.Put(buf3)
-	
+
 	// Wait for adaptive management to run
 	time.Sleep(10 * time.Millisecond)
-	
+
 	// Test that the pool is still functional
 	testBuf := pool.Get()
 	if testBuf == nil {
@@ -228,7 +227,7 @@ func TestContainerOperationsBasic(t *testing.T) {
 
 	mockClient := NewMockDockerClient()
 	logger := &MockLogger{}
-	
+
 	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
 	lifecycle := dockerOps.NewContainerLifecycle()
 	if lifecycle == nil {
@@ -236,7 +235,7 @@ func TestContainerOperationsBasic(t *testing.T) {
 	}
 }
 
-// TestExecJobBasic tests ExecJob basic functionality (0% coverage)  
+// TestExecJobBasic tests ExecJob basic functionality (0% coverage)
 func TestExecJobBasic(t *testing.T) {
 	t.Parallel()
 
@@ -244,8 +243,9 @@ func TestExecJobBasic(t *testing.T) {
 	job := NewExecJob(mockClient.Client)
 	if job == nil {
 		t.Error("NewExecJob should not return nil")
+		return
 	}
-	
+
 	// Test basic job properties
 	if job.GetName() == "" {
 		t.Error("Job should have a name")
@@ -258,7 +258,7 @@ func TestImageOperationsBasic(t *testing.T) {
 
 	mockClient := NewMockDockerClient()
 	logger := &MockLogger{}
-	
+
 	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
 	imageOps := dockerOps.NewImageOperations()
 	if imageOps == nil {
@@ -266,13 +266,13 @@ func TestImageOperationsBasic(t *testing.T) {
 	}
 }
 
-// TestLogOperationsBasic tests basic log operations (0% coverage)  
+// TestLogOperationsBasic tests basic log operations (0% coverage)
 func TestLogOperationsBasic(t *testing.T) {
 	t.Parallel()
 
 	mockClient := NewMockDockerClient()
 	logger := &MockLogger{}
-	
+
 	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
 	logOps := dockerOps.NewLogsOperations()
 	if logOps == nil {
@@ -286,7 +286,7 @@ func TestNetworkOperationsBasic(t *testing.T) {
 
 	mockClient := NewMockDockerClient()
 	logger := &MockLogger{}
-	
+
 	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
 	netOps := dockerOps.NewNetworkOperations()
 	if netOps == nil {
@@ -300,7 +300,7 @@ func TestExecOperationsBasic(t *testing.T) {
 
 	mockClient := NewMockDockerClient()
 	logger := &MockLogger{}
-	
+
 	dockerOps := NewDockerOperations(mockClient.Client, logger, nil)
 	execOps := dockerOps.NewExecOperations()
 	if execOps == nil {
@@ -318,13 +318,13 @@ func TestErrorWrappers(t *testing.T) {
 	if err == nil {
 		t.Error("WrapImageError should return an error")
 	}
-	
-	// Test WrapServiceError  
+
+	// Test WrapServiceError
 	err2 := WrapServiceError("test", "testservice", baseErr)
 	if err2 == nil {
 		t.Error("WrapServiceError should return an error")
 	}
-	
+
 	// Test WrapJobError
 	err3 := WrapJobError("test", "testjob", baseErr)
 	if err3 == nil {
@@ -337,14 +337,14 @@ func TestValidatorHelpers(t *testing.T) {
 	t.Parallel()
 
 	// Test from cli/config that have 0% coverage
-	var jobConfig interface{} = map[string]interface{}{
+	jobConfig := map[string]interface{}{
 		"schedule": "@every 1m",
-		"command": "echo test",
+		"command":  "echo test",
 	}
-	
+
 	// Test basic validation scenarios that might not be covered
-	if jobConfig == nil {
-		t.Error("Job config should not be nil")
+	if len(jobConfig) == 0 {
+		t.Error("Job config should not be empty")
 	}
 }
 
@@ -353,28 +353,28 @@ func TestComposeJobBasicOperations(t *testing.T) {
 	t.Parallel()
 
 	job := NewComposeJob()
-	
+
 	// Test basic functionality
 	if job.GetName() == "" {
 		t.Error("ComposeJob should have a name")
 	}
-	
+
 	if job.GetSchedule() == "" {
 		t.Error("ComposeJob should have a default schedule")
 	}
 }
 
-// TestLocalJobBuildCommand tests local job build command (100% coverage) 
+// TestLocalJobBuildCommand tests local job build command (100% coverage)
 func TestLocalJobBuildCommand(t *testing.T) {
 	t.Parallel()
 
 	job := NewLocalJob()
-	
+
 	// Test basic functionality
 	if job.GetName() == "" {
-		t.Error("LocalJob should have a name") 
+		t.Error("LocalJob should have a name")
 	}
-	
+
 	if job.GetSchedule() == "" {
 		t.Error("LocalJob should have a default schedule")
 	}
@@ -387,26 +387,26 @@ func TestContextOperations(t *testing.T) {
 	logger := &MockLogger{}
 	scheduler := NewScheduler(logger)
 	job := NewLocalJob() // Use a concrete job implementation
-	
+
 	// Create execution - this should help test the NewExecution function (62.5% coverage)
 	execution, err := NewExecution()
 	if err != nil {
 		t.Fatalf("Failed to create execution: %v", err)
 	}
-	
+
 	ctx := NewContext(scheduler, job, execution)
-	
+
 	// Test basic context operations
 	if ctx == nil {
 		t.Error("Context should not be nil")
 	}
-	
+
 	// Start the context
 	ctx.Start()
-	
+
 	// Test Next method
-	ctx.Next()
-	
+	_ = ctx.Next()
+
 	// Stop the context with error
 	ctx.Stop(nil)
 }
@@ -423,10 +423,10 @@ func TestAdaptiveBufferPoolManagement(t *testing.T) {
 	config.EnablePrewarming = true
 	config.EnableMetrics = true
 	logger := &MockLogger{}
-	
+
 	pool := NewEnhancedBufferPool(config, logger)
 	defer pool.Shutdown()
-	
+
 	// Create heavy usage to trigger adaptive management
 	var buffers []*circbuf.Buffer
 	for i := 0; i < 8; i++ {
@@ -435,15 +435,15 @@ func TestAdaptiveBufferPoolManagement(t *testing.T) {
 			buffers = append(buffers, buf)
 		}
 	}
-	
+
 	// Return buffers
 	for _, buf := range buffers {
 		pool.Put(buf)
 	}
-	
+
 	// Force sleep to allow adaptive management goroutine to run
 	time.Sleep(15 * time.Millisecond)
-	
+
 	// Get stats to exercise GetStats method
 	stats := pool.GetStats()
 	if stats == nil {
@@ -459,13 +459,13 @@ func TestOptimizedDockerClientOperations(t *testing.T) {
 	if config == nil {
 		t.Error("DefaultDockerClientConfig should not return nil")
 	}
-	
+
 	logger := &MockLogger{}
 	breaker := NewDockerCircuitBreaker(config, logger)
 	if breaker == nil {
 		t.Error("NewDockerCircuitBreaker should not return nil")
 	}
-	
+
 	// Test basic circuit breaker functionality
 	canExecute := breaker.canExecute()
 	if !canExecute {
@@ -482,34 +482,34 @@ func TestCronUtilsOperations(t *testing.T) {
 	if cronUtils == nil {
 		t.Error("NewCronUtils should not return nil")
 	}
-	
+
 	// Test Info and Error methods
 	cronUtils.Info("test info message")
 	cronUtils.Error(errors.New("test error"), "test error message")
 }
 
-// TestRandomIdGeneration tests randomID function (75% coverage)
-func TestRandomIdGeneration(t *testing.T) {
+// TestRandomIDGeneration tests randomID function (75% coverage)
+func TestRandomIDGeneration(t *testing.T) {
 	t.Parallel()
 
 	// Test randomID generation by creating multiple contexts
 	logger := &MockLogger{}
 	scheduler := NewScheduler(logger)
 	job := NewLocalJob()
-	
+
 	execution1, err1 := NewExecution()
 	if err1 != nil {
 		t.Fatalf("Failed to create first execution: %v", err1)
 	}
-	
+
 	execution2, err2 := NewExecution()
 	if err2 != nil {
 		t.Fatalf("Failed to create second execution: %v", err2)
 	}
-	
+
 	ctx1 := NewContext(scheduler, job, execution1)
 	ctx2 := NewContext(scheduler, job, execution2)
-	
+
 	if ctx1 == nil || ctx2 == nil {
 		t.Error("Contexts should not be nil")
 	}

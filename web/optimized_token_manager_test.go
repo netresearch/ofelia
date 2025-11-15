@@ -292,18 +292,18 @@ func TestTokenManagerCapacityManagement(t *testing.T) {
 
 	// Check that eviction mechanism works by verifying tokens are managed
 	activeCount := tm.GetActiveTokenCount()
-	
+
 	// The exact count may vary due to eviction timing, but should be reasonable
 	if activeCount == 0 {
 		t.Error("All tokens were evicted - capacity management too aggressive")
 	}
-	
+
 	// Verify that some eviction occurred if we exceeded capacity significantly
 	if activeCount > config.MaxTokens*2 {
-		t.Errorf("Active token count %d is much higher than expected max %d - eviction may not be working", 
+		t.Errorf("Active token count %d is much higher than expected max %d - eviction may not be working",
 			activeCount, config.MaxTokens)
 	}
-	
+
 	// Test that new tokens can still be generated
 	newToken, err := tm.GenerateToken("newuser")
 	if err != nil {
@@ -489,7 +489,7 @@ func TestTokenExpiryHeap(t *testing.T) {
 	// Test basic heap operations without relying on specific ordering
 	entry1 := &TokenEntry{Token: "token1", Username: "user1", ExpiresAt: now.Add(1 * time.Hour)}
 	entry2 := &TokenEntry{Token: "token2", Username: "user2", ExpiresAt: now.Add(2 * time.Hour)}
-	
+
 	h.Push(entry1)
 	h.Push(entry2)
 
