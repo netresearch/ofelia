@@ -224,8 +224,9 @@ go test -bench=. ./core         # Run benchmarks
 - [Configuration Guide](./CONFIGURATION.md)
 - [API Documentation](./API.md)
 - [Development Guide](./DEVELOPMENT.md)
+- [Git Hooks System](./GIT_HOOKS.md)
 - [Security Considerations](./SECURITY.md)
 - [Troubleshooting](./TROUBLESHOOTING.md)
 
 ---
-*Generated on: 2025-09-03 | Version: Latest*
+*Last Updated: 2025-11-15 | Comprehensive package documentation complete*
