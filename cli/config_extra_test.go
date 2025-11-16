@@ -114,6 +114,47 @@ func (s *SuiteConfig) TestDockerLabelsUpdateExecJobs(c *C) {
 	c.Assert(len(entries), Equals, 0)
 }
 
+// Test dockerLabelsUpdate blocks host jobs when security policy is disabled.
+func (s *SuiteConfig) TestDockerLabelsSecurityPolicyViolation(c *C) {
+	logger := test.NewTestLogger()
+	cfg := NewConfig(logger)
+	cfg.logger = logger
+	cfg.Global.AllowHostJobsFromLabels = false // Security policy: block host jobs from labels
+	cfg.dockerHandler = &DockerHandler{}
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+	cfg.LocalJobs = make(map[string]*LocalJobConfig)
+	cfg.ComposeJobs = make(map[string]*ComposeJobConfig)
+
+	// Attempt to create local and compose jobs via labels
+	labels := map[string]map[string]string{
+		"cont1": {
+			requiredLabel:                           "true",
+			serviceLabel:                            "true",
+			labelPrefix + ".job-local.l.schedule":   "@daily",
+			labelPrefix + ".job-local.l.command":    "echo dangerous",
+			labelPrefix + ".job-compose.c.schedule": "@hourly",
+			labelPrefix + ".job-compose.c.command":  "restart",
+		},
+	}
+	cfg.dockerLabelsUpdate(labels)
+
+	// Verify security policy blocked the jobs
+	c.Assert(cfg.LocalJobs, HasLen, 0, Commentf("Local jobs should be blocked by security policy"))
+	c.Assert(cfg.ComposeJobs, HasLen, 0, Commentf("Compose jobs should be blocked by security policy"))
+
+	// Verify error logs were generated
+	c.Assert(logger.ErrorCount(), Equals, 2, Commentf("Expected 2 error logs (1 for local, 1 for compose)"))
+	c.Assert(logger.HasError("SECURITY POLICY VIOLATION"), Equals, true,
+		Commentf("Error log should contain SECURITY POLICY VIOLATION"))
+	c.Assert(logger.HasError("local jobs"), Equals, true,
+		Commentf("Error log should mention local jobs"))
+	c.Assert(logger.HasError("compose jobs"), Equals, true,
+		Commentf("Error log should mention compose jobs"))
+	c.Assert(logger.HasError("privilege escalation"), Equals, true,
+		Commentf("Error log should explain privilege escalation risk"))
+}
+
 // Test dockerLabelsUpdate removes local and service jobs when containers disappear.
 func (s *SuiteConfig) TestDockerLabelsUpdateStaleJobs(c *C) {
 	cfg := NewConfig(test.NewTestLogger())
