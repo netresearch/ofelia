@@ -70,6 +70,7 @@ pprof-address = :6060
 # Security
 jwt-secret = ${JWT_SECRET}
 jwt-expiry-hours = 24
+enable-strict-validation = false
 ```
 
 ## Job Types
@@ -427,12 +428,43 @@ jwt-refresh-hours = 168  # 1 week
 
 ### Input Validation
 
-All job configurations undergo validation:
-- Command injection prevention
-- Path traversal protection
-- Docker image name validation
+Ofelia provides two levels of input validation:
+
+**Basic Validation (Default)**
 - Cron expression validation
-- Environment variable sanitization
+- Required field checks
+- Docker image name format validation
+
+**Strict Validation (Opt-in)**
+
+Enable strict validation for security-conscious environments:
+
+```ini
+[global]
+enable-strict-validation = true
+```
+
+When enabled, strict validation provides:
+- Command injection prevention (blocks shell metacharacters)
+- Path traversal protection (blocks `../` patterns)
+- Network restriction (blocks private IP ranges)
+- File extension filtering (blocks `.sh`, `.exe`, etc.)
+- Tool restrictions (blocks `wget`, `curl`, `rsync`, etc.)
+
+**Default**: `false` (disabled)
+
+**When to enable**:
+- Multi-tenant environments with untrusted users
+- Strict security compliance requirements (SOC2, PCI-DSS)
+- Public-facing job scheduling systems
+- Highly regulated environments
+
+**When to keep disabled**:
+- Infrastructure automation requiring shell scripts
+- Backup operations using `rsync`, `wget`, `curl`
+- Jobs accessing private networks (192.168.*, 10.*, 172.*)
+- Airgapped/restricted environments with `.local` domains
+- Most production deployments (Ofelia runs commands inside isolated containers)
 
 ## Best Practices
 

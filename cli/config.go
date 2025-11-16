@@ -49,6 +49,7 @@ type Config struct {
 		PprofAddr               string        `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
 		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`
 		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels"`
+		EnableStrictValidation  bool          `gcfg:"enable-strict-validation" mapstructure:"enable-strict-validation" default:"false"`
 	}
 	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
@@ -122,10 +123,12 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	c.configFiles = files
 	c.configModTime = latest
 
-	// Validate the loaded configuration
-	validator := config.NewConfigValidator(c)
-	if err := validator.Validate(); err != nil {
-		return nil, fmt.Errorf("configuration validation failed: %w", err)
+	// Validate the loaded configuration (if enabled)
+	if c.Global.EnableStrictValidation {
+		validator := config.NewConfigValidator(c)
+		if err := validator.Validate(); err != nil {
+			return nil, fmt.Errorf("configuration validation failed: %w", err)
+		}
 	}
 
 	return c, nil
@@ -146,10 +149,12 @@ func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
 		return nil, fmt.Errorf("parse ini from string: %w", err)
 	}
 
-	// Validate the loaded configuration
-	validator := config.NewConfigValidator(c)
-	if err := validator.Validate(); err != nil {
-		return nil, fmt.Errorf("configuration validation failed: %w", err)
+	// Validate the loaded configuration (if enabled)
+	if c.Global.EnableStrictValidation {
+		validator := config.NewConfigValidator(c)
+		if err := validator.Validate(); err != nil {
+			return nil, fmt.Errorf("configuration validation failed: %w", err)
+		}
 	}
 
 	return c, nil
