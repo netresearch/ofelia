@@ -25,16 +25,18 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 		}
 	}
 
-	// Security check: filter out host-based jobs from Docker labels unless explicitly allowed
+	// Security check: filter out host-based jobs from container labels unless explicitly allowed
 	if !c.Global.AllowHostJobsFromLabels {
 		if len(localJobs) > 0 {
-			c.logger.Warningf("Ignoring %d local jobs from Docker labels due to security policy. "+
-				"Set allow-host-jobs-from-labels=true to enable", len(localJobs))
+			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d host-based local jobs from container labels. "+
+				"Host job execution from container labels is disabled for security. "+
+				"This prevents container-to-host privilege escalation attacks.", len(localJobs))
 			localJobs = make(map[string]map[string]interface{})
 		}
 		if len(composeJobs) > 0 {
-			c.logger.Warningf("Ignoring %d compose jobs from Docker labels due to security policy. "+
-				"Set allow-host-jobs-from-labels=true to enable", len(composeJobs))
+			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d host-based compose jobs from container labels. "+
+				"Host job execution from container labels is disabled for security. "+
+				"This prevents container-to-host privilege escalation attacks.", len(composeJobs))
 			composeJobs = make(map[string]map[string]interface{})
 		}
 	}

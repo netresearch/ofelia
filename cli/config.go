@@ -48,7 +48,7 @@ type Config struct {
 		EnablePprof             bool          `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
 		PprofAddr               string        `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
 		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`
-		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels"`
+		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels" default:"false"` //nolint:revive
 		EnableStrictValidation  bool          `gcfg:"enable-strict-validation" mapstructure:"enable-strict-validation" default:"false"`
 	}
 	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
@@ -193,8 +193,9 @@ func (c *Config) mergeJobsFromDockerLabels() {
 	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
 	mergeJobs(c, c.RunJobs, parsed.RunJobs, "run")
 	mergeJobs(c, c.LocalJobs, parsed.LocalJobs, "local")
-	mergeJobs(c, c.ServiceJobs, parsed.ServiceJobs, "service")
 	mergeJobs(c, c.ComposeJobs, parsed.ComposeJobs, "compose")
+
+	mergeJobs(c, c.ServiceJobs, parsed.ServiceJobs, "service")
 }
 
 // mergeJobs copies jobs from src into dst while respecting INI precedence.
@@ -375,10 +376,6 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		_ = defaults.Set(j)
 		j.Name = name
 	}
-	// Security check: only sync local jobs from labels if explicitly allowed
-	if c.Global.AllowHostJobsFromLabels {
-		syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
-	}
 
 	servicePrep := func(name string, j *RunServiceConfig) {
 		_ = defaults.Set(j)
@@ -388,16 +385,25 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Client = c.dockerHandler.GetInternalDockerClient()
 		j.Name = name
 	}
-	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, servicePrep, JobSourceLabel, "service")
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
 		j.Name = name
 	}
-	// Security check: only sync compose jobs from labels if explicitly allowed
+
+	// Security: Log consolidated warning when syncing host-based jobs from container labels
 	if c.Global.AllowHostJobsFromLabels {
-		syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
+		localCount := len(parsedLabelConfig.LocalJobs)
+		composeCount := len(parsedLabelConfig.ComposeJobs)
+		if localCount > 0 || composeCount > 0 {
+			c.logger.Warningf("SECURITY WARNING: Syncing host-based jobs from container labels (%d local, %d compose). "+
+				"This allows containers to execute arbitrary commands on the host system.", localCount, composeCount)
+		}
 	}
+
+	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
+	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, servicePrep, JobSourceLabel, "service")
+	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
 }
 
 func (c *Config) iniConfigUpdate() error {
