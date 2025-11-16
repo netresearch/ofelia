@@ -390,9 +390,11 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				"Host job execution from container labels is disabled for security. "+
 				"This prevents container-to-host privilege escalation attacks.", len(parsedLabelConfig.LocalJobs))
 		}
-	} else if len(parsedLabelConfig.LocalJobs) > 0 {
-		c.logger.Warningf("SECURITY WARNING: Syncing host-based local jobs from container labels. " +
-			"This allows containers to execute arbitrary commands on the host system.")
+	} else {
+		if len(parsedLabelConfig.LocalJobs) > 0 {
+			c.logger.Warningf("SECURITY WARNING: Syncing host-based local jobs from container labels. " +
+				"This allows containers to execute arbitrary commands on the host system.")
+		}
 		syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
 	}
 
@@ -417,9 +419,11 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 				"Host job execution from container labels is disabled for security. "+
 				"This prevents container-to-host privilege escalation attacks.", len(parsedLabelConfig.ComposeJobs))
 		}
-	} else if len(parsedLabelConfig.ComposeJobs) > 0 {
-		c.logger.Warningf("SECURITY WARNING: Syncing host-based compose jobs from container labels. " +
-			"This allows containers to execute arbitrary commands on the host system.")
+	} else {
+		if len(parsedLabelConfig.ComposeJobs) > 0 {
+			c.logger.Warningf("SECURITY WARNING: Syncing host-based compose jobs from container labels. " +
+				"This allows containers to execute arbitrary commands on the host system.")
+		}
 		syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
 	}
 }
