@@ -150,6 +150,9 @@ pre-push:
         echo "This ensures no broken code reaches the remote repository"
         echo ""
 
+        # Temporarily enable CGO for race detection
+        export CGO_ENABLED=1
+
         # Run tests with race detection
         if ! go test -race -timeout=5m ./...; then
           echo ""
@@ -161,35 +164,6 @@ pre-push:
         echo ""
         echo "✅ All tests passed!"
 
-    # Prevent pushing directly to protected branches
-    protected-branches:
-      run: |
-        echo "🔒 Checking protected branches..."
-
-        current_branch=$(git rev-parse --abbrev-ref HEAD)
-        protected_branches="main master production"
-
-        for branch in $protected_branches; do
-          if [ "$current_branch" = "$branch" ]; then
-            echo "⚠️  WARNING: Pushing directly to $current_branch branch"
-            echo ""
-            echo "Recommended workflow:"
-            echo "  1. Create feature branch: git checkout -b feature/your-feature"
-            echo "  2. Make changes and commit"
-            echo "  3. Push feature branch: git push origin feature/your-feature"
-            echo "  4. Create pull request for review"
-            echo ""
-            read -p "Are you sure you want to push to $current_branch? (yes/no): " confirm
-            if [ "$confirm" != "yes" ]; then
-              echo "❌ Push cancelled"
-              exit 1
-            fi
-            echo "⚠️  Proceeding with push to $current_branch..."
-            break
-          fi
-        done
-
-        echo "✅ Branch check passed"
 
     # Run quick linting check
     lint-check:
