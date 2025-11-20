@@ -249,13 +249,14 @@ func BenchmarkSchedulerSemaphoreContention(b *testing.B) {
 
 // BenchmarkSchedulerLookupOperations benchmarks job lookup performance
 func BenchmarkSchedulerLookupOperations(b *testing.B) {
-	scheduler := NewScheduler(&TestLogger{})
-
 	// Create various numbers of jobs to test lookup performance
 	jobCounts := []int{10, 100, 1000}
 
 	for _, count := range jobCounts {
 		b.Run(fmt.Sprintf("lookup_%d_jobs", count), func(b *testing.B) {
+			// Create a fresh scheduler for each sub-benchmark
+			scheduler := NewScheduler(&TestLogger{})
+
 			// Populate jobs
 			for i := 0; i < count; i++ {
 				job := NewSimpleControlledJob(fmt.Sprintf("lookup-job-%d", i), "@daily", 0)
