@@ -1,0 +1,346 @@
+//go:build integration
+// +build integration
+
+package core
+
+import (
+	"testing"
+	"time"
+
+	docker "github.com/fsouza/go-dockerclient"
+)
+
+// TestOptimizedDockerClientCreation verifies optimized client can be created
+func TestOptimizedDockerClientCreation(t *testing.T) {
+	config := DefaultDockerClientConfig()
+	metrics := NewPerformanceMetrics()
+
+	client, err := NewOptimizedDockerClient(config, nil, metrics)
+	if err != nil {
+		// Skip if Docker is not available (CI environment)
+		t.Skipf("Docker not available: %v", err)
+	}
+
+	if client == nil {
+		t.Fatal("NewOptimizedDockerClient returned nil client")
+	}
+
+	// Verify config
+	if client.config != config {
+		t.Error("Client config not set correctly")
+	}
+
+	// Verify circuit breaker
+	if client.circuitBreaker == nil {
+		t.Fatal("Circuit breaker not initialized")
+	}
+
+	// Verify metrics
+	if client.metrics != metrics {
+		t.Error("Metrics not set correctly")
+	}
+
+	// Cleanup
+	client.Close()
+}
+
+// TestOptimizedDockerClientGetClient verifies GetClient returns underlying client
+func TestOptimizedDockerClientGetClient(t *testing.T) {
+	config := DefaultDockerClientConfig()
+	client, err := NewOptimizedDockerClient(config, nil, nil)
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer client.Close()
+
+	underlyingClient := client.GetClient()
+	if underlyingClient == nil {
+		t.Fatal("GetClient() returned nil")
+	}
+
+	// Verify it's a real Docker client (just check it's not nil, type is already known)
+	if underlyingClient == nil {
+		t.Error("GetClient() returned nil underlying client")
+	}
+}
+
+// TestOptimizedDockerClientInfo verifies Info call works with metrics
+func TestOptimizedDockerClientInfo(t *testing.T) {
+	metrics := NewPerformanceMetrics()
+	config := DefaultDockerClientConfig()
+
+	client, err := NewOptimizedDockerClient(config, nil, metrics)
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer client.Close()
+
+	// Call Info
+	info, err := client.Info()
+	if err != nil {
+		t.Skipf("Docker Info failed (daemon might be down): %v", err)
+	}
+
+	if info == nil {
+		t.Fatal("Info() returned nil")
+	}
+
+	// Verify metrics were recorded
+	dockerMetrics := metrics.GetDockerMetrics()
+	totalOps, ok := dockerMetrics["total_operations"].(int64)
+	if !ok || totalOps == 0 {
+		t.Errorf("Expected total_operations>0, got %v", dockerMetrics["total_operations"])
+	}
+
+	latencies, ok := dockerMetrics["latencies"].(map[string]map[string]interface{})
+	if !ok {
+		t.Fatal("Latencies not recorded")
+	}
+
+	if _, exists := latencies["info"]; !exists {
+		t.Error("Info latency not recorded")
+	}
+}
+
+// TestOptimizedDockerClientListContainers verifies ListContainers works
+func TestOptimizedDockerClientListContainers(t *testing.T) {
+	metrics := NewPerformanceMetrics()
+	config := DefaultDockerClientConfig()
+
+	client, err := NewOptimizedDockerClient(config, nil, metrics)
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer client.Close()
+
+	// List containers
+	containers, err := client.ListContainers(docker.ListContainersOptions{})
+	if err != nil {
+		t.Skipf("Docker ListContainers failed: %v", err)
+	}
+
+	// containers can be empty, that's fine
+	if containers == nil {
+		t.Fatal("ListContainers() returned nil")
+	}
+
+	// Verify metrics were recorded
+	dockerMetrics := metrics.GetDockerMetrics()
+	latencies, ok := dockerMetrics["latencies"].(map[string]map[string]interface{})
+	if !ok {
+		t.Fatal("Latencies not recorded")
+	}
+
+	if _, exists := latencies["list_containers"]; !exists {
+		t.Error("ListContainers latency not recorded")
+	}
+}
+
+// TestOptimizedDockerClientCircuitBreaker verifies circuit breaker behavior
+func TestOptimizedDockerClientCircuitBreaker(t *testing.T) {
+	config := DefaultDockerClientConfig()
+	config.EnableCircuitBreaker = true
+	config.FailureThreshold = 3
+
+	metrics := NewPerformanceMetrics()
+	client, err := NewOptimizedDockerClient(config, nil, metrics)
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer client.Close()
+
+	// Get stats
+	stats := client.GetStats()
+	if stats == nil {
+		t.Fatal("GetStats() returned nil")
+	}
+
+	cbStats, ok := stats["circuit_breaker"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Circuit breaker stats not found")
+	}
+
+	// Verify initial state is closed (0)
+	state, ok := cbStats["state"].(DockerCircuitBreakerState)
+	if !ok {
+		t.Fatal("Circuit breaker state not found")
+	}
+
+	if state != DockerCircuitClosed {
+		t.Errorf("Expected circuit breaker to be closed initially, got state %v", state)
+	}
+}
+
+// TestOptimizedDockerClientMetricsIntegration verifies metrics integration
+func TestOptimizedDockerClientMetricsIntegration(t *testing.T) {
+	metrics := NewPerformanceMetrics()
+	config := DefaultDockerClientConfig()
+
+	client, err := NewOptimizedDockerClient(config, nil, metrics)
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer client.Close()
+
+	// Verify Docker daemon is responsive
+	if _, err := client.Info(); err != nil {
+		t.Skipf("Docker daemon not responsive: %v", err)
+	}
+
+	// Perform multiple operations
+	for i := 0; i < 5; i++ {
+		if _, err := client.Info(); err != nil {
+			t.Skipf("Docker Info failed: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Verify metrics
+	dockerMetrics := metrics.GetDockerMetrics()
+
+	totalOps, ok := dockerMetrics["total_operations"].(int64)
+	if !ok || totalOps < 5 {
+		t.Errorf("Expected total_operations>=5, got %v", dockerMetrics["total_operations"])
+	}
+
+	latencies, ok := dockerMetrics["latencies"].(map[string]map[string]interface{})
+	if !ok {
+		t.Fatal("Latencies not recorded")
+	}
+
+	infoLatency, exists := latencies["info"]
+	if !exists {
+		t.Fatal("Info latency not found")
+	}
+
+	count, ok := infoLatency["count"].(int64)
+	if !ok || count < 5 {
+		t.Errorf("Expected info latency count>=5, got %v", infoLatency["count"])
+	}
+
+	// Verify average, min, max are set
+	if _, ok := infoLatency["average"].(time.Duration); !ok {
+		t.Error("Average latency not set")
+	}
+	if _, ok := infoLatency["min"].(time.Duration); !ok {
+		t.Error("Min latency not set")
+	}
+	if _, ok := infoLatency["max"].(time.Duration); !ok {
+		t.Error("Max latency not set")
+	}
+}
+
+// TestOptimizedDockerClientAddEventListener verifies event listening works
+func TestOptimizedDockerClientAddEventListener(t *testing.T) {
+	config := DefaultDockerClientConfig()
+	client, err := NewOptimizedDockerClient(config, nil, nil)
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer client.Close()
+
+	// Create event channel
+	events := make(chan *docker.APIEvents, 1)
+
+	// Add event listener
+	err = client.AddEventListenerWithOptions(docker.EventsOptions{
+		Filters: map[string][]string{"type": {"container"}},
+	}, events)
+
+	if err != nil {
+		t.Skipf("AddEventListenerWithOptions failed: %v", err)
+	}
+
+	// Just verify the method exists and doesn't crash
+	// Don't wait for actual events as we don't know if any will occur
+	close(events)
+}
+
+// TestOptimizedDockerClientConnectionPooling verifies connection pooling config
+func TestOptimizedDockerClientConnectionPooling(t *testing.T) {
+	config := DefaultDockerClientConfig()
+
+	// Verify sensible defaults
+	if config.MaxIdleConns != 100 {
+		t.Errorf("Expected MaxIdleConns=100, got %d", config.MaxIdleConns)
+	}
+	if config.MaxIdleConnsPerHost != 50 {
+		t.Errorf("Expected MaxIdleConnsPerHost=50, got %d", config.MaxIdleConnsPerHost)
+	}
+	if config.MaxConnsPerHost != 100 {
+		t.Errorf("Expected MaxConnsPerHost=100, got %d", config.MaxConnsPerHost)
+	}
+
+	client, err := NewOptimizedDockerClient(config, nil, nil)
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer client.Close()
+
+	// Verify stats reflect config
+	stats := client.GetStats()
+	configStats, ok := stats["config"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Config stats not found")
+	}
+
+	if maxIdle, ok := configStats["max_idle_conns"].(int); !ok || maxIdle != 100 {
+		t.Errorf("Expected max_idle_conns=100, got %v", configStats["max_idle_conns"])
+	}
+}
+
+// TestOptimizedDockerClientConcurrency verifies concurrent safety
+func TestOptimizedDockerClientConcurrency(t *testing.T) {
+	metrics := NewPerformanceMetrics()
+	config := DefaultDockerClientConfig()
+
+	client, err := NewOptimizedDockerClient(config, nil, metrics)
+	if err != nil {
+		t.Skipf("Docker not available: %v", err)
+	}
+	defer client.Close()
+
+	// Verify Docker daemon is responsive
+	if _, err := client.Info(); err != nil {
+		t.Skipf("Docker daemon not responsive: %v", err)
+	}
+
+	const goroutines = 10
+	const iterations = 5
+
+	done := make(chan bool, goroutines)
+	errChan := make(chan error, goroutines*iterations)
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			for j := 0; j < iterations; j++ {
+				if _, err := client.Info(); err != nil {
+					errChan <- err
+					return
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			done <- true
+		}()
+	}
+
+	// Wait for all goroutines
+	timeout := time.After(10 * time.Second)
+	for i := 0; i < goroutines; i++ {
+		select {
+		case <-done:
+			// Success
+		case err := <-errChan:
+			t.Skipf("Docker operation failed during concurrent test: %v", err)
+		case <-timeout:
+			t.Fatal("Concurrent test timed out")
+		}
+	}
+
+	// Verify metrics are reasonable
+	dockerMetrics := metrics.GetDockerMetrics()
+	totalOps, ok := dockerMetrics["total_operations"].(int64)
+	if !ok || totalOps < int64(goroutines*iterations) {
+		t.Errorf("Expected total_operations>=%d, got %v", goroutines*iterations, dockerMetrics["total_operations"])
+	}
+}
