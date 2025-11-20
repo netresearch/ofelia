@@ -1,0 +1,8 @@
+# Trivy ignore file for known acceptable vulnerabilities
+# This file is used to suppress false positives or accepted risks
+
+# Add vulnerability IDs here if needed
+# Example: CVE-XXXX-XXXXX
+
+# Note: Currently no vulnerabilities to ignore
+# This file exists as a placeholder for future use
