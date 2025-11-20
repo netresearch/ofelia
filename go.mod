@@ -9,7 +9,7 @@ require (
 	github.com/creasty/defaults v1.8.0
 	github.com/docker/docker v28.3.3+incompatible
 	github.com/emersion/go-smtp v0.24.0
-	github.com/fsouza/go-dockerclient v1.12.1
+	github.com/fsouza/go-dockerclient v1.12.2
 	github.com/go-mail/mail/v2 v2.3.0
 	github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93
 	github.com/golang-jwt/jwt/v5 v5.3.0
