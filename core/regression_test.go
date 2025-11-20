@@ -85,7 +85,10 @@ func TestBufferPoolExists(t *testing.T) {
 	}
 
 	// Test that pool returns buffers
-	buf := DefaultBufferPool.Get()
+	buf, err := DefaultBufferPool.Get()
+	if err != nil {
+		t.Fatalf("Buffer pool Get() error: %v", err)
+	}
 	if buf == nil {
 		t.Fatal("Buffer pool must return valid buffers")
 	}

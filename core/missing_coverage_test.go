@@ -45,7 +45,10 @@ func TestBufferPoolGetSized(t *testing.T) {
 	pool := NewBufferPool(100, 500, 2000)
 
 	// Test 1: Request size within normal range (should use pool)
-	buf1 := pool.GetSized(300)
+	buf1, err := pool.GetSized(300)
+	if err != nil {
+		t.Fatalf("GetSized(300) error: %v", err)
+	}
 	if buf1 == nil {
 		t.Fatal("GetSized(300) returned nil")
 	}
@@ -54,7 +57,10 @@ func TestBufferPoolGetSized(t *testing.T) {
 	}
 
 	// Test 2: Request size exactly at minSize boundary
-	buf2 := pool.GetSized(100)
+	buf2, err := pool.GetSized(100)
+	if err != nil {
+		t.Fatalf("GetSized(100) error: %v", err)
+	}
 	if buf2 == nil {
 		t.Fatal("GetSized(100) returned nil")
 	}
@@ -63,7 +69,10 @@ func TestBufferPoolGetSized(t *testing.T) {
 	}
 
 	// Test 3: Request size exactly at default size boundary
-	buf3 := pool.GetSized(500)
+	buf3, err := pool.GetSized(500)
+	if err != nil {
+		t.Fatalf("GetSized(500) error: %v", err)
+	}
 	if buf3 == nil {
 		t.Fatal("GetSized(500) returned nil")
 	}
@@ -72,7 +81,10 @@ func TestBufferPoolGetSized(t *testing.T) {
 	}
 
 	// Test 4: Request larger than default but under max (should create custom buffer)
-	buf4 := pool.GetSized(1000)
+	buf4, err := pool.GetSized(1000)
+	if err != nil {
+		t.Fatalf("GetSized(1000) error: %v", err)
+	}
 	if buf4 == nil {
 		t.Fatal("GetSized(1000) returned nil")
 	}
@@ -81,7 +93,10 @@ func TestBufferPoolGetSized(t *testing.T) {
 	}
 
 	// Test 5: Request larger than max (should cap at maxSize)
-	buf5 := pool.GetSized(5000)
+	buf5, err := pool.GetSized(5000)
+	if err != nil {
+		t.Fatalf("GetSized(5000) error: %v", err)
+	}
 	if buf5 == nil {
 		t.Fatal("GetSized(5000) returned nil")
 	}
@@ -89,13 +104,16 @@ func TestBufferPoolGetSized(t *testing.T) {
 		t.Errorf("Expected buffer size 2000 (capped), got %d", buf5.Size())
 	}
 
-	// Test 6: Request smaller than minSize (should create custom buffer)
-	buf6 := pool.GetSized(50)
+	// Test 6: Request smaller than minSize (enhanced pool clamps to minSize)
+	buf6, err := pool.GetSized(50)
+	if err != nil {
+		t.Fatalf("GetSized(50) error: %v", err)
+	}
 	if buf6 == nil {
 		t.Fatal("GetSized(50) returned nil")
 	}
-	if buf6.Size() != 50 { // Should get custom sized buffer
-		t.Errorf("Expected buffer size 50, got %d", buf6.Size())
+	if buf6.Size() != 100 { // Enhanced pool clamps to minSize
+		t.Errorf("Expected buffer size 100 (clamped to minSize), got %d", buf6.Size())
 	}
 
 	// Clean up - return pool buffers
@@ -112,7 +130,10 @@ func TestBufferPoolPutCustomSized(t *testing.T) {
 	pool := NewBufferPool(100, 500, 2000)
 
 	// Get a custom sized buffer
-	customBuf := pool.GetSized(1000)
+	customBuf, err := pool.GetSized(1000)
+	if err != nil {
+		t.Fatalf("GetSized(1000) error: %v", err)
+	}
 	if customBuf.Size() != 1000 {
 		t.Fatalf("Expected custom buffer size 1000, got %d", customBuf.Size())
 	}

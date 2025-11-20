@@ -156,8 +156,17 @@ type Execution struct {
 // NewExecution returns a new Execution, with a random ID
 func NewExecution() (*Execution, error) {
 	// Use buffer pool to reduce memory allocation
-	bufOut := DefaultBufferPool.Get()
-	bufErr := DefaultBufferPool.Get()
+	bufOut, err := DefaultBufferPool.Get()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get output buffer: %w", err)
+	}
+
+	bufErr, err := DefaultBufferPool.Get()
+	if err != nil {
+		DefaultBufferPool.Put(bufOut) // Return already-allocated buffer
+		return nil, fmt.Errorf("failed to get error buffer: %w", err)
+	}
+
 	id, err := randomID()
 	if err != nil {
 		// Return buffers to pool on error
