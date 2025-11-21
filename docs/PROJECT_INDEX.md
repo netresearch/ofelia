@@ -204,6 +204,40 @@ go test -bench=. ./core         # Run benchmarks
 - [`config`](./packages/config.md): Validation and sanitization
 - [`middlewares`](./packages/middlewares.md): Job execution plugins
 
+### Visual Documentation
+- [**Architecture Diagrams**](./ARCHITECTURE_DIAGRAMS.md): 8 comprehensive mermaid diagrams
+  - Job execution lifecycle (sequence)
+  - Configuration precedence (5-layer)
+  - Docker integration architecture
+  - Middleware chain execution
+  - Resilience patterns (circuit breaker, retry, rate limiting)
+  - Scheduler state machine
+  - Web UI & API flow
+  - Component interaction map
+
+### Practical Guides
+- [**Integration Patterns**](./INTEGRATION_PATTERNS.md): Real-world integration scenarios
+  - Database management (backups, maintenance)
+  - Log management and archiving
+  - Backup & recovery strategies
+  - Health monitoring patterns
+  - Data synchronization
+  - Cleanup & maintenance
+  - CI/CD integration
+  - Multi-environment patterns
+  - Performance optimization
+  - Security patterns
+
+- [**Quick Reference**](./QUICK_REFERENCE.md): Fast-lookup cheat sheet
+  - CLI commands
+  - Cron schedule formats
+  - All job types with examples
+  - Docker labels format
+  - API endpoints
+  - Troubleshooting quick fixes
+  - Common patterns
+  - Security checklist
+
 ## 🔗 Cross-References
 
 ### Configuration Flow
@@ -229,4 +263,4 @@ go test -bench=. ./core         # Run benchmarks
 - [Troubleshooting](./TROUBLESHOOTING.md)
 
 ---
-*Last Updated: 2025-11-15 | Comprehensive package documentation complete*
+*Last Updated: 2025-11-21 | Enhanced with architecture diagrams, integration patterns, and quick reference*
