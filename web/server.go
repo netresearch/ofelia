@@ -11,7 +11,9 @@ import (
 	"time"
 
 	dockerclient "github.com/fsouza/go-dockerclient"
+	"github.com/gobs/args"
 
+	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/static"
 )
@@ -398,6 +400,22 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 		j.Container = req.Container
 		return j, nil
 	case "compose":
+		// Validate compose job parameters
+		validator := config.NewCommandValidator()
+		if req.File != "" {
+			if err := validator.ValidateFilePath(req.File); err != nil {
+				return nil, fmt.Errorf("invalid compose file path: %w", err)
+			}
+		}
+		if err := validator.ValidateServiceName(req.Service); err != nil {
+			return nil, fmt.Errorf("invalid service name: %w", err)
+		}
+		if req.Command != "" {
+			cmdArgs := args.GetArgs(req.Command)
+			if err := validator.ValidateCommandArgs(cmdArgs); err != nil {
+				return nil, fmt.Errorf("invalid command arguments: %w", err)
+			}
+		}
 		j := &core.ComposeJob{}
 		j.Name = req.Name
 		j.Schedule = req.Schedule
@@ -407,6 +425,15 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 		j.Exec = req.ExecFlag
 		return j, nil
 	case "", "local":
+		// Validate local job command if provided to prevent injection attacks
+		// Note: Empty commands will be caught at runtime by LocalJob.buildCommand()
+		if req.Command != "" {
+			validator := config.NewCommandValidator()
+			cmdArgs := args.GetArgs(req.Command)
+			if err := validator.ValidateCommandArgs(cmdArgs); err != nil {
+				return nil, fmt.Errorf("invalid command arguments: %w", err)
+			}
+		}
 		j := &core.LocalJob{}
 		j.Name = req.Name
 		j.Schedule = req.Schedule

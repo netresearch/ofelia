@@ -292,7 +292,7 @@ func (j *RunJob) watchContainer() error {
 
 // watchContainerLegacy is the old polling method kept for backward compatibility
 func (j *RunJob) watchContainerLegacy() error {
-	const watchDuration = time.Millisecond * 500 // Optimized from 100ms to reduce CPU usage
+	const watchDuration = time.Second * 2 // Increased from 500ms to reduce API calls and CPU usage
 	var s docker.State
 	var r time.Duration
 	for {
