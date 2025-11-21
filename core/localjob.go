@@ -31,7 +31,14 @@ func (j *LocalJob) Run(ctx *Context) error {
 }
 
 func (j *LocalJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
+	// Parse command arguments and ensure non-empty
+	// Note: Config file commands are validated during load by config.Validator2
+	// API-created jobs are validated in web/server.go before reaching here
 	cmdArgs := args.GetArgs(j.Command)
+	if len(cmdArgs) == 0 {
+		return nil, fmt.Errorf("command cannot be empty")
+	}
+
 	bin, err := exec.LookPath(cmdArgs[0])
 	if err != nil {
 		return nil, fmt.Errorf("look path %q: %w", cmdArgs[0], err)

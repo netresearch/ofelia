@@ -108,18 +108,14 @@ func TestLocalJob_Run_EmptyCommand(t *testing.T) {
 		Execution: execution,
 	}
 
-	// This test documents a bug: empty command causes panic instead of proper error handling
-	defer func() {
-		if r := recover(); r != nil {
-			// The panic is expected with current implementation
-			// This should be fixed to return a proper error instead
-			t.Logf("KNOWN BUG: Empty command causes panic: %v", r)
-		} else {
-			t.Error("Expected panic for empty command (documenting current bug)")
-		}
-	}()
-
-	_ = job.Run(ctx)
+	// Test that empty command returns proper error (BUG FIXED: used to panic)
+	err = job.Run(ctx)
+	if err == nil {
+		t.Error("Expected error for empty command, got nil")
+	}
+	if err != nil && !strings.Contains(err.Error(), "command cannot be empty") {
+		t.Errorf("Expected 'command cannot be empty' error, got: %v", err)
+	}
 }
 
 func TestLocalJob_BuildCommand_CorrectArguments(t *testing.T) {

@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types/swarm"
 	docker "github.com/fsouza/go-dockerclient"
+	"github.com/gobs/args"
 )
 
 // Note: The ServiceJob is loosely inspired by https://github.com/alexellis/jaas/
@@ -91,7 +91,7 @@ func (j *RunServiceJob) buildService() (*swarm.Service, error) {
 	}
 
 	if j.Command != "" {
-		createSvcOpts.ServiceSpec.TaskTemplate.ContainerSpec.Command = strings.Split(j.Command, " ")
+		createSvcOpts.ServiceSpec.TaskTemplate.ContainerSpec.Command = args.GetArgs(j.Command)
 	}
 
 	svc, err := j.Client.CreateService(createSvcOpts)
@@ -103,14 +103,15 @@ func (j *RunServiceJob) buildService() (*swarm.Service, error) {
 }
 
 const (
-
-	// TODO are these const defined somewhere in the docker API?
-	swarmError   = -999
-	timeoutError = -998
+	// Exit codes for swarm service execution states
+	// These are Ofelia-specific codes, not from Docker Swarm API
+	// They indicate failure modes that don't map to container exit codes
+	ExitCodeSwarmError = -999 // Swarm orchestration error (task not found, service unavailable)
+	ExitCodeTimeout    = -998 // Max runtime exceeded before task completion
 )
 
 func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
-	exitCode := swarmError
+	exitCode := ExitCodeSwarmError
 
 	ctx.Logger.Noticef("Checking for service ID %s (%s) termination\n", svcID, j.Name)
 
