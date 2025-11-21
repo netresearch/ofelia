@@ -1,6 +1,12 @@
 # Ofelia - a job scheduler
+
 [![CI](https://github.com/netresearch/ofelia/actions/workflows/ci.yml/badge.svg)](https://github.com/netresearch/ofelia/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/netresearch/ofelia/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/netresearch/ofelia/actions/workflows/github-code-scanning/codeql)
+[![GitHub release](https://img.shields.io/github/v/release/netresearch/ofelia)](https://github.com/netresearch/ofelia/releases/latest)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/netresearch/ofelia)](go.mod)
+[![License](https://img.shields.io/github/license/netresearch/ofelia)](LICENSE)
+[![Docker Pulls](https://img.shields.io/docker/pulls/netresearch/ofelia)](https://hub.docker.com/r/netresearch/ofelia)
+[![Go Report Card](https://goreportcard.com/badge/github.com/netresearch/ofelia)](https://goreportcard.com/report/github.com/netresearch/ofelia)
 
 <img src="https://weirdspace.dk/FranciscoIbanez/Graphics/Ofelia.gif" align="right" width="180px" height="300px" vspace="20" />
 
