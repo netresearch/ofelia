@@ -424,7 +424,7 @@ func (s *SuiteConfig) TestIniConfigUpdateGlobalChange(c *C) {
 	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
-	ApplyLogLevel(cfg.Global.LogLevel)
+	_ = ApplyLogLevel(cfg.Global.LogLevel) // Ignore error in test
 	ms := cfg.sh.Middlewares()
 	c.Assert(ms, HasLen, 1)
 	saveMw := ms[0].(*middlewares.Save)

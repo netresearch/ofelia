@@ -19,7 +19,11 @@ type ValidateCommand struct {
 
 // Execute runs the validation command
 func (c *ValidateCommand) Execute(_ []string) error {
-	ApplyLogLevel(c.LogLevel)
+	if err := ApplyLogLevel(c.LogLevel); err != nil {
+		c.Logger.Errorf("Failed to apply log level: %v", err)
+		return fmt.Errorf("invalid log level configuration: %w", err)
+	}
+
 	c.Logger.Debugf("Validating %q ... ", c.ConfigFile)
 	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
 	if err != nil {
@@ -27,7 +31,9 @@ func (c *ValidateCommand) Execute(_ []string) error {
 		return err
 	}
 	if c.LogLevel == "" {
-		ApplyLogLevel(conf.Global.LogLevel)
+		if err := ApplyLogLevel(conf.Global.LogLevel); err != nil {
+			c.Logger.Warningf("Failed to apply config log level (using default): %v", err)
+		}
 	}
 
 	applyConfigDefaults(conf)

@@ -455,7 +455,9 @@ func (c *Config) iniConfigUpdate() error {
 				j.Use(c.sh.Middlewares()...)
 			}
 		}
-		ApplyLogLevel(c.Global.LogLevel)
+		if err := ApplyLogLevel(c.Global.LogLevel); err != nil {
+			c.logger.Warningf("Failed to apply global log level (using default): %v", err)
+		}
 	}
 
 	execPrep := func(name string, j *ExecJobConfig) {

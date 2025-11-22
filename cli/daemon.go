@@ -53,7 +53,10 @@ func (c *DaemonCommand) boot() (err error) {
 	c.done = make(chan struct{})
 
 	// Apply CLI log level before reading config
-	ApplyLogLevel(c.LogLevel)
+	if err := ApplyLogLevel(c.LogLevel); err != nil {
+		c.Logger.Errorf("Failed to apply log level: %v", err)
+		return fmt.Errorf("invalid log level configuration: %w", err)
+	}
 
 	// Initialize shutdown manager
 	c.shutdownManager = core.NewShutdownManager(c.Logger, 30*time.Second)
@@ -89,7 +92,9 @@ func (c *DaemonCommand) boot() (err error) {
 	}
 
 	if c.LogLevel == "" {
-		ApplyLogLevel(config.Global.LogLevel)
+		if err := ApplyLogLevel(config.Global.LogLevel); err != nil {
+			c.Logger.Warningf("Failed to apply config log level (using default): %v", err)
+		}
 	}
 
 	err = config.InitializeApp()
