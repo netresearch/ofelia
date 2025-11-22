@@ -46,12 +46,34 @@ func (c *DoctorCommand) Execute(_ []string) error {
 		Checks:  []CheckResult{},
 	}
 
-	// Run all checks
+	// Show progress only in non-JSON mode
+	var progress *ProgressReporter
+	if !c.JSON {
+		c.Logger.Noticef("🏥 Running Ofelia Health Diagnostics...\n")
+		totalSteps := 4 // config, docker, schedules, images
+		progress = NewProgressReporter(c.Logger, totalSteps)
+	}
+
+	// Run all checks with progress feedback
+	if progress != nil {
+		progress.Step(1, "Checking configuration...")
+	}
 	c.checkConfiguration(report)
+
+	if progress != nil {
+		progress.Step(2, "Checking Docker connectivity...")
+	}
 	dockerOK := c.checkDocker(report)
+
+	if progress != nil {
+		progress.Step(3, "Validating job schedules...")
+	}
 	c.checkSchedules(report)
 
 	// Docker-dependent checks
+	if progress != nil {
+		progress.Step(4, "Verifying Docker images...")
+	}
 	if dockerOK {
 		c.checkDockerImages(report)
 	} else {
@@ -61,6 +83,11 @@ func (c *DoctorCommand) Execute(_ []string) error {
 			Status:   "skip",
 			Message:  "Skipped (Docker connectivity required)",
 		})
+	}
+
+	// Clear progress line before output
+	if progress != nil {
+		progress.Complete("Health check complete")
 	}
 
 	// Output results
