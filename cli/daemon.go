@@ -190,7 +190,7 @@ func (c *DaemonCommand) start() error {
 		c.Logger.Noticef("web server disabled")
 	}
 
-	c.Logger.Noticef("\n🚀 Ofelia is now running. Press Ctrl+C to stop.")
+	c.Logger.Noticef("🚀 Ofelia is now running. Press Ctrl+C to stop.")
 
 	return nil
 }

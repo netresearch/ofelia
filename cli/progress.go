@@ -124,11 +124,20 @@ func (p *ProgressIndicator) animate() {
 	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	i := 0
 
+	// Get ticker channel under mutex to prevent race
+	p.mu.Lock()
+	if p.ticker == nil {
+		p.mu.Unlock()
+		return
+	}
+	tickerC := p.ticker.C
+	p.mu.Unlock()
+
 	for {
 		select {
 		case <-p.done:
 			return
-		case <-p.ticker.C:
+		case <-tickerC:
 			p.mu.Lock()
 			fmt.Fprintf(p.writer, "\r%s %s", frames[i], p.message)
 			p.mu.Unlock()
@@ -161,6 +170,11 @@ func (pr *ProgressReporter) Step(stepNum int, message string) {
 	defer pr.mu.Unlock()
 
 	pr.currentStep = stepNum
+
+	// Protect against division by zero
+	if pr.totalSteps == 0 {
+		return
+	}
 
 	if pr.isTerminal {
 		// Terminal: show progress bar

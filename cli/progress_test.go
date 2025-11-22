@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -146,7 +147,7 @@ func TestProgressIndicator_Concurrency(t *testing.T) {
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func(n int) {
-			progress.Update("Update " + string(rune(n)))
+			progress.Update(fmt.Sprintf("Update %d", n))
 			done <- true
 		}(i)
 	}
