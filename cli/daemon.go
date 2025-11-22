@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"net/http"
 	_ "net/http/pprof" // #nosec G108
 	"time"
@@ -168,8 +170,15 @@ func (c *DaemonCommand) start() error {
 				close(c.done)
 			}
 		}()
-		// Give server time to start
-		time.Sleep(100 * time.Millisecond)
+
+		// Wait for server to be ready with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := waitForServer(ctx, c.PprofAddr); err != nil {
+			c.Logger.Errorf("❌ pprof server failed to start: %v", err)
+			return fmt.Errorf("pprof server startup failed: %w", err)
+		}
 		c.Logger.Noticef("✅ pprof server ready on %s", c.PprofAddr)
 	} else {
 		c.Logger.Noticef("pprof server disabled")
@@ -183,8 +192,15 @@ func (c *DaemonCommand) start() error {
 				close(c.done)
 			}
 		}()
-		// Give server time to start
-		time.Sleep(100 * time.Millisecond)
+
+		// Wait for server to be ready with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := waitForServer(ctx, c.WebAddr); err != nil {
+			c.Logger.Errorf("❌ web server failed to start: %v", err)
+			return fmt.Errorf("web server startup failed: %w", err)
+		}
 		c.Logger.Noticef("✅ Web UI ready at http://%s", c.WebAddr)
 	} else {
 		c.Logger.Noticef("web server disabled")
@@ -238,4 +254,23 @@ func (c *DaemonCommand) applyOptions(config *Config) {
 // Config returns the active configuration used by the daemon.
 func (c *DaemonCommand) Config() *Config {
 	return c.config
+}
+
+// waitForServer waits for a TCP server to start accepting connections
+func waitForServer(ctx context.Context, addr string) error {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for server: %w", ctx.Err())
+		case <-ticker.C:
+			conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+			if err == nil {
+				_ = conn.Close() // Ignore close error, connection test successful
+				return nil
+			}
+		}
+	}
 }
