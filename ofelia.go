@@ -86,6 +86,12 @@ func main() {
 		"",
 		&cli.ConfigShowCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
 	)
+	_, _ = parser.AddCommand(
+		"doctor",
+		"diagnose Ofelia configuration and environment health",
+		"",
+		&cli.DoctorCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
+	)
 
 	if _, err := parser.ParseArgs(args); err != nil {
 		var flagErr *flags.Error
