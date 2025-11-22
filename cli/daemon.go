@@ -145,7 +145,8 @@ func (c *DaemonCommand) start() error {
 	}()
 
 	if err := c.scheduler.Start(); err != nil {
-		return fmt.Errorf("start scheduler: %w", err)
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return fmt.Errorf("failed to start scheduler: %w\n  → Check all job schedules are valid cron expressions\n  → Verify no duplicate job names exist\n  → Use 'ofelia validate --config=%q' to check configuration\n  → Check Docker daemon is running if using Docker jobs\n  → Review logs above for specific job errors", err, c.ConfigFile)
 	}
 
 	if c.EnablePprof {

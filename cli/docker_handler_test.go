@@ -93,7 +93,7 @@ func (s *DockerHandlerSuite) TestGetDockerLabelsInvalidFilter(c *C) {
 	h := &DockerHandler{filters: []string{"invalidfilter"}, logger: &TestLogger{}, ctx: context.Background()}
 	_, err := h.GetDockerLabels()
 	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Equals, "invalid docker filter: invalidfilter")
+	c.Assert(err.Error(), Matches, `(?s)invalid docker filter "invalidfilter".*key=value format.*`)
 }
 
 // TestGetDockerLabelsNoContainers verifies that GetDockerLabels returns ErrNoContainerWithOfeliaEnabled when no containers match

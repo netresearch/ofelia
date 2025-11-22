@@ -59,12 +59,14 @@ func (c *DockerHandler) buildDockerClient() (dockerClient, error) {
 		core.GlobalPerformanceMetrics,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create optimized docker client: %w", err)
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return nil, fmt.Errorf("failed to create Docker client: %w\n  → Check Docker daemon is running: docker ps\n  → Verify Docker socket is accessible: ls -l /var/run/docker.sock\n  → Check DOCKER_HOST environment variable if using remote Docker\n  → Ensure current user has Docker permissions: groups | grep docker", err)
 	}
 
 	// Sanity check Docker connection
 	if _, err := optimizedClient.Info(); err != nil {
-		return nil, fmt.Errorf("docker client info: %w", err)
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return nil, fmt.Errorf("failed to connect to Docker daemon: %w\n  → Check Docker daemon is running: systemctl status docker\n  → Verify network connectivity if using remote Docker\n  → Check Docker socket permissions: ls -l /var/run/docker.sock\n  → Try: docker info (should work if Docker is accessible)", err)
 	}
 
 	return optimizedClient, nil
@@ -105,7 +107,8 @@ func NewDockerHandler(
 
 	// Do a sanity check on docker
 	if _, err = c.dockerClient.Info(); err != nil {
-		return nil, fmt.Errorf("docker info: %w", err)
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return nil, fmt.Errorf("failed to query Docker daemon info: %w\n  → Check Docker daemon is running: systemctl status docker\n  → Verify Docker API is accessible: docker info\n  → Check for Docker daemon errors: journalctl -u docker -n 50", err)
 	}
 
 	if !c.disablePolling && c.pollInterval > 0 {
@@ -154,7 +157,8 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 	for _, f := range c.filters {
 		parts := strings.SplitN(f, "=", 2)
 		if len(parts) != 2 {
-			return nil, errors.New("invalid docker filter: " + f)
+			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+			return nil, fmt.Errorf("invalid docker filter %q\n  → Filters must use key=value format (e.g., 'label=app=web')\n  → Valid filter keys: label, name, id, status, network\n  → Example: --docker-filter='label=environment=production'\n  → Check your OFELIA_DOCKER_FILTER environment variable or config file", f)
 		}
 		key, value := parts[0], parts[1]
 		values, ok := filters[key]
@@ -169,7 +173,8 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 		Filters: filters,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list containers: %w", err)
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return nil, fmt.Errorf("failed to list Docker containers: %w\n  → Check Docker daemon is running: docker ps\n  → Verify user has Docker permissions: groups | grep docker\n  → Check Docker filters are valid: %v\n  → Try listing containers manually: docker ps -a", err, filters)
 	}
 
 	if len(conts) == 0 {

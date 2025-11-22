@@ -84,7 +84,8 @@ func NewConfig(logger core.Logger) *Config {
 func resolveConfigFiles(pattern string) ([]string, error) {
 	files, err := filepath.Glob(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("glob %q: %w", pattern, err)
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return nil, fmt.Errorf("invalid glob pattern %q: %w\n  → Check pattern syntax (wildcards: *, ?, [abc])\n  → Example valid patterns: '/etc/ofelia/*.ini', '/etc/ofelia/config-*.ini'\n  → Escape special characters if using literal brackets\n  → Verify directory path exists before the pattern", pattern, err)
 	}
 	if len(files) == 0 {
 		files = []string{pattern}
@@ -107,10 +108,12 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	for _, f := range files {
 		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, f)
 		if err != nil {
-			return nil, fmt.Errorf("load ini %q: %w", f, err)
+			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+			return nil, fmt.Errorf("failed to load config file %q: %w\n  → Check file exists and is readable: ls -l %q\n  → Verify file path is correct\n  → Check file permissions (should be readable)", f, err, f)
 		}
 		if err := parseIni(cfg, c); err != nil {
-			return nil, fmt.Errorf("parse ini %q: %w", f, err)
+			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+			return nil, fmt.Errorf("failed to parse config file %q: %w\n  → Check INI syntax is valid (sections in [brackets], key=value pairs)\n  → Look for syntax errors near line mentioned in error\n  → Use 'ofelia validate --config=%q' to validate syntax", f, err, f)
 		}
 		if info, statErr := os.Stat(f); statErr == nil {
 			if info.ModTime().After(latest) {
@@ -127,7 +130,8 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 	if c.Global.EnableStrictValidation {
 		validator := config.NewConfigValidator(c)
 		if err := validator.Validate(); err != nil {
-			return nil, fmt.Errorf("configuration validation failed: %w", err)
+			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+			return nil, fmt.Errorf("configuration validation failed: %w\n  → Review validation errors above for specific issues\n  → Check job schedules are valid cron expressions\n  → Verify required fields are set for all jobs\n  → Use 'ofelia validate --config=%q' for detailed validation", err, filename)
 		}
 	}
 
@@ -706,7 +710,8 @@ func parseGlobalAndDocker(cfg *ini.File, c *Config) error {
 func decodeJob[T jobConfig](section *ini.Section, job T, set func(string, T), prefix string) error {
 	jobName := parseJobName(strings.TrimSpace(section.Name()), prefix)
 	if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
-		return fmt.Errorf("decode job %q: %w", jobName, err)
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return fmt.Errorf("failed to decode job %q configuration: %w\n  → Check job section syntax in config file\n  → Verify all required fields are set (schedule, command, container, etc.)\n  → Check for typos in configuration keys\n  → Use 'ofelia validate --config=<file>' to validate configuration\n  → Review job type requirements (job-exec, job-run, job-local, job-service-run)", jobName, err)
 	}
 	set(jobName, job)
 	return nil
