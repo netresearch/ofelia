@@ -80,6 +80,12 @@ func main() {
 		"",
 		&cli.ValidateCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
 	)
+	_, _ = parser.AddCommand(
+		"config",
+		"shows the effective runtime configuration",
+		"",
+		&cli.ConfigShowCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
+	)
 
 	if _, err := parser.ParseArgs(args); err != nil {
 		var flagErr *flags.Error
