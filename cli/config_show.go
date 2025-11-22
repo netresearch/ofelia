@@ -17,7 +17,7 @@ type ConfigShowCommand struct {
 
 // Execute runs the config show command
 func (c *ConfigShowCommand) Execute(_ []string) error {
-	ApplyLogLevel(c.LogLevel)
+	_ = ApplyLogLevel(c.LogLevel) // Ignore error, will use default level
 
 	c.Logger.Debugf("Loading configuration from %q ... ", c.ConfigFile)
 	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
@@ -28,7 +28,7 @@ func (c *ConfigShowCommand) Execute(_ []string) error {
 
 	// Apply CLI log level override if provided
 	if c.LogLevel == "" {
-		ApplyLogLevel(conf.Global.LogLevel)
+		_ = ApplyLogLevel(conf.Global.LogLevel) // Ignore error, will use default level
 	}
 
 	// Apply defaults to all job configurations
