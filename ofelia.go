@@ -87,6 +87,12 @@ func main() {
 		&cli.ConfigShowCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
 	)
 	_, _ = parser.AddCommand(
+		"init",
+		"creates configuration through interactive wizard",
+		"",
+		&cli.InitCommand{Logger: logger, LogLevel: pre.LogLevel},
+	)
+	_, _ = parser.AddCommand(
 		"doctor",
 		"diagnose Ofelia configuration and environment health",
 		"",
