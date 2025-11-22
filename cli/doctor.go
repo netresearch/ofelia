@@ -82,7 +82,7 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 				Status:   "fail",
 				Message:  fmt.Sprintf("Config file not found: %s", c.ConfigFile),
 				Hints: []string{
-					"Create config file with: ofelia init",
+					"Create a sample config file manually or copy from examples",
 					"Or specify path with: --config=/path/to/config.ini",
 				},
 			})
@@ -176,9 +176,9 @@ func (c *DoctorCommand) checkDocker(report *DoctorReport) bool {
 			Message:  fmt.Sprintf("Cannot connect to Docker: %v", err),
 			Hints: []string{
 				"Check Docker daemon: docker info",
-				"Start Docker: systemctl start docker",
+				"Start Docker service (Linux: systemctl start docker, macOS/Windows: start Docker Desktop)",
 				"Check socket: ls -l /var/run/docker.sock",
-				"Fix permissions: sudo usermod -aG docker $USER",
+				"Fix permissions: sudo usermod -aG docker $USER (Linux)",
 			},
 		})
 		return false
@@ -194,8 +194,8 @@ func (c *DoctorCommand) checkDocker(report *DoctorReport) bool {
 			Status:   "fail",
 			Message:  fmt.Sprintf("Docker ping failed: %v", err),
 			Hints: []string{
-				"Check daemon status: systemctl status docker",
-				"View logs: journalctl -u docker -n 50",
+				"Check daemon status (Linux: systemctl status docker, macOS/Windows: check Docker Desktop)",
+				"View logs (Linux: journalctl -u docker -n 50, macOS/Windows: Docker Desktop logs)",
 			},
 		})
 		return false
@@ -216,6 +216,12 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
 	if err != nil {
 		// Config error already reported
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Job Schedules",
+			Name:     "Schedule Validation",
+			Status:   "skip",
+			Message:  "Skipped (configuration validation failed)",
+		})
 		return
 	}
 
@@ -294,9 +300,27 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 		}
 	}
 
+	// Check compose jobs
+	for name, job := range conf.ComposeJobs {
+		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+			allValid = false
+			report.Healthy = false
+			report.Checks = append(report.Checks, CheckResult{
+				Category: "Job Schedules",
+				Name:     fmt.Sprintf("job-compose \"%s\"", name),
+				Status:   "fail",
+				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Hints: []string{
+					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
+					"Test schedule: https://crontab.guru",
+				},
+			})
+		}
+	}
+
 	if allValid {
 		totalJobs := len(conf.RunJobs) + len(conf.LocalJobs) +
-			len(conf.ExecJobs) + len(conf.ServiceJobs)
+			len(conf.ExecJobs) + len(conf.ServiceJobs) + len(conf.ComposeJobs)
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Job Schedules",
 			Name:     "All Schedules Valid",
@@ -374,8 +398,23 @@ func validateCronSchedule(parser cron.Parser, schedule string) error {
 		}
 	}
 
-	// Check for @every format
+	// Check for @every format and validate duration
 	if strings.HasPrefix(schedule, "@every ") {
+		durationStr := strings.TrimPrefix(schedule, "@every ")
+		durationStr = strings.TrimSpace(durationStr)
+
+		// Check for negative durations
+		if strings.HasPrefix(durationStr, "-") {
+			return fmt.Errorf("negative duration not allowed")
+		}
+
+		// Try parsing the cron.Every using the actual cron library's approach
+		sched, err := cron.ParseStandard(schedule)
+		if err != nil {
+			return fmt.Errorf("invalid @every duration format: %w", err)
+		}
+		// Successfully parsed if we got here
+		_ = sched
 		return nil
 	}
 

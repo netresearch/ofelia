@@ -114,6 +114,7 @@ func TestValidateCronSchedule(t *testing.T) {
 		{"descriptor @monthly", "@monthly", false},
 		{"descriptor @yearly", "@yearly", false},
 		{"descriptor @annually", "@annually", false},
+		{"descriptor @midnight", "@midnight", false},
 
 		// Valid @every format
 		{"@every 1h", "@every 1h", false},
@@ -130,7 +131,7 @@ func TestValidateCronSchedule(t *testing.T) {
 
 		// Invalid schedules
 		{"invalid descriptor", "@invalid", true},
-		{"invalid @every", "@every invalid", false}, // Parser accepts this (treats as identifier)
+		{"invalid @every", "@every invalid", true}, // Should fail - invalid duration
 		{"invalid cron - too few fields", "* * *", true},
 		{"invalid cron - too many fields", "* * * * * * *", true},
 		{"invalid cron - bad range", "60 * * * *", true},
@@ -322,8 +323,8 @@ func TestDoctorCommand_SpecialSchedules(t *testing.T) {
 		{"whitespace schedule", "   ", true},
 		{"tab schedule", "\t", true},
 		{"newline schedule", "\n", true},
-		{"multiple @every", "@every 1h @every 2h", false}, // Parser accepts this (treats as duration)
-		{"@every with negative", "@every -1h", false},     // Parser accepts negative durations
+		{"multiple @every", "@every 1h @every 2h", true}, // Invalid - multiple @every
+		{"@every with negative", "@every -1h", true},     // Invalid - negative durations should fail
 		{"descriptor with extra text", "@daily extra", true},
 		{"valid with leading space", " @daily", true},  // Space breaks descriptor
 		{"valid with trailing space", "@daily ", true}, // Space breaks descriptor
