@@ -570,21 +570,22 @@ func (s *DaemonLifecycleSuite) TestServerErrorHandlingDuringStartup(c *C) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	// With health checks, start() now correctly fails when server can't bind
 	err := cmd.start()
-	c.Assert(err, IsNil) // start() itself should succeed
+	c.Assert(err, NotNil) // start() should fail for invalid address
+	c.Assert(err.Error(), Matches, ".*pprof server startup failed.*")
 
-	// Give time for error to occur
-	time.Sleep(200 * time.Millisecond)
-
-	// Check that error was logged
-	found := false
+	// Check that failure was logged
+	foundError := false
 	for _, entry := range hook.AllEntries() {
-		if entry.Level == logrus.ErrorLevel && strings.Contains(entry.Message, "Error starting HTTP server") {
-			found = true
+		if entry.Level == logrus.ErrorLevel &&
+			(strings.Contains(entry.Message, "pprof server failed to start") ||
+				strings.Contains(entry.Message, "Error starting HTTP server")) {
+			foundError = true
 			break
 		}
 	}
-	c.Assert(found, Equals, true)
+	c.Assert(foundError, Equals, true)
 }
 
 // Test daemon complete execute workflow
