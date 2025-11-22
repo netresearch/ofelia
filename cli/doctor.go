@@ -1,0 +1,495 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+
+	docker "github.com/fsouza/go-dockerclient"
+	"github.com/robfig/cron/v3"
+
+	"github.com/netresearch/ofelia/core"
+)
+
+// DoctorCommand runs comprehensive health checks on Ofelia configuration and environment
+type DoctorCommand struct {
+	ConfigFile string `long:"config" description:"Path to configuration file" default:"/etc/ofelia/config.ini"`
+	LogLevel   string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level"`
+	JSON       bool   `long:"json" description:"Output results as JSON"`
+	Logger     core.Logger
+}
+
+// CheckResult represents the result of a single health check
+type CheckResult struct {
+	Category string   `json:"category"`
+	Name     string   `json:"name"`
+	Status   string   `json:"status"` // "pass", "fail", "skip"
+	Message  string   `json:"message,omitempty"`
+	Hints    []string `json:"hints,omitempty"`
+}
+
+// DoctorReport contains all health check results
+type DoctorReport struct {
+	Healthy bool          `json:"healthy"`
+	Checks  []CheckResult `json:"checks"`
+}
+
+// Execute runs all health checks
+func (c *DoctorCommand) Execute(_ []string) error {
+	if err := ApplyLogLevel(c.LogLevel); err != nil {
+		c.Logger.Warningf("Failed to apply log level (using default): %v", err)
+	}
+
+	report := &DoctorReport{
+		Healthy: true,
+		Checks:  []CheckResult{},
+	}
+
+	// Run all checks
+	c.checkConfiguration(report)
+	dockerOK := c.checkDocker(report)
+	c.checkSchedules(report)
+
+	// Docker-dependent checks
+	if dockerOK {
+		c.checkDockerImages(report)
+	} else {
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Docker Images",
+			Name:     "Image Availability",
+			Status:   "skip",
+			Message:  "Skipped (Docker connectivity required)",
+		})
+	}
+
+	// Output results
+	if c.JSON {
+		return c.outputJSON(report)
+	}
+	return c.outputHuman(report)
+}
+
+// checkConfiguration validates configuration file
+func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
+	// Check file exists and is readable
+	if _, err := os.Stat(c.ConfigFile); err != nil {
+		if os.IsNotExist(err) {
+			report.Healthy = false
+			report.Checks = append(report.Checks, CheckResult{
+				Category: "Configuration",
+				Name:     "File Exists",
+				Status:   "fail",
+				Message:  fmt.Sprintf("Config file not found: %s", c.ConfigFile),
+				Hints: []string{
+					"Create config file with: ofelia init",
+					"Or specify path with: --config=/path/to/config.ini",
+				},
+			})
+			return
+		}
+		report.Healthy = false
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Configuration",
+			Name:     "File Readable",
+			Status:   "fail",
+			Message:  fmt.Sprintf("Cannot read config file: %v", err),
+			Hints: []string{
+				fmt.Sprintf("Check permissions: ls -l %s", c.ConfigFile),
+				fmt.Sprintf("Fix permissions: chmod 644 %s", c.ConfigFile),
+			},
+		})
+		return
+	}
+
+	report.Checks = append(report.Checks, CheckResult{
+		Category: "Configuration",
+		Name:     "File Exists",
+		Status:   "pass",
+		Message:  c.ConfigFile,
+	})
+
+	// Try to load and parse configuration
+	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
+	if err != nil {
+		report.Healthy = false
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Configuration",
+			Name:     "Valid Syntax",
+			Status:   "fail",
+			Message:  fmt.Sprintf("Parse error: %v", err),
+			Hints: []string{
+				"Check INI syntax (sections, keys, values)",
+				fmt.Sprintf("Validate with: ofelia validate --config=%s", c.ConfigFile),
+			},
+		})
+		return
+	}
+
+	report.Checks = append(report.Checks, CheckResult{
+		Category: "Configuration",
+		Name:     "Valid Syntax",
+		Status:   "pass",
+	})
+
+	// Count jobs
+	jobCount := len(conf.RunJobs) + len(conf.LocalJobs) +
+		len(conf.ExecJobs) + len(conf.ServiceJobs)
+	report.Checks = append(report.Checks, CheckResult{
+		Category: "Configuration",
+		Name:     "Jobs Defined",
+		Status:   "pass",
+		Message:  fmt.Sprintf("%d job(s) configured", jobCount),
+	})
+}
+
+// checkDocker validates Docker connectivity
+func (c *DoctorCommand) checkDocker(report *DoctorReport) bool {
+	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
+	if err != nil {
+		// Config error already reported in checkConfiguration
+		return false
+	}
+
+	// Only check Docker if there are Docker-based jobs
+	hasDockerJobs := len(conf.RunJobs) > 0 ||
+		len(conf.ExecJobs) > 0 ||
+		len(conf.ServiceJobs) > 0
+
+	if !hasDockerJobs {
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Docker",
+			Name:     "Connectivity",
+			Status:   "skip",
+			Message:  "No Docker-based jobs configured",
+		})
+		return true // Not needed, so counts as OK
+	}
+
+	// Try to initialize Docker handler
+	if err := conf.initDockerHandler(); err != nil {
+		report.Healthy = false
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Docker",
+			Name:     "Connectivity",
+			Status:   "fail",
+			Message:  fmt.Sprintf("Cannot connect to Docker: %v", err),
+			Hints: []string{
+				"Check Docker daemon: docker info",
+				"Start Docker: systemctl start docker",
+				"Check socket: ls -l /var/run/docker.sock",
+				"Fix permissions: sudo usermod -aG docker $USER",
+			},
+		})
+		return false
+	}
+
+	// Ping Docker daemon
+	client := conf.dockerHandler.GetInternalDockerClient()
+	if err := client.Ping(); err != nil {
+		report.Healthy = false
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Docker",
+			Name:     "Connectivity",
+			Status:   "fail",
+			Message:  fmt.Sprintf("Docker ping failed: %v", err),
+			Hints: []string{
+				"Check daemon status: systemctl status docker",
+				"View logs: journalctl -u docker -n 50",
+			},
+		})
+		return false
+	}
+
+	report.Checks = append(report.Checks, CheckResult{
+		Category: "Docker",
+		Name:     "Connectivity",
+		Status:   "pass",
+		Message:  "Docker daemon responding",
+	})
+
+	return true
+}
+
+// checkSchedules validates all job schedules
+func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
+	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
+	if err != nil {
+		// Config error already reported
+		return
+	}
+
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	allValid := true
+
+	// Check run jobs
+	for name, job := range conf.RunJobs {
+		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+			allValid = false
+			report.Healthy = false
+			report.Checks = append(report.Checks, CheckResult{
+				Category: "Job Schedules",
+				Name:     fmt.Sprintf("job-run \"%s\"", name),
+				Status:   "fail",
+				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Hints: []string{
+					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
+					"Test schedule: https://crontab.guru",
+				},
+			})
+		}
+	}
+
+	// Check local jobs
+	for name, job := range conf.LocalJobs {
+		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+			allValid = false
+			report.Healthy = false
+			report.Checks = append(report.Checks, CheckResult{
+				Category: "Job Schedules",
+				Name:     fmt.Sprintf("job-local \"%s\"", name),
+				Status:   "fail",
+				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Hints: []string{
+					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
+					"Test schedule: https://crontab.guru",
+				},
+			})
+		}
+	}
+
+	// Check exec jobs
+	for name, job := range conf.ExecJobs {
+		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+			allValid = false
+			report.Healthy = false
+			report.Checks = append(report.Checks, CheckResult{
+				Category: "Job Schedules",
+				Name:     fmt.Sprintf("job-exec \"%s\"", name),
+				Status:   "fail",
+				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Hints: []string{
+					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
+					"Test schedule: https://crontab.guru",
+				},
+			})
+		}
+	}
+
+	// Check service-run jobs
+	for name, job := range conf.ServiceJobs {
+		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+			allValid = false
+			report.Healthy = false
+			report.Checks = append(report.Checks, CheckResult{
+				Category: "Job Schedules",
+				Name:     fmt.Sprintf("job-service-run \"%s\"", name),
+				Status:   "fail",
+				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Hints: []string{
+					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
+					"Test schedule: https://crontab.guru",
+				},
+			})
+		}
+	}
+
+	if allValid {
+		totalJobs := len(conf.RunJobs) + len(conf.LocalJobs) +
+			len(conf.ExecJobs) + len(conf.ServiceJobs)
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Job Schedules",
+			Name:     "All Schedules Valid",
+			Status:   "pass",
+			Message:  fmt.Sprintf("%d schedule(s) validated", totalJobs),
+		})
+	}
+}
+
+// checkDockerImages validates required Docker images exist
+func (c *DoctorCommand) checkDockerImages(report *DoctorReport) {
+	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
+	if err != nil {
+		return
+	}
+
+	// Collect all required images
+	imageMap := make(map[string]bool)
+	for _, job := range conf.RunJobs {
+		imageMap[job.Image] = true
+	}
+
+	if len(imageMap) == 0 {
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Docker Images",
+			Name:     "Image Availability",
+			Status:   "skip",
+			Message:  "No job-run jobs configured",
+		})
+		return
+	}
+
+	if err := conf.initDockerHandler(); err != nil {
+		return // Docker check already failed
+	}
+
+	client := conf.dockerHandler.GetInternalDockerClient()
+	allAvailable := true
+	for image := range imageMap {
+		images, err := client.ListImages(docker.ListImagesOptions{
+			Filter: image,
+		})
+		if err != nil || len(images) == 0 {
+			allAvailable = false
+			report.Healthy = false
+			report.Checks = append(report.Checks, CheckResult{
+				Category: "Docker Images",
+				Name:     image,
+				Status:   "fail",
+				Message:  "Image not found locally",
+				Hints: []string{
+					fmt.Sprintf("Pull image: docker pull %s", image),
+				},
+			})
+		}
+	}
+
+	if allAvailable {
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Docker Images",
+			Name:     "All Images Available",
+			Status:   "pass",
+			Message:  fmt.Sprintf("%d image(s) found locally", len(imageMap)),
+		})
+	}
+}
+
+// validateCronSchedule validates a cron schedule expression
+func validateCronSchedule(parser cron.Parser, schedule string) error {
+	// Check for special descriptors
+	descriptors := []string{"@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly"}
+	for _, desc := range descriptors {
+		if schedule == desc {
+			return nil
+		}
+	}
+
+	// Check for @every format
+	if strings.HasPrefix(schedule, "@every ") {
+		return nil
+	}
+
+	// Parse as cron expression
+	if _, err := parser.Parse(schedule); err != nil {
+		return fmt.Errorf("invalid cron schedule: %w", err)
+	}
+
+	return nil
+}
+
+// outputJSON outputs results as JSON
+func (c *DoctorCommand) outputJSON(report *DoctorReport) error {
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	c.Logger.Noticef("%s", string(data))
+
+	if !report.Healthy {
+		return fmt.Errorf("health check failed")
+	}
+	return nil
+}
+
+// outputHuman outputs results in human-readable format
+func (c *DoctorCommand) outputHuman(report *DoctorReport) error {
+	c.Logger.Noticef("🏥 Ofelia Health Check\n")
+
+	// Group checks by category
+	categories := make(map[string][]CheckResult)
+	categoryOrder := []string{"Configuration", "Docker", "Job Schedules", "Docker Images"}
+
+	for _, check := range report.Checks {
+		categories[check.Category] = append(categories[check.Category], check)
+	}
+
+	// Output by category
+	for _, category := range categoryOrder {
+		checks, exists := categories[category]
+		if !exists {
+			continue
+		}
+
+		icon := getCategoryIcon(category)
+		c.Logger.Noticef("%s %s", icon, category)
+
+		for _, check := range checks {
+			statusIcon := getStatusIcon(check.Status)
+			if check.Message != "" {
+				c.Logger.Noticef("  %s %s: %s", statusIcon, check.Name, check.Message)
+			} else {
+				c.Logger.Noticef("  %s %s", statusIcon, check.Name)
+			}
+
+			// Output hints
+			for _, hint := range check.Hints {
+				c.Logger.Noticef("    → %s", hint)
+			}
+		}
+		c.Logger.Noticef("")
+	}
+
+	// Summary
+	failCount := 0
+	skipCount := 0
+	for _, check := range report.Checks {
+		if check.Status == "fail" {
+			failCount++
+		} else if check.Status == "skip" {
+			skipCount++
+		}
+	}
+
+	if report.Healthy {
+		c.Logger.Noticef("Summary: All checks passed ✅")
+		if skipCount > 0 {
+			c.Logger.Noticef("  (%d check(s) skipped as not applicable)", skipCount)
+		}
+		return nil
+	}
+
+	c.Logger.Noticef("Summary: %d issue(s) found ❌", failCount)
+	if skipCount > 0 {
+		c.Logger.Noticef("  (%d check(s) skipped due to blockers)", skipCount)
+	}
+	return fmt.Errorf("health check failed")
+}
+
+// getCategoryIcon returns emoji for category
+func getCategoryIcon(category string) string {
+	icons := map[string]string{
+		"Configuration": "📋",
+		"Docker":        "🐳",
+		"Job Schedules": "📅",
+		"Docker Images": "🖼️",
+	}
+	if icon, ok := icons[category]; ok {
+		return icon
+	}
+	return "📌"
+}
+
+// getStatusIcon returns emoji for check status
+func getStatusIcon(status string) string {
+	switch status {
+	case "pass":
+		return "✅"
+	case "fail":
+		return "❌"
+	case "skip":
+		return "⚠️"
+	default:
+		return "❓"
+	}
+}
