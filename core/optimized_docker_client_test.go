@@ -77,8 +77,8 @@ func TestDockerHTTP2Detection(t *testing.T) {
 			if tt.dockerHost != "" {
 				t.Setenv("DOCKER_HOST", tt.dockerHost)
 			} else {
-				// Unset to test default behavior
-				os.Unsetenv("DOCKER_HOST")
+				// Set empty to test default behavior
+				t.Setenv("DOCKER_HOST", "")
 			}
 
 			// This is the detection logic from NewOptimizedDockerClient

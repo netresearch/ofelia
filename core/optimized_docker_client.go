@@ -243,22 +243,38 @@ func NewOptimizedDockerClient(config *DockerClientConfig, logger Logger, metrics
 		DisableCompression: false, // Keep compression for slower networks
 	}
 
-	// Create HTTP client with timeout
-	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   config.RequestTimeout,
-	}
+	// Create Docker client
+	var client *docker.Client
+	var err error
 
-	// Create Docker client with optimized HTTP client
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("create base docker client: %w", err)
-	}
+	if isTLSConnection {
+		// For TLS connections: Use our custom HTTP client with HTTP/2 support
+		httpClient := &http.Client{
+			Transport: transport,
+			Timeout:   config.RequestTimeout,
+		}
 
-	// Replace the HTTP client with our optimized version
-	// Note: This requires access to the internal HTTP client, which may need
-	// to be done via reflection or by using a custom endpoint
-	client.HTTPClient = httpClient
+		client, err = docker.NewClientFromEnv()
+		if err != nil {
+			return nil, fmt.Errorf("create base docker client: %w", err)
+		}
+
+		// Replace with our optimized HTTP client that has HTTP/2 enabled
+		client.HTTPClient = httpClient
+	} else {
+		// For non-TLS connections (Unix sockets, tcp://, http://):
+		// Use default go-dockerclient setup which handles Unix sockets correctly
+		// Don't override HTTP client as that breaks Unix socket dialing
+		client, err = docker.NewClientFromEnv()
+		if err != nil {
+			return nil, fmt.Errorf("create base docker client: %w", err)
+		}
+
+		// Apply only the timeout configuration, keep the default transport
+		if client.HTTPClient != nil {
+			client.HTTPClient.Timeout = config.RequestTimeout
+		}
+	}
 
 	// Create circuit breaker
 	circuitBreaker := NewDockerCircuitBreaker(config, logger)
