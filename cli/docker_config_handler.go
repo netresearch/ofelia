@@ -27,6 +27,7 @@ type DockerHandler struct {
 	cancel         context.CancelFunc
 	filters        []string
 	dockerClient   dockerClient
+	dockerProvider core.DockerProvider // SDK-based provider for new code
 	notifier       dockerLabelsUpdate
 	logger         core.Logger
 	pollInterval   time.Duration
@@ -38,7 +39,8 @@ type dockerLabelsUpdate interface {
 	dockerLabelsUpdate(map[string]map[string]string)
 }
 
-// TODO: Implement an interface so the code does not have to use third parties directly
+// GetInternalDockerClient returns the underlying go-dockerclient client.
+// Deprecated: Use GetDockerProvider() for new code.
 func (c *DockerHandler) GetInternalDockerClient() *docker.Client {
 	// First try optimized client
 	if optimized, ok := c.dockerClient.(*core.OptimizedDockerClient); ok {
@@ -49,6 +51,12 @@ func (c *DockerHandler) GetInternalDockerClient() *docker.Client {
 		return client
 	}
 	return nil
+}
+
+// GetDockerProvider returns the DockerProvider interface for SDK-based operations.
+// This is the preferred method for new code using the official Docker SDK.
+func (c *DockerHandler) GetDockerProvider() core.DockerProvider {
+	return c.dockerProvider
 }
 
 func (c *DockerHandler) buildDockerClient() (dockerClient, error) {
@@ -111,6 +119,13 @@ func NewDockerHandler(
 		return nil, fmt.Errorf("failed to query Docker daemon info: %w\n  → Check Docker daemon is running: systemctl status docker\n  → Verify Docker API is accessible: docker info\n  → Check for Docker daemon errors: journalctl -u docker -n 50", err)
 	}
 
+	// Initialize SDK-based Docker provider
+	c.dockerProvider, err = c.buildSDKProvider()
+	if err != nil {
+		logger.Warningf("Failed to create SDK Docker provider: %v", err)
+		// Provider will be nil, but legacy client is still available
+	}
+
 	if !c.disablePolling && c.pollInterval > 0 {
 		go c.watch()
 	}
@@ -118,6 +133,22 @@ func NewDockerHandler(
 		go c.watchEvents()
 	}
 	return c, nil
+}
+
+// buildSDKProvider creates the new SDK-based Docker provider.
+func (c *DockerHandler) buildSDKProvider() (core.DockerProvider, error) {
+	provider, err := core.NewSDKDockerProviderDefault()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SDK Docker provider: %w", err)
+	}
+
+	// Verify connection
+	if err := provider.Ping(context.Background()); err != nil {
+		_ = provider.Close()
+		return nil, fmt.Errorf("SDK provider failed to connect to Docker: %w", err)
+	}
+
+	return provider, nil
 }
 
 func (c *DockerHandler) watch() {
@@ -227,5 +258,14 @@ func (c *DockerHandler) Shutdown(ctx context.Context) error {
 	if c.cancel != nil {
 		c.cancel()
 	}
+
+	// Close SDK provider if it was created
+	if c.dockerProvider != nil {
+		if err := c.dockerProvider.Close(); err != nil {
+			c.logger.Warningf("Error closing Docker provider: %v", err)
+		}
+		c.dockerProvider = nil
+	}
+
 	return nil
 }
