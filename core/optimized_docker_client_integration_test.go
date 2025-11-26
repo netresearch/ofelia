@@ -255,8 +255,8 @@ func TestOptimizedDockerClientAddEventListener(t *testing.T) {
 	}
 	defer safeClose(t, client)
 
-	// Create event channel with buffer to prevent blocking
-	events := make(chan *docker.APIEvents, 10)
+	// Create event channel with larger buffer to prevent blocking
+	events := make(chan *docker.APIEvents, 100)
 
 	// Add event listener
 	err = client.AddEventListenerWithOptions(docker.EventsOptions{
@@ -278,10 +278,11 @@ func TestOptimizedDockerClientAddEventListener(t *testing.T) {
 	}
 
 	// Give go-dockerclient time to clean up its internal goroutine
-	time.Sleep(100 * time.Millisecond)
+	// The goroutine polls periodically to check if listener was removed
+	time.Sleep(200 * time.Millisecond)
 
 	// Drain any pending events before closing
-	drainLoop:
+drainLoop:
 	for {
 		select {
 		case <-events:
@@ -291,9 +292,16 @@ func TestOptimizedDockerClientAddEventListener(t *testing.T) {
 		}
 	}
 
-	// Now safe to close - but don't close, let GC handle it
-	// Closing causes panic in go-dockerclient's internal goroutine (issue #911)
-	// The channel will be garbage collected when all references are gone
+	// Close the channel to allow proper cleanup
+	// Wrap in function with recover to handle potential panic from go-dockerclient issue #911
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Logf("Recovered from event channel close (go-dockerclient issue #911): %v", r)
+			}
+		}()
+		close(events)
+	}()
 }
 
 // TestOptimizedDockerClientConnectionPooling verifies connection pooling config

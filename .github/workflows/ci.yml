@@ -143,7 +143,7 @@ jobs:
         run: docker info
 
       - name: Integration tests
-        run: go test -tags=integration ./...
+        run: go test -tags=integration -timeout=2m ./...
 
   codeql:
     # skip merge queue branches as they disappear before the upload step
