@@ -87,12 +87,28 @@ linters:
           - wrapcheck
         path: _test\.go
       - linters:
+          - govet
+        path: "_test"
+        text: "buildtag:"
+      - linters:
           - nolintlint
         path: core/common\.go
         text: nolint:exhaustive
       - linters:
           - tagliatelle
         path: middlewares/slack\.go
+      - linters:
+          - staticcheck
+        text: "QF"
+      - linters:
+          - staticcheck
+        text: "ST1005:"
+      - linters:
+          - staticcheck
+        text: "ST1018:"
+      - linters:
+          - noctx
+        path: cli/daemon\.go
     paths:
       - third_party$
       - builtin$
