@@ -116,17 +116,10 @@ jobs:
           echo "govulncheck: no vulnerabilities with available fixes (or only unfixed advisories)"
           exit 0
 
-  # Integration tests - non-blocking due to upstream go-dockerclient issue #911
-  # (https://github.com/fsouza/go-dockerclient/issues/911)
-  # The panic "send on closed channel" in event monitoring is not catchable from our code
-  # as it occurs in go-dockerclient's internal goroutine.
-  # Tests still run and report results, but don't block CI.
-
   integration:
     name: integration tests
     needs: unit
     runs-on: ${{ matrix.platform }}
-    continue-on-error: true  # Don't block CI due to go-dockerclient #911
     strategy:
       fail-fast: false
       matrix:

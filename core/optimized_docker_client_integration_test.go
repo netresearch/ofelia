@@ -255,8 +255,8 @@ func TestOptimizedDockerClientAddEventListener(t *testing.T) {
 	}
 	defer safeClose(t, client)
 
-	// Create event channel
-	events := make(chan *docker.APIEvents, 1)
+	// Create event channel with buffer to prevent blocking
+	events := make(chan *docker.APIEvents, 10)
 
 	// Add event listener
 	err = client.AddEventListenerWithOptions(docker.EventsOptions{
@@ -269,7 +269,31 @@ func TestOptimizedDockerClientAddEventListener(t *testing.T) {
 
 	// Just verify the method exists and doesn't crash
 	// Don't wait for actual events as we don't know if any will occur
-	close(events)
+
+	// IMPORTANT: Remove the event listener BEFORE closing the channel
+	// go-dockerclient issue #911: internal goroutine may panic with "send on closed channel"
+	// if we close the channel while it's still trying to send events
+	if err := client.GetClient().RemoveEventListener(events); err != nil {
+		t.Logf("Warning: RemoveEventListener failed: %v", err)
+	}
+
+	// Give go-dockerclient time to clean up its internal goroutine
+	time.Sleep(100 * time.Millisecond)
+
+	// Drain any pending events before closing
+	drainLoop:
+	for {
+		select {
+		case <-events:
+			// Drain event
+		default:
+			break drainLoop
+		}
+	}
+
+	// Now safe to close - but don't close, let GC handle it
+	// Closing causes panic in go-dockerclient's internal goroutine (issue #911)
+	// The channel will be garbage collected when all references are gone
 }
 
 // TestOptimizedDockerClientConnectionPooling verifies connection pooling config

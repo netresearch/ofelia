@@ -117,10 +117,17 @@ func (cm *ContainerMonitor) waitWithEvents(containerID string, maxRuntime time.D
 		return nil, fmt.Errorf("failed to add event listener: %w", err)
 	}
 	defer func() {
+		// IMPORTANT: Remove the event listener first
+		// go-dockerclient issue #911: internal goroutine may panic with "send on closed channel"
 		if err := cm.client.RemoveEventListener(eventChan); err != nil {
 			cm.logger.Warningf("Failed to remove event listener: %v", err)
 		}
-		cm.safeCloseChannel(eventChan)
+		// Give go-dockerclient time to clean up its internal goroutine
+		time.Sleep(50 * time.Millisecond)
+		// Drain any pending events
+		cm.drainEventChannel(eventChan)
+		// Don't close the channel - go-dockerclient's internal goroutine may still send
+		// Let GC handle cleanup to avoid "send on closed channel" panic (issue #911)
 	}()
 
 	// Check if container is already stopped
@@ -216,12 +223,14 @@ func (cm *ContainerMonitor) MonitorContainerLogs(containerID string, stdout, std
 	return nil
 }
 
-// safeCloseChannel safely closes a channel with panic recovery
-func (cm *ContainerMonitor) safeCloseChannel(ch chan *docker.APIEvents) {
-	defer func() {
-		if r := recover(); r != nil {
-			cm.logger.Debugf("Channel already closed: %v", r)
+// drainEventChannel drains any pending events from a channel without blocking
+func (cm *ContainerMonitor) drainEventChannel(ch chan *docker.APIEvents) {
+	for {
+		select {
+		case <-ch:
+			// Drain event
+		default:
+			return
 		}
-	}()
-	close(ch)
+	}
 }
