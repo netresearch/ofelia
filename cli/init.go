@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/manifoldco/promptui"
-	"github.com/robfig/cron/v3"
+	"github.com/netresearch/go-cron"
 	"gopkg.in/ini.v1"
 
 	"github.com/netresearch/ofelia/core"

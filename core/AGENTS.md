@@ -6,7 +6,7 @@
 - Core business logic, job scheduling, and execution engine
 - Main entry points: `scheduler.go`, `runservice.go`, `workflow.go`
 - Job types: `runjob.go` (Docker containers), `localjob.go` (local execution), `execjob.go` (exec in containers)
-- Cron scheduling via `github.com/robfig/cron/v3`
+- Cron scheduling via `github.com/netresearch/go-cron` (fork of robfig/cron with panic fixes)
 
 ## Setup & environment
 - Install: `go mod download`
