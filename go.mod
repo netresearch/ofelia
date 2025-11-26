@@ -16,7 +16,7 @@ require (
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/robfig/cron/v3 v3.0.1
+	github.com/netresearch/go-cron v0.5.0
 	github.com/sirupsen/logrus v1.9.3
 	golang.org/x/crypto v0.45.0
 	golang.org/x/term v0.37.0

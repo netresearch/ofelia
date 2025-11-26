@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robfig/cron/v3"
+	"github.com/netresearch/go-cron"
 )
 
 var (

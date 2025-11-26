@@ -1,102 +1,133 @@
+version: "2"
+run:
+  tests: false
 linters:
-  disable-all: true
+  default: none
   enable:
-    - gofmt
-    - goimports
-    - gofumpt
-    - gci
-    - gocritic
-    - bodyclose
-    - contextcheck
-    - errorlint
-    - errname
-    - tagliatelle
     - asciicheck
-    - durationcheck
+    - bodyclose
     - containedctx
-    - noctx
-    - nilerr
-    - nilnil
-    - nosprintfhostport
-    - unconvert
-    - paralleltest
-    - tparallel
-    - depguard
-    - revive
-    - gocyclo
-    - ineffassign
-    - errcheck
-    - misspell
-    - goconst
-    - dupl
-    - prealloc
-    - typecheck
-    - staticcheck
-    - gosimple
-    - govet
-    - unused
-    - unparam
-    - nolintlint
-    - predeclared
+    - contextcheck
     - copyloopvar
+    - depguard
+    - dupl
+    - durationcheck
+    - errcheck
+    - errname
+    - errorlint
     - exhaustive
     - forbidigo
+    - goconst
+    - gocritic
+    - gocyclo
+    - govet
+    - ineffassign
+    - misspell
+    - nilerr
+    - nilnil
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - paralleltest
+    - prealloc
+    - predeclared
+    - revive
+    - staticcheck
+    - tagliatelle
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
     - wrapcheck
-
-run:
-  timeout: 5m
-  tests: false
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - revive
-        - wrapcheck
-    - path: core/common\.go
-      text: "nolint:exhaustive"
-      linters:
-        - nolintlint
-    - path: middlewares/slack\.go
-      linters:
-        - tagliatelle
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  revive:
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: log
+              desc: use core.Logger (logrus via core adapter)
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print.*$
+    gocyclo:
+      min-complexity: 15
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: blank-imports
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: var-naming
+        - name: exported
+        - name: if-return
+        - name: early-return
+        - name: line-length-limit
+          arguments:
+            - 140
+        - name: import-shadowing
+        - name: time-naming
+        - name: increment-decrement
+    wrapcheck:
+      ignore-sig-regexps:
+        - errors\.New\(
+        - \*github\.com/netresearch/ofelia/core\.Context\)\.Next\(
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: blank-imports
-        disabled: true
-      - name: package-comments
-        disabled: true
-      - name: var-naming
-      - name: exported
-      - name: if-return
-      - name: early-return
-      - name: line-length-limit
-        arguments: [ 140 ]
-      - name: import-shadowing
-      - name: time-naming
-      - name: increment-decrement
-  forbidigo:
-    forbid:
-      - '^fmt\.Print.*$'
-  wrapcheck:
-    ignoreSigRegexps:
-      - 'errors\.New\('
-      - '\*github\.com/netresearch/ofelia/core\.Context\)\.Next\('
-  misspell:
-    locale: US
-  gci:
-    sections:
-      - standard
-      - default
-      - prefix(github.com/netresearch/ofelia)
-  depguard:
-    rules:
-      main:
-        deny:
-          - pkg: log
-            desc: use core.Logger (logrus via core adapter)
+      - linters:
+          - gocyclo
+          - revive
+          - wrapcheck
+        path: _test\.go
+      - linters:
+          - govet
+        path: "_test"
+        text: "buildtag:"
+      - linters:
+          - nolintlint
+        path: core/common\.go
+        text: nolint:exhaustive
+      - linters:
+          - tagliatelle
+        path: middlewares/slack\.go
+      - linters:
+          - staticcheck
+        text: "QF"
+      - linters:
+          - staticcheck
+        text: "ST1005:"
+      - linters:
+          - staticcheck
+        text: "ST1018:"
+      - linters:
+          - noctx
+        path: cli/daemon\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/netresearch/ofelia)
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

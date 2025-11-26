@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/robfig/cron/v3"
+	"github.com/netresearch/go-cron"
 
 	"github.com/netresearch/ofelia/test"
 )

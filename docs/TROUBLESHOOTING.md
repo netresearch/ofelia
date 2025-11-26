@@ -98,6 +98,68 @@ ls -la /var/run/docker.sock
    - Start Docker Desktop application
    - Wait for "Docker Desktop is running" status
 
+### HTTP/2 Protocol Errors (v0.11.0 Only)
+
+**Symptoms**:
+```
+Error: protocol error
+Error: connection refused
+Error: failed to connect to Docker daemon
+```
+
+**Affected Versions**: v0.11.0 only (fixed in v0.11.1+)
+
+**Diagnosis**:
+```bash
+# Check Ofelia version
+ofelia version
+
+# Check Docker connection type
+echo $DOCKER_HOST
+# Common values:
+# - unix:///var/run/docker.sock (default)
+# - tcp://localhost:2375 (cleartext)
+# - https://host:2376 (TLS)
+```
+
+**Root Cause**:
+v0.11.0 introduced OptimizedDockerClient that incorrectly enabled HTTP/2 on all connections. Docker daemon only supports HTTP/2 over TLS (https://), not on:
+- Unix domain sockets (unix://)
+- TCP cleartext (tcp://)
+- HTTP cleartext (http://)
+
+**Solutions**:
+
+1. **Upgrade to v0.11.1+** (Recommended):
+   ```yaml
+   # docker-compose.yml
+   services:
+     ofelia:
+       image: mcuadros/ofelia:latest
+   ```
+
+2. **Downgrade to v0.10.2** (Temporary workaround):
+   ```yaml
+   services:
+     ofelia:
+       image: mcuadros/ofelia:v0.10.2
+   ```
+
+3. **Use HTTPS connection** (If possible):
+   ```bash
+   export DOCKER_HOST=https://docker-host:2376
+   export DOCKER_CERT_PATH=/path/to/certs
+   ```
+
+**Technical Details**:
+See `docs/http2_investigation_findings.md` for complete technical analysis.
+
+**References**:
+- Issue: #266
+- Fix: #267
+- Affected: Unix sockets, tcp://, http:// connections
+- Working: https:// connections only
+
 ### Container Not Found
 
 **Symptoms**:

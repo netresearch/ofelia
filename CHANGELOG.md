@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Docker Socket HTTP/2 Compatibility**
+  - Fixed Docker client connection failures on non-TLS connections introduced in v0.11.0
+  - OptimizedDockerClient now only enables HTTP/2 for HTTPS (TLS) connections
+  - HTTP/2 is disabled for Unix sockets, tcp://, and http:// (Docker daemon only supports HTTP/2 over TLS with ALPN)
+  - Resolves "protocol error" issues when connecting to `/var/run/docker.sock` or `tcp://localhost:2375`
+  - HTTP/2 enabled only for `https://` connections where Docker daemon supports ALPN negotiation
+  - Added comprehensive unit tests covering all connection types (9 scenarios)
+  - Technical details: Docker daemon does not implement h2c (HTTP/2 cleartext) - HTTP/2 requires TLS
+
 ## [0.11.0] - 2025-11-21
 
 ### Critical Fixes

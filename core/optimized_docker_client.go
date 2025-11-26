@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -189,6 +191,30 @@ func NewOptimizedDockerClient(config *DockerClientConfig, logger Logger, metrics
 		config = DefaultDockerClientConfig()
 	}
 
+	// Detect Docker connection type from environment
+	dockerHost := os.Getenv("DOCKER_HOST")
+	if dockerHost == "" {
+		dockerHost = "unix:///var/run/docker.sock" // Default Docker socket
+	}
+
+	// HTTP/2 support in Docker daemon:
+	// - Unix sockets (unix://): HTTP/1.1 only (no TLS available)
+	// - TCP cleartext (tcp://, http://): HTTP/1.1 only (no h2c support in daemon)
+	// - TCP with TLS (https://): HTTP/2 via ALPN negotiation (if client supports it)
+	//
+	// Docker daemon does NOT support h2c (HTTP/2 cleartext) on tcp:// connections.
+	// HTTP/2 requires TLS + ALPN negotiation, which is only available on https:// URLs.
+	// See: https://docs.docker.com/engine/api/ and RFC 7540 Section 3.3
+	isTLSConnection := strings.HasPrefix(dockerHost, "https://")
+
+	if logger != nil {
+		if isTLSConnection {
+			logger.Debugf("Docker client using TLS connection: %s (HTTP/2 enabled via ALPN)", dockerHost)
+		} else {
+			logger.Debugf("Docker client using non-TLS connection: %s (HTTP/1.1 only)", dockerHost)
+		}
+	}
+
 	// Create optimized HTTP transport
 	transport := &http.Transport{
 		DialContext: (&net.Dialer{
@@ -206,30 +232,49 @@ func NewOptimizedDockerClient(config *DockerClientConfig, logger Logger, metrics
 		ResponseHeaderTimeout: config.ResponseHeaderTimeout,
 		ExpectContinueTimeout: 1 * time.Second,
 
-		// HTTP/2 settings for better performance
-		ForceAttemptHTTP2:   true,
+		// HTTP/2 settings - ONLY for TLS connections
+		// Docker daemon only supports HTTP/2 over TLS with ALPN negotiation.
+		// Unix sockets, tcp://, and http:// connections only support HTTP/1.1.
+		// Enabling HTTP/2 on non-TLS connections causes protocol negotiation errors.
+		ForceAttemptHTTP2:   isTLSConnection,
 		TLSHandshakeTimeout: 10 * time.Second,
 
 		// Disable compression to reduce CPU overhead
 		DisableCompression: false, // Keep compression for slower networks
 	}
 
-	// Create HTTP client with timeout
-	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   config.RequestTimeout,
-	}
+	// Create Docker client
+	var client *docker.Client
+	var err error
 
-	// Create Docker client with optimized HTTP client
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		return nil, fmt.Errorf("create base docker client: %w", err)
-	}
+	if isTLSConnection {
+		// For TLS connections: Use our custom HTTP client with HTTP/2 support
+		httpClient := &http.Client{
+			Transport: transport,
+			Timeout:   config.RequestTimeout,
+		}
 
-	// Replace the HTTP client with our optimized version
-	// Note: This requires access to the internal HTTP client, which may need
-	// to be done via reflection or by using a custom endpoint
-	client.HTTPClient = httpClient
+		client, err = docker.NewClientFromEnv()
+		if err != nil {
+			return nil, fmt.Errorf("create base docker client: %w", err)
+		}
+
+		// Replace with our optimized HTTP client that has HTTP/2 enabled
+		client.HTTPClient = httpClient
+	} else {
+		// For non-TLS connections (Unix sockets, tcp://, http://):
+		// Use default go-dockerclient setup which handles Unix sockets correctly
+		// Don't override HTTP client as that breaks Unix socket dialing
+		client, err = docker.NewClientFromEnv()
+		if err != nil {
+			return nil, fmt.Errorf("create base docker client: %w", err)
+		}
+
+		// Apply only the timeout configuration, keep the default transport
+		if client.HTTPClient != nil {
+			client.HTTPClient.Timeout = config.RequestTimeout
+		}
+	}
 
 	// Create circuit breaker
 	circuitBreaker := NewDockerCircuitBreaker(config, logger)

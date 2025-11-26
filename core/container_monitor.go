@@ -92,6 +92,8 @@ func (cm *ContainerMonitor) WaitForContainer(containerID string, maxRuntime time
 }
 
 // waitWithEvents uses Docker events API for efficient container monitoring
+//
+//nolint:gocyclo // complexity increased by adding polling fallback for mock server compatibility
 func (cm *ContainerMonitor) waitWithEvents(containerID string, maxRuntime time.Duration) (*docker.State, error) {
 	// Create a context with timeout if maxRuntime is specified
 	ctx := context.Background()
@@ -117,10 +119,26 @@ func (cm *ContainerMonitor) waitWithEvents(containerID string, maxRuntime time.D
 		return nil, fmt.Errorf("failed to add event listener: %w", err)
 	}
 	defer func() {
+		// IMPORTANT: Remove the event listener first
+		// go-dockerclient issue #911: internal goroutine may panic with "send on closed channel"
 		if err := cm.client.RemoveEventListener(eventChan); err != nil {
 			cm.logger.Warningf("Failed to remove event listener: %v", err)
 		}
-		cm.safeCloseChannel(eventChan)
+		// Give go-dockerclient more time to clean up its internal goroutine
+		// The goroutine polls periodically to check if listener was removed
+		time.Sleep(200 * time.Millisecond)
+		// Drain any pending events to free buffer space
+		cm.drainEventChannel(eventChan)
+		// Close the channel to allow proper cleanup and prevent test hangs
+		// Wrap in recover to handle potential panic from go-dockerclient issue #911
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					cm.logger.Debugf("Recovered from event channel close (go-dockerclient issue #911): %v", r)
+				}
+			}()
+			close(eventChan)
+		}()
 	}()
 
 	// Check if container is already stopped
@@ -136,7 +154,12 @@ func (cm *ContainerMonitor) waitWithEvents(containerID string, maxRuntime time.D
 		return &container.State, nil
 	}
 
-	// Wait for container to stop
+	// Wait for container to stop with periodic polling fallback
+	// This handles cases where the events API doesn't work (e.g., mock Docker servers)
+	// Use a short interval (100ms) to ensure responsive detection while still being efficient
+	pollTicker := time.NewTicker(100 * time.Millisecond)
+	defer pollTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -166,6 +189,20 @@ func (cm *ContainerMonitor) waitWithEvents(containerID string, maxRuntime time.D
 					return nil, fmt.Errorf("failed to inspect container after event: %w", err)
 				}
 
+				return &container.State, nil
+			}
+
+		case <-pollTicker.C:
+			// Periodic fallback check for container status
+			// This handles mock servers that don't properly implement the events API
+			container, err := cm.client.InspectContainerWithOptions(docker.InspectContainerOptions{
+				ID:      containerID,
+				Context: ctx,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to inspect container during poll: %w", err)
+			}
+			if !container.State.Running {
 				return &container.State, nil
 			}
 		}
@@ -216,12 +253,14 @@ func (cm *ContainerMonitor) MonitorContainerLogs(containerID string, stdout, std
 	return nil
 }
 
-// safeCloseChannel safely closes a channel with panic recovery
-func (cm *ContainerMonitor) safeCloseChannel(ch chan *docker.APIEvents) {
-	defer func() {
-		if r := recover(); r != nil {
-			cm.logger.Debugf("Channel already closed: %v", r)
+// drainEventChannel drains any pending events from a channel without blocking
+func (cm *ContainerMonitor) drainEventChannel(ch chan *docker.APIEvents) {
+	for {
+		select {
+		case <-ch:
+			// Drain event
+		default:
+			return
 		}
-	}()
-	close(ch)
+	}
 }

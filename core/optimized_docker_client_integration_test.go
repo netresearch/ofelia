@@ -10,6 +10,22 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 )
 
+// safeClose wraps client.Close() with panic recovery to handle upstream go-dockerclient issue #911
+// The panic occurs during cleanup in event monitoring goroutines: "send on closed channel"
+// This is NOT a test failure - tests complete successfully before the panic occurs
+// Issue: https://github.com/fsouza/go-dockerclient/issues/911
+func safeClose(t *testing.T, client *OptimizedDockerClient) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Known upstream issue - panic during event listener cleanup
+			t.Logf("Recovered from panic during cleanup (known upstream go-dockerclient issue #911): %v", r)
+		}
+	}()
+	if err := client.Close(); err != nil {
+		t.Logf("Error during client close: %v", err)
+	}
+}
+
 // TestOptimizedDockerClientCreation verifies optimized client can be created
 func TestOptimizedDockerClientCreation(t *testing.T) {
 	config := DefaultDockerClientConfig()
@@ -17,8 +33,8 @@ func TestOptimizedDockerClientCreation(t *testing.T) {
 
 	client, err := NewOptimizedDockerClient(config, nil, metrics)
 	if err != nil {
-		// Skip if Docker is not available (CI environment)
-		t.Skipf("Docker not available: %v", err)
+		// FAIL if Docker is not available - integration tests REQUIRE Docker
+		t.Fatalf("Docker not available (integration tests require Docker daemon): %v", err)
 	}
 
 	if client == nil {
@@ -41,7 +57,7 @@ func TestOptimizedDockerClientCreation(t *testing.T) {
 	}
 
 	// Cleanup
-	client.Close()
+	safeClose(t, client)
 }
 
 // TestOptimizedDockerClientGetClient verifies GetClient returns underlying client
@@ -49,9 +65,9 @@ func TestOptimizedDockerClientGetClient(t *testing.T) {
 	config := DefaultDockerClientConfig()
 	client, err := NewOptimizedDockerClient(config, nil, nil)
 	if err != nil {
-		t.Skipf("Docker not available: %v", err)
+		t.Fatalf("Docker not available (integration tests require Docker daemon): %v", err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	underlyingClient := client.GetClient()
 	if underlyingClient == nil {
@@ -71,14 +87,14 @@ func TestOptimizedDockerClientInfo(t *testing.T) {
 
 	client, err := NewOptimizedDockerClient(config, nil, metrics)
 	if err != nil {
-		t.Skipf("Docker not available: %v", err)
+		t.Fatalf("Docker not available (integration tests require Docker daemon): %v", err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	// Call Info
 	info, err := client.Info()
 	if err != nil {
-		t.Skipf("Docker Info failed (daemon might be down): %v", err)
+		t.Fatalf("Docker Info failed (integration tests require working Docker daemon): %v", err)
 	}
 
 	if info == nil {
@@ -109,14 +125,14 @@ func TestOptimizedDockerClientListContainers(t *testing.T) {
 
 	client, err := NewOptimizedDockerClient(config, nil, metrics)
 	if err != nil {
-		t.Skipf("Docker not available: %v", err)
+		t.Fatalf("Docker not available (integration tests require Docker daemon): %v", err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	// List containers
 	containers, err := client.ListContainers(docker.ListContainersOptions{})
 	if err != nil {
-		t.Skipf("Docker ListContainers failed: %v", err)
+		t.Fatalf("Docker ListContainers failed (integration tests require working Docker daemon): %v", err)
 	}
 
 	// containers can be empty, that's fine
@@ -145,9 +161,9 @@ func TestOptimizedDockerClientCircuitBreaker(t *testing.T) {
 	metrics := NewPerformanceMetrics()
 	client, err := NewOptimizedDockerClient(config, nil, metrics)
 	if err != nil {
-		t.Skipf("Docker not available: %v", err)
+		t.Fatalf("Docker not available (integration tests require Docker daemon): %v", err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	// Get stats
 	stats := client.GetStats()
@@ -178,19 +194,19 @@ func TestOptimizedDockerClientMetricsIntegration(t *testing.T) {
 
 	client, err := NewOptimizedDockerClient(config, nil, metrics)
 	if err != nil {
-		t.Skipf("Docker not available: %v", err)
+		t.Fatalf("Docker not available (integration tests require Docker daemon): %v", err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	// Verify Docker daemon is responsive
 	if _, err := client.Info(); err != nil {
-		t.Skipf("Docker daemon not responsive: %v", err)
+		t.Fatalf("Docker daemon not responsive (integration tests require working Docker daemon): %v", err)
 	}
 
 	// Perform multiple operations
 	for i := 0; i < 5; i++ {
 		if _, err := client.Info(); err != nil {
-			t.Skipf("Docker Info failed: %v", err)
+			t.Fatalf("Docker Info failed (integration tests require working Docker daemon): %v", err)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -235,12 +251,12 @@ func TestOptimizedDockerClientAddEventListener(t *testing.T) {
 	config := DefaultDockerClientConfig()
 	client, err := NewOptimizedDockerClient(config, nil, nil)
 	if err != nil {
-		t.Skipf("Docker not available: %v", err)
+		t.Fatalf("Docker not available (integration tests require Docker daemon): %v", err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
-	// Create event channel
-	events := make(chan *docker.APIEvents, 1)
+	// Create event channel with larger buffer to prevent blocking
+	events := make(chan *docker.APIEvents, 100)
 
 	// Add event listener
 	err = client.AddEventListenerWithOptions(docker.EventsOptions{
@@ -248,12 +264,44 @@ func TestOptimizedDockerClientAddEventListener(t *testing.T) {
 	}, events)
 
 	if err != nil {
-		t.Skipf("AddEventListenerWithOptions failed: %v", err)
+		t.Fatalf("AddEventListenerWithOptions failed (integration tests require working Docker daemon): %v", err)
 	}
 
 	// Just verify the method exists and doesn't crash
 	// Don't wait for actual events as we don't know if any will occur
-	close(events)
+
+	// IMPORTANT: Remove the event listener BEFORE closing the channel
+	// go-dockerclient issue #911: internal goroutine may panic with "send on closed channel"
+	// if we close the channel while it's still trying to send events
+	if err := client.GetClient().RemoveEventListener(events); err != nil {
+		t.Logf("Warning: RemoveEventListener failed: %v", err)
+	}
+
+	// Give go-dockerclient time to clean up its internal goroutine
+	// The goroutine polls periodically to check if listener was removed
+	time.Sleep(200 * time.Millisecond)
+
+	// Drain any pending events before closing
+drainLoop:
+	for {
+		select {
+		case <-events:
+			// Drain event
+		default:
+			break drainLoop
+		}
+	}
+
+	// Close the channel to allow proper cleanup
+	// Wrap in function with recover to handle potential panic from go-dockerclient issue #911
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Logf("Recovered from event channel close (go-dockerclient issue #911): %v", r)
+			}
+		}()
+		close(events)
+	}()
 }
 
 // TestOptimizedDockerClientConnectionPooling verifies connection pooling config
@@ -273,9 +321,9 @@ func TestOptimizedDockerClientConnectionPooling(t *testing.T) {
 
 	client, err := NewOptimizedDockerClient(config, nil, nil)
 	if err != nil {
-		t.Skipf("Docker not available: %v", err)
+		t.Fatalf("Docker not available (integration tests require Docker daemon): %v", err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	// Verify stats reflect config
 	stats := client.GetStats()
@@ -296,13 +344,13 @@ func TestOptimizedDockerClientConcurrency(t *testing.T) {
 
 	client, err := NewOptimizedDockerClient(config, nil, metrics)
 	if err != nil {
-		t.Skipf("Docker not available: %v", err)
+		t.Fatalf("Docker not available (integration tests require Docker daemon): %v", err)
 	}
-	defer client.Close()
+	defer safeClose(t, client)
 
 	// Verify Docker daemon is responsive
 	if _, err := client.Info(); err != nil {
-		t.Skipf("Docker daemon not responsive: %v", err)
+		t.Fatalf("Docker daemon not responsive (integration tests require working Docker daemon): %v", err)
 	}
 
 	const goroutines = 10
@@ -331,7 +379,7 @@ func TestOptimizedDockerClientConcurrency(t *testing.T) {
 		case <-done:
 			// Success
 		case err := <-errChan:
-			t.Skipf("Docker operation failed during concurrent test: %v", err)
+			t.Fatalf("Docker operation failed during concurrent test (integration tests require working Docker daemon): %v", err)
 		case <-timeout:
 			t.Fatal("Concurrent test timed out")
 		}
