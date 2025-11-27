@@ -7,23 +7,21 @@ import (
 	"testing"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/netresearch/ofelia/core/adapters/mock"
 )
 
 // Simple unit tests focusing on RunJob business logic without complex Docker mocking
 
 func TestRunJob_NewRunJob_Initialization(t *testing.T) {
-	client := &docker.Client{}
-	job := NewRunJob(client)
+	mockClient := mock.NewDockerClient()
+	provider := NewSDKDockerProviderFromClient(mockClient, nil, nil)
+	job := NewRunJob(provider)
 
-	if job.Client != client {
-		t.Error("Expected Client to be set correctly")
+	if job.Provider != provider {
+		t.Error("Expected Provider to be set correctly")
 	}
-	if job.monitor == nil {
-		t.Error("Expected monitor to be initialized")
-	}
-	if job.dockerOps == nil {
-		t.Error("Expected dockerOps to be initialized")
+	if job.containerID != "" {
+		t.Error("Expected containerID to be empty initially")
 	}
 }
 

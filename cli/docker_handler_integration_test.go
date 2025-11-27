@@ -5,16 +5,14 @@ package cli
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"os"
-	"strings"
 	"time"
 
-	"github.com/fsouza/go-dockerclient/testing"
+	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/test"
 	. "gopkg.in/check.v1"
 )
+
+// NOTE: mockDockerProviderForHandler is defined in docker_handler_test.go
 
 // chanNotifier implements dockerLabelsUpdate and notifies via channel when updates occur.
 type chanNotifier struct{ ch chan struct{} }
@@ -30,20 +28,18 @@ func (s *DockerHandlerSuite) TestPollingDisabled(c *C) {
 	ch := make(chan struct{}, 1)
 	notifier := &chanNotifier{ch: ch}
 
-	server, err := testing.NewServer("127.0.0.1:0", nil, nil)
-	c.Assert(err, IsNil)
-	defer server.Stop()
-	server.CustomHandler("/containers/json", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintln(w, `[{"Names":["/cont"],"Labels":{"ofelia.enabled":"true"}}]`)
-	}))
-	tsURL := server.URL()
-
-	os.Setenv("DOCKER_HOST", "tcp://"+strings.TrimPrefix(tsURL, "http://"))
-	defer os.Unsetenv("DOCKER_HOST")
+	// Use mock provider instead of real Docker connection
+	mockProvider := &mockDockerProviderForHandler{
+		containers: []domain.Container{
+			{
+				Name:   "cont",
+				Labels: map[string]string{"ofelia.enabled": "true"},
+			},
+		},
+	}
 
 	cfg := &DockerConfig{Filters: []string{}, PollInterval: time.Millisecond * 50, UseEvents: false, DisablePolling: true}
-	_, err = NewDockerHandler(context.Background(), notifier, &test.Logger{}, cfg, nil)
+	_, err := NewDockerHandler(context.Background(), notifier, &test.Logger{}, cfg, mockProvider)
 	c.Assert(err, IsNil)
 
 	select {

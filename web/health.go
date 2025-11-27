@@ -1,13 +1,15 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"runtime"
 	"sync"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/netresearch/ofelia/core"
 )
 
 // HealthStatus represents the overall health status
@@ -50,22 +52,22 @@ type SystemInfo struct {
 
 // HealthChecker performs health checks
 type HealthChecker struct {
-	startTime     time.Time
-	dockerClient  *docker.Client
-	version       string
-	checks        map[string]HealthCheck
-	mu            sync.RWMutex
-	checkInterval time.Duration
+	startTime      time.Time
+	dockerProvider core.DockerProvider
+	version        string
+	checks         map[string]HealthCheck
+	mu             sync.RWMutex
+	checkInterval  time.Duration
 }
 
 // NewHealthChecker creates a new health checker
-func NewHealthChecker(dockerClient *docker.Client, version string) *HealthChecker {
+func NewHealthChecker(dockerProvider core.DockerProvider, version string) *HealthChecker {
 	hc := &HealthChecker{
-		startTime:     time.Now(),
-		dockerClient:  dockerClient,
-		version:       version,
-		checks:        make(map[string]HealthCheck),
-		checkInterval: 30 * time.Second,
+		startTime:      time.Now(),
+		dockerProvider: dockerProvider,
+		version:        version,
+		checks:         make(map[string]HealthCheck),
+		checkInterval:  30 * time.Second,
 	}
 
 	// Start background health checks
@@ -107,25 +109,27 @@ func (hc *HealthChecker) checkDocker() {
 		LastChecked: start,
 	}
 
-	if hc.dockerClient == nil {
+	ctx := context.Background()
+
+	if hc.dockerProvider == nil {
 		check.Status = HealthStatusUnhealthy
-		check.Message = "Docker client not initialized"
+		check.Message = "Docker provider not initialized"
 	} else {
 		// Try to ping Docker
-		err := hc.dockerClient.Ping()
+		err := hc.dockerProvider.Ping(ctx)
 		if err != nil {
 			check.Status = HealthStatusUnhealthy
 			check.Message = "Docker daemon unreachable: " + err.Error()
 		} else {
 			// Get Docker info
-			info, err := hc.dockerClient.Info()
+			info, err := hc.dockerProvider.Info(ctx)
 			if err != nil {
 				check.Status = HealthStatusDegraded
 				check.Message = "Could not get Docker info: " + err.Error()
 			} else {
 				check.Status = HealthStatusHealthy
-				check.Message = "Docker " + info.ServerVersion + " running with " +
-					string(rune(info.Containers)) + " containers"
+				check.Message = fmt.Sprintf("Docker %s running with %d containers",
+					info.ServerVersion, info.ContainersRunning)
 			}
 		}
 	}

@@ -1,0 +1,281 @@
+package cli
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/test"
+)
+
+// TestBuildFromString_AllJobTypes tests BuildFromString with all job types
+func TestBuildFromString_AllJobTypes(t *testing.T) {
+	configStr := `
+[global]
+log-level = debug
+
+[job-exec "exec-test"]
+schedule = @every 5s
+container = test-container
+command = echo exec
+
+[job-run "run-test"]
+schedule = @every 10s
+image = alpine
+command = echo run
+
+[job-local "local-test"]
+schedule = @every 15s
+command = echo local
+
+[job-service-run "service-test"]
+schedule = @every 20s
+image = nginx
+command = echo service
+
+[job-compose "compose-test"]
+schedule = @every 25s
+command = up -d
+`
+
+	logger := test.NewTestLogger()
+	cfg, err := BuildFromString(configStr, logger)
+
+	if err != nil {
+		t.Fatalf("BuildFromString failed: %v", err)
+	}
+
+	// Verify all job types were parsed
+	if len(cfg.ExecJobs) != 1 {
+		t.Errorf("Expected 1 exec job, got %d", len(cfg.ExecJobs))
+	}
+	if len(cfg.RunJobs) != 1 {
+		t.Errorf("Expected 1 run job, got %d", len(cfg.RunJobs))
+	}
+	if len(cfg.LocalJobs) != 1 {
+		t.Errorf("Expected 1 local job, got %d", len(cfg.LocalJobs))
+	}
+	if len(cfg.ServiceJobs) != 1 {
+		t.Errorf("Expected 1 service job, got %d", len(cfg.ServiceJobs))
+	}
+	if len(cfg.ComposeJobs) != 1 {
+		t.Errorf("Expected 1 compose job, got %d", len(cfg.ComposeJobs))
+	}
+
+	// Verify global config was parsed
+	if cfg.Global.LogLevel != "debug" {
+		t.Errorf("Expected log level 'debug', got %q", cfg.Global.LogLevel)
+	}
+}
+
+// TestBuildFromFile_WithGlobPattern tests BuildFromFile with glob patterns
+func TestBuildFromFile_WithGlobPattern(t *testing.T) {
+	// Create temporary directory
+	dir, err := os.MkdirTemp("", "ofelia_glob_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	// Create multiple config files
+	file1Content := `
+[job-exec "job1"]
+schedule = @every 5s
+command = echo job1
+`
+	file2Content := `
+[job-run "job2"]
+schedule = @every 10s
+image = alpine
+command = echo job2
+`
+	file3Content := `
+[job-local "job3"]
+schedule = @every 15s
+command = echo job3
+`
+
+	files := map[string]string{
+		"01-exec.ini":  file1Content,
+		"02-run.ini":   file2Content,
+		"03-local.ini": file3Content,
+	}
+
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to write file %s: %v", name, err)
+		}
+	}
+
+	// Test with glob pattern
+	pattern := filepath.Join(dir, "*.ini")
+	logger := test.NewTestLogger()
+	cfg, err := BuildFromFile(pattern, logger)
+
+	if err != nil {
+		t.Fatalf("BuildFromFile failed: %v", err)
+	}
+
+	// Verify all jobs were loaded
+	if len(cfg.ExecJobs) != 1 {
+		t.Errorf("Expected 1 exec job, got %d", len(cfg.ExecJobs))
+	}
+	if len(cfg.RunJobs) != 1 {
+		t.Errorf("Expected 1 run job, got %d", len(cfg.RunJobs))
+	}
+	if len(cfg.LocalJobs) != 1 {
+		t.Errorf("Expected 1 local job, got %d", len(cfg.LocalJobs))
+	}
+
+	// Verify config files were tracked
+	if len(cfg.configFiles) != 3 {
+		t.Errorf("Expected 3 config files tracked, got %d", len(cfg.configFiles))
+	}
+}
+
+// TestBuildFromFile_InvalidGlobPattern tests error handling for invalid glob patterns
+func TestBuildFromFile_InvalidGlobPattern(t *testing.T) {
+	// Invalid glob pattern (malformed bracket expression)
+	invalidPattern := "/invalid/[z-a]/*.ini"
+
+	logger := test.NewTestLogger()
+	_, err := BuildFromFile(invalidPattern, logger)
+
+	if err == nil {
+		t.Error("Expected error for invalid glob pattern, got nil")
+	}
+}
+
+// TestBuildFromFile_NonExistentFile tests handling of non-existent files
+func TestBuildFromFile_NonExistentFile(t *testing.T) {
+	logger := test.NewTestLogger()
+	_, err := BuildFromFile("/nonexistent/ofelia.ini", logger)
+
+	if err == nil {
+		t.Error("Expected error for non-existent file, got nil")
+	}
+}
+
+// TestIniConfigUpdate_WithChangedFiles tests iniConfigUpdate detects file changes
+func TestIniConfigUpdate_WithChangedFiles(t *testing.T) {
+	// This test verifies the file change detection logic
+	dir, err := os.MkdirTemp("", "ofelia_update_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	configFile := filepath.Join(dir, "config.ini")
+	initialContent := `
+[job-run "job1"]
+schedule = @every 10s
+image = alpine
+command = echo initial
+`
+
+	// Write initial config
+	if err := os.WriteFile(configFile, []byte(initialContent), 0644); err != nil {
+		t.Fatalf("Failed to write initial config: %v", err)
+	}
+
+	logger := test.NewTestLogger()
+	cfg, err := BuildFromFile(configFile, logger)
+	if err != nil {
+		t.Fatalf("BuildFromFile failed: %v", err)
+	}
+
+	// Initialize scheduler and handler
+	cfg.sh = core.NewScheduler(logger)
+	cfg.dockerHandler = &DockerHandler{logger: logger}
+
+	// Call iniConfigUpdate - should detect no change
+	err = cfg.iniConfigUpdate()
+	if err != nil {
+		t.Errorf("iniConfigUpdate failed: %v", err)
+	}
+
+	// Now modify the file
+	updatedContent := `
+[job-run "job1"]
+schedule = @every 20s
+image = alpine
+command = echo updated
+`
+	// Wait a bit to ensure timestamp changes
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(configFile, []byte(updatedContent), 0644); err != nil {
+		t.Fatalf("Failed to write updated config: %v", err)
+	}
+
+	// Update the config's modtime to the past so change will be detected
+	cfg.configModTime = cfg.configModTime.Add(-1 * time.Minute)
+
+	// Call iniConfigUpdate again - should detect change
+	err = cfg.iniConfigUpdate()
+	if err != nil {
+		t.Errorf("iniConfigUpdate after change failed: %v", err)
+	}
+}
+
+// TestResolveConfigFiles tests the resolveConfigFiles function
+func TestResolveConfigFiles(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func() (string, func())
+		wantErr bool
+		wantMin int // minimum number of files expected
+	}{
+		{
+			name: "single file",
+			setup: func() (string, func()) {
+				tmpFile, _ := os.CreateTemp("", "ofelia_*.ini")
+				path := tmpFile.Name()
+				tmpFile.Close()
+				return path, func() { os.Remove(path) }
+			},
+			wantErr: false,
+			wantMin: 1,
+		},
+		{
+			name: "glob pattern with multiple files",
+			setup: func() (string, func()) {
+				dir, _ := os.MkdirTemp("", "ofelia_resolve_")
+				os.WriteFile(filepath.Join(dir, "a.ini"), []byte(""), 0644)
+				os.WriteFile(filepath.Join(dir, "b.ini"), []byte(""), 0644)
+				pattern := filepath.Join(dir, "*.ini")
+				return pattern, func() { os.RemoveAll(dir) }
+			},
+			wantErr: false,
+			wantMin: 2,
+		},
+		{
+			name: "non-existent file returns pattern as literal",
+			setup: func() (string, func()) {
+				return "/nonexistent/file.ini", func() {}
+			},
+			wantErr: false,
+			wantMin: 1, // returns the pattern itself
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pattern, cleanup := tt.setup()
+			defer cleanup()
+
+			files, err := resolveConfigFiles(pattern)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("resolveConfigFiles() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if len(files) < tt.wantMin {
+				t.Errorf("Expected at least %d files, got %d", tt.wantMin, len(files))
+			}
+		})
+	}
+}

@@ -214,12 +214,12 @@ func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind 
 }
 
 func (c *Config) registerAllJobs() {
-	client := c.dockerHandler.GetInternalDockerClient()
+	provider := c.dockerHandler.GetDockerProvider()
 
 	for name, j := range c.ExecJobs {
 		_ = defaults.Set(j)
-		j.Client = client
-		j.InitializeRuntimeFields() // Initialize dockerOps after client is set
+		j.Provider = provider
+		j.InitializeRuntimeFields()
 		j.Name = name
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -229,8 +229,8 @@ func (c *Config) registerAllJobs() {
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
-		j.Client = client
-		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
+		j.Provider = provider
+		j.InitializeRuntimeFields()
 		j.Name = name
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -246,8 +246,9 @@ func (c *Config) registerAllJobs() {
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
+		j.Provider = provider
+		j.InitializeRuntimeFields()
 		j.Name = name
-		j.Client = client
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
 	}
@@ -359,8 +360,8 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
-		j.Client = c.dockerHandler.GetInternalDockerClient()
-		j.InitializeRuntimeFields() // Initialize dockerOps after client is set
+		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.InitializeRuntimeFields()
 		j.Name = name
 	}
 	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep, JobSourceLabel, "exec")
@@ -370,8 +371,8 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
-		j.Client = c.dockerHandler.GetInternalDockerClient()
-		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
+		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.InitializeRuntimeFields()
 		j.Name = name
 	}
 	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel, "run")
@@ -386,7 +387,8 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
-		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.InitializeRuntimeFields()
 		j.Name = name
 	}
 
@@ -466,8 +468,8 @@ func (c *Config) iniConfigUpdate() error {
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
-		j.Client = c.dockerHandler.GetInternalDockerClient()
-		j.InitializeRuntimeFields() // Initialize dockerOps after client is set
+		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.InitializeRuntimeFields()
 		j.Name = name
 	}
 	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep, JobSourceINI, "exec")
@@ -477,8 +479,8 @@ func (c *Config) iniConfigUpdate() error {
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
-		j.Client = c.dockerHandler.GetInternalDockerClient()
-		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
+		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.InitializeRuntimeFields()
 		j.Name = name
 	}
 	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI, "run")
@@ -494,7 +496,8 @@ func (c *Config) iniConfigUpdate() error {
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
-		j.Client = c.dockerHandler.GetInternalDockerClient()
+		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.InitializeRuntimeFields()
 		j.Name = name
 	}
 	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep, JobSourceINI, "service")

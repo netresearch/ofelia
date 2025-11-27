@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/armon/circbuf"
-	docker "github.com/fsouza/go-dockerclient"
 )
 
 // ErrSkippedExecution pass this error to `Execution.Stop` if you wish to mark
@@ -308,73 +306,7 @@ func randomID() (string, error) {
 	return fmt.Sprintf("%x", b), nil
 }
 
-func buildFindLocalImageOptions(image string) docker.ListImagesOptions {
-	return docker.ListImagesOptions{
-		Filters: map[string][]string{
-			"reference": {image},
-		},
-	}
-}
 
-func buildPullOptions(image string) (docker.PullImageOptions, docker.AuthConfiguration) {
-	repository, tag := docker.ParseRepositoryTag(image)
-
-	registry := parseRegistry(repository)
-	// Override registry for two-part repository names (e.g., "repo/name" -> registry "repo")
-	parts := strings.Split(repository, "/")
-	if registry == "" && len(parts) > 1 {
-		registry = parts[0]
-	}
-
-	const defaultTagLatest = "latest"
-	if tag == "" {
-		tag = defaultTagLatest
-	}
-
-	return docker.PullImageOptions{
-		Repository: repository,
-		Registry:   registry,
-		Tag:        tag,
-	}, buildAuthConfiguration(registry)
-}
-
-// pullImage downloads a Docker image if it is not available locally.
-func parseRegistry(repository string) string {
-	parts := strings.Split(repository, "/")
-	if len(parts) < 2 {
-		return ""
-	}
-
-	if strings.ContainsAny(parts[0], ".:") || len(parts) > 2 {
-		return parts[0]
-	}
-
-	return ""
-}
-
-func buildAuthConfiguration(registry string) docker.AuthConfiguration {
-	var auth docker.AuthConfiguration
-	if dockercfg == nil {
-		return auth
-	}
-
-	if v, ok := dockercfg.Configs[registry]; ok {
-		return v
-	}
-
-	// try to fetch configs from docker hub default registry urls
-	// see example here: https://www.projectatomic.io/blog/2016/03/docker-credentials-store/
-	if registry == "" {
-		if v, ok := dockercfg.Configs["https://index.docker.io/v2/"]; ok {
-			return v
-		}
-		if v, ok := dockercfg.Configs["https://index.docker.io/v1/"]; ok {
-			return v
-		}
-	}
-
-	return auth
-}
 
 const HashmeTagName = "hash"
 

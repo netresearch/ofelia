@@ -8,27 +8,6 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-func TestParseRegistry(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		out  string
-	}{
-		{"no-slash", "busybox", ""},
-		{"docker-hub-style", "library/busybox", ""},
-		{"registry host", "my.registry:5000/repo/image", "my.registry:5000"},
-		{"gcr style", "gcr.io/project/image", "gcr.io"},
-		{"three parts", "host/ns/image", "host"},
-	}
-	for _, tt := range tests {
-		if got := parseRegistry(tt.in); got != tt.out {
-			t.Fatalf("%s: parseRegistry(%q)=%q want %q", tt.name, tt.in, got, tt.out)
-		}
-	}
-}
-
-// existing TestBuildFindLocalImageOptions present in common_extra_test.go
-
 type hashJob struct {
 	Str string `hash:"true"`
 	Num int    `hash:"true"`

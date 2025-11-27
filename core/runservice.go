@@ -1,24 +1,24 @@
 package core
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/swarm"
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/gobs/args"
+	"github.com/netresearch/ofelia/core/domain"
 )
 
 // Note: The ServiceJob is loosely inspired by https://github.com/alexellis/jaas/
 
 type RunServiceJob struct {
-	BareJob `mapstructure:",squash"`
-	Client  *docker.Client `json:"-"`
-	User    string         `default:"nobody" hash:"true"`
-	TTY     bool           `default:"false" hash:"true"`
+	BareJob  `mapstructure:",squash"`
+	Provider DockerProvider `json:"-"` // SDK-based Docker provider
+	User     string         `default:"nobody" hash:"true"`
+	TTY      bool           `default:"false" hash:"true"`
 	// do not use bool values with "default:true" because if
 	// user would set it to "false" explicitly, it still will be
 	// changed to "true" https://github.com/netresearch/ofelia/issues/135
@@ -30,76 +30,78 @@ type RunServiceJob struct {
 	MaxRuntime  time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 }
 
-func NewRunServiceJob(c *docker.Client) *RunServiceJob {
-	return &RunServiceJob{Client: c}
+func NewRunServiceJob(provider DockerProvider) *RunServiceJob {
+	return &RunServiceJob{Provider: provider}
+}
+
+// InitializeRuntimeFields initializes fields that depend on the Docker provider.
+// This should be called after the Provider field is set.
+func (j *RunServiceJob) InitializeRuntimeFields() {
+	// No additional initialization needed with DockerProvider
 }
 
 func (j *RunServiceJob) Run(ctx *Context) error {
-	// Use Docker operations abstraction for image pulling
-	dockerOps := NewDockerOperations(j.Client, ctx.Logger, nil)
-	if ctx.Scheduler != nil && ctx.Scheduler.metricsRecorder != nil {
-		dockerOps.metricsRecorder = ctx.Scheduler.metricsRecorder
-	}
+	bgCtx := context.Background()
 
-	imageOps := dockerOps.NewImageOperations()
-	if err := imageOps.PullImage(j.Image); err != nil {
+	// Pull image using the provider
+	if err := j.Provider.EnsureImage(bgCtx, j.Image, true); err != nil {
 		return err
 	}
 
-	svc, err := j.buildService()
+	svcID, err := j.buildService(bgCtx)
 	if err != nil {
 		return err
 	}
 
-	ctx.Logger.Noticef("Created service %s for job %s\n", svc.ID, j.Name)
+	ctx.Logger.Noticef("Created service %s for job %s\n", svcID, j.Name)
 
-	if err := j.watchContainer(ctx, svc.ID); err != nil {
+	if err := j.watchContainer(bgCtx, ctx, svcID); err != nil {
 		return err
 	}
 
-	return j.deleteService(ctx, svc.ID)
+	return j.deleteService(bgCtx, ctx, svcID)
 }
 
-func (j *RunServiceJob) buildService() (*swarm.Service, error) {
-	// createOptions := types.ServiceCreateOptions{}
-
+func (j *RunServiceJob) buildService(ctx context.Context) (string, error) {
 	maxAttempts := uint64(1)
-	createSvcOpts := docker.CreateServiceOptions{}
-
-	createSvcOpts.ServiceSpec.TaskTemplate.ContainerSpec = &swarm.ContainerSpec{
-		Image: j.Image,
-	}
 
 	// Add annotations as service labels (swarm services use Labels for metadata)
 	defaults := getDefaultAnnotations(j.Name, "service")
 	annotations := mergeAnnotations(j.Annotations, defaults)
-	createSvcOpts.ServiceSpec.Labels = annotations
 
-	// Make the service run once and not restart
-	createSvcOpts.ServiceSpec.TaskTemplate.RestartPolicy = &swarm.RestartPolicy{
-		MaxAttempts: &maxAttempts,
-		Condition:   swarm.RestartPolicyConditionNone,
+	spec := domain.ServiceSpec{
+		Labels: annotations,
+		TaskTemplate: domain.TaskSpec{
+			ContainerSpec: domain.ContainerSpec{
+				Image: j.Image,
+				User:  j.User,
+				TTY:   j.TTY,
+			},
+			RestartPolicy: &domain.ServiceRestartPolicy{
+				Condition:   domain.RestartConditionNone,
+				MaxAttempts: &maxAttempts,
+			},
+		},
 	}
 
 	// For a service to interact with other services in a stack,
 	// we need to attach it to the same network
 	if j.Network != "" {
-		// Prefer attaching via TaskTemplate Networks when available
-		createSvcOpts.ServiceSpec.TaskTemplate.Networks = []swarm.NetworkAttachmentConfig{
+		spec.TaskTemplate.Networks = []domain.NetworkAttachment{
 			{Target: j.Network},
 		}
 	}
 
 	if j.Command != "" {
-		createSvcOpts.ServiceSpec.TaskTemplate.ContainerSpec.Command = args.GetArgs(j.Command)
+		spec.TaskTemplate.ContainerSpec.Command = args.GetArgs(j.Command)
 	}
 
-	svc, err := j.Client.CreateService(createSvcOpts)
+	serviceID, err := j.Provider.CreateService(ctx, spec, domain.ServiceCreateOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("create service: %w", err)
+		return "", fmt.Errorf("create service: %w", err)
 	}
 
-	return svc, nil
+	return serviceID, nil
 }
 
 const (
@@ -110,12 +112,12 @@ const (
 	ExitCodeTimeout    = -998 // Max runtime exceeded before task completion
 )
 
-func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
+func (j *RunServiceJob) watchContainer(ctx context.Context, jobCtx *Context, svcID string) error {
 	exitCode := ExitCodeSwarmError
 
-	ctx.Logger.Noticef("Checking for service ID %s (%s) termination\n", svcID, j.Name)
+	jobCtx.Logger.Noticef("Checking for service ID %s (%s) termination\n", svcID, j.Name)
 
-	svc, err := j.Client.InspectService(svcID)
+	svc, err := j.Provider.InspectService(ctx, svcID)
 	if err != nil {
 		return fmt.Errorf("inspect service %s: %w", svcID, err)
 	}
@@ -138,7 +140,7 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 				return
 			}
 
-			taskExitCode, found := j.findTaskStatus(ctx, svc.ID)
+			taskExitCode, found := j.findTaskStatus(ctx, jobCtx, svc.ID)
 			if found {
 				exitCode = taskExitCode
 				return
@@ -148,19 +150,20 @@ func (j *RunServiceJob) watchContainer(ctx *Context, svcID string) error {
 
 	wg.Wait()
 
-	ctx.Logger.Noticef("Service ID %s (%s) has completed with exit code %d\n", svcID, j.Name, exitCode)
+	jobCtx.Logger.Noticef("Service ID %s (%s) has completed with exit code %d\n", svcID, j.Name, exitCode)
 	return err
 }
 
-func (j *RunServiceJob) findTaskStatus(ctx *Context, taskID string) (int, bool) {
-	taskFilters := make(map[string][]string)
-	taskFilters["service"] = []string{taskID}
+func (j *RunServiceJob) findTaskStatus(ctx context.Context, jobCtx *Context, serviceID string) (int, bool) {
+	taskFilters := map[string][]string{
+		"service": {serviceID},
+	}
 
-	tasks, err := j.Client.ListTasks(docker.ListTasksOptions{
+	tasks, err := j.Provider.ListTasks(ctx, domain.TaskListOptions{
 		Filters: taskFilters,
 	})
 	if err != nil {
-		ctx.Logger.Errorf("Failed to find task ID %s. Considering the task terminated: %s\n", taskID, err.Error())
+		jobCtx.Logger.Errorf("Failed to find task for service %s. Considering the task terminated: %s\n", serviceID, err.Error())
 		return 0, false
 	}
 
@@ -171,10 +174,10 @@ func (j *RunServiceJob) findTaskStatus(ctx *Context, taskID string) (int, bool) 
 
 	exitCode := 1
 	var done bool
-	stopStates := []swarm.TaskState{
-		swarm.TaskStateComplete,
-		swarm.TaskStateFailed,
-		swarm.TaskStateRejected,
+	stopStates := []domain.TaskState{
+		domain.TaskStateComplete,
+		domain.TaskStateFailed,
+		domain.TaskStateRejected,
 	}
 
 	for _, task := range tasks {
@@ -188,10 +191,11 @@ func (j *RunServiceJob) findTaskStatus(ctx *Context, taskID string) (int, bool) 
 		}
 
 		if stop {
+			if task.Status.ContainerStatus != nil {
+				exitCode = task.Status.ContainerStatus.ExitCode
+			}
 
-			exitCode = task.Status.ContainerStatus.ExitCode
-
-			if exitCode == 0 && task.Status.State == swarm.TaskStateRejected {
+			if exitCode == 0 && task.Status.State == domain.TaskStateRejected {
 				exitCode = 255 // force non-zero exit for task rejected
 			}
 			done = true
@@ -201,24 +205,32 @@ func (j *RunServiceJob) findTaskStatus(ctx *Context, taskID string) (int, bool) 
 	return exitCode, done
 }
 
-func (j *RunServiceJob) deleteService(ctx *Context, svcID string) error {
+func (j *RunServiceJob) deleteService(ctx context.Context, jobCtx *Context, svcID string) error {
 	if shouldDelete, _ := strconv.ParseBool(j.Delete); !shouldDelete {
 		return nil
 	}
 
-	err := j.Client.RemoveService(docker.RemoveServiceOptions{
-		ID: svcID,
-	})
+	err := j.Provider.RemoveService(ctx, svcID)
 
-	var noSvc *docker.NoSuchService
-	if errors.As(err, &noSvc) {
-		ctx.Logger.Warningf("Service %s cannot be removed. An error may have happened, "+
-			"or it might have been removed by another process", svcID)
-		return nil
-	}
-
+	// Check if service was already removed (not found error)
 	if err != nil {
+		// Log warning but don't return error if service is already gone
+		if isNotFoundError(err) {
+			jobCtx.Logger.Warningf("Service %s cannot be removed. An error may have happened, "+
+				"or it might have been removed by another process", svcID)
+			return nil
+		}
 		return fmt.Errorf("remove service %s: %w", svcID, err)
 	}
 	return nil
+}
+
+// isNotFoundError checks if the error indicates a resource was not found.
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check for common "not found" error patterns
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "not found") || strings.Contains(errStr, "no such") || strings.Contains(errStr, "404")
 }

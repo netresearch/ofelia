@@ -13,8 +13,7 @@ import (
 )
 
 // EventServiceAdapter implements ports.EventService using Docker SDK.
-// This implementation uses context-based cancellation to fix the
-// go-dockerclient issue #911 (panic on event channel close).
+// This implementation uses context-based cancellation for safe channel management.
 type EventServiceAdapter struct {
 	client *client.Client
 }

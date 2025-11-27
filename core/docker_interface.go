@@ -9,7 +9,7 @@ import (
 )
 
 // DockerProvider defines the interface for Docker operations.
-// Both go-dockerclient and the new SDK adapter can implement this.
+// The SDK adapter implements this interface.
 type DockerProvider interface {
 	// Container operations
 	CreateContainer(ctx context.Context, config *domain.ContainerConfig, name string) (string, error)
@@ -17,6 +17,7 @@ type DockerProvider interface {
 	StopContainer(ctx context.Context, containerID string, timeout *time.Duration) error
 	RemoveContainer(ctx context.Context, containerID string, force bool) error
 	InspectContainer(ctx context.Context, containerID string) (*domain.Container, error)
+	ListContainers(ctx context.Context, opts domain.ListOptions) ([]domain.Container, error)
 	WaitContainer(ctx context.Context, containerID string) (int64, error)
 	GetContainerLogs(ctx context.Context, containerID string, opts ContainerLogsOptions) (io.ReadCloser, error)
 
@@ -37,6 +38,13 @@ type DockerProvider interface {
 
 	// Event operations
 	SubscribeEvents(ctx context.Context, filter domain.EventFilter) (<-chan domain.Event, <-chan error)
+
+	// Service operations (Swarm)
+	CreateService(ctx context.Context, spec domain.ServiceSpec, opts domain.ServiceCreateOptions) (string, error)
+	InspectService(ctx context.Context, serviceID string) (*domain.Service, error)
+	ListTasks(ctx context.Context, opts domain.TaskListOptions) ([]domain.Task, error)
+	RemoveService(ctx context.Context, serviceID string) error
+	WaitForServiceTasks(ctx context.Context, serviceID string, timeout time.Duration) ([]domain.Task, error)
 
 	// System operations
 	Info(ctx context.Context) (*domain.SystemInfo, error)

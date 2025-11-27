@@ -7,8 +7,7 @@ import (
 )
 
 // EventService provides operations for subscribing to Docker events.
-// This interface is designed to fix the go-dockerclient issue #911 by using
-// context-based cancellation instead of manual channel management.
+// This interface uses context-based cancellation for safe channel management.
 type EventService interface {
 	// Subscribe returns channels that receive Docker events.
 	// The events channel receives events matching the filter.

@@ -143,28 +143,51 @@ func (p *SDKDockerProvider) InspectContainer(ctx context.Context, containerID st
 	return container, nil
 }
 
+// ListContainers lists containers matching the options.
+func (p *SDKDockerProvider) ListContainers(ctx context.Context, opts domain.ListOptions) ([]domain.Container, error) {
+	p.recordOperation("list_containers")
+
+	containers, err := p.client.Containers().List(ctx, opts)
+	if err != nil {
+		p.recordError("list_containers")
+		return nil, WrapContainerError("list", "", err)
+	}
+
+	return containers, nil
+}
+
 // WaitContainer waits for a container to exit.
 func (p *SDKDockerProvider) WaitContainer(ctx context.Context, containerID string) (int64, error) {
 	p.recordOperation("wait_container")
 
 	respCh, errCh := p.client.Containers().Wait(ctx, containerID)
 
-	select {
-	case <-ctx.Done():
-		p.recordError("wait_container")
-		return -1, ctx.Err()
-	case err := <-errCh:
-		if err != nil {
+	for {
+		select {
+		case <-ctx.Done():
 			p.recordError("wait_container")
-			return -1, WrapContainerError("wait", containerID, err)
+			return -1, ctx.Err()
+		case err, ok := <-errCh:
+			if !ok {
+				// errCh closed, continue waiting for response
+				errCh = nil
+				continue
+			}
+			if err != nil {
+				p.recordError("wait_container")
+				return -1, WrapContainerError("wait", containerID, err)
+			}
+		case resp, ok := <-respCh:
+			if !ok {
+				// respCh closed without response, unexpected
+				return -1, WrapContainerError("wait", containerID, errors.New("response channel closed unexpectedly"))
+			}
+			if resp.Error != nil && resp.Error.Message != "" {
+				p.recordError("wait_container")
+				return resp.StatusCode, WrapContainerError("wait", containerID, errors.New(resp.Error.Message))
+			}
+			return resp.StatusCode, nil
 		}
-		return -1, nil
-	case resp := <-respCh:
-		if resp.Error != nil && resp.Error.Message != "" {
-			p.recordError("wait_container")
-			return resp.StatusCode, WrapContainerError("wait", containerID, errors.New(resp.Error.Message))
-		}
-		return resp.StatusCode, nil
 	}
 }
 
@@ -372,6 +395,74 @@ func (p *SDKDockerProvider) Ping(ctx context.Context) error {
 // Close closes the Docker client.
 func (p *SDKDockerProvider) Close() error {
 	return p.client.Close()
+}
+
+// Service operations (Swarm)
+
+// CreateService creates a new Swarm service.
+func (p *SDKDockerProvider) CreateService(ctx context.Context, spec domain.ServiceSpec, opts domain.ServiceCreateOptions) (string, error) {
+	p.recordOperation("create_service")
+
+	serviceID, err := p.client.Services().Create(ctx, spec, opts)
+	if err != nil {
+		p.recordError("create_service")
+		return "", WrapContainerError("create_service", spec.Name, err)
+	}
+
+	p.logNotice("Created service %s (%s)", serviceID, spec.Name)
+	return serviceID, nil
+}
+
+// InspectService returns detailed information about a service.
+func (p *SDKDockerProvider) InspectService(ctx context.Context, serviceID string) (*domain.Service, error) {
+	p.recordOperation("inspect_service")
+
+	service, err := p.client.Services().Inspect(ctx, serviceID)
+	if err != nil {
+		p.recordError("inspect_service")
+		return nil, WrapContainerError("inspect_service", serviceID, err)
+	}
+
+	return service, nil
+}
+
+// ListTasks lists tasks matching the filter options.
+func (p *SDKDockerProvider) ListTasks(ctx context.Context, opts domain.TaskListOptions) ([]domain.Task, error) {
+	p.recordOperation("list_tasks")
+
+	tasks, err := p.client.Services().ListTasks(ctx, opts)
+	if err != nil {
+		p.recordError("list_tasks")
+		return nil, err
+	}
+
+	return tasks, nil
+}
+
+// RemoveService removes a service.
+func (p *SDKDockerProvider) RemoveService(ctx context.Context, serviceID string) error {
+	p.recordOperation("remove_service")
+
+	if err := p.client.Services().Remove(ctx, serviceID); err != nil {
+		p.recordError("remove_service")
+		return WrapContainerError("remove_service", serviceID, err)
+	}
+
+	p.logNotice("Removed service %s", serviceID)
+	return nil
+}
+
+// WaitForServiceTasks waits for all tasks of a service to reach a terminal state.
+func (p *SDKDockerProvider) WaitForServiceTasks(ctx context.Context, serviceID string, timeout time.Duration) ([]domain.Task, error) {
+	p.recordOperation("wait_service_tasks")
+
+	tasks, err := p.client.Services().WaitForServiceTasks(ctx, serviceID, timeout)
+	if err != nil {
+		p.recordError("wait_service_tasks")
+		return nil, WrapContainerError("wait_service_tasks", serviceID, err)
+	}
+
+	return tasks, nil
 }
 
 // Helper methods for logging and metrics
