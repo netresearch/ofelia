@@ -1,0 +1,285 @@
+name: Release (SLSA Level 3)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (for testing)'
+        required: false
+
+permissions: read-all
+
+jobs:
+  # Resolve tag for both release and workflow_dispatch triggers
+  resolve-tag:
+    name: Resolve Tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Determine tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ inputs.tag }}" ]]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::No tag specified for workflow_dispatch"
+            exit 1
+          fi
+
+  # Generate changelog from conventional commits
+  changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.changelog.outputs.changelog }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: .cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Upload changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG.md
+
+  # SLSA Level 3 builds with provenance
+  build:
+    name: Build ${{ matrix.target }}
+    needs: changelog
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - linux-amd64
+          - linux-arm64
+          - linux-armv6
+          - linux-armv7
+          - darwin-amd64
+          - darwin-arm64
+          - windows-amd64
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+    uses: slsa-framework/slsa-github-generator/.github/workflows/builder_go_slsa3.yml@v2.1.0
+    with:
+      go-version-file: go.mod
+      config-file: .slsa-goreleaser/${{ matrix.target }}.yml
+      upload-assets: true
+      draft-release: false
+
+  # Generate SBOMs for all binaries
+  sbom:
+    name: Generate SBOMs
+    needs: [resolve-tag, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Download all release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$RELEASE_TAG" --dir dist --pattern "ofelia-*"
+
+      - name: Generate SBOMs
+        run: |
+          set -euo pipefail
+          for binary in dist/ofelia-*; do
+            if [[ ! "$binary" =~ \.intoto\.jsonl$ ]] && [[ ! "$binary" =~ \.sbom\.json$ ]]; then
+              echo "Generating SBOM for $binary"
+              syft "$binary" -o spdx-json="${binary}.sbom.json"
+            fi
+          done
+
+      - name: Upload SBOMs to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for sbom in dist/*.sbom.json; do
+            if [[ -f "$sbom" ]]; then
+              echo "Uploading $sbom"
+              gh release upload "$RELEASE_TAG" "$sbom" --clobber
+            fi
+          done
+
+  # Generate checksums
+  checksums:
+    name: Generate Checksums
+    needs: [resolve-tag, build, sbom]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Download all release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$RELEASE_TAG" --dir dist
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          # Only checksum actual binaries (exclude provenance and SBOM metadata)
+          find . -maxdepth 1 -type f -name "ofelia-*" \
+            ! -name "*.intoto.jsonl" \
+            ! -name "*.sbom.json" \
+            -exec sha256sum {} + > checksums.txt
+          cat checksums.txt
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign checksums
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes \
+            --output-certificate dist/checksums.txt.pem \
+            --output-signature dist/checksums.txt.sig \
+            dist/checksums.txt
+
+      - name: Upload checksums and signatures
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" \
+            dist/checksums.txt \
+            dist/checksums.txt.pem \
+            dist/checksums.txt.sig \
+            --clobber
+
+  # Update release notes with changelog
+  release-notes:
+    name: Update Release Notes
+    needs: [resolve-tag, changelog, checksums]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+
+      - name: Update release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Append verification instructions to changelog
+          cat >> CHANGELOG.md << 'EOF'
+
+          ---
+
+          ## Verification
+
+          All binaries include SLSA Level 3 provenance attestations.
+
+          ### Verify binary provenance
+          ```bash
+          slsa-verifier verify-artifact ofelia-linux-amd64 \
+            --provenance-path ofelia-linux-amd64.intoto.jsonl \
+            --source-uri github.com/netresearch/ofelia
+          ```
+
+          ### Verify checksums signature
+          ```bash
+          cosign verify-blob \
+            --certificate checksums.txt.pem \
+            --signature checksums.txt.sig \
+            checksums.txt
+          ```
+          EOF
+
+          gh release edit "$RELEASE_TAG" \
+            --notes-file CHANGELOG.md
+
+  # Container images (runs in parallel with binary builds)
+  docker:
+    name: Build and Push Container Images
+    needs: resolve-tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository_owner }}/ofelia
+      VERSION: ${{ needs.resolve-tag.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        id: push
+        with:
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
+          build-args: |
+            CGO_ENABLED=0
+          provenance: true
+          sbom: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container images
+        run: |
+          set -euo pipefail
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest@${{ steps.push.outputs.digest }}
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}@${{ steps.push.outputs.digest }}

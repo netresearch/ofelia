@@ -1,0 +1,52 @@
+# git-cliff configuration for conventional commits changelog generation
+# https://git-cliff.org
+
+[changelog]
+header = """
+# Changelog\n
+"""
+body = """
+{% if version %}\
+    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {% if commit.scope %}**{{ commit.scope }}**: {% endif %}\
+            {{ commit.message | upper_first }}\
+            {% if commit.github.username %} by @{{ commit.github.username }}{%- endif %}\
+    {% endfor %}
+{% endfor %}\n
+"""
+footer = """
+---
+*Generated with [git-cliff](https://github.com/orhun/git-cliff)*
+"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_parsers = [
+    { message = "^feat", group = "New Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^sec", group = "Security Updates" },
+    { message = "^perf", group = "Performance Improvements" },
+    { message = "^refactor", group = "Refactoring" },
+    { message = "^docs?", group = "Documentation" },
+    { message = "^test", group = "Testing" },
+    { message = "^build", group = "Build System" },
+    { message = "^ci", group = "CI/CD" },
+    { message = "^chore", group = "Miscellaneous" },
+    { message = "^revert", group = "Reverted Changes" },
+]
+filter_commits = true
+topo_order = false
+sort_commits = "newest"
+# Exclude merge commits and bot commits
+commit_preprocessors = [
+    { pattern = "^Merge.*", replace = "" },
+]
