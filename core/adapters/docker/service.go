@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/swarm"
@@ -22,7 +21,7 @@ type SwarmServiceAdapter struct {
 func (s *SwarmServiceAdapter) Create(ctx context.Context, spec domain.ServiceSpec, opts domain.ServiceCreateOptions) (string, error) {
 	swarmSpec := convertToSwarmSpec(&spec)
 
-	createOpts := types.ServiceCreateOptions{
+	createOpts := swarm.ServiceCreateOptions{
 		EncodedRegistryAuth: opts.EncodedRegistryAuth,
 	}
 
@@ -36,7 +35,7 @@ func (s *SwarmServiceAdapter) Create(ctx context.Context, spec domain.ServiceSpe
 
 // Inspect returns service information.
 func (s *SwarmServiceAdapter) Inspect(ctx context.Context, serviceID string) (*domain.Service, error) {
-	service, _, err := s.client.ServiceInspectWithRaw(ctx, serviceID, types.ServiceInspectOptions{})
+	service, _, err := s.client.ServiceInspectWithRaw(ctx, serviceID, swarm.ServiceInspectOptions{})
 	if err != nil {
 		return nil, convertError(err)
 	}
@@ -46,7 +45,7 @@ func (s *SwarmServiceAdapter) Inspect(ctx context.Context, serviceID string) (*d
 
 // List lists services.
 func (s *SwarmServiceAdapter) List(ctx context.Context, opts domain.ServiceListOptions) ([]domain.Service, error) {
-	listOpts := types.ServiceListOptions{}
+	listOpts := swarm.ServiceListOptions{}
 
 	if len(opts.Filters) > 0 {
 		listOpts.Filters = filters.NewArgs()
@@ -77,7 +76,7 @@ func (s *SwarmServiceAdapter) Remove(ctx context.Context, serviceID string) erro
 
 // ListTasks lists tasks.
 func (s *SwarmServiceAdapter) ListTasks(ctx context.Context, opts domain.TaskListOptions) ([]domain.Task, error) {
-	listOpts := types.TaskListOptions{}
+	listOpts := swarm.TaskListOptions{}
 
 	if len(opts.Filters) > 0 {
 		listOpts.Filters = filters.NewArgs()

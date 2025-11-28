@@ -45,7 +45,6 @@ func TestRetrySuccess(t *testing.T) {
 		attempts++
 		return nil // Success on first attempt
 	})
-
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -67,7 +66,6 @@ func TestRetryEventualSuccess(t *testing.T) {
 		}
 		return nil // Success on third attempt
 	})
-
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -149,7 +147,6 @@ func TestRetryNilPolicy(t *testing.T) {
 		attempts++
 		return nil
 	})
-
 	if err != nil {
 		t.Errorf("Expected no error with nil policy, got %v", err)
 	}
@@ -201,7 +198,6 @@ func TestCircuitBreakerExecuteSuccess(t *testing.T) {
 		calls++
 		return nil
 	})
-
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -285,7 +281,6 @@ func TestCircuitBreakerHalfOpenState(t *testing.T) {
 		calls++
 		return nil // Success
 	})
-
 	if err != nil {
 		t.Errorf("Expected no error in half-open state, got %v", err)
 	}
@@ -459,7 +454,6 @@ func TestBulkheadExecuteSuccess(t *testing.T) {
 		calls++
 		return nil
 	})
-
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}

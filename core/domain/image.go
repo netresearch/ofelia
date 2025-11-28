@@ -10,12 +10,9 @@ type Image struct {
 	ID          string
 	RepoTags    []string
 	RepoDigests []string
-	Parent      string
 	Comment     string
 	Created     time.Time
-	Container   string
 	Size        int64
-	VirtualSize int64
 	Labels      map[string]string
 }
 
@@ -28,7 +25,6 @@ type ImageSummary struct {
 	Created     int64
 	Size        int64
 	SharedSize  int64
-	VirtualSize int64
 	Labels      map[string]string
 	Containers  int64
 }
@@ -50,7 +46,7 @@ type PullOptions struct {
 
 // ImageListOptions represents options for listing images.
 type ImageListOptions struct {
-	All     bool              // Show all images (default hides intermediate)
+	All     bool                // Show all images (default hides intermediate)
 	Filters map[string][]string // Filters to apply
 }
 

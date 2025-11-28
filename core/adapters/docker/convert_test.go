@@ -18,63 +18,63 @@ type mockNotFoundError struct {
 	msg string
 }
 
-func (e mockNotFoundError) Error() string              { return e.msg }
-func (e mockNotFoundError) NotFound() bool             { return true }
-func (e mockNotFoundError) Is(target error) bool       { return errdefs.IsNotFound(target) }
+func (e mockNotFoundError) Error() string        { return e.msg }
+func (e mockNotFoundError) NotFound() bool       { return true }
+func (e mockNotFoundError) Is(target error) bool { return errdefs.IsNotFound(target) }
 
 // mockConflictError implements errdefs.ErrConflict
 type mockConflictError struct {
 	msg string
 }
 
-func (e mockConflictError) Error() string              { return e.msg }
-func (e mockConflictError) Conflict() bool             { return true }
-func (e mockConflictError) Is(target error) bool       { return errdefs.IsConflict(target) }
+func (e mockConflictError) Error() string        { return e.msg }
+func (e mockConflictError) Conflict() bool       { return true }
+func (e mockConflictError) Is(target error) bool { return errdefs.IsConflict(target) }
 
 // mockUnauthorizedError implements errdefs.ErrUnauthorized
 type mockUnauthorizedError struct {
 	msg string
 }
 
-func (e mockUnauthorizedError) Error() string              { return e.msg }
-func (e mockUnauthorizedError) Unauthorized() bool         { return true }
-func (e mockUnauthorizedError) Is(target error) bool       { return errdefs.IsUnauthorized(target) }
+func (e mockUnauthorizedError) Error() string        { return e.msg }
+func (e mockUnauthorizedError) Unauthorized() bool   { return true }
+func (e mockUnauthorizedError) Is(target error) bool { return errdefs.IsUnauthorized(target) }
 
 // mockForbiddenError implements errdefs.ErrForbidden
 type mockForbiddenError struct {
 	msg string
 }
 
-func (e mockForbiddenError) Error() string              { return e.msg }
-func (e mockForbiddenError) Forbidden() bool            { return true }
-func (e mockForbiddenError) Is(target error) bool       { return errdefs.IsForbidden(target) }
+func (e mockForbiddenError) Error() string        { return e.msg }
+func (e mockForbiddenError) Forbidden() bool      { return true }
+func (e mockForbiddenError) Is(target error) bool { return errdefs.IsForbidden(target) }
 
 // mockDeadlineError implements errdefs.ErrDeadline
 type mockDeadlineError struct {
 	msg string
 }
 
-func (e mockDeadlineError) Error() string              { return e.msg }
-func (e mockDeadlineError) DeadlineExceeded() bool     { return true }
-func (e mockDeadlineError) Is(target error) bool       { return errdefs.IsDeadline(target) }
+func (e mockDeadlineError) Error() string          { return e.msg }
+func (e mockDeadlineError) DeadlineExceeded() bool { return true }
+func (e mockDeadlineError) Is(target error) bool   { return errdefs.IsDeadline(target) }
 
-// mockCancelledError implements errdefs.ErrCancelled
-type mockCancelledError struct {
+// mockCanceledError implements errdefs.ErrCancelled.
+type mockCanceledError struct {
 	msg string
 }
 
-func (e mockCancelledError) Error() string              { return e.msg }
-func (e mockCancelledError) Cancelled() bool            { return true }
-func (e mockCancelledError) Is(target error) bool       { return errdefs.IsCancelled(target) }
+func (e mockCanceledError) Error() string        { return e.msg }
+func (e mockCanceledError) Cancelled() bool      { return true }
+func (e mockCanceledError) Is(target error) bool { return errdefs.IsCancelled(target) }
 
 // mockUnavailableError implements errdefs.ErrUnavailable
 type mockUnavailableError struct {
 	msg string
 }
 
-func (e mockUnavailableError) Error() string              { return e.msg }
-func (e mockUnavailableError) Unavailable() bool          { return true }
-func (e mockUnavailableError) Is(target error) bool       { return errdefs.IsUnavailable(target) }
+func (e mockUnavailableError) Error() string        { return e.msg }
+func (e mockUnavailableError) Unavailable() bool    { return true }
+func (e mockUnavailableError) Is(target error) bool { return errdefs.IsUnavailable(target) }
 
 func TestConvertError(t *testing.T) {
 	tests := []struct {
@@ -115,9 +115,9 @@ func TestConvertError(t *testing.T) {
 			wantType: domain.ErrTimeout,
 		},
 		{
-			name:     "cancelled error",
-			input:    mockCancelledError{msg: "operation cancelled"},
-			wantType: domain.ErrCancelled,
+			name:     "canceled error",
+			input:    mockCanceledError{msg: "operation canceled"},
+			wantType: domain.ErrCanceled,
 		},
 		{
 			name:     "unavailable error",

@@ -16,7 +16,6 @@ type SystemInfo struct {
 	MemoryLimit        bool
 	SwapLimit          bool
 	KernelMemory       bool
-	KernelMemoryTCP    bool
 	CPUCfsPeriod       bool
 	CPUCfsQuota        bool
 	CPUShares          bool
@@ -98,26 +97,26 @@ type Peer struct {
 
 // ClusterInfo represents information about the Swarm cluster.
 type ClusterInfo struct {
-	ID         string
-	Version    ServiceVersion
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID                     string
+	Version                ServiceVersion
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 	RootRotationInProgress bool
 }
 
 // Version represents Docker version information.
 type Version struct {
-	Platform   Platform
-	Components []ComponentVersion
-	Version    string
-	APIVersion string
+	Platform      Platform
+	Components    []ComponentVersion
+	Version       string
+	APIVersion    string
 	MinAPIVersion string
-	GitCommit  string
-	GoVersion  string
-	Os         string
-	Arch       string
+	GitCommit     string
+	GoVersion     string
+	Os            string
+	Arch          string
 	KernelVersion string
-	BuildTime  string
+	BuildTime     string
 }
 
 // Platform represents the platform information.

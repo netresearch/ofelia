@@ -29,7 +29,6 @@ func TestBareJobRun(t *testing.T) {
 
 	// Test the Run method - should call ctx.Next()
 	err = job.Run(ctx)
-
 	// For BareJob, Run should always return nil since it just calls ctx.Next()
 	// which returns nil when there are no middlewares
 	if err != nil {

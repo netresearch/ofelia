@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -37,7 +38,7 @@ func NewSDKDockerProvider(cfg *SDKDockerProviderConfig) (*SDKDockerProvider, err
 
 	client, err := dockeradapter.NewClientWithConfig(clientConfig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating docker client: %w", err)
 	}
 
 	var logger Logger
@@ -166,7 +167,7 @@ func (p *SDKDockerProvider) WaitContainer(ctx context.Context, containerID strin
 		select {
 		case <-ctx.Done():
 			p.recordError("wait_container")
-			return -1, ctx.Err()
+			return -1, fmt.Errorf("waiting for container: %w", ctx.Err())
 		case err, ok := <-errCh:
 			if !ok {
 				// errCh closed, continue waiting for response
@@ -257,7 +258,9 @@ func (p *SDKDockerProvider) InspectExec(ctx context.Context, execID string) (*do
 }
 
 // RunExec executes a command and waits for completion.
-func (p *SDKDockerProvider) RunExec(ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer) (int, error) {
+func (p *SDKDockerProvider) RunExec(
+	ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer,
+) (int, error) {
 	p.recordOperation("run_exec")
 
 	exitCode, err := p.client.Exec().Run(ctx, containerID, config, stdout, stderr)
@@ -355,7 +358,7 @@ func (p *SDKDockerProvider) FindNetworkByName(ctx context.Context, networkName s
 	networks, err := p.client.Networks().List(ctx, opts)
 	if err != nil {
 		p.recordError("list_networks")
-		return nil, err
+		return nil, fmt.Errorf("listing networks: %w", err)
 	}
 
 	return networks, nil
@@ -373,7 +376,7 @@ func (p *SDKDockerProvider) Info(ctx context.Context) (*domain.SystemInfo, error
 	info, err := p.client.System().Info(ctx)
 	if err != nil {
 		p.recordError("info")
-		return nil, err
+		return nil, fmt.Errorf("getting docker info: %w", err)
 	}
 
 	return info, nil
@@ -386,7 +389,7 @@ func (p *SDKDockerProvider) Ping(ctx context.Context) error {
 	_, err := p.client.System().Ping(ctx)
 	if err != nil {
 		p.recordError("ping")
-		return err
+		return fmt.Errorf("pinging docker: %w", err)
 	}
 
 	return nil
@@ -394,7 +397,10 @@ func (p *SDKDockerProvider) Ping(ctx context.Context) error {
 
 // Close closes the Docker client.
 func (p *SDKDockerProvider) Close() error {
-	return p.client.Close()
+	if err := p.client.Close(); err != nil {
+		return fmt.Errorf("closing docker client: %w", err)
+	}
+	return nil
 }
 
 // Service operations (Swarm)
@@ -433,7 +439,7 @@ func (p *SDKDockerProvider) ListTasks(ctx context.Context, opts domain.TaskListO
 	tasks, err := p.client.Services().ListTasks(ctx, opts)
 	if err != nil {
 		p.recordError("list_tasks")
-		return nil, err
+		return nil, fmt.Errorf("listing tasks: %w", err)
 	}
 
 	return tasks, nil

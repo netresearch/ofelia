@@ -19,7 +19,7 @@ type EventServiceAdapter struct {
 }
 
 // Subscribe subscribes to Docker events.
-// The returned channels are closed when the context is cancelled or an error occurs.
+// The returned channels are closed when the context is canceled or an error occurs.
 // The caller should NOT close these channels.
 func (s *EventServiceAdapter) Subscribe(ctx context.Context, filter domain.EventFilter) (<-chan domain.Event, <-chan error) {
 	eventCh := make(chan domain.Event, 100)
@@ -47,13 +47,13 @@ func (s *EventServiceAdapter) Subscribe(ctx context.Context, filter domain.Event
 		}
 
 		// Subscribe to events from SDK
-		// The SDK handles cleanup automatically when context is cancelled
+		// The SDK handles cleanup automatically when context is canceled
 		sdkEventCh, sdkErrCh := s.client.Events(ctx, opts)
 
 		for {
 			select {
 			case <-ctx.Done():
-				// Context cancelled - clean exit
+				// Context canceled - clean exit
 				return
 
 			case err := <-sdkErrCh:
@@ -83,19 +83,23 @@ func (s *EventServiceAdapter) Subscribe(ctx context.Context, filter domain.Event
 }
 
 // SubscribeWithCallback subscribes to events with a callback.
-func (s *EventServiceAdapter) SubscribeWithCallback(ctx context.Context, filter domain.EventFilter, callback ports.EventCallback) error {
-	events, errs := s.Subscribe(ctx, filter)
+func (s *EventServiceAdapter) SubscribeWithCallback(
+	ctx context.Context,
+	filter domain.EventFilter,
+	callback ports.EventCallback,
+) error {
+	eventChan, errChan := s.Subscribe(ctx, filter)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case err := <-errs:
+		case err := <-errChan:
 			if err != nil {
 				return err
 			}
 			return nil
-		case event, ok := <-events:
+		case event, ok := <-eventChan:
 			if !ok {
 				return nil
 			}

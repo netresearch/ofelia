@@ -3,6 +3,7 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -95,7 +96,7 @@ func NewClientWithConfig(config *ClientConfig) (*Client, error) {
 
 	sdk, err := client.NewClientWithOpts(opts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating docker client: %w", err)
 	}
 
 	return newClientFromSDK(sdk), nil
@@ -125,15 +126,16 @@ func createHTTPClient(config *ClientConfig) *http.Client {
 	}
 
 	transport := &http.Transport{
-		MaxIdleConns:        config.MaxIdleConns,
-		MaxIdleConnsPerHost: config.MaxIdleConnsPerHost,
-		MaxConnsPerHost:     config.MaxConnsPerHost,
-		IdleConnTimeout:     config.IdleConnTimeout,
+		MaxIdleConns:          config.MaxIdleConns,
+		MaxIdleConnsPerHost:   config.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       config.MaxConnsPerHost,
+		IdleConnTimeout:       config.IdleConnTimeout,
 		ResponseHeaderTimeout: config.ResponseHeaderTimeout,
 	}
 
 	// Configure dialer based on host type
-	if strings.HasPrefix(host, "unix://") {
+	switch {
+	case strings.HasPrefix(host, "unix://"):
 		socketPath := strings.TrimPrefix(host, "unix://")
 		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			dialer := &net.Dialer{Timeout: config.DialTimeout}
@@ -141,10 +143,10 @@ func createHTTPClient(config *ClientConfig) *http.Client {
 		}
 		// HTTP/2 not supported on Unix sockets
 		transport.ForceAttemptHTTP2 = false
-	} else if strings.HasPrefix(host, "https://") {
+	case strings.HasPrefix(host, "https://"):
 		// HTTPS connections can use HTTP/2 via ALPN
 		transport.ForceAttemptHTTP2 = true
-	} else {
+	default:
 		// TCP without TLS - HTTP/2 not supported (no h2c in Docker)
 		transport.ForceAttemptHTTP2 = false
 	}
@@ -192,7 +194,10 @@ func (c *Client) System() ports.SystemService {
 
 // Close closes the client.
 func (c *Client) Close() error {
-	return c.sdk.Close()
+	if err := c.sdk.Close(); err != nil {
+		return fmt.Errorf("closing docker client: %w", err)
+	}
+	return nil
 }
 
 // SDK returns the underlying Docker SDK client.

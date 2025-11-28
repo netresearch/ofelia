@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gobs/args"
+
 	"github.com/netresearch/ofelia/core/domain"
 )
 
@@ -45,7 +46,7 @@ func (j *RunServiceJob) Run(ctx *Context) error {
 
 	// Pull image using the provider
 	if err := j.Provider.EnsureImage(bgCtx, j.Image, true); err != nil {
-		return err
+		return fmt.Errorf("ensuring image: %w", err)
 	}
 
 	svcID, err := j.buildService(bgCtx)
@@ -211,7 +212,6 @@ func (j *RunServiceJob) deleteService(ctx context.Context, jobCtx *Context, svcI
 	}
 
 	err := j.Provider.RemoveService(ctx, svcID)
-
 	// Check if service was already removed (not found error)
 	if err != nil {
 		// Log warning but don't return error if service is already gone

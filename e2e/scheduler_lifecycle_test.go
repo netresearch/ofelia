@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/adapters/mock"
 	"github.com/netresearch/ofelia/core/domain"
-	"github.com/sirupsen/logrus"
 )
 
 // mockDockerProviderForE2E implements core.DockerProvider for E2E tests

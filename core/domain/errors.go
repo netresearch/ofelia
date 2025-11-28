@@ -22,8 +22,8 @@ var (
 	// ErrTimeout indicates an operation timed out.
 	ErrTimeout = errors.New("operation timed out")
 
-	// ErrCancelled indicates an operation was cancelled.
-	ErrCancelled = errors.New("operation cancelled")
+	// ErrCanceled indicates an operation was canceled.
+	ErrCanceled = errors.New("operation canceled")
 
 	// ErrConnectionFailed indicates a connection failure.
 	ErrConnectionFailed = errors.New("connection failed")
@@ -117,7 +117,7 @@ func IsTimeout(err error) bool {
 	return errors.Is(err, ErrTimeout)
 }
 
-// IsCancelled returns true if the error indicates cancellation.
-func IsCancelled(err error) bool {
-	return errors.Is(err, ErrCancelled)
+// IsCanceled returns true if the error indicates cancellation.
+func IsCanceled(err error) bool {
+	return errors.Is(err, ErrCanceled)
 }

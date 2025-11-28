@@ -109,14 +109,14 @@ func TestLatestChanged(t *testing.T) {
 	file2 := filepath.Join(dir, "file2.ini")
 
 	// Create first file
-	if err := os.WriteFile(file1, []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(file1, []byte("test"), 0o644); err != nil {
 		t.Fatalf("Failed to write file1: %v", err)
 	}
 
 	time.Sleep(10 * time.Millisecond)
 
 	// Create second file (newer)
-	if err := os.WriteFile(file2, []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(file2, []byte("test"), 0o644); err != nil {
 		t.Fatalf("Failed to write file2: %v", err)
 	}
 
@@ -254,7 +254,7 @@ func TestDockerLabelsUpdate_Integration(t *testing.T) {
 	// Simulate docker labels update
 	labels := map[string]map[string]string{
 		"container1": {
-			"ofelia.enabled": "true",
+			"ofelia.enabled":                "true",
 			"ofelia.job-exec.test.schedule": "@every 10s",
 			"ofelia.job-exec.test.command":  "echo test",
 		},
@@ -278,7 +278,6 @@ command = echo test
 `
 	logger := test.NewTestLogger()
 	_, err := BuildFromString(configStr, logger)
-
 	if err != nil {
 		t.Fatalf("BuildFromString failed unexpectedly: %v", err)
 	}

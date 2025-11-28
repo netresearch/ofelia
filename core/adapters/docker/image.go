@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/docker/docker/api/types/filters"
@@ -48,8 +49,10 @@ func (s *ImageServiceAdapter) PullAndWait(ctx context.Context, opts domain.PullO
 	defer reader.Close()
 
 	// Consume the stream to wait for completion
-	_, err = io.Copy(io.Discard, reader)
-	return err
+	if _, err = io.Copy(io.Discard, reader); err != nil {
+		return fmt.Errorf("reading image pull response: %w", err)
+	}
+	return nil
 }
 
 // List lists images.
@@ -82,7 +85,6 @@ func (s *ImageServiceAdapter) List(ctx context.Context, opts domain.ImageListOpt
 			Created:     img.Created,
 			Size:        img.Size,
 			SharedSize:  img.SharedSize,
-			VirtualSize: img.VirtualSize,
 			Labels:      img.Labels,
 			Containers:  img.Containers,
 		}
@@ -93,7 +95,7 @@ func (s *ImageServiceAdapter) List(ctx context.Context, opts domain.ImageListOpt
 
 // Inspect returns image information.
 func (s *ImageServiceAdapter) Inspect(ctx context.Context, imageID string) (*domain.Image, error) {
-	img, _, err := s.client.ImageInspectWithRaw(ctx, imageID)
+	img, err := s.client.ImageInspect(ctx, imageID)
 	if err != nil {
 		return nil, convertError(err)
 	}
@@ -102,12 +104,9 @@ func (s *ImageServiceAdapter) Inspect(ctx context.Context, imageID string) (*dom
 		ID:          img.ID,
 		RepoTags:    img.RepoTags,
 		RepoDigests: img.RepoDigests,
-		Parent:      img.Parent,
 		Comment:     img.Comment,
 		Created:     parseTime(img.Created),
-		Container:   img.Container,
 		Size:        img.Size,
-		VirtualSize: img.VirtualSize,
 		Labels:      img.Config.Labels,
 	}, nil
 }
@@ -129,7 +128,7 @@ func (s *ImageServiceAdapter) Tag(ctx context.Context, source, target string) er
 
 // Exists checks if an image exists locally.
 func (s *ImageServiceAdapter) Exists(ctx context.Context, imageRef string) (bool, error) {
-	_, _, err := s.client.ImageInspectWithRaw(ctx, imageRef)
+	_, err := s.client.ImageInspect(ctx, imageRef)
 	if err != nil {
 		if domain.IsNotFound(convertError(err)) {
 			return false, nil
@@ -153,7 +152,7 @@ func EncodeAuthConfig(auth domain.AuthConfig) (string, error) {
 
 	encoded, err := json.Marshal(authConfig)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("encoding auth config: %w", err)
 	}
 
 	return base64.URLEncoding.EncodeToString(encoded), nil

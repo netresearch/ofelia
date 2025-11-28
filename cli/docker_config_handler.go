@@ -36,8 +36,6 @@ func (c *DockerHandler) GetDockerProvider() core.DockerProvider {
 	return c.dockerProvider
 }
 
-
-
 func NewDockerHandler(
 	ctx context.Context, //nolint:contextcheck // external callers provide base context; we derive cancelable child
 	notifier dockerLabelsUpdate,

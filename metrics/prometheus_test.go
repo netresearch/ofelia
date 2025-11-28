@@ -416,11 +416,11 @@ func TestHistogramBuckets(t *testing.T) {
 	mc.RegisterHistogram("test_hist", "Test histogram", buckets)
 
 	// Observe values that fall into different buckets
-	mc.ObserveHistogram("test_hist", 0.5)  // Below first bucket
-	mc.ObserveHistogram("test_hist", 3)    // Between bucket 1 and 5
-	mc.ObserveHistogram("test_hist", 7)    // Between bucket 5 and 10
-	mc.ObserveHistogram("test_hist", 25)   // Between bucket 10 and 50
-	mc.ObserveHistogram("test_hist", 100)  // Above last bucket
+	mc.ObserveHistogram("test_hist", 0.5) // Below first bucket
+	mc.ObserveHistogram("test_hist", 3)   // Between bucket 1 and 5
+	mc.ObserveHistogram("test_hist", 7)   // Between bucket 5 and 10
+	mc.ObserveHistogram("test_hist", 25)  // Between bucket 10 and 50
+	mc.ObserveHistogram("test_hist", 100) // Above last bucket
 
 	hist := mc.metrics["test_hist"].Histogram
 

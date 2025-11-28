@@ -89,10 +89,10 @@ func TestDockerHandler_Shutdown(t *testing.T) {
 // TestDockerHandler_watchEvents tests the watchEvents method
 func TestDockerHandler_watchEvents(t *testing.T) {
 	tests := []struct {
-		name           string
-		setupProvider  func() *mockEventProvider
-		checkNotifier  func(*trackingNotifier) bool
-		waitDuration   time.Duration
+		name          string
+		setupProvider func() *mockEventProvider
+		checkNotifier func(*trackingNotifier) bool
+		waitDuration  time.Duration
 	}{
 		{
 			name: "receives container event",

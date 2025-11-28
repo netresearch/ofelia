@@ -106,18 +106,18 @@ type HostConfig struct {
 	ReadonlyRootfs bool     // Mount root filesystem as read-only
 
 	// Runtime
-	AutoRemove  bool          // Automatically remove container when it exits
+	AutoRemove    bool          // Automatically remove container when it exits
 	RestartPolicy RestartPolicy // Restart policy
 
 	// Logging
 	LogConfig LogConfig // Logging configuration
 
 	// Other
-	PidMode    string // PID namespace mode
-	UsernsMode string // User namespace mode
-	ShmSize    int64  // Size of /dev/shm in bytes
+	PidMode    string            // PID namespace mode
+	UsernsMode string            // User namespace mode
+	ShmSize    int64             // Size of /dev/shm in bytes
 	Tmpfs      map[string]string // Tmpfs mounts
-	Ulimits    []Ulimit // Ulimit settings
+	Ulimits    []Ulimit          // Ulimit settings
 }
 
 // RestartPolicy represents the restart policy for a container.
@@ -141,14 +141,14 @@ type Ulimit struct {
 
 // Mount represents a mount configuration.
 type Mount struct {
-	Type        MountType
-	Source      string
-	Target      string
-	ReadOnly    bool
-	Consistency string
-	BindOptions *BindOptions
+	Type          MountType
+	Source        string
+	Target        string
+	ReadOnly      bool
+	Consistency   string
+	BindOptions   *BindOptions
 	VolumeOptions *VolumeOptions
-	TmpfsOptions *TmpfsOptions
+	TmpfsOptions  *TmpfsOptions
 }
 
 // MountType represents the type of mount.
@@ -168,8 +168,8 @@ type BindOptions struct {
 
 // VolumeOptions represents options for volume mounts.
 type VolumeOptions struct {
-	NoCopy  bool
-	Labels  map[string]string
+	NoCopy       bool
+	Labels       map[string]string
 	DriverConfig *Driver
 }
 
@@ -228,9 +228,9 @@ type PortBinding struct {
 
 // ListOptions represents options for listing containers.
 type ListOptions struct {
-	All     bool              // Show all containers (default shows just running)
-	Size    bool              // Show size
-	Limit   int               // Max number of containers to return
+	All     bool                // Show all containers (default shows just running)
+	Size    bool                // Show size
+	Limit   int                 // Max number of containers to return
 	Filters map[string][]string // Filters to apply
 }
 

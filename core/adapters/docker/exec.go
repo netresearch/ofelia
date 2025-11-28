@@ -2,6 +2,8 @@ package docker
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 
 	containertypes "github.com/docker/docker/api/types/container"
@@ -76,7 +78,9 @@ func (s *ExecServiceAdapter) Inspect(ctx context.Context, execID string) (*domai
 }
 
 // Run executes a command in a container and waits for it to complete.
-func (s *ExecServiceAdapter) Run(ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer) (int, error) {
+func (s *ExecServiceAdapter) Run(
+	ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer,
+) (int, error) {
 	// Create exec instance
 	execID, err := s.Create(ctx, containerID, config)
 	if err != nil {
@@ -103,8 +107,8 @@ func (s *ExecServiceAdapter) Run(ctx context.Context, containerID string, config
 		// Non-TTY mode: demultiplex stdout and stderr
 		_, err = stdcopy.StdCopy(stdout, stderr, hijacked.Reader)
 	}
-	if err != nil && err != io.EOF {
-		return -1, err
+	if err != nil && !errors.Is(err, io.EOF) {
+		return -1, fmt.Errorf("copying exec output: %w", err)
 	}
 
 	// Get exit code
