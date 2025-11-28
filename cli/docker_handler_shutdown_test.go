@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -88,96 +89,135 @@ func TestDockerHandler_Shutdown(t *testing.T) {
 
 // TestDockerHandler_watchEvents tests the watchEvents method
 func TestDockerHandler_watchEvents(t *testing.T) {
-	tests := []struct {
-		name          string
-		setupProvider func() *mockEventProvider
-		checkNotifier func(*trackingNotifier) bool
-		waitDuration  time.Duration
-	}{
-		{
-			name: "receives container event",
-			setupProvider: func() *mockEventProvider {
-				return &mockEventProvider{
-					events: []domain.Event{
-						{Type: "container", Action: "start"},
-					},
-				}
+	t.Run("receives container event", func(t *testing.T) {
+		mockProvider := &mockEventProvider{
+			events: []domain.Event{
+				{Type: "container", Action: "start"},
 			},
-			checkNotifier: func(n *trackingNotifier) bool {
-				return n.updateCount > 0
-			},
-			waitDuration: 200 * time.Millisecond,
-		},
-		{
-			name: "handles error in event stream",
-			setupProvider: func() *mockEventProvider {
-				return &mockEventProvider{
-					err: context.Canceled,
-				}
-			},
-			checkNotifier: func(n *trackingNotifier) bool {
-				return true // Just check it doesn't panic
-			},
-			waitDuration: 200 * time.Millisecond,
-		},
-		{
-			name: "stops on context cancellation",
-			setupProvider: func() *mockEventProvider {
-				return &mockEventProvider{
-					blockForever: true,
-				}
-			},
-			checkNotifier: func(n *trackingNotifier) bool {
-				return true // Just check clean shutdown
-			},
-			waitDuration: 100 * time.Millisecond,
-		},
-	}
+		}
+		notifier := &trackingNotifier{
+			updated: make(chan struct{}, 1),
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockProvider := tt.setupProvider()
-			notifier := &trackingNotifier{}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-			ctx, cancel := context.WithCancel(context.Background())
+		handler := &DockerHandler{
+			ctx:            ctx,
+			cancel:         cancel,
+			dockerProvider: mockProvider,
+			notifier:       notifier,
+			logger:         test.NewTestLogger(),
+			useEvents:      true,
+		}
 
-			handler := &DockerHandler{
-				ctx:            ctx,
-				cancel:         cancel,
-				dockerProvider: mockProvider,
-				notifier:       notifier,
-				logger:         test.NewTestLogger(),
-				useEvents:      true,
-			}
+		// Start watchEvents in background
+		go handler.watchEvents()
 
-			// Start watchEvents in background
-			go handler.watchEvents()
+		// Wait for update with timeout
+		select {
+		case <-notifier.updated:
+			// Success - event was received
+		case <-time.After(2 * time.Second):
+			t.Fatal("Timeout waiting for event to be processed")
+		}
 
-			// Wait for events to be processed
-			time.Sleep(tt.waitDuration)
+		if notifier.getUpdateCount() == 0 {
+			t.Error("Expected updateCount > 0")
+		}
+	})
 
-			// Cancel context to stop watching
-			cancel()
+	t.Run("handles error in event stream", func(t *testing.T) {
+		mockProvider := &mockEventProvider{
+			err: context.Canceled,
+		}
+		notifier := &trackingNotifier{}
 
-			// Give time for goroutine to exit
-			time.Sleep(50 * time.Millisecond)
+		ctx, cancel := context.WithCancel(context.Background())
 
-			if tt.checkNotifier != nil && !tt.checkNotifier(notifier) {
-				t.Error("Notifier check failed")
-			}
-		})
-	}
+		handler := &DockerHandler{
+			ctx:            ctx,
+			cancel:         cancel,
+			dockerProvider: mockProvider,
+			notifier:       notifier,
+			logger:         test.NewTestLogger(),
+			useEvents:      true,
+		}
+
+		// Start watchEvents in background
+		go handler.watchEvents()
+
+		// Wait briefly for error to be handled
+		time.Sleep(100 * time.Millisecond)
+
+		// Cancel context to stop watching
+		cancel()
+
+		// Give time for goroutine to exit
+		time.Sleep(50 * time.Millisecond)
+
+		// Just check it doesn't panic - success if we get here
+	})
+
+	t.Run("stops on context cancellation", func(t *testing.T) {
+		mockProvider := &mockEventProvider{
+			blockForever: true,
+		}
+		notifier := &trackingNotifier{}
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		handler := &DockerHandler{
+			ctx:            ctx,
+			cancel:         cancel,
+			dockerProvider: mockProvider,
+			notifier:       notifier,
+			logger:         test.NewTestLogger(),
+			useEvents:      true,
+		}
+
+		// Start watchEvents in background
+		go handler.watchEvents()
+
+		// Wait briefly then cancel
+		time.Sleep(50 * time.Millisecond)
+
+		// Cancel context to stop watching
+		cancel()
+
+		// Give time for goroutine to exit
+		time.Sleep(50 * time.Millisecond)
+
+		// Just check clean shutdown - success if we get here
+	})
 }
 
 // trackingNotifier tracks dockerLabelsUpdate calls
 type trackingNotifier struct {
+	mu          sync.Mutex
 	updateCount int
 	lastLabels  map[string]map[string]string
+	updated     chan struct{}
 }
 
 func (n *trackingNotifier) dockerLabelsUpdate(labels map[string]map[string]string) {
+	n.mu.Lock()
 	n.updateCount++
 	n.lastLabels = labels
+	n.mu.Unlock()
+
+	if n.updated != nil {
+		select {
+		case n.updated <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (n *trackingNotifier) getUpdateCount() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.updateCount
 }
 
 // mockEventProvider provides mock event streaming
