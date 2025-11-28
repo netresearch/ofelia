@@ -2,18 +2,126 @@ package cli
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"io"
 	"testing"
+	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
 	. "gopkg.in/check.v1"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/core/domain"
 )
 
-const containersJSON = "/containers/json"
+// mockDockerProviderForInit implements core.DockerProvider for initialization tests
+type mockDockerProviderForInit struct {
+	containers []domain.Container
+}
+
+func (m *mockDockerProviderForInit) CreateContainer(ctx context.Context, config *domain.ContainerConfig, name string) (string, error) {
+	return "test-container", nil
+}
+
+func (m *mockDockerProviderForInit) StartContainer(ctx context.Context, containerID string) error {
+	return nil
+}
+
+func (m *mockDockerProviderForInit) StopContainer(ctx context.Context, containerID string, timeout *time.Duration) error {
+	return nil
+}
+
+func (m *mockDockerProviderForInit) RemoveContainer(ctx context.Context, containerID string, force bool) error {
+	return nil
+}
+
+func (m *mockDockerProviderForInit) InspectContainer(ctx context.Context, containerID string) (*domain.Container, error) {
+	return &domain.Container{ID: containerID}, nil
+}
+
+func (m *mockDockerProviderForInit) ListContainers(ctx context.Context, opts domain.ListOptions) ([]domain.Container, error) {
+	return m.containers, nil
+}
+
+func (m *mockDockerProviderForInit) WaitContainer(ctx context.Context, containerID string) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockDockerProviderForInit) GetContainerLogs(ctx context.Context, containerID string, opts core.ContainerLogsOptions) (io.ReadCloser, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProviderForInit) CreateExec(ctx context.Context, containerID string, config *domain.ExecConfig) (string, error) {
+	return "exec-id", nil
+}
+
+func (m *mockDockerProviderForInit) StartExec(ctx context.Context, execID string, opts domain.ExecStartOptions) (*domain.HijackedResponse, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProviderForInit) InspectExec(ctx context.Context, execID string) (*domain.ExecInspect, error) {
+	return &domain.ExecInspect{ExitCode: 0}, nil
+}
+
+func (m *mockDockerProviderForInit) RunExec(ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDockerProviderForInit) PullImage(ctx context.Context, image string) error {
+	return nil
+}
+
+func (m *mockDockerProviderForInit) HasImageLocally(ctx context.Context, image string) (bool, error) {
+	return true, nil
+}
+
+func (m *mockDockerProviderForInit) EnsureImage(ctx context.Context, image string, forcePull bool) error {
+	return nil
+}
+
+func (m *mockDockerProviderForInit) ConnectNetwork(ctx context.Context, networkID, containerID string) error {
+	return nil
+}
+
+func (m *mockDockerProviderForInit) FindNetworkByName(ctx context.Context, networkName string) ([]domain.Network, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProviderForInit) SubscribeEvents(ctx context.Context, filter domain.EventFilter) (<-chan domain.Event, <-chan error) {
+	eventCh := make(chan domain.Event)
+	errCh := make(chan error)
+	return eventCh, errCh
+}
+
+func (m *mockDockerProviderForInit) CreateService(ctx context.Context, spec domain.ServiceSpec, opts domain.ServiceCreateOptions) (string, error) {
+	return "service-id", nil
+}
+
+func (m *mockDockerProviderForInit) InspectService(ctx context.Context, serviceID string) (*domain.Service, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProviderForInit) ListTasks(ctx context.Context, opts domain.TaskListOptions) ([]domain.Task, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProviderForInit) RemoveService(ctx context.Context, serviceID string) error {
+	return nil
+}
+
+func (m *mockDockerProviderForInit) WaitForServiceTasks(ctx context.Context, serviceID string, timeout time.Duration) ([]domain.Task, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProviderForInit) Info(ctx context.Context) (*domain.SystemInfo, error) {
+	return &domain.SystemInfo{}, nil
+}
+
+func (m *mockDockerProviderForInit) Ping(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockDockerProviderForInit) Close() error {
+	return nil
+}
 
 // Hook up gocheck into the "go test" runner.
 func TestConfigInit(t *testing.T) { TestingT(t) }
@@ -24,32 +132,16 @@ var _ = Suite(&ConfigInitSuite{})
 
 // TestInitializeAppSuccess verifies that InitializeApp succeeds when Docker handler connects and no containers are found.
 func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
-	// HTTP test server returning empty container list
-	const containersJSON = "/containers/json"
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == containersJSON {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte("[]"))
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer ts.Close()
-
-	// Override newDockerHandler to use the test server
+	// Override newDockerHandler to use mock provider
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
-		client, err := docker.NewClient(ts.URL)
-		if err != nil {
-			return nil, err
-		}
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{
 			ctx:            ctx,
 			filters:        cfg.Filters,
 			notifier:       notifier,
 			logger:         logger,
-			dockerClient:   client,
+			dockerProvider: &mockDockerProviderForInit{},
 			pollInterval:   cfg.PollInterval,
 			useEvents:      cfg.UseEvents,
 			disablePolling: cfg.DisablePolling,
@@ -70,34 +162,31 @@ func (s *ConfigInitSuite) TestInitializeAppLabelConflict(c *C) {
 	cfg, err := BuildFromString(iniStr, &TestLogger{})
 	c.Assert(err, IsNil)
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == containersJSON {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `[{"Names":["/cont1"],"Labels":{`+
-				`"ofelia.enabled":"true",`+
-				`"ofelia.job-run.foo.schedule":"@every 10s",`+
-				`"ofelia.job-run.foo.image":"busybox",`+
-				`"ofelia.job-run.foo.command":"echo label"}}]`)
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer ts.Close()
+	// Create mock with container that has conflicting labels
+	mockProvider := &mockDockerProviderForInit{
+		containers: []domain.Container{
+			{
+				Name: "cont1",
+				Labels: map[string]string{
+					"ofelia.enabled":                  "true",
+					"ofelia.job-run.foo.schedule":     "@every 10s",
+					"ofelia.job-run.foo.image":        "busybox",
+					"ofelia.job-run.foo.command":      "echo label",
+				},
+			},
+		},
+	}
 
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
-		client, err := docker.NewClient(ts.URL)
-		if err != nil {
-			return nil, err
-		}
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{
-			ctx:          ctx,
-			filters:      cfg.Filters,
-			notifier:     notifier,
-			logger:       logger,
-			dockerClient: client,
-			pollInterval: 0,
+			ctx:            ctx,
+			filters:        cfg.Filters,
+			notifier:       notifier,
+			logger:         logger,
+			dockerProvider: mockProvider,
+			pollInterval:   0,
 		}, nil
 	}
 
@@ -117,27 +206,24 @@ func (s *ConfigInitSuite) TestInitializeAppComposeConflict(c *C) {
 	cfg, err := BuildFromString(iniStr, &TestLogger{})
 	c.Assert(err, IsNil)
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == containersJSON {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `[{"Names":["/cont1"],"Labels":{`+
-				`"ofelia.enabled":"true",`+
-				`"ofelia.job-compose.foo.schedule":"@hourly",`+
-				`"ofelia.job-compose.foo.file":"override.yml"}}]`)
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer ts.Close()
+	// Create mock with container that has conflicting labels
+	mockProvider := &mockDockerProviderForInit{
+		containers: []domain.Container{
+			{
+				Name: "cont1",
+				Labels: map[string]string{
+					"ofelia.enabled":                   "true",
+					"ofelia.job-compose.foo.schedule":  "@hourly",
+					"ofelia.job-compose.foo.file":      "override.yml",
+				},
+			},
+		},
+	}
 
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
-		client, err := docker.NewClient(ts.URL)
-		if err != nil {
-			return nil, err
-		}
-		return &DockerHandler{ctx: ctx, filters: cfg.Filters, notifier: notifier, logger: logger, dockerClient: client, pollInterval: 0}, nil
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+		return &DockerHandler{ctx: ctx, filters: cfg.Filters, notifier: notifier, logger: logger, dockerProvider: mockProvider, pollInterval: 0}, nil
 	}
 
 	cfg.logger = &TestLogger{}

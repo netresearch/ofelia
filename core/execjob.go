@@ -1,129 +1,85 @@
 package core
 
 import (
+	"context"
 	"fmt"
+	"io"
 
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/gobs/args"
+	"github.com/netresearch/ofelia/core/domain"
 )
 
 type ExecJob struct {
 	BareJob     `mapstructure:",squash"`
-	Client      *docker.Client `json:"-"`
+	Provider    DockerProvider `json:"-"` // SDK-based Docker provider
 	Container   string         `hash:"true"`
 	User        string         `default:"nobody" hash:"true"`
 	TTY         bool           `default:"false" hash:"true"`
 	Environment []string       `mapstructure:"environment" hash:"true"`
 	WorkingDir  string         `mapstructure:"working-dir" hash:"true"`
 
-	dockerOps *DockerOperations `json:"-"` // High-level Docker operations wrapper
-	execID    string
+	execID string
 }
 
-func NewExecJob(c *docker.Client) *ExecJob {
-	// Initialize Docker operations wrapper with basic logger
-	// Metrics will be set later when the job runs in a context
-	dockerOps := NewDockerOperations(c, &SimpleLogger{}, nil)
-
+func NewExecJob(provider DockerProvider) *ExecJob {
 	return &ExecJob{
-		Client:    c,
-		dockerOps: dockerOps,
+		Provider: provider,
 	}
 }
 
-// InitializeRuntimeFields initializes fields that depend on the Docker client
-// This should be called after the Client field is set, typically during configuration loading
+// InitializeRuntimeFields initializes fields that depend on the Docker provider.
+// This should be called after the Provider field is set.
 func (j *ExecJob) InitializeRuntimeFields() {
-	if j.Client == nil {
-		return // Cannot initialize without client
-	}
-
-	// Only initialize if not already done
-	if j.dockerOps == nil {
-		logger := &SimpleLogger{} // Will be set properly when job runs
-		j.dockerOps = NewDockerOperations(j.Client, logger, nil)
-	}
+	// No additional initialization needed with DockerProvider
 }
 
 func (j *ExecJob) Run(ctx *Context) error {
-	exec, err := j.buildExec(ctx)
+	// Use RunExec for a simpler, unified approach
+	config := &domain.ExecConfig{
+		Cmd:          args.GetArgs(j.Command),
+		Env:          j.Environment,
+		WorkingDir:   j.WorkingDir,
+		User:         j.User,
+		AttachStdin:  false,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          j.TTY,
+	}
+
+	exitCode, err := j.Provider.RunExec(
+		context.Background(),
+		j.Container,
+		config,
+		ctx.Execution.OutputStream,
+		ctx.Execution.ErrorStream,
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("exec run: %w", err)
 	}
 
-	if exec != nil {
-		j.execID = exec.ID
-	}
-
-	if err := j.startExec(ctx.Execution); err != nil {
-		return err
-	}
-
-	inspect, err := j.inspectExec()
-	if err != nil {
-		return err
-	}
-
-	switch inspect.ExitCode {
+	switch exitCode {
 	case 0:
 		return nil
 	case -1:
 		return ErrUnexpected
 	default:
-		return NonZeroExitError{ExitCode: inspect.ExitCode}
+		return NonZeroExitError{ExitCode: exitCode}
 	}
 }
 
-func (j *ExecJob) buildExec(ctx *Context) (*docker.Exec, error) {
-	// Update DockerOperations context
-	j.dockerOps.logger = ctx.Logger
-	if ctx.Scheduler != nil && ctx.Scheduler.metricsRecorder != nil {
-		j.dockerOps.metricsRecorder = ctx.Scheduler.metricsRecorder
-	}
-
-	execOps := j.dockerOps.NewExecOperations()
-
-	exec, err := execOps.CreateExec(docker.CreateExecOptions{
+// RunWithStreams runs the exec job with custom output streams.
+// This is useful for testing or when custom stream handling is needed.
+func (j *ExecJob) RunWithStreams(ctx context.Context, stdout, stderr io.Writer) (int, error) {
+	config := &domain.ExecConfig{
+		Cmd:          args.GetArgs(j.Command),
+		Env:          j.Environment,
+		WorkingDir:   j.WorkingDir,
+		User:         j.User,
 		AttachStdin:  false,
 		AttachStdout: true,
 		AttachStderr: true,
 		Tty:          j.TTY,
-		Cmd:          args.GetArgs(j.Command),
-		Container:    j.Container,
-		User:         j.User,
-		Env:          j.Environment,
-		WorkingDir:   j.WorkingDir,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create exec: %w", err)
 	}
 
-	return exec, nil
-}
-
-func (j *ExecJob) startExec(e *Execution) error {
-	execOps := j.dockerOps.NewExecOperations()
-
-	err := execOps.StartExec(j.execID, docker.StartExecOptions{
-		Tty:          j.TTY,
-		OutputStream: e.OutputStream,
-		ErrorStream:  e.ErrorStream,
-		RawTerminal:  j.TTY,
-	})
-	if err != nil {
-		return fmt.Errorf("start exec: %w", err)
-	}
-
-	return nil
-}
-
-func (j *ExecJob) inspectExec() (*docker.ExecInspect, error) {
-	execOps := j.dockerOps.NewExecOperations()
-
-	inspect, err := execOps.InspectExec(j.execID)
-	if err != nil {
-		return nil, fmt.Errorf("inspect exec: %w", err)
-	}
-
-	return inspect, nil
+	return j.Provider.RunExec(ctx, j.Container, config, stdout, stderr)
 }

@@ -1,28 +1,19 @@
 package core
 
 import (
-	"errors"
-	"os"
+	"context"
 	"strconv"
 	"sync"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/gobs/args"
+	"github.com/netresearch/ofelia/core/domain"
 )
 
-var dockercfg *docker.AuthConfigurations
-
-func init() {
-	dockercfg, _ = docker.NewAuthConfigurationsFromDockerCfg()
-}
-
 type RunJob struct {
-	BareJob   `mapstructure:",squash"`
-	Client    *docker.Client    `json:"-"`
-	monitor   *ContainerMonitor `json:"-"` // Container monitor for efficient watching
-	dockerOps *DockerOperations `json:"-"` // High-level Docker operations wrapper
-	User      string            `default:"nobody" hash:"true"`
+	BareJob  `mapstructure:",squash"`
+	Provider DockerProvider `json:"-"` // SDK-based Docker provider
+	User     string         `default:"nobody" hash:"true"`
 
 	// ContainerName specifies the name of the container to be created. If
 	// nil, the job name will be used. If set to an empty string, Docker
@@ -54,54 +45,16 @@ type RunJob struct {
 	mu          sync.RWMutex // Protect containerID access
 }
 
-func NewRunJob(c *docker.Client) *RunJob {
-	// Create a logger for the monitor (will be set properly when job runs)
-	logger := &SimpleLogger{}
-	monitor := NewContainerMonitor(c, logger)
-
-	// Check for Docker events configuration
-	if useEvents := os.Getenv("OFELIA_USE_DOCKER_EVENTS"); useEvents != "" {
-		// Default is true, so only disable if explicitly set to false
-		if useEvents == "false" || useEvents == "0" || useEvents == "no" {
-			monitor.SetUseEventsAPI(false)
-		}
-	}
-
-	// Initialize Docker operations wrapper
-	dockerOps := NewDockerOperations(c, logger, nil)
-
+func NewRunJob(provider DockerProvider) *RunJob {
 	return &RunJob{
-		Client:    c,
-		monitor:   monitor,
-		dockerOps: dockerOps,
+		Provider: provider,
 	}
 }
 
-// InitializeRuntimeFields initializes fields that depend on the Docker client
-// This should be called after the Client field is set, typically during configuration loading
+// InitializeRuntimeFields initializes fields that depend on the Docker provider.
+// This should be called after the Provider field is set.
 func (j *RunJob) InitializeRuntimeFields() {
-	if j.Client == nil {
-		return // Cannot initialize without client
-	}
-
-	// Only initialize if not already done
-	if j.monitor == nil {
-		logger := &SimpleLogger{} // Will be set properly when job runs
-		j.monitor = NewContainerMonitor(j.Client, logger)
-
-		// Check for Docker events configuration
-		if useEvents := os.Getenv("OFELIA_USE_DOCKER_EVENTS"); useEvents != "" {
-			// Default is true, so only disable if explicitly set to false
-			if useEvents == "false" || useEvents == "0" || useEvents == "no" {
-				j.monitor.SetUseEventsAPI(false)
-			}
-		}
-	}
-
-	if j.dockerOps == nil {
-		logger := &SimpleLogger{} // Will be set properly when job runs
-		j.dockerOps = NewDockerOperations(j.Client, logger, nil)
-	}
+	// No additional initialization needed with DockerProvider
 }
 
 func (j *RunJob) setContainerID(id string) {
@@ -125,79 +78,103 @@ func entrypointSlice(ep *string) []string {
 
 func (j *RunJob) Run(ctx *Context) error {
 	pull, _ := strconv.ParseBool(j.Pull)
+	bgCtx := context.Background()
 
 	if j.Image != "" && j.Container == "" {
-		if err := j.ensureImageAvailable(ctx, pull); err != nil {
+		if err := j.ensureImageAvailable(bgCtx, ctx, pull); err != nil {
 			return err
 		}
 	}
 
-	container, err := j.createOrInspectContainer()
+	containerID, err := j.createOrInspectContainer(bgCtx)
 	if err != nil {
 		return err
 	}
-	if container != nil {
-		j.setContainerID(container.ID)
-	}
+	j.setContainerID(containerID)
 
 	created := j.Container == ""
 	if created {
 		defer func() {
-			if delErr := j.deleteContainer(); delErr != nil {
+			if delErr := j.deleteContainer(bgCtx); delErr != nil {
 				ctx.Warn("failed to delete container: " + delErr.Error())
 			}
 		}()
 	}
 
-	return j.startAndWait(ctx)
+	return j.startAndWait(bgCtx, ctx)
 }
 
 // ensureImageAvailable pulls or verifies the image presence according to Pull option.
-func (j *RunJob) ensureImageAvailable(ctx *Context, pull bool) error {
-	// Update dockerOps with current context logger and metrics
-	imageOps := j.dockerOps.NewImageOperations()
-	imageOps.logger = ctx.Logger
-	if ctx.Scheduler != nil && ctx.Scheduler.metricsRecorder != nil {
-		imageOps.metricsRecorder = ctx.Scheduler.metricsRecorder
-	}
-
-	if err := imageOps.EnsureImage(j.Image, pull); err != nil {
+func (j *RunJob) ensureImageAvailable(ctx context.Context, jobCtx *Context, pull bool) error {
+	if err := j.Provider.EnsureImage(ctx, j.Image, pull); err != nil {
 		return err
 	}
 
-	ctx.Log("Image " + j.Image + " is available")
+	jobCtx.Log("Image " + j.Image + " is available")
 	return nil
 }
 
 // createOrInspectContainer creates a new container when needed or inspects an existing one.
-func (j *RunJob) createOrInspectContainer() (*docker.Container, error) {
+func (j *RunJob) createOrInspectContainer(ctx context.Context) (string, error) {
 	if j.Image != "" && j.Container == "" {
-		return j.buildContainer()
+		return j.buildContainer(ctx)
 	}
 
-	containerOps := j.dockerOps.NewContainerLifecycle()
-	return containerOps.InspectContainer(j.Container)
+	container, err := j.Provider.InspectContainer(ctx, j.Container)
+	if err != nil {
+		return "", err
+	}
+	return container.ID, nil
 }
 
 // startAndWait starts the container, waits for completion and tails logs.
-func (j *RunJob) startAndWait(ctx *Context) error {
+func (j *RunJob) startAndWait(ctx context.Context, jobCtx *Context) error {
 	startTime := time.Now()
-	if err := j.startContainer(); err != nil {
+	if err := j.startContainer(ctx); err != nil {
 		return err
 	}
-	err := j.watchContainer()
-	if errors.Is(err, ErrUnexpected) {
+
+	// Create a context with timeout if MaxRuntime is set
+	watchCtx := ctx
+	var cancel context.CancelFunc
+	if j.MaxRuntime > 0 {
+		watchCtx, cancel = context.WithTimeout(ctx, j.MaxRuntime)
+		defer cancel()
+	}
+
+	err := j.watchContainer(watchCtx)
+	if err == ErrUnexpected {
 		return err
 	}
-	logsOps := j.dockerOps.NewLogsOperations()
-	if logsErr := logsOps.GetLogsSince(j.getContainerID(), startTime, true, true,
-		ctx.Execution.OutputStream, ctx.Execution.ErrorStream); logsErr != nil {
-		ctx.Warn("failed to fetch container logs: " + logsErr.Error())
+
+	// Get logs since start time
+	logsOpts := ContainerLogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Since:      startTime,
+		Follow:     false,
+	}
+	reader, logsErr := j.Provider.GetContainerLogs(ctx, j.getContainerID(), logsOpts)
+	if logsErr != nil {
+		jobCtx.Warn("failed to fetch container logs: " + logsErr.Error())
+	} else if reader != nil {
+		defer reader.Close()
+		// Stream logs to execution output
+		buf := make([]byte, 32*1024)
+		for {
+			n, readErr := reader.Read(buf)
+			if n > 0 {
+				_, _ = jobCtx.Execution.OutputStream.Write(buf[:n])
+			}
+			if readErr != nil {
+				break
+			}
+		}
 	}
 	return err
 }
 
-func (j *RunJob) buildContainer() (*docker.Container, error) {
+func (j *RunJob) buildContainer(ctx context.Context) (string, error) {
 	name := j.Name
 	if j.ContainerName != nil {
 		name = *j.ContainerName
@@ -207,129 +184,84 @@ func (j *RunJob) buildContainer() (*docker.Container, error) {
 	defaults := getDefaultAnnotations(j.Name, "run")
 	annotations := mergeAnnotations(j.Annotations, defaults)
 
-	containerOps := j.dockerOps.NewContainerLifecycle()
-	opts := docker.CreateContainerOptions{
-		Name: name,
-		Config: &docker.Config{
-			Image:        j.Image,
-			AttachStdin:  false,
-			AttachStdout: true,
-			AttachStderr: true,
-			Tty:          j.TTY,
-			Cmd:          args.GetArgs(j.Command),
-			Entrypoint:   entrypointSlice(j.Entrypoint),
-			User:         j.User,
-			Env:          j.Environment,
-			Hostname:     j.Hostname,
-		},
-		NetworkingConfig: &docker.NetworkingConfig{},
-		HostConfig: &docker.HostConfig{
-			Binds:       j.Volume,
-			VolumesFrom: j.VolumesFrom,
-			Annotations: annotations,
+	// Build container configuration using domain types
+	config := &domain.ContainerConfig{
+		Image:        j.Image,
+		Cmd:          args.GetArgs(j.Command),
+		Entrypoint:   entrypointSlice(j.Entrypoint),
+		Env:          j.Environment,
+		User:         j.User,
+		Hostname:     j.Hostname,
+		AttachStdin:  false,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          j.TTY,
+		Name:         name,
+		Labels:       annotations,
+		HostConfig: &domain.HostConfig{
+			Binds: j.Volume,
 		},
 	}
 
-	c, err := containerOps.CreateContainer(opts)
+	containerID, err := j.Provider.CreateContainer(ctx, config, name)
 	if err != nil {
-		return c, err
+		return "", err
 	}
 
 	// Connect to network if specified
 	if j.Network != "" {
-		networkOps := j.dockerOps.NewNetworkOperations()
-		networks, err := networkOps.FindNetworkByName(j.Network)
-		if err == nil {
+		networks, findErr := j.Provider.FindNetworkByName(ctx, j.Network)
+		if findErr == nil {
 			for _, network := range networks {
-				if err := networkOps.ConnectContainerToNetwork(c.ID, network.ID); err != nil {
-					return c, err
+				if connErr := j.Provider.ConnectNetwork(ctx, network.ID, containerID); connErr != nil {
+					return containerID, connErr
 				}
 			}
 		}
 	}
 
-	return c, nil
+	return containerID, nil
 }
 
-func (j *RunJob) startContainer() error {
-	containerOps := j.dockerOps.NewContainerLifecycle()
-	return containerOps.StartContainer(j.getContainerID(), &docker.HostConfig{})
-}
-
-//nolint:unused // used in integration tests via build tags
-func (j *RunJob) stopContainer(timeout uint) error {
-	containerOps := j.dockerOps.NewContainerLifecycle()
-	return containerOps.StopContainer(j.getContainerID(), timeout)
+func (j *RunJob) startContainer(ctx context.Context) error {
+	return j.Provider.StartContainer(ctx, j.getContainerID())
 }
 
 //nolint:unused // used in integration tests via build tags
-func (j *RunJob) getContainer() (*docker.Container, error) {
-	containerOps := j.dockerOps.NewContainerLifecycle()
-	return containerOps.InspectContainer(j.getContainerID())
+func (j *RunJob) stopContainer(ctx context.Context, timeout time.Duration) error {
+	return j.Provider.StopContainer(ctx, j.getContainerID(), &timeout)
 }
 
-func (j *RunJob) watchContainer() error {
-	// Use the efficient container monitor
-	if j.monitor == nil {
-		// Fallback to old polling method if monitor not available
-		return j.watchContainerLegacy()
-	}
+//nolint:unused // used in integration tests via build tags
+func (j *RunJob) getContainer(ctx context.Context) (*domain.Container, error) {
+	return j.Provider.InspectContainer(ctx, j.getContainerID())
+}
 
-	state, err := j.monitor.WaitForContainer(j.getContainerID(), j.MaxRuntime)
+func (j *RunJob) watchContainer(ctx context.Context) error {
+	// Use Provider.WaitContainer for efficient waiting
+	exitCode, err := j.Provider.WaitContainer(ctx, j.getContainerID())
 	if err != nil {
+		// Check if it's a context timeout/cancellation (MaxRuntime)
+		if ctx.Err() != nil {
+			return ErrMaxTimeRunning
+		}
 		return err
 	}
 
-	switch state.ExitCode {
+	switch exitCode {
 	case 0:
 		return nil
 	case -1:
 		return ErrUnexpected
 	default:
-		return NonZeroExitError{ExitCode: state.ExitCode}
+		return NonZeroExitError{ExitCode: int(exitCode)}
 	}
 }
 
-// watchContainerLegacy is the old polling method kept for backward compatibility
-func (j *RunJob) watchContainerLegacy() error {
-	const watchDuration = time.Second * 2 // Increased from 500ms to reduce API calls and CPU usage
-	var s docker.State
-	var r time.Duration
-	for {
-		time.Sleep(watchDuration)
-		r += watchDuration
-
-		if j.MaxRuntime > 0 && r > j.MaxRuntime {
-			return ErrMaxTimeRunning
-		}
-
-		containerOps := j.dockerOps.NewContainerLifecycle()
-		c, err := containerOps.InspectContainer(j.getContainerID())
-		if err != nil {
-			return err
-		}
-
-		if !c.State.Running {
-			s = c.State
-			break
-		}
-	}
-
-	switch s.ExitCode {
-	case 0:
-		return nil
-	case -1:
-		return ErrUnexpected
-	default:
-		return NonZeroExitError{ExitCode: s.ExitCode}
-	}
-}
-
-func (j *RunJob) deleteContainer() error {
+func (j *RunJob) deleteContainer(ctx context.Context) error {
 	if shouldDelete, _ := strconv.ParseBool(j.Delete); !shouldDelete {
 		return nil
 	}
 
-	containerOps := j.dockerOps.NewContainerLifecycle()
-	return containerOps.RemoveContainer(j.getContainerID(), false)
+	return j.Provider.RemoveContainer(ctx, j.getContainerID(), false)
 }

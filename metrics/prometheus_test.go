@@ -279,3 +279,332 @@ func TestContainerMonitorMetrics(t *testing.T) {
 
 	t.Log("Container monitor metrics test passed")
 }
+
+// New comprehensive tests for missing coverage
+
+func TestJobRetryMetrics(t *testing.T) {
+	mc := NewCollector()
+	mc.InitDefaultMetrics()
+
+	// Test successful retry
+	mc.RecordJobRetry("test-job", 1, true)
+	if mc.metrics["ofelia_job_retries_total"].Value != 1 {
+		t.Error("Expected job_retries_total counter to be 1")
+	}
+	if mc.metrics["ofelia_job_retry_success_total"].Value != 1 {
+		t.Error("Expected job_retry_success_total counter to be 1")
+	}
+
+	// Test failed retry
+	mc.RecordJobRetry("test-job", 2, false)
+	if mc.metrics["ofelia_job_retries_total"].Value != 2 {
+		t.Error("Expected job_retries_total counter to be 2")
+	}
+	if mc.metrics["ofelia_job_retry_failed_total"].Value != 1 {
+		t.Error("Expected job_retry_failed_total counter to be 1")
+	}
+
+	// Test histogram recording
+	hist := mc.metrics["ofelia_job_retry_delay_seconds"].Histogram
+	if hist.Count != 2 {
+		t.Errorf("Expected 2 histogram observations, got %d", hist.Count)
+	}
+	// Sum should be 1 + 2 = 3 (attempt numbers used as proxy for delay)
+	if hist.Sum != 3 {
+		t.Errorf("Expected histogram sum of 3, got %f", hist.Sum)
+	}
+
+	t.Log("Job retry metrics test passed")
+}
+
+func TestDockerOperationMetrics(t *testing.T) {
+	mc := NewCollector()
+	mc.InitDefaultMetrics()
+
+	// Test recording Docker operations
+	mc.RecordDockerOperation("list_containers")
+	mc.RecordDockerOperation("inspect_container")
+	mc.RecordDockerOperation("create_container")
+
+	if mc.metrics["ofelia_docker_operations_total"].Value != 3 {
+		t.Errorf("Expected 3 Docker operations, got %f",
+			mc.metrics["ofelia_docker_operations_total"].Value)
+	}
+
+	// Test recording Docker errors
+	mc.RecordDockerError("list_containers")
+	mc.RecordDockerError("inspect_container")
+
+	if mc.metrics["ofelia_docker_errors_total"].Value != 2 {
+		t.Errorf("Expected 2 Docker errors, got %f",
+			mc.metrics["ofelia_docker_errors_total"].Value)
+	}
+
+	t.Log("Docker operation metrics test passed")
+}
+
+func TestGetGaugeValueEdgeCases(t *testing.T) {
+	mc := NewCollector()
+
+	// Test getting value from non-existent gauge
+	value := mc.getGaugeValue("non_existent_gauge")
+	if value != 0 {
+		t.Errorf("Expected 0 for non-existent gauge, got %f", value)
+	}
+
+	// Test getting value from non-gauge metric
+	mc.RegisterCounter("test_counter", "Test counter")
+	mc.IncrementCounter("test_counter", 10)
+
+	value = mc.getGaugeValue("test_counter")
+	if value != 0 {
+		t.Errorf("Expected 0 for non-gauge metric, got %f", value)
+	}
+
+	// Test getting actual gauge value
+	mc.RegisterGauge("test_gauge", "Test gauge")
+	mc.SetGauge("test_gauge", 42.5)
+
+	value = mc.getGaugeValue("test_gauge")
+	if value != 42.5 {
+		t.Errorf("Expected 42.5 for gauge value, got %f", value)
+	}
+
+	t.Log("Gauge value edge cases test passed")
+}
+
+func TestIncrementCounterOnNonExistent(t *testing.T) {
+	mc := NewCollector()
+
+	// Attempt to increment non-existent counter (should not panic)
+	mc.IncrementCounter("non_existent", 1)
+
+	// Verify it wasn't created
+	if _, exists := mc.metrics["non_existent"]; exists {
+		t.Error("Non-existent counter should not be auto-created")
+	}
+}
+
+func TestSetGaugeOnNonExistent(t *testing.T) {
+	mc := NewCollector()
+
+	// Attempt to set non-existent gauge (should not panic)
+	mc.SetGauge("non_existent", 42)
+
+	// Verify it wasn't created
+	if _, exists := mc.metrics["non_existent"]; exists {
+		t.Error("Non-existent gauge should not be auto-created")
+	}
+}
+
+func TestObserveHistogramOnNonExistent(t *testing.T) {
+	mc := NewCollector()
+
+	// Attempt to observe non-existent histogram (should not panic)
+	mc.ObserveHistogram("non_existent", 1.5)
+
+	// Verify it wasn't created
+	if _, exists := mc.metrics["non_existent"]; exists {
+		t.Error("Non-existent histogram should not be auto-created")
+	}
+}
+
+func TestHistogramBuckets(t *testing.T) {
+	mc := NewCollector()
+
+	buckets := []float64{1, 5, 10, 50}
+	mc.RegisterHistogram("test_hist", "Test histogram", buckets)
+
+	// Observe values that fall into different buckets
+	mc.ObserveHistogram("test_hist", 0.5)  // Below first bucket
+	mc.ObserveHistogram("test_hist", 3)    // Between bucket 1 and 5
+	mc.ObserveHistogram("test_hist", 7)    // Between bucket 5 and 10
+	mc.ObserveHistogram("test_hist", 25)   // Between bucket 10 and 50
+	mc.ObserveHistogram("test_hist", 100)  // Above last bucket
+
+	hist := mc.metrics["test_hist"].Histogram
+
+	// Check bucket counts
+	expectedBuckets := map[float64]int64{
+		1:  1, // 0.5 is <= 1
+		5:  2, // 0.5, 3 are <= 5
+		10: 3, // 0.5, 3, 7 are <= 10
+		50: 4, // 0.5, 3, 7, 25 are <= 50
+	}
+
+	for bucket, expectedCount := range expectedBuckets {
+		if hist.Bucket[bucket] != expectedCount {
+			t.Errorf("Bucket %f: expected count %d, got %d",
+				bucket, expectedCount, hist.Bucket[bucket])
+		}
+	}
+
+	// Check total count
+	if hist.Count != 5 {
+		t.Errorf("Expected total count 5, got %d", hist.Count)
+	}
+
+	// Check sum
+	expectedSum := 0.5 + 3 + 7 + 25 + 100
+	if hist.Sum != expectedSum {
+		t.Errorf("Expected sum %f, got %f", expectedSum, hist.Sum)
+	}
+
+	t.Log("Histogram buckets test passed")
+}
+
+func TestJobMetricsWithoutStartTime(t *testing.T) {
+	mc := NewCollector()
+	mc.InitDefaultMetrics()
+
+	jm := NewJobMetrics(mc)
+
+	// Complete a job that was never started (no start time recorded)
+	jm.JobCompleted("unknown_job", true)
+
+	// Should still decrement the running gauge
+	if mc.getGaugeValue("ofelia_jobs_running") != -1 {
+		t.Errorf("Expected -1 running jobs, got %f",
+			mc.getGaugeValue("ofelia_jobs_running"))
+	}
+
+	t.Log("Job metrics without start time test passed")
+}
+
+func TestConcurrentMetricsAccess(t *testing.T) {
+	mc := NewCollector()
+	mc.RegisterCounter("concurrent_counter", "Test counter")
+	mc.RegisterGauge("concurrent_gauge", "Test gauge")
+	mc.RegisterHistogram("concurrent_hist", "Test histogram", []float64{1, 5, 10})
+
+	done := make(chan bool, 30)
+
+	// Concurrent increments
+	for i := 0; i < 10; i++ {
+		go func() {
+			mc.IncrementCounter("concurrent_counter", 1)
+			done <- true
+		}()
+	}
+
+	// Concurrent gauge sets
+	for i := 0; i < 10; i++ {
+		go func(val float64) {
+			mc.SetGauge("concurrent_gauge", val)
+			done <- true
+		}(float64(i))
+	}
+
+	// Concurrent histogram observations
+	for i := 0; i < 10; i++ {
+		go func(val float64) {
+			mc.ObserveHistogram("concurrent_hist", val)
+			done <- true
+		}(float64(i))
+	}
+
+	// Wait for all goroutines
+	for i := 0; i < 30; i++ {
+		<-done
+	}
+
+	// Counter should be 10
+	if mc.metrics["concurrent_counter"].Value != 10 {
+		t.Errorf("Expected counter value 10, got %f",
+			mc.metrics["concurrent_counter"].Value)
+	}
+
+	// Histogram should have 10 observations
+	if mc.metrics["concurrent_hist"].Histogram.Count != 10 {
+		t.Errorf("Expected 10 histogram observations, got %d",
+			mc.metrics["concurrent_hist"].Histogram.Count)
+	}
+
+	t.Log("Concurrent metrics access test passed")
+}
+
+func TestMetricsTypeValidation(t *testing.T) {
+	mc := NewCollector()
+
+	// Register as counter
+	mc.RegisterCounter("test_metric", "Test metric")
+
+	// Try to set as gauge (should not work - wrong type)
+	mc.SetGauge("test_metric", 42)
+
+	if mc.metrics["test_metric"].Value != 0 {
+		t.Error("Setting gauge on counter should not change value")
+	}
+
+	// Register as gauge
+	mc.RegisterGauge("gauge_metric", "Gauge metric")
+
+	// Try to increment as counter (should not work - wrong type)
+	mc.IncrementCounter("gauge_metric", 10)
+
+	if mc.metrics["gauge_metric"].Value != 0 {
+		t.Error("Incrementing counter on gauge should not change value")
+	}
+
+	t.Log("Metrics type validation test passed")
+}
+
+func TestExportWithEmptyHistogram(t *testing.T) {
+	mc := NewCollector()
+
+	// Register histogram but don't observe anything
+	mc.RegisterHistogram("empty_hist", "Empty histogram", []float64{1, 5, 10})
+
+	output := mc.Export()
+
+	// Should still export with zero counts
+	if !strings.Contains(output, "empty_hist_count 0") {
+		t.Error("Export should include empty histogram with count 0")
+	}
+	if !strings.Contains(output, "empty_hist_sum 0.000000") {
+		t.Error("Export should include empty histogram with sum 0")
+	}
+
+	t.Log("Export with empty histogram test passed")
+}
+
+func TestLastUpdatedTimestamp(t *testing.T) {
+	mc := NewCollector()
+	mc.RegisterCounter("test_counter", "Test counter")
+
+	before := time.Now()
+	mc.IncrementCounter("test_counter", 1)
+	after := time.Now()
+
+	lastUpdated := mc.metrics["test_counter"].LastUpdated
+
+	if lastUpdated.Before(before) || lastUpdated.After(after) {
+		t.Error("LastUpdated timestamp should be between before and after times")
+	}
+
+	// Test for gauge
+	mc.RegisterGauge("test_gauge", "Test gauge")
+	before = time.Now()
+	mc.SetGauge("test_gauge", 42)
+	after = time.Now()
+
+	lastUpdated = mc.metrics["test_gauge"].LastUpdated
+
+	if lastUpdated.Before(before) || lastUpdated.After(after) {
+		t.Error("LastUpdated timestamp should be between before and after times for gauge")
+	}
+
+	// Test for histogram
+	mc.RegisterHistogram("test_hist", "Test histogram", []float64{1, 5})
+	before = time.Now()
+	mc.ObserveHistogram("test_hist", 2)
+	after = time.Now()
+
+	lastUpdated = mc.metrics["test_hist"].LastUpdated
+
+	if lastUpdated.Before(before) || lastUpdated.After(after) {
+		t.Error("LastUpdated timestamp should be between before and after times for histogram")
+	}
+
+	t.Log("LastUpdated timestamp test passed")
+}

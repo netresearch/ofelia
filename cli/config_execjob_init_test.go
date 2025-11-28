@@ -43,9 +43,9 @@ func (s *SuiteExecJobInit) TestExecJobInit_FromINIConfig(c *C) {
 	c.Assert(job.User, Equals, "nobody")
 
 	// CRITICAL: This is the regression test for the nil pointer bug
-	// Before the fix, dockerOps would be nil here
-	// The job won't have dockerOps until InitializeApp() is called
-	c.Assert(job.ExecJob.Client, IsNil) // Client not set until InitializeApp
+	// Before the fix, Provider would be nil here
+	// The job won't have Provider until InitializeApp() is called
+	c.Assert(job.ExecJob.Provider, IsNil) // Provider not set until InitializeApp
 }
 
 // TestExecJobInit_AfterInitializeApp verifies that after InitializeApp(),

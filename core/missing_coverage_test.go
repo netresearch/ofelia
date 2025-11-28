@@ -145,60 +145,6 @@ func TestBufferPoolPutCustomSized(t *testing.T) {
 	pool.Put(nil)
 }
 
-// TestSimpleLogger tests the SimpleLogger methods that currently have 0% coverage
-func TestSimpleLogger(t *testing.T) {
-	t.Parallel()
-
-	logger := &SimpleLogger{}
-
-	// Test all the logger methods - they are no-ops but should not panic
-	logger.Criticalf("test critical: %s", "message")
-	logger.Debugf("test debug: %s", "message")
-	logger.Errorf("test error: %s", "message")
-	logger.Noticef("test notice: %s", "message")
-	logger.Warningf("test warning: %s", "message")
-
-	// Test with no arguments
-	logger.Criticalf("simple message")
-	logger.Debugf("simple message")
-	logger.Errorf("simple message")
-	logger.Noticef("simple message")
-	logger.Warningf("simple message")
-
-	// Test with multiple arguments
-	logger.Criticalf("test with multiple %s %d", "args", 42)
-	logger.Debugf("test with multiple %s %d", "args", 42)
-	logger.Errorf("test with multiple %s %d", "args", 42)
-	logger.Noticef("test with multiple %s %d", "args", 42)
-	logger.Warningf("test with multiple %s %d", "args", 42)
-}
-
-// TestContainerMonitorSetMetricsRecorder tests the SetMetricsRecorder method that currently has 0% coverage
-func TestContainerMonitorSetMetricsRecorder(t *testing.T) {
-	t.Parallel()
-
-	// Create a mock metrics recorder
-	mockRecorder := &MockMetricsRecorder{}
-
-	// Create container monitor
-	monitor := &ContainerMonitor{}
-
-	// Test setting metrics recorder
-	monitor.SetMetricsRecorder(mockRecorder)
-
-	if monitor.metrics != mockRecorder {
-		t.Error("SetMetricsRecorder didn't set the metrics recorder correctly")
-	}
-
-	// Test setting nil recorder
-	monitor.SetMetricsRecorder(nil)
-	if monitor.metrics != nil {
-		t.Error("SetMetricsRecorder didn't handle nil recorder correctly")
-	}
-}
-
-// Use the existing MockMetricsRecorder from docker_client_test.go
-
 // TestComposeJobNewComposeJob tests the NewComposeJob() constructor that currently has 0% coverage
 func TestComposeJobNewComposeJob(t *testing.T) {
 	t.Parallel()

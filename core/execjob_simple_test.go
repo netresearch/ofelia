@@ -5,20 +5,19 @@ import (
 	"strings"
 	"testing"
 
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/netresearch/ofelia/core/adapters/mock"
+	"github.com/netresearch/ofelia/core/domain"
 )
 
 // Simple unit tests focusing on ExecJob business logic without complex Docker mocking
 
 func TestExecJob_NewExecJob_Initialization(t *testing.T) {
-	client := &docker.Client{}
-	job := NewExecJob(client)
+	mockClient := mock.NewDockerClient()
+	provider := NewSDKDockerProviderFromClient(mockClient, nil, nil)
+	job := NewExecJob(provider)
 
-	if job.Client != client {
-		t.Error("Expected Client to be set correctly")
-	}
-	if job.dockerOps == nil {
-		t.Error("Expected dockerOps to be initialized")
+	if job.Provider != provider {
+		t.Error("Expected Provider to be set correctly")
 	}
 	if job.execID != "" {
 		t.Error("Expected execID to be empty initially")
@@ -72,27 +71,25 @@ func TestExecJob_BuildExec_ArgumentParsing(t *testing.T) {
 				Environment: []string{"TEST_VAR=test_value"},
 			}
 
-			// Test the argument parsing logic directly
-			// This tests the args.GetArgs() function indirectly through the command structure
-			opts := docker.CreateExecOptions{
+			// Test the argument parsing logic directly using domain types
+			config := &domain.ExecConfig{
 				AttachStdin:  false,
 				AttachStdout: true,
 				AttachStderr: true,
 				Tty:          job.TTY,
-				Cmd:          parseCommand(tc.command), // We'll implement this helper
-				Container:    job.Container,
+				Cmd:          parseCommand(tc.command),
 				User:         job.User,
 				Env:          job.Environment,
 			}
 
-			if len(opts.Cmd) != len(tc.expectedCmd) {
-				t.Errorf("Expected command %v, got %v", tc.expectedCmd, opts.Cmd)
+			if len(config.Cmd) != len(tc.expectedCmd) {
+				t.Errorf("Expected command %v, got %v", tc.expectedCmd, config.Cmd)
 				return
 			}
 
 			for i, expected := range tc.expectedCmd {
-				if opts.Cmd[i] != expected {
-					t.Errorf("Command arg %d: expected %q, got %q", i, expected, opts.Cmd[i])
+				if config.Cmd[i] != expected {
+					t.Errorf("Command arg %d: expected %q, got %q", i, expected, config.Cmd[i])
 				}
 			}
 		})
@@ -282,22 +279,10 @@ func TestExecJob_ErrorMessageParsing(t *testing.T) {
 		expectContain string
 	}{
 		{
-			name:          "create_exec_error",
-			operation:     "create exec",
+			name:          "exec_run_error",
+			operation:     "exec run",
 			originalError: errors.New("container not found"),
-			expectContain: "create exec",
-		},
-		{
-			name:          "start_exec_error",
-			operation:     "start exec",
-			originalError: errors.New("permission denied"),
-			expectContain: "start exec",
-		},
-		{
-			name:          "inspect_exec_error",
-			operation:     "inspect exec",
-			originalError: errors.New("exec not found"),
-			expectContain: "inspect exec",
+			expectContain: "exec run",
 		},
 	}
 

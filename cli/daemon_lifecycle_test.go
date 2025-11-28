@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -11,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/sirupsen/logrus"
 	. "gopkg.in/check.v1"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/core/domain"
 )
 
 func TestDaemonLifecycle(t *testing.T) { TestingT(t) }
@@ -24,18 +25,112 @@ type DaemonLifecycleSuite struct{}
 
 var _ = Suite(&DaemonLifecycleSuite{})
 
-// mockDockerClient implements the dockerClient interface for testing
-type mockDockerClient struct{}
+// mockDockerProvider implements the core.DockerProvider interface for testing
+type mockDockerProvider struct{}
 
-func (m *mockDockerClient) Info() (*docker.DockerInfo, error) {
-	return &docker.DockerInfo{}, nil
+func (m *mockDockerProvider) CreateContainer(ctx context.Context, config *domain.ContainerConfig, name string) (string, error) {
+	return "test-container", nil
 }
 
-func (m *mockDockerClient) ListContainers(opts docker.ListContainersOptions) ([]docker.APIContainers, error) {
-	return []docker.APIContainers{}, nil
+func (m *mockDockerProvider) StartContainer(ctx context.Context, containerID string) error {
+	return nil
 }
 
-func (m *mockDockerClient) AddEventListenerWithOptions(opts docker.EventsOptions, listener chan<- *docker.APIEvents) error {
+func (m *mockDockerProvider) StopContainer(ctx context.Context, containerID string, timeout *time.Duration) error {
+	return nil
+}
+
+func (m *mockDockerProvider) RemoveContainer(ctx context.Context, containerID string, force bool) error {
+	return nil
+}
+
+func (m *mockDockerProvider) InspectContainer(ctx context.Context, containerID string) (*domain.Container, error) {
+	return &domain.Container{ID: containerID}, nil
+}
+
+func (m *mockDockerProvider) ListContainers(ctx context.Context, opts domain.ListOptions) ([]domain.Container, error) {
+	return []domain.Container{}, nil
+}
+
+func (m *mockDockerProvider) WaitContainer(ctx context.Context, containerID string) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockDockerProvider) GetContainerLogs(ctx context.Context, containerID string, opts core.ContainerLogsOptions) (io.ReadCloser, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProvider) CreateExec(ctx context.Context, containerID string, config *domain.ExecConfig) (string, error) {
+	return "exec-id", nil
+}
+
+func (m *mockDockerProvider) StartExec(ctx context.Context, execID string, opts domain.ExecStartOptions) (*domain.HijackedResponse, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProvider) InspectExec(ctx context.Context, execID string) (*domain.ExecInspect, error) {
+	return &domain.ExecInspect{ExitCode: 0}, nil
+}
+
+func (m *mockDockerProvider) RunExec(ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDockerProvider) PullImage(ctx context.Context, image string) error {
+	return nil
+}
+
+func (m *mockDockerProvider) HasImageLocally(ctx context.Context, image string) (bool, error) {
+	return true, nil
+}
+
+func (m *mockDockerProvider) EnsureImage(ctx context.Context, image string, forcePull bool) error {
+	return nil
+}
+
+func (m *mockDockerProvider) ConnectNetwork(ctx context.Context, networkID, containerID string) error {
+	return nil
+}
+
+func (m *mockDockerProvider) FindNetworkByName(ctx context.Context, networkName string) ([]domain.Network, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProvider) SubscribeEvents(ctx context.Context, filter domain.EventFilter) (<-chan domain.Event, <-chan error) {
+	eventCh := make(chan domain.Event)
+	errCh := make(chan error)
+	return eventCh, errCh
+}
+
+func (m *mockDockerProvider) CreateService(ctx context.Context, spec domain.ServiceSpec, opts domain.ServiceCreateOptions) (string, error) {
+	return "service-id", nil
+}
+
+func (m *mockDockerProvider) InspectService(ctx context.Context, serviceID string) (*domain.Service, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProvider) ListTasks(ctx context.Context, opts domain.TaskListOptions) ([]domain.Task, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProvider) RemoveService(ctx context.Context, serviceID string) error {
+	return nil
+}
+
+func (m *mockDockerProvider) WaitForServiceTasks(ctx context.Context, serviceID string, timeout time.Duration) ([]domain.Task, error) {
+	return nil, nil
+}
+
+func (m *mockDockerProvider) Info(ctx context.Context) (*domain.SystemInfo, error) {
+	return &domain.SystemInfo{}, nil
+}
+
+func (m *mockDockerProvider) Ping(ctx context.Context) error {
+	return nil
+}
+
+func (m *mockDockerProvider) Close() error {
 	return nil
 }
 
@@ -70,10 +165,10 @@ func (s *DaemonLifecycleSuite) TestSuccessfulBootStartShutdown(c *C) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:            ctx,
-			dockerClient:   &mockDockerClient{},
+			dockerProvider:   &mockDockerProvider{},
 			notifier:       &mockDockerLabelsUpdate{},
 			logger:         logger,
 			pollInterval:   cfg.PollInterval,
@@ -130,7 +225,7 @@ func (s *DaemonLifecycleSuite) TestBootFailureInvalidConfig(c *C) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker initialization failed")
 	}
 
@@ -151,7 +246,7 @@ func (s *DaemonLifecycleSuite) TestBootDockerConnectionFailure(c *C) {
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
 	dockerError := errors.New("cannot connect to Docker daemon")
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, dockerError
 	}
 
@@ -235,10 +330,10 @@ func (s *DaemonLifecycleSuite) TestWebServerStartup(c *C) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:            ctx,
-			dockerClient:   &mockDockerClient{},
+			dockerProvider:   &mockDockerProvider{},
 			notifier:       &mockDockerLabelsUpdate{},
 			logger:         logger,
 			pollInterval:   cfg.PollInterval,
@@ -407,10 +502,10 @@ func (s *DaemonLifecycleSuite) TestConfigurationOptionApplication(c *C) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:            ctx,
-			dockerClient:   &mockDockerClient{},
+			dockerProvider:   &mockDockerProvider{},
 			notifier:       &mockDockerLabelsUpdate{},
 			logger:         logger,
 			pollInterval:   cfg.PollInterval,
@@ -453,10 +548,10 @@ func (s *DaemonLifecycleSuite) TestConcurrentServerStartup(c *C) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:            ctx,
-			dockerClient:   &mockDockerClient{},
+			dockerProvider:   &mockDockerProvider{},
 			notifier:       &mockDockerLabelsUpdate{},
 			logger:         logger,
 			pollInterval:   cfg.PollInterval,
@@ -509,7 +604,7 @@ func (s *DaemonLifecycleSuite) TestResourceCleanupOnFailure(c *C) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker init failed")
 	}
 
@@ -533,10 +628,10 @@ func (s *DaemonLifecycleSuite) TestHealthCheckerInitialization(c *C) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:            ctx,
-			dockerClient:   &mockDockerClient{},
+			dockerProvider:   &mockDockerProvider{},
 			notifier:       &mockDockerLabelsUpdate{},
 			logger:         logger,
 			pollInterval:   cfg.PollInterval,
@@ -601,10 +696,10 @@ func (s *DaemonLifecycleSuite) TestCompleteExecuteWorkflow(c *C) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:            ctx,
-			dockerClient:   &mockDockerClient{},
+			dockerProvider:   &mockDockerProvider{},
 			notifier:       &mockDockerLabelsUpdate{},
 			logger:         logger,
 			pollInterval:   cfg.PollInterval,

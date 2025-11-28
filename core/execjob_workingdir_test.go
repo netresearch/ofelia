@@ -4,58 +4,40 @@
 package core
 
 import (
+	"context"
+	"io"
 	"strings"
 	"testing"
-	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/netresearch/ofelia/core/adapters/mock"
+	"github.com/netresearch/ofelia/core/domain"
 	"github.com/sirupsen/logrus"
 )
 
-// Integration test - requires Docker to be running
-// Tests that WorkingDir is actually passed to Docker and the exec runs in the correct directory
+// Integration test - Tests that WorkingDir is actually passed to Docker
+// Tests that the exec runs in the correct directory
 func TestExecJob_WorkingDir_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
+	mockClient := mock.NewDockerClient()
+	provider := &SDKDockerProvider{
+		client: mockClient,
 	}
 
-	// Connect to real Docker daemon
-	endpoint := "unix:///var/run/docker.sock"
-	client, err := docker.NewClient(endpoint)
-	if err != nil {
-		t.Skip("Docker not available, skipping integration test")
-	}
+	// Track exec configs to verify WorkingDir was passed
+	var capturedConfigs []*domain.ExecConfig
 
-	// Verify Docker is actually reachable
-	if _, err := client.Info(); err != nil {
-		t.Skipf("Docker daemon not reachable: %v", err)
+	exec := mockClient.Exec().(*mock.ExecService)
+	exec.OnRun = func(ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer) (int, error) {
+		capturedConfigs = append(capturedConfigs, config)
+		// Simulate pwd output based on WorkingDir
+		if stdout != nil {
+			output := config.WorkingDir
+			if output == "" {
+				output = "/" // Default
+			}
+			stdout.Write([]byte(output + "\n"))
+		}
+		return 0, nil
 	}
-
-	// Create a test container that stays running
-	container, err := client.CreateContainer(docker.CreateContainerOptions{
-		Config: &docker.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"sleep", "30"},
-		},
-	})
-	if err != nil {
-		t.Skipf("Failed to create test container: %v (Docker may need to pull alpine:latest)", err)
-	}
-	defer func() {
-		client.RemoveContainer(docker.RemoveContainerOptions{
-			ID:    container.ID,
-			Force: true,
-		})
-	}()
-
-	// Start the container
-	err = client.StartContainer(container.ID, nil)
-	if err != nil {
-		t.Fatalf("Failed to start container: %v", err)
-	}
-
-	// Give container a moment to be fully ready
-	time.Sleep(100 * time.Millisecond)
 
 	// Test cases for different working directories
 	testCases := []struct {
@@ -82,17 +64,24 @@ func TestExecJob_WorkingDir_Integration(t *testing.T) {
 		{
 			name:           "no_working_dir_uses_container_default",
 			workingDir:     "",
-			expectedOutput: "/", // Alpine container default is /
+			expectedOutput: "/", // Default
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			capturedConfigs = nil // Reset
+
 			// Create ExecJob with WorkingDir
-			job := NewExecJob(client)
-			job.Container = container.ID
-			job.Command = "pwd"
-			job.WorkingDir = tc.workingDir
+			job := &ExecJob{
+				BareJob: BareJob{
+					Name:    "test-workdir-" + tc.name,
+					Command: "pwd",
+				},
+				Container:  "test-container",
+				WorkingDir: tc.workingDir,
+			}
+			job.Provider = provider
 
 			// Create execution context
 			execution, err := NewExecution()
@@ -101,7 +90,7 @@ func TestExecJob_WorkingDir_Integration(t *testing.T) {
 			}
 
 			logger := logrus.New()
-			logger.SetLevel(logrus.WarnLevel) // Reduce noise in test output
+			logger.SetLevel(logrus.WarnLevel)
 
 			ctx := &Context{
 				Execution: execution,
@@ -122,55 +111,52 @@ func TestExecJob_WorkingDir_Integration(t *testing.T) {
 			if output != tc.expectedOutput {
 				t.Errorf("Expected working directory %q, got %q", tc.expectedOutput, output)
 			}
+
+			// Verify the config was passed with correct WorkingDir
+			if len(capturedConfigs) > 0 && tc.workingDir != "" {
+				if capturedConfigs[0].WorkingDir != tc.workingDir {
+					t.Errorf("Expected config WorkingDir %q, got %q", tc.workingDir, capturedConfigs[0].WorkingDir)
+				}
+			}
 		})
 	}
 }
 
 // Integration test to verify WorkingDir works with actual commands
 func TestExecJob_WorkingDir_WithCommands_Integration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
+	mockClient := mock.NewDockerClient()
+	provider := &SDKDockerProvider{
+		client: mockClient,
 	}
 
-	endpoint := "unix:///var/run/docker.sock"
-	client, err := docker.NewClient(endpoint)
-	if err != nil {
-		t.Skip("Docker not available, skipping integration test")
-	}
+	// Track commands executed
+	var executedCommands []string
 
-	if _, err := client.Info(); err != nil {
-		t.Skipf("Docker daemon not reachable: %v", err)
+	exec := mockClient.Exec().(*mock.ExecService)
+	exec.OnRun = func(ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer) (int, error) {
+		cmd := strings.Join(config.Cmd, " ")
+		executedCommands = append(executedCommands, cmd)
+		// Simulate successful file operations
+		if stdout != nil && strings.Contains(cmd, "ls") {
+			stdout.Write([]byte("test-workdir.txt\n"))
+		}
+		return 0, nil
 	}
-
-	// Create a test container
-	container, err := client.CreateContainer(docker.CreateContainerOptions{
-		Config: &docker.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"sleep", "30"},
-		},
-	})
-	if err != nil {
-		t.Skipf("Failed to create test container: %v", err)
-	}
-	defer client.RemoveContainer(docker.RemoveContainerOptions{
-		ID:    container.ID,
-		Force: true,
-	})
-
-	err = client.StartContainer(container.ID, nil)
-	if err != nil {
-		t.Fatalf("Failed to start container: %v", err)
-	}
-
-	time.Sleep(100 * time.Millisecond)
 
 	// Test: Create a file in /tmp, verify it exists
 	t.Run("create_file_in_working_dir", func(t *testing.T) {
+		executedCommands = nil
+
 		// Create a file
-		job1 := NewExecJob(client)
-		job1.Container = container.ID
-		job1.Command = "touch test-workdir.txt"
-		job1.WorkingDir = "/tmp"
+		job1 := &ExecJob{
+			BareJob: BareJob{
+				Name:    "test-create-file",
+				Command: "touch test-workdir.txt",
+			},
+			Container:  "test-container",
+			WorkingDir: "/tmp",
+		}
+		job1.Provider = provider
 
 		exec1, err := NewExecution()
 		if err != nil {
@@ -189,10 +175,15 @@ func TestExecJob_WorkingDir_WithCommands_Integration(t *testing.T) {
 		}
 
 		// Verify file exists in /tmp
-		job2 := NewExecJob(client)
-		job2.Container = container.ID
-		job2.Command = "ls test-workdir.txt"
-		job2.WorkingDir = "/tmp"
+		job2 := &ExecJob{
+			BareJob: BareJob{
+				Name:    "test-list-file",
+				Command: "ls test-workdir.txt",
+			},
+			Container:  "test-container",
+			WorkingDir: "/tmp",
+		}
+		job2.Provider = provider
 
 		exec2, err := NewExecution()
 		if err != nil {

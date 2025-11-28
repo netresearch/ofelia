@@ -8,8 +8,6 @@ import (
 	_ "net/http/pprof" // #nosec G108
 	"time"
 
-	dockerclient "github.com/fsouza/go-dockerclient"
-
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/web"
 )
@@ -109,19 +107,23 @@ func (c *DaemonCommand) boot() (err error) {
 	c.dockerHandler = config.dockerHandler
 	c.config = config
 
-	// Initialize health checker
-	var dockerClient *dockerclient.Client
+	// Initialize health checker with Docker provider
+	var dockerProvider core.DockerProvider
 	if c.dockerHandler != nil {
-		dockerClient = c.dockerHandler.GetInternalDockerClient()
+		dockerProvider = c.dockerHandler.GetDockerProvider()
 	}
-	c.healthChecker = web.NewHealthChecker(dockerClient, "1.0.0")
+	c.healthChecker = web.NewHealthChecker(dockerProvider, "1.0.0")
 
 	// Create graceful scheduler with shutdown support
 	gracefulScheduler := core.NewGracefulScheduler(c.scheduler, c.shutdownManager)
 	c.scheduler = gracefulScheduler.Scheduler
 
 	if c.EnableWeb {
-		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, dockerClient)
+		var provider core.DockerProvider
+		if c.dockerHandler != nil {
+			provider = c.dockerHandler.GetDockerProvider()
+		}
+		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, provider)
 
 		// Register health endpoints
 		c.webServer.RegisterHealthEndpoints(c.healthChecker)

@@ -1,12 +1,12 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/netresearch/go-cron"
 
 	"github.com/netresearch/ofelia/core"
@@ -211,9 +211,24 @@ func (c *DoctorCommand) checkDocker(report *DoctorReport) bool {
 		return false
 	}
 
-	// Ping Docker daemon
-	client := conf.dockerHandler.GetInternalDockerClient()
-	if err := client.Ping(); err != nil {
+	// Ping Docker daemon using SDK provider
+	provider := conf.dockerHandler.GetDockerProvider()
+	if provider == nil {
+		report.Healthy = false
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Docker",
+			Name:     "Connectivity",
+			Status:   "fail",
+			Message:  "Docker provider not initialized",
+			Hints: []string{
+				"Check Docker daemon: docker info",
+				"Verify Docker socket permissions",
+			},
+		})
+		return false
+	}
+
+	if err := provider.Ping(context.Background()); err != nil {
 		report.Healthy = false
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Docker",
@@ -384,13 +399,16 @@ func (c *DoctorCommand) checkDockerImages(report *DoctorReport) {
 		return // Docker check already failed
 	}
 
-	client := conf.dockerHandler.GetInternalDockerClient()
+	provider := conf.dockerHandler.GetDockerProvider()
+	if provider == nil {
+		return // Provider not available
+	}
+
+	ctx := context.Background()
 	allAvailable := true
 	for image := range imageMap {
-		images, err := client.ListImages(docker.ListImagesOptions{
-			Filter: image,
-		})
-		if err != nil || len(images) == 0 {
+		hasImage, err := provider.HasImageLocally(ctx, image)
+		if err != nil || !hasImage {
 			allAvailable = false
 			report.Healthy = false
 			report.Checks = append(report.Checks, CheckResult{

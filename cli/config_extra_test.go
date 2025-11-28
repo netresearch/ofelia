@@ -54,7 +54,7 @@ func (s *SuiteConfig) TestInitializeAppErrorDockerHandler(c *C) {
 	// Override newDockerHandler to simulate factory error
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, cli dockerClient) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("factory error")
 	}
 
@@ -204,7 +204,7 @@ func (s *SuiteConfig) TestIniConfigUpdate(c *C) {
 	// register initial jobs
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
-		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Provider = cfg.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
@@ -260,7 +260,7 @@ func (s *SuiteConfig) TestIniConfigUpdateEnvChange(c *C) {
 
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
-		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Provider = cfg.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
@@ -299,7 +299,7 @@ func (s *SuiteConfig) TestIniConfigUpdateNoReload(c *C) {
 
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
-		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Provider = cfg.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
@@ -334,7 +334,7 @@ func (s *SuiteConfig) TestIniConfigUpdateLabelConflict(c *C) {
 	cfg.RunJobs["foo"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo lbl"}}, JobSource: JobSourceLabel}
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
-		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Provider = cfg.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()
@@ -378,7 +378,7 @@ func (s *SuiteConfig) TestIniConfigUpdateGlob(c *C) {
 
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
-		j.Client = cfg.dockerHandler.GetInternalDockerClient()
+		j.Provider = cfg.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields() // Initialize monitor and dockerOps after client is set
 		j.Name = name
 		j.buildMiddlewares()

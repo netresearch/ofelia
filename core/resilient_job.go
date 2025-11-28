@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
-
-	docker "github.com/fsouza/go-dockerclient"
 )
 
 // ResilientJobExecutor wraps job execution with resilience patterns
@@ -41,17 +40,15 @@ func NewResilientJobExecutor(job Job) *ResilientJobExecutor {
 				return false
 			}
 
-			// Check for Docker-specific errors
-			var dockerErr *docker.Error
-			if errors.As(err, &dockerErr) {
-				// Don't retry on resource not found or invalid parameter errors
-				if dockerErr.Status == 404 || dockerErr.Status == 400 {
-					return false
-				}
-				// Retry on network errors, timeouts, and server errors
-				if dockerErr.Status >= 500 || dockerErr.Status == 408 || dockerErr.Status == 0 {
-					return true
-				}
+			// Check for non-retryable error conditions
+			errStr := err.Error()
+			// Don't retry on resource not found errors
+			if strings.Contains(errStr, "404") || strings.Contains(errStr, "not found") {
+				return false
+			}
+			// Don't retry on invalid parameter errors
+			if strings.Contains(errStr, "400") || strings.Contains(errStr, "invalid") {
+				return false
 			}
 
 			// Retry on other errors by default

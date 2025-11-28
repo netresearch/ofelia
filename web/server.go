@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	dockerclient "github.com/fsouza/go-dockerclient"
 	"github.com/gobs/args"
 
 	"github.com/netresearch/ofelia/config"
@@ -24,7 +23,7 @@ type Server struct {
 	config    interface{}
 	srv       *http.Server
 	origins   map[string]string
-	client    *dockerclient.Client
+	provider  core.DockerProvider // SDK-based Docker provider
 }
 
 // HTTPServer returns the underlying http.Server used by the web interface. It
@@ -34,8 +33,8 @@ func (s *Server) HTTPServer() *http.Server { return s.srv }
 // GetHTTPServer returns the underlying http.Server for graceful shutdown support
 func (s *Server) GetHTTPServer() *http.Server { return s.srv }
 
-func NewServer(addr string, s *core.Scheduler, cfg interface{}, client *dockerclient.Client) *Server {
-	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), client: client}
+func NewServer(addr string, s *core.Scheduler, cfg interface{}, provider core.DockerProvider) *Server {
+	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), provider: provider}
 	mux := http.NewServeMux()
 
 	// Create rate limiter: 100 requests per minute per IP
@@ -379,10 +378,10 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 	switch req.Type {
 	case "run":
-		if s.client == nil {
-			return nil, fmt.Errorf("docker client unavailable for run job")
+		if s.provider == nil {
+			return nil, fmt.Errorf("docker provider unavailable for run job")
 		}
-		j := &core.RunJob{Client: s.client}
+		j := core.NewRunJob(s.provider)
 		j.Name = req.Name
 		j.Schedule = req.Schedule
 		j.Command = req.Command
@@ -390,10 +389,10 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 		j.Container = req.Container
 		return j, nil
 	case "exec":
-		if s.client == nil {
-			return nil, fmt.Errorf("docker client unavailable for exec job")
+		if s.provider == nil {
+			return nil, fmt.Errorf("docker provider unavailable for exec job")
 		}
-		j := &core.ExecJob{Client: s.client}
+		j := core.NewExecJob(s.provider)
 		j.Name = req.Name
 		j.Schedule = req.Schedule
 		j.Command = req.Command
