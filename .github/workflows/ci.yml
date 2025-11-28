@@ -116,6 +116,62 @@ jobs:
           echo "govulncheck: no vulnerabilities with available fixes (or only unfixed advisories)"
           exit 0
 
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          deny-licenses: GPL-3.0, AGPL-3.0
+          comment-summary-in-pr: always
+
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+
+      - name: Check licenses
+        run: |
+          $(go env GOPATH)/bin/go-licenses check ./... 2>&1 | tee license-report.txt
+          # Fail on forbidden licenses (GPL-3.0, AGPL-3.0)
+          if grep -qE "(GPL-3.0|AGPL-3.0)" license-report.txt; then
+            echo "::error::Found forbidden license (GPL-3.0 or AGPL-3.0)"
+            exit 1
+          fi
+
+      - name: Generate license report
+        run: |
+          $(go env GOPATH)/bin/go-licenses report ./... > licenses.csv 2>/dev/null || true
+        continue-on-error: true
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: |
+            license-report.txt
+            licenses.csv
+        if: always()
+
   integration:
     name: integration tests
     needs: unit
@@ -259,12 +315,20 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
+
   release_binaries:
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
+      attestations: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -290,6 +354,14 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SLSA provenance attestations
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
 
   release_docker:
     if: github.event_name == 'release'
@@ -320,6 +392,7 @@ jobs:
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
+        id: push
         with:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
@@ -328,6 +401,14 @@ jobs:
             CGO_ENABLED=0
           provenance: true
           sbom: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest@${{ steps.push.outputs.digest }}
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}@${{ steps.push.outputs.digest }}
 
   hadolint:
     name: hadolint
