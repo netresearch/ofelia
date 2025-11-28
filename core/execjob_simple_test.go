@@ -19,9 +19,6 @@ func TestExecJob_NewExecJob_Initialization(t *testing.T) {
 	if job.Provider != provider {
 		t.Error("Expected Provider to be set correctly")
 	}
-	if job.execID != "" {
-		t.Error("Expected execID to be empty initially")
-	}
 }
 
 func TestExecJob_BuildExec_ArgumentParsing(t *testing.T) {

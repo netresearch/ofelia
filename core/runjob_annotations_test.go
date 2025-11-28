@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/netresearch/ofelia/core/adapters/mock"
 	"github.com/netresearch/ofelia/core/domain"
-	"github.com/sirupsen/logrus"
 )
 
 // Integration test - Tests that Annotations are passed to Docker

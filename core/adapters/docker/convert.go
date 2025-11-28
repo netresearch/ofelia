@@ -3,10 +3,9 @@ package docker
 import (
 	"time"
 
-	"github.com/docker/docker/api/types"
+	cerrdefs "github.com/containerd/errdefs"
 	containertypes "github.com/docker/docker/api/types/container"
 	networktypes "github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/errdefs"
 
 	"github.com/netresearch/ofelia/core/domain"
 )
@@ -17,33 +16,33 @@ func convertError(err error) error {
 		return nil
 	}
 
-	if errdefs.IsNotFound(err) {
+	if cerrdefs.IsNotFound(err) {
 		return &domain.ContainerNotFoundError{ID: err.Error()}
 	}
-	if errdefs.IsConflict(err) {
+	if cerrdefs.IsConflict(err) {
 		return domain.ErrConflict
 	}
-	if errdefs.IsUnauthorized(err) {
+	if cerrdefs.IsUnauthorized(err) {
 		return domain.ErrUnauthorized
 	}
-	if errdefs.IsForbidden(err) {
+	if cerrdefs.IsPermissionDenied(err) {
 		return domain.ErrForbidden
 	}
-	if errdefs.IsDeadline(err) {
+	if cerrdefs.IsDeadlineExceeded(err) {
 		return domain.ErrTimeout
 	}
-	if errdefs.IsCancelled(err) {
-		return domain.ErrCancelled
+	if cerrdefs.IsCanceled(err) {
+		return domain.ErrCanceled
 	}
-	if errdefs.IsUnavailable(err) {
+	if cerrdefs.IsUnavailable(err) {
 		return domain.ErrConnectionFailed
 	}
 
 	return err
 }
 
-// convertFromContainerJSON converts SDK ContainerJSON to domain Container.
-func convertFromContainerJSON(c *types.ContainerJSON) *domain.Container {
+// convertFromContainerJSON converts SDK InspectResponse to domain Container.
+func convertFromContainerJSON(c *containertypes.InspectResponse) *domain.Container {
 	if c == nil {
 		return nil
 	}

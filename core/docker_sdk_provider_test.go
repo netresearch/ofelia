@@ -622,7 +622,7 @@ func (l *testLogger) Criticalf(format string, args ...interface{}) {}
 func (l *testLogger) Debugf(format string, args ...interface{}) {
 	l.debugs = append(l.debugs, format)
 }
-func (l *testLogger) Errorf(format string, args ...interface{})   {}
+func (l *testLogger) Errorf(format string, args ...interface{}) {}
 func (l *testLogger) Noticef(format string, args ...interface{}) {
 	l.notices = append(l.notices, format)
 }

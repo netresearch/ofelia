@@ -215,7 +215,7 @@ func TestLocalJob_Run_WithWorkingDirectory(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	testFile := filepath.Join(tempDir, "testfile.txt")
-	err = os.WriteFile(testFile, []byte("test content"), 0644)
+	err = os.WriteFile(testFile, []byte("test content"), 0o644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}

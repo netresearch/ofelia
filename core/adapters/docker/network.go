@@ -88,9 +88,9 @@ func (s *NetworkServiceAdapter) Create(ctx context.Context, name string, opts po
 		}
 		for _, cfg := range opts.IPAM.Config {
 			createOpts.IPAM.Config = append(createOpts.IPAM.Config, network.IPAMConfig{
-				Subnet:   cfg.Subnet,
-				IPRange:  cfg.IPRange,
-				Gateway:  cfg.Gateway,
+				Subnet:     cfg.Subnet,
+				IPRange:    cfg.IPRange,
+				Gateway:    cfg.Gateway,
 				AuxAddress: cfg.AuxAddress,
 			})
 		}

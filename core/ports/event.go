@@ -13,7 +13,7 @@ type EventService interface {
 	// The events channel receives events matching the filter.
 	// The errors channel receives any errors during subscription.
 	//
-	// Both channels are closed when the context is cancelled or an error occurs.
+	// Both channels are closed when the context is canceled or an error occurs.
 	// The caller should NOT close these channels; they are managed by the implementation.
 	//
 	// Example usage:
@@ -34,8 +34,8 @@ type EventService interface {
 
 	// SubscribeWithCallback provides callback-based event subscription.
 	// The callback is invoked for each event received.
-	// This method blocks until the context is cancelled or an error occurs.
-	// Returns nil if cancelled cleanly, or an error if subscription fails.
+	// This method blocks until the context is canceled or an error occurs.
+	// Returns nil if canceled cleanly, or an error if subscription fails.
 	SubscribeWithCallback(ctx context.Context, filter domain.EventFilter, callback EventCallback) error
 }
 

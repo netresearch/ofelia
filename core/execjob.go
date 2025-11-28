@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/gobs/args"
+
 	"github.com/netresearch/ofelia/core/domain"
 )
 
@@ -17,8 +18,6 @@ type ExecJob struct {
 	TTY         bool           `default:"false" hash:"true"`
 	Environment []string       `mapstructure:"environment" hash:"true"`
 	WorkingDir  string         `mapstructure:"working-dir" hash:"true"`
-
-	execID string
 }
 
 func NewExecJob(provider DockerProvider) *ExecJob {
@@ -81,5 +80,9 @@ func (j *ExecJob) RunWithStreams(ctx context.Context, stdout, stderr io.Writer) 
 		Tty:          j.TTY,
 	}
 
-	return j.Provider.RunExec(ctx, j.Container, config, stdout, stderr)
+	exitCode, err := j.Provider.RunExec(ctx, j.Container, config, stdout, stderr)
+	if err != nil {
+		return exitCode, fmt.Errorf("run exec: %w", err)
+	}
+	return exitCode, nil
 }

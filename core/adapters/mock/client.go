@@ -3,6 +3,7 @@ package mock
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -23,8 +24,8 @@ type DockerClient struct {
 	networks   *NetworkService
 	system     *SystemService
 
-	closed    bool
-	closeErr  error
+	closed   bool
+	closeErr error
 }
 
 // NewDockerClient creates a new mock DockerClient.
@@ -276,9 +277,11 @@ func (s *ContainerService) CopyLogs(ctx context.Context, containerID string, std
 	defer logs.Close()
 
 	if stdout != nil {
-		_, err = io.Copy(stdout, logs)
+		if _, err = io.Copy(stdout, logs); err != nil {
+			return fmt.Errorf("copying container logs: %w", err)
+		}
 	}
-	return err
+	return nil
 }
 
 // Kill sends a signal to a container.

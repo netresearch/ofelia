@@ -45,16 +45,16 @@ type TaskSpec struct {
 
 // ContainerSpec represents the container specification for a service.
 type ContainerSpec struct {
-	Image    string
-	Labels   map[string]string
-	Command  []string
-	Args     []string
-	Hostname string
-	Env      []string
-	Dir      string
-	User     string
-	Mounts   []ServiceMount
-	TTY      bool
+	Image     string
+	Labels    map[string]string
+	Command   []string
+	Args      []string
+	Hostname  string
+	Env       []string
+	Dir       string
+	User      string
+	Mounts    []ServiceMount
+	TTY       bool
 	OpenStdin bool
 }
 
@@ -185,14 +185,14 @@ type ServiceEndpoint struct {
 
 // Task represents a Swarm task.
 type Task struct {
-	ID          string
-	ServiceID   string
-	NodeID      string
-	Status      TaskStatus
+	ID           string
+	ServiceID    string
+	NodeID       string
+	Status       TaskStatus
 	DesiredState TaskState
-	Spec        TaskSpec
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	Spec         TaskSpec
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // TaskStatus represents the status of a task.
@@ -236,6 +236,9 @@ func (s TaskState) IsTerminalState() bool {
 	switch s {
 	case TaskStateComplete, TaskStateFailed, TaskStateRejected, TaskStateShutdown, TaskStateOrphaned:
 		return true
+	case TaskStateNew, TaskStatePending, TaskStateAssigned, TaskStateAccepted,
+		TaskStatePreparing, TaskStateReady, TaskStateStarting, TaskStateRunning, TaskStateRemove:
+		return false
 	}
 	return false
 }

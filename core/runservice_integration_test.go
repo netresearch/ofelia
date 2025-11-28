@@ -5,14 +5,16 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 
-	"github.com/netresearch/ofelia/core/adapters/mock"
-	"github.com/netresearch/ofelia/core/domain"
 	"github.com/sirupsen/logrus"
 	. "gopkg.in/check.v1"
+
+	"github.com/netresearch/ofelia/core/adapters/mock"
+	"github.com/netresearch/ofelia/core/domain"
 )
 
 const ServiceImageFixture = "test-image"
@@ -51,7 +53,7 @@ func (s *SuiteRunServiceJob) setupMockBehaviors() {
 
 	services.OnCreate = func(ctx context.Context, spec domain.ServiceSpec, opts domain.ServiceCreateOptions) (string, error) {
 		serviceCounter++
-		serviceID := "service-" + string(rune('0'+serviceCounter))
+		serviceID := fmt.Sprintf("service-%d", serviceCounter)
 		createdServices[serviceID] = &domain.Service{
 			ID:   serviceID,
 			Spec: spec,

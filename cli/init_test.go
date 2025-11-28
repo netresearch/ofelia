@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"gopkg.in/ini.v1"
 
 	"github.com/netresearch/ofelia/core"
-	"gopkg.in/ini.v1"
 )
 
 // TestValidateSchedule tests the schedule validation function

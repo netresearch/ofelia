@@ -899,4 +899,3 @@ func TestGetHTTPServer(t *testing.T) {
 		t.Error("GetHTTPServer() and HTTPServer() should return the same instance")
 	}
 }
-

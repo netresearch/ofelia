@@ -2,11 +2,14 @@ package core
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gobs/args"
+
 	"github.com/netresearch/ofelia/core/domain"
 )
 
@@ -107,7 +110,7 @@ func (j *RunJob) Run(ctx *Context) error {
 // ensureImageAvailable pulls or verifies the image presence according to Pull option.
 func (j *RunJob) ensureImageAvailable(ctx context.Context, jobCtx *Context, pull bool) error {
 	if err := j.Provider.EnsureImage(ctx, j.Image, pull); err != nil {
-		return err
+		return fmt.Errorf("ensuring image: %w", err)
 	}
 
 	jobCtx.Log("Image " + j.Image + " is available")
@@ -122,7 +125,7 @@ func (j *RunJob) createOrInspectContainer(ctx context.Context) (string, error) {
 
 	container, err := j.Provider.InspectContainer(ctx, j.Container)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("inspecting container: %w", err)
 	}
 	return container.ID, nil
 }
@@ -143,7 +146,7 @@ func (j *RunJob) startAndWait(ctx context.Context, jobCtx *Context) error {
 	}
 
 	err := j.watchContainer(watchCtx)
-	if err == ErrUnexpected {
+	if errors.Is(err, ErrUnexpected) {
 		return err
 	}
 
@@ -205,7 +208,7 @@ func (j *RunJob) buildContainer(ctx context.Context) (string, error) {
 
 	containerID, err := j.Provider.CreateContainer(ctx, config, name)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("creating container: %w", err)
 	}
 
 	// Connect to network if specified
@@ -214,7 +217,7 @@ func (j *RunJob) buildContainer(ctx context.Context) (string, error) {
 		if findErr == nil {
 			for _, network := range networks {
 				if connErr := j.Provider.ConnectNetwork(ctx, network.ID, containerID); connErr != nil {
-					return containerID, connErr
+					return containerID, fmt.Errorf("connecting network: %w", connErr)
 				}
 			}
 		}
@@ -224,17 +227,27 @@ func (j *RunJob) buildContainer(ctx context.Context) (string, error) {
 }
 
 func (j *RunJob) startContainer(ctx context.Context) error {
-	return j.Provider.StartContainer(ctx, j.getContainerID())
+	if err := j.Provider.StartContainer(ctx, j.getContainerID()); err != nil {
+		return fmt.Errorf("starting container: %w", err)
+	}
+	return nil
 }
 
 //nolint:unused // used in integration tests via build tags
 func (j *RunJob) stopContainer(ctx context.Context, timeout time.Duration) error {
-	return j.Provider.StopContainer(ctx, j.getContainerID(), &timeout)
+	if err := j.Provider.StopContainer(ctx, j.getContainerID(), &timeout); err != nil {
+		return fmt.Errorf("stopping container: %w", err)
+	}
+	return nil
 }
 
 //nolint:unused // used in integration tests via build tags
 func (j *RunJob) getContainer(ctx context.Context) (*domain.Container, error) {
-	return j.Provider.InspectContainer(ctx, j.getContainerID())
+	container, err := j.Provider.InspectContainer(ctx, j.getContainerID())
+	if err != nil {
+		return nil, fmt.Errorf("getting container: %w", err)
+	}
+	return container, nil
 }
 
 func (j *RunJob) watchContainer(ctx context.Context) error {
@@ -245,7 +258,7 @@ func (j *RunJob) watchContainer(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ErrMaxTimeRunning
 		}
-		return err
+		return fmt.Errorf("waiting for container: %w", err)
 	}
 
 	switch exitCode {
@@ -263,5 +276,8 @@ func (j *RunJob) deleteContainer(ctx context.Context) error {
 		return nil
 	}
 
-	return j.Provider.RemoveContainer(ctx, j.getContainerID(), false)
+	if err := j.Provider.RemoveContainer(ctx, j.getContainerID(), false); err != nil {
+		return fmt.Errorf("removing container: %w", err)
+	}
+	return nil
 }

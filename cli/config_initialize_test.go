@@ -168,10 +168,10 @@ func (s *ConfigInitSuite) TestInitializeAppLabelConflict(c *C) {
 			{
 				Name: "cont1",
 				Labels: map[string]string{
-					"ofelia.enabled":                  "true",
-					"ofelia.job-run.foo.schedule":     "@every 10s",
-					"ofelia.job-run.foo.image":        "busybox",
-					"ofelia.job-run.foo.command":      "echo label",
+					"ofelia.enabled":              "true",
+					"ofelia.job-run.foo.schedule": "@every 10s",
+					"ofelia.job-run.foo.image":    "busybox",
+					"ofelia.job-run.foo.command":  "echo label",
 				},
 			},
 		},
@@ -212,9 +212,9 @@ func (s *ConfigInitSuite) TestInitializeAppComposeConflict(c *C) {
 			{
 				Name: "cont1",
 				Labels: map[string]string{
-					"ofelia.enabled":                   "true",
-					"ofelia.job-compose.foo.schedule":  "@hourly",
-					"ofelia.job-compose.foo.file":      "override.yml",
+					"ofelia.enabled":                  "true",
+					"ofelia.job-compose.foo.schedule": "@hourly",
+					"ofelia.job-compose.foo.file":     "override.yml",
 				},
 			},
 		},

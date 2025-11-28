@@ -306,8 +306,6 @@ func randomID() (string, error) {
 	return fmt.Sprintf("%x", b), nil
 }
 
-
-
 const HashmeTagName = "hash"
 
 func GetHash(t reflect.Type, v reflect.Value, hash *string) error {

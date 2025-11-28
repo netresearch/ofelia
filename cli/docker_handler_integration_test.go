@@ -7,9 +7,10 @@ import (
 	"context"
 	"time"
 
+	. "gopkg.in/check.v1"
+
 	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/test"
-	. "gopkg.in/check.v1"
 )
 
 // NOTE: mockDockerProviderForHandler is defined in docker_handler_test.go

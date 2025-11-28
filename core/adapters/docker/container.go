@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"time"
@@ -157,7 +158,9 @@ func (s *ContainerServiceAdapter) Logs(ctx context.Context, containerID string, 
 }
 
 // CopyLogs copies container logs to writers.
-func (s *ContainerServiceAdapter) CopyLogs(ctx context.Context, containerID string, stdout, stderr io.Writer, opts domain.LogOptions) error {
+func (s *ContainerServiceAdapter) CopyLogs(
+	ctx context.Context, containerID string, stdout, stderr io.Writer, opts domain.LogOptions,
+) error {
 	// First check if container uses TTY
 	info, err := s.Inspect(ctx, containerID)
 	if err != nil {
@@ -173,14 +176,18 @@ func (s *ContainerServiceAdapter) CopyLogs(ctx context.Context, containerID stri
 	if info.Config != nil && info.Config.HostConfig != nil {
 		// For TTY containers, copy directly
 		if stdout != nil {
-			_, err = io.Copy(stdout, reader)
+			if _, err = io.Copy(stdout, reader); err != nil {
+				return fmt.Errorf("copying container output: %w", err)
+			}
 		}
-		return err
+		return nil
 	}
 
 	// For non-TTY containers, use stdcopy to demux
-	_, err = stdcopy.StdCopy(stdout, stderr, reader)
-	return err
+	if _, err = stdcopy.StdCopy(stdout, stderr, reader); err != nil {
+		return fmt.Errorf("copying container output: %w", err)
+	}
+	return nil
 }
 
 // Kill sends a signal to a container.
@@ -208,7 +215,9 @@ func (s *ContainerServiceAdapter) Rename(ctx context.Context, containerID string
 }
 
 // Attach attaches to a container.
-func (s *ContainerServiceAdapter) Attach(ctx context.Context, containerID string, opts ports.AttachOptions) (*domain.HijackedResponse, error) {
+func (s *ContainerServiceAdapter) Attach(
+	ctx context.Context, containerID string, opts ports.AttachOptions,
+) (*domain.HijackedResponse, error) {
 	resp, err := s.client.ContainerAttach(ctx, containerID, container.AttachOptions{
 		Stream:     opts.Stream,
 		Stdin:      opts.Stdin,
@@ -258,22 +267,22 @@ func convertToHostConfig(config *domain.HostConfig) *container.HostConfig {
 	}
 
 	hostConfig := &container.HostConfig{
-		Binds:           config.Binds,
-		NetworkMode:     container.NetworkMode(config.NetworkMode),
-		PortBindings:    convertToPortMap(config.PortBindings),
-		AutoRemove:      config.AutoRemove,
-		Privileged:      config.Privileged,
-		ReadonlyRootfs:  config.ReadonlyRootfs,
-		DNS:             config.DNS,
-		DNSSearch:       config.DNSSearch,
-		ExtraHosts:      config.ExtraHosts,
-		CapAdd:          config.CapAdd,
-		CapDrop:         config.CapDrop,
-		SecurityOpt:     config.SecurityOpt,
-		PidMode:         container.PidMode(config.PidMode),
-		UsernsMode:      container.UsernsMode(config.UsernsMode),
-		ShmSize:         config.ShmSize,
-		Tmpfs:           config.Tmpfs,
+		Binds:          config.Binds,
+		NetworkMode:    container.NetworkMode(config.NetworkMode),
+		PortBindings:   convertToPortMap(config.PortBindings),
+		AutoRemove:     config.AutoRemove,
+		Privileged:     config.Privileged,
+		ReadonlyRootfs: config.ReadonlyRootfs,
+		DNS:            config.DNS,
+		DNSSearch:      config.DNSSearch,
+		ExtraHosts:     config.ExtraHosts,
+		CapAdd:         config.CapAdd,
+		CapDrop:        config.CapDrop,
+		SecurityOpt:    config.SecurityOpt,
+		PidMode:        container.PidMode(config.PidMode),
+		UsernsMode:     container.UsernsMode(config.UsernsMode),
+		ShmSize:        config.ShmSize,
+		Tmpfs:          config.Tmpfs,
 		RestartPolicy: container.RestartPolicy{
 			Name:              container.RestartPolicyMode(config.RestartPolicy.Name),
 			MaximumRetryCount: config.RestartPolicy.MaximumRetryCount,

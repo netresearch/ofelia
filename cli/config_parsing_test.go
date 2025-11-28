@@ -42,7 +42,6 @@ command = up -d
 
 	logger := test.NewTestLogger()
 	cfg, err := BuildFromString(configStr, logger)
-
 	if err != nil {
 		t.Fatalf("BuildFromString failed: %v", err)
 	}
@@ -105,7 +104,7 @@ command = echo job3
 
 	for name, content := range files {
 		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatalf("Failed to write file %s: %v", name, err)
 		}
 	}
@@ -114,7 +113,6 @@ command = echo job3
 	pattern := filepath.Join(dir, "*.ini")
 	logger := test.NewTestLogger()
 	cfg, err := BuildFromFile(pattern, logger)
-
 	if err != nil {
 		t.Fatalf("BuildFromFile failed: %v", err)
 	}
@@ -177,7 +175,7 @@ command = echo initial
 `
 
 	// Write initial config
-	if err := os.WriteFile(configFile, []byte(initialContent), 0644); err != nil {
+	if err := os.WriteFile(configFile, []byte(initialContent), 0o644); err != nil {
 		t.Fatalf("Failed to write initial config: %v", err)
 	}
 
@@ -206,7 +204,7 @@ command = echo updated
 `
 	// Wait a bit to ensure timestamp changes
 	time.Sleep(10 * time.Millisecond)
-	if err := os.WriteFile(configFile, []byte(updatedContent), 0644); err != nil {
+	if err := os.WriteFile(configFile, []byte(updatedContent), 0o644); err != nil {
 		t.Fatalf("Failed to write updated config: %v", err)
 	}
 
@@ -243,8 +241,8 @@ func TestResolveConfigFiles(t *testing.T) {
 			name: "glob pattern with multiple files",
 			setup: func() (string, func()) {
 				dir, _ := os.MkdirTemp("", "ofelia_resolve_")
-				os.WriteFile(filepath.Join(dir, "a.ini"), []byte(""), 0644)
-				os.WriteFile(filepath.Join(dir, "b.ini"), []byte(""), 0644)
+				os.WriteFile(filepath.Join(dir, "a.ini"), []byte(""), 0o644)
+				os.WriteFile(filepath.Join(dir, "b.ini"), []byte(""), 0o644)
 				pattern := filepath.Join(dir, "*.ini")
 				return pattern, func() { os.RemoveAll(dir) }
 			},

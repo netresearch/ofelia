@@ -470,7 +470,6 @@ func TestExecOperations(t *testing.T) {
 			AttachStdout: true,
 			AttachStderr: true,
 		}, stdout, stderr)
-
 		if err != nil {
 			t.Fatalf("Run exec failed: %v", err)
 		}
@@ -491,7 +490,6 @@ func TestExecOperations(t *testing.T) {
 			AttachStdout: true,
 			AttachStderr: true,
 		}, stdout, stderr)
-
 		if err != nil {
 			t.Fatalf("Run exec failed: %v", err)
 		}
@@ -755,7 +753,6 @@ func TestSwarmServiceOperations(t *testing.T) {
 				},
 			},
 		}, domain.ServiceCreateOptions{})
-
 		if err != nil {
 			t.Fatalf("Create service failed: %v", err)
 		}

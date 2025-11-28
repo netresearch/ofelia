@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/netresearch/ofelia/core/adapters/mock"
-	"github.com/netresearch/ofelia/core/domain"
 	"github.com/sirupsen/logrus"
 	. "gopkg.in/check.v1"
+
+	"github.com/netresearch/ofelia/core/adapters/mock"
+	"github.com/netresearch/ofelia/core/domain"
 )
 
 const (

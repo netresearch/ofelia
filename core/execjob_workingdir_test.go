@@ -9,9 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/netresearch/ofelia/core/adapters/mock"
 	"github.com/netresearch/ofelia/core/domain"
-	"github.com/sirupsen/logrus"
 )
 
 // Integration test - Tests that WorkingDir is actually passed to Docker

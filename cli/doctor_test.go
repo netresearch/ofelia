@@ -21,7 +21,7 @@ func TestDoctorCommand_JSONOutput_Valid(t *testing.T) {
 schedule = @daily
 command = echo test`
 
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
@@ -46,7 +46,7 @@ func TestDoctorCommand_JSONOutput_InvalidSchedule(t *testing.T) {
 schedule = invalid
 command = echo test`
 
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func TestDoctorCommand_InvalidConfigSyntax(t *testing.T) {
 this is not valid INI syntax
 [missing closing bracket`
 
-	if err := os.WriteFile(configPath, []byte(invalidConfig), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(invalidConfig), 0o644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
@@ -159,7 +159,7 @@ func TestDoctorCommand_NoJobs(t *testing.T) {
 	configContent := `[global]
 # Config with no jobs`
 
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
@@ -193,7 +193,7 @@ command = echo test
 schedule = @daily
 command = echo test`
 
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
@@ -230,7 +230,7 @@ command = echo every 5min
 schedule = */15 * * * *
 command = echo cron`
 
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
@@ -358,7 +358,7 @@ func TestDoctorCommand_ReadableConfig(t *testing.T) {
 schedule = @daily
 command = echo test`
 
-	if err := os.WriteFile(configPath, []byte(configContent), 0000); err != nil {
+	if err := os.WriteFile(configPath, []byte(configContent), 0o000); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 

@@ -1,6 +1,9 @@
 package domain
 
-import "io"
+import (
+	"fmt"
+	"io"
+)
 
 // ExecConfig represents the configuration for creating an exec instance.
 type ExecConfig struct {
@@ -33,11 +36,11 @@ type ExecConfig struct {
 
 // ExecInspect represents the result of inspecting an exec instance.
 type ExecInspect struct {
-	ID          string
-	ContainerID string
-	Running     bool
-	ExitCode    int
-	Pid         int
+	ID            string
+	ContainerID   string
+	Running       bool
+	ExitCode      int
+	Pid           int
 	ProcessConfig *ExecProcessConfig
 }
 
@@ -72,7 +75,9 @@ type HijackedResponse struct {
 // Close closes the hijacked connection.
 func (h *HijackedResponse) Close() error {
 	if h.Conn != nil {
-		return h.Conn.Close()
+		if err := h.Conn.Close(); err != nil {
+			return fmt.Errorf("closing hijacked connection: %w", err)
+		}
 	}
 	return nil
 }

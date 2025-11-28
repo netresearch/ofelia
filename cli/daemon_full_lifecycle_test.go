@@ -39,13 +39,13 @@ func TestDaemonCommand_Execute_WithStartError(t *testing.T) {
 func TestDaemonCommand_ApplyOptions(t *testing.T) {
 	logger := test.NewTestLogger()
 	cmd := &DaemonCommand{
-		Logger:             logger,
-		DockerFilters:      []string{"label=app=web"},
-		EnableWeb:          true,
-		WebAddr:            ":9090",
-		EnablePprof:        true,
-		PprofAddr:          ":6060",
-		LogLevel:           "debug",
+		Logger:        logger,
+		DockerFilters: []string{"label=app=web"},
+		EnableWeb:     true,
+		WebAddr:       ":9090",
+		EnablePprof:   true,
+		PprofAddr:     ":6060",
+		LogLevel:      "debug",
 	}
 
 	interval := 30 * time.Second
