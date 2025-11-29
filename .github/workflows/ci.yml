@@ -9,7 +9,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * 0'
-  # Note: Release builds are handled by release-slsa.yml workflow
 
 permissions:
   contents: read
@@ -221,7 +220,6 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
 
-
   gosec:
     name: gosec
     runs-on: ubuntu-latest
@@ -306,9 +304,6 @@ jobs:
         run: |
           set -euo pipefail
           cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
-
-  # Note: Release builds (binaries + docker) are handled by release-slsa.yml workflow
-  # with SLSA Level 3 provenance attestations
 
   hadolint:
     name: hadolint
