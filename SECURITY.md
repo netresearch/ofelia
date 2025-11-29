@@ -89,6 +89,36 @@ cosign verify-blob \
 cosign verify ghcr.io/netresearch/ofelia:<TAG>
 ```
 
+## OpenSSF Scorecard Notes
+
+### Signed-Releases Score (Expected: False Negative)
+
+The OpenSSF Scorecard may report a low or zero score for "Signed-Releases" despite this project implementing **superior** supply chain security measures:
+
+| What Scorecard Expects | What We Implement |
+|------------------------|-------------------|
+| GPG signatures on release assets | ✅ SLSA Level 3 provenance attestations |
+| | ✅ Cosign keyless signing (Sigstore) |
+| | ✅ Signed checksums with certificate chain |
+| | ✅ SBOM generation for all releases |
+
+**Why this is a false negative**: SLSA Level 3 provenance with Sigstore/Cosign provides stronger guarantees than traditional GPG signing:
+- Provenance attestations prove the exact source commit, build environment, and workflow
+- Keyless signing eliminates key management risks
+- Transparency log (Rekor) provides public audit trail
+- Certificate-based identity tied to GitHub Actions OIDC
+
+See [Verifying Releases](#verifying-releases) for verification commands.
+
+### Solo-Developer Workflow Limitations
+
+Some Scorecard checks are designed for team-based development and will show lower scores for solo-maintainer projects:
+
+- **Code-Review**: Requires external approvers (not applicable for solo-dev)
+- **Branch-Protection**: Partial score due to 0-approval requirement
+
+These are accepted trade-offs documented as part of our security model.
+
 ## Branch Protection Settings
 
 For OpenSSF Scorecard compliance while maintaining solo-developer workflow:
