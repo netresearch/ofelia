@@ -283,6 +283,8 @@ jobs:
 
   gitleaks:
     name: gitleaks
+    # gitleaks-action doesn't support merge_group events
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       contents: read
