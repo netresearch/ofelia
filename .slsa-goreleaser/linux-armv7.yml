@@ -1,0 +1,15 @@
+version: 1
+env:
+  - CGO_ENABLED=0
+  - GO111MODULE=on
+  - GOARM=7
+flags:
+  - -trimpath
+goos: linux
+goarch: arm
+main: .
+binary: ofelia-linux-armv7
+ldflags:
+  - "-s -w"
+  - "-X main.version={{ .Tag }}"
+  - "-X main.build={{ .Commit }}"

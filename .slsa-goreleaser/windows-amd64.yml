@@ -1,0 +1,14 @@
+version: 1
+env:
+  - CGO_ENABLED=0
+  - GO111MODULE=on
+flags:
+  - -trimpath
+goos: windows
+goarch: amd64
+main: .
+binary: ofelia-windows-amd64
+ldflags:
+  - "-s -w"
+  - "-X main.version={{ .Tag }}"
+  - "-X main.build={{ .Commit }}"

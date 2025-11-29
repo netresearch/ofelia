@@ -9,8 +9,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * 0'
-  release:
-    types: [published]
 
 permissions:
   contents: read
@@ -22,12 +20,7 @@ env:
 jobs:
   unit:
     name: unit tests
-    runs-on: ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        go-version: [1.25.x]
-        platform: [ubuntu-latest]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,13 +30,12 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version-file: go.mod
 
       - name: Verify go.mod is tidy
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
-
 
       - name: Unit tests
         run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
@@ -105,7 +97,7 @@ jobs:
         run: |
           set +e
           TMP_OUT=$(mktemp)
-          go run golang.org/x/vuln/cmd/govulncheck@latest ./... | tee "$TMP_OUT"
+          go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./... | tee "$TMP_OUT"
           status=$?
           set -e
           # Fail only if any vulnerability reports a concrete fixed version (not "N/A")
@@ -116,15 +108,66 @@ jobs:
           echo "govulncheck: no vulnerabilities with available fixes (or only unfixed advisories)"
           exit 0
 
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, CC0-1.0, Unlicense
+          comment-summary-in-pr: always
+
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@v1.6.0
+
+      - name: Check licenses
+        run: |
+          $(go env GOPATH)/bin/go-licenses check ./... 2>&1 | tee license-report.txt
+          # Fail on forbidden licenses (GPL-3.0, AGPL-3.0)
+          if grep -qE "(GPL-3.0|AGPL-3.0)" license-report.txt; then
+            echo "::error::Found forbidden license (GPL-3.0 or AGPL-3.0)"
+            exit 1
+          fi
+
+      - name: Generate license report
+        run: |
+          $(go env GOPATH)/bin/go-licenses report ./... > licenses.csv 2>/dev/null || true
+        continue-on-error: true
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: |
+            license-report.txt
+            licenses.csv
+        if: always()
+
   integration:
     name: integration tests
     needs: unit
-    runs-on: ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        go-version: [1.25.x]
-        platform: [ubuntu-latest]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -134,7 +177,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version-file: go.mod
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -177,7 +220,6 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
 
-
   gosec:
     name: gosec
     runs-on: ubuntu-latest
@@ -191,7 +233,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.0
 
       - name: Run gosec
         run: |
@@ -206,17 +248,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Download gitleaks (OSS)
-        run: |
-          set -e
-          VERSION="8.18.4"
-          URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
-          curl -sSL "$URL" | tar -xz gitleaks
-          chmod +x gitleaks
+        with:
+          fetch-depth: 0
 
       - name: Run gitleaks
-        run: ./gitleaks detect --source . --no-banner --redact
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_KEY }}
 
   build_image:
     name: Build and push container image
@@ -253,81 +292,19 @@ jobs:
         with:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          platforms: linux/amd64,linux/arm/v7,linux/arm64
-          build-args: |
-            CGO_ENABLED=0
-          provenance: true
-          sbom: true
-
-  release_binaries:
-    if: github.event_name == 'release'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-
-      - name: Install Syft for SBOM generation
-        uses: anchore/sbom-action/download-syft@v0
-
-      - name: Install Cosign for signing
-        uses: sigstore/cosign-installer@v3
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  release_docker:
-    if: github.event_name == 'release'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set release version
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.RELEASE_VERSION }}
           platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
           build-args: |
             CGO_ENABLED=0
           provenance: true
           sbom: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign container image
+        run: |
+          set -euo pipefail
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
 
   hadolint:
     name: hadolint
@@ -361,7 +338,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: fs
           ignore-unfixed: true
@@ -372,6 +349,7 @@ jobs:
           exit-code: 1
       - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@v3
+        if: always()  # Upload even if vulnerabilities found (exit-code: 1)
         with:
           sarif_file: trivy-results.sarif
 
