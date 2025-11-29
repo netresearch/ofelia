@@ -79,6 +79,7 @@ jobs:
     with:
       go-version-file: go.mod
       config-file: .slsa-goreleaser/${{ matrix.target }}.yml
+      evaluated-envs: "VERSION:${{ github.ref_name }},COMMIT:${{ github.sha }}"
       upload-assets: true
       draft-release: false
 
@@ -242,10 +243,10 @@ jobs:
           gh release edit "$RELEASE_TAG" \
             --notes-file CHANGELOG.md
 
-  # Container images (runs in parallel with binary builds)
+  # Container images (runs after binary builds succeed)
   docker:
     name: Build and Push Container Images
-    needs: resolve-tag
+    needs: [resolve-tag, build]
     runs-on: ubuntu-latest
     permissions:
       contents: read
