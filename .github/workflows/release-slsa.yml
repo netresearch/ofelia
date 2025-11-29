@@ -92,14 +92,12 @@ jobs:
   # Generate SBOMs for all binaries
   sbom:
     name: Generate SBOMs
+    if: github.event_name == 'release'
     needs: [resolve-tag, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@v0
 
@@ -138,6 +136,7 @@ jobs:
   # Generate checksums
   checksums:
     name: Generate Checksums
+    if: github.event_name == 'release'
     needs: [resolve-tag, build, sbom]
     runs-on: ubuntu-latest
     permissions:
@@ -190,6 +189,7 @@ jobs:
   # Update release notes with changelog
   release-notes:
     name: Update Release Notes
+    if: github.event_name == 'release'
     needs: [resolve-tag, changelog, checksums]
     runs-on: ubuntu-latest
     permissions:
