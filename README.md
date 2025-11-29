@@ -7,6 +7,8 @@
 [![License](https://img.shields.io/github/license/netresearch/ofelia)](LICENSE)
 [![Container Image](https://img.shields.io/badge/ghcr.io-netresearch%2Fofelia-blue)](https://github.com/netresearch/ofelia/pkgs/container/ofelia)
 [![Go Report Card](https://goreportcard.com/badge/github.com/netresearch/ofelia)](https://goreportcard.com/report/github.com/netresearch/ofelia)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11513/badge)](https://www.bestpractices.dev/projects/11513)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/netresearch/ofelia/badge)](https://securityscorecards.dev/viewer/?uri=github.com/netresearch/ofelia)
 
 <img src="https://weirdspace.dk/FranciscoIbanez/Graphics/Ofelia.gif" align="right" width="180px" height="300px" vspace="20" />
 

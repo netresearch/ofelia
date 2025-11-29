@@ -88,3 +88,40 @@ cosign verify-blob \
 ```bash
 cosign verify ghcr.io/netresearch/ofelia:<TAG>
 ```
+
+## Branch Protection Settings
+
+For OpenSSF Scorecard compliance while maintaining solo-developer workflow:
+
+### Recommended Settings (GitHub → Settings → Branches → main)
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| Require pull request before merging | ✅ Enabled | Core requirement |
+| Required approvals | 0 | Solo-dev compatible |
+| Dismiss stale reviews | ✅ Enabled | Optional |
+| Require status checks to pass | ✅ Enabled | CI must pass |
+| Required status checks | `unit tests`, `lint`, `codeql` | Key checks |
+| Require branches up to date | ✅ Enabled | Prevents merge conflicts |
+| Restrict force pushes | ✅ Enabled | Protects history |
+| Allow deletions | ❌ Disabled | Protects main branch |
+
+### Solo Developer Workflow
+
+With these settings, solo developers can:
+1. Create feature branches: `git checkout -b feature/xyz`
+2. Push changes and create PR
+3. Wait for CI to pass
+4. Merge without requiring external approval
+
+### OpenSSF Scorecard Checks
+
+This repository targets the following scorecard improvements:
+
+- ✅ **Pinned-Dependencies**: All GitHub Actions pinned by SHA
+- ✅ **Token-Permissions**: Minimal permissions in workflows
+- ✅ **Security-Policy**: This file exists
+- ✅ **SAST**: CodeQL and gosec enabled
+- ✅ **Dangerous-Workflow**: No dangerous patterns
+- ⚠️ **Branch-Protection**: Configure via GitHub UI (see above)
+- ⚠️ **Code-Review**: Enabled via branch protection
