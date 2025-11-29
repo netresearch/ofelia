@@ -132,6 +132,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           gh release download "$RELEASE_TAG" --dir dist
+          rm -f dist/checksums.txt*
 
       - name: Generate checksums
         run: |
@@ -211,7 +212,7 @@ jobs:
             checksums.txt
           ```
           VERIFICATION
-          sed 's/^          //' /tmp/verification.md >> CHANGELOG.md
+          sed 's/^          //' /tmp/verification.md | sed "s/<TAG>/${RELEASE_TAG}/g" >> CHANGELOG.md
 
           gh release edit "$RELEASE_TAG" \
             --notes-file CHANGELOG.md
