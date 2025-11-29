@@ -3,38 +3,20 @@ name: Release (SLSA Level 3)
 on:
   release:
     types: [published]
-  # NOTE: workflow_dispatch is for testing workflow logic only, NOT for actual releases.
-  # The SLSA generator builds from GITHUB_REF (branch), ignoring inputs.tag.
-  # Binary provenance will reference the branch, not the tag - unsuitable for production.
-  # For real releases, always use the GitHub Release UI to trigger this workflow.
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag for post-build jobs (SLSA build uses GITHUB_REF, not this)'
-        required: false
 
 permissions: read-all
 
 jobs:
-  # Resolve tag for both release and workflow_dispatch triggers
+  # Output release tag for dependent jobs
   resolve-tag:
     name: Resolve Tag
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - name: Determine tag
+      - name: Output release tag
         id: tag
-        run: |
-          set -euo pipefail
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-          elif [[ -n "${{ inputs.tag }}" ]]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::No tag specified for workflow_dispatch"
-            exit 1
-          fi
+        run: echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
 
   # Generate changelog from conventional commits
   changelog:
@@ -93,7 +75,6 @@ jobs:
   # Generate SBOMs for all binaries
   sbom:
     name: Generate SBOMs
-    if: github.event_name == 'release'
     needs: [resolve-tag, build]
     runs-on: ubuntu-latest
     permissions:
@@ -137,7 +118,6 @@ jobs:
   # Generate checksums
   checksums:
     name: Generate Checksums
-    if: github.event_name == 'release'
     needs: [resolve-tag, build, sbom]
     runs-on: ubuntu-latest
     permissions:
@@ -190,7 +170,6 @@ jobs:
   # Update release notes with changelog
   release-notes:
     name: Update Release Notes
-    if: github.event_name == 'release'
     needs: [resolve-tag, changelog, checksums]
     runs-on: ubuntu-latest
     permissions:
@@ -207,31 +186,30 @@ jobs:
           RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           set -euo pipefail
-          # Append verification instructions to changelog
-          # Create verification section without leading spaces
-          {
-            echo ""
-            echo "---"
-            echo ""
-            echo "## Verification"
-            echo ""
-            echo "All binaries include SLSA Level 3 provenance attestations."
-            echo ""
-            echo "### Verify binary provenance"
-            echo '```bash'
-            echo 'slsa-verifier verify-artifact ofelia-linux-amd64 \'
-            echo '  --provenance-path ofelia-linux-amd64.intoto.jsonl \'
-            echo '  --source-uri github.com/netresearch/ofelia'
-            echo '```'
-            echo ""
-            echo "### Verify checksums signature"
-            echo '```bash'
-            echo 'cosign verify-blob \'
-            echo '  --certificate checksums.txt.pem \'
-            echo '  --signature checksums.txt.sig \'
-            echo '  checksums.txt'
-            echo '```'
-          } >> CHANGELOG.md
+          # Append verification instructions (indented to satisfy YAML, then stripped)
+          cat > /tmp/verification.md << 'VERIFICATION'
+          ---
+
+          ## Verification
+
+          All binaries include SLSA Level 3 provenance attestations.
+
+          ### Verify binary provenance
+          ```bash
+          slsa-verifier verify-artifact ofelia-linux-amd64 \
+            --provenance-path ofelia-linux-amd64.intoto.jsonl \
+            --source-uri github.com/netresearch/ofelia
+          ```
+
+          ### Verify checksums signature
+          ```bash
+          cosign verify-blob \
+            --certificate checksums.txt.pem \
+            --signature checksums.txt.sig \
+            checksums.txt
+          ```
+          VERIFICATION
+          sed 's/^          //' /tmp/verification.md >> CHANGELOG.md
 
           gh release edit "$RELEASE_TAG" \
             --notes-file CHANGELOG.md
@@ -239,7 +217,6 @@ jobs:
   # Container images (runs in parallel with binary builds)
   docker:
     name: Build and Push Container Images
-    if: github.event_name == 'release'
     needs: resolve-tag
     runs-on: ubuntu-latest
     permissions:
