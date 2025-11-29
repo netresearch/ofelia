@@ -99,7 +99,7 @@ jobs:
         run: |
           set +e
           TMP_OUT=$(mktemp)
-          go run golang.org/x/vuln/cmd/govulncheck@latest ./... | tee "$TMP_OUT"
+          go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./... | tee "$TMP_OUT"
           status=$?
           set -e
           # Fail only if any vulnerability reports a concrete fixed version (not "N/A")
@@ -141,7 +141,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install go-licenses
-        run: go install github.com/google/go-licenses@latest
+        run: go install github.com/google/go-licenses@v1.6.0
 
       - name: Check licenses
         run: |
@@ -236,7 +236,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.0
 
       - name: Run gosec
         run: |
@@ -251,17 +251,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Download gitleaks (OSS)
-        run: |
-          set -e
-          VERSION="8.18.4"
-          URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
-          curl -sSL "$URL" | tar -xz gitleaks
-          chmod +x gitleaks
+        with:
+          fetch-depth: 0
 
       - name: Run gitleaks
-        run: ./gitleaks detect --source . --no-banner --redact
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build_image:
     name: Build and push container image
@@ -309,6 +305,7 @@ jobs:
 
       - name: Sign container image
         run: |
+          set -euo pipefail
           cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
 
   # Note: Release builds (binaries + docker) are handled by release-slsa.yml workflow
