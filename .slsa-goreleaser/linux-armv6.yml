@@ -2,8 +2,6 @@ version: 1
 env:
   - CGO_ENABLED=0
   - GO111MODULE=on
-  - VERSION
-  - COMMIT
 flags:
   - -trimpath
 goos: linux
@@ -12,4 +10,4 @@ goarm: 6
 main: .
 binary: ofelia-linux-armv6
 ldflags:
-  - "-s -w -X main.version=$VERSION -X main.build=$COMMIT"
+  - "-s -w -X main.version={{ .Env.VERSION }} -X main.build={{ .Env.COMMIT }}"

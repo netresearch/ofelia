@@ -79,7 +79,7 @@ jobs:
     with:
       go-version-file: go.mod
       config-file: .slsa-goreleaser/${{ matrix.target }}.yml
-      evaluated-envs: "VERSION:${{ github.ref_name }},COMMIT:${{ github.sha }}"
+      evaluated-envs: "VERSION:${{ github.ref_name }}, COMMIT:${{ github.sha }}"
       upload-assets: true
       draft-release: false
 
