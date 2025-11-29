@@ -137,7 +137,6 @@ jobs:
           set +e
           TMP_OUT=$(mktemp)
           go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./... | tee "$TMP_OUT"
-          status=$?
           set -e
           # Fail only if any vulnerability reports a concrete fixed version (not "N/A")
           if grep -E "^\s*Fixed in:\s+" "$TMP_OUT" | grep -v "Fixed in: N/A" >/dev/null; then
@@ -192,7 +191,7 @@ jobs:
 
       - name: Check licenses
         run: |
-          $(go env GOPATH)/bin/go-licenses check ./... 2>&1 | tee license-report.txt
+          "$(go env GOPATH)/bin/go-licenses" check ./... 2>&1 | tee license-report.txt
           # Fail on forbidden licenses (GPL-3.0, AGPL-3.0)
           if grep -qE "(GPL-3.0|AGPL-3.0)" license-report.txt; then
             echo "::error::Found forbidden license (GPL-3.0 or AGPL-3.0)"
@@ -201,7 +200,7 @@ jobs:
 
       - name: Generate license report
         run: |
-          $(go env GOPATH)/bin/go-licenses report ./... > licenses.csv 2>/dev/null || true
+          "$(go env GOPATH)/bin/go-licenses" report ./... > licenses.csv 2>/dev/null || true
         continue-on-error: true
 
       - name: Upload license report
@@ -302,7 +301,7 @@ jobs:
       - name: Run gosec
         run: |
           echo "GOPATH=$(go env GOPATH)"
-          $(go env GOPATH)/bin/gosec ./...
+          "$(go env GOPATH)/bin/gosec" ./...
 
   gitleaks:
     name: gitleaks
