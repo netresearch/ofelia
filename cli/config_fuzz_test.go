@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/test"
 )
 
 // FuzzBuildFromString tests INI config parsing with arbitrary input.
@@ -56,7 +56,7 @@ unknown-key = value`, // Unknown key
 	}
 
 	f.Fuzz(func(t *testing.T, data string) {
-		logger := &nullLogger{}
+		logger := test.NewTestLogger()
 		// We don't care about errors - we're looking for panics and crashes
 		_, _ = BuildFromString(data, logger)
 	})
@@ -91,7 +91,7 @@ func FuzzDockerLabels(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, labelKey, labelValue string) {
-		logger := &nullLogger{}
+		logger := test.NewTestLogger()
 		c := NewConfig(logger)
 
 		// Create a mock label set as if from a container
@@ -106,25 +106,3 @@ func FuzzDockerLabels(f *testing.F) {
 		_ = c.buildFromDockerLabels(labels)
 	})
 }
-
-// nullLogger implements core.Logger for testing
-type nullLogger struct{}
-
-func (n *nullLogger) Debug(args ...interface{})                                   {}
-func (n *nullLogger) Debugf(format string, args ...interface{})                   {}
-func (n *nullLogger) Info(args ...interface{})                                    {}
-func (n *nullLogger) Infof(format string, args ...interface{})                    {}
-func (n *nullLogger) Warning(args ...interface{})                                 {}
-func (n *nullLogger) Warningf(format string, args ...interface{})                 {}
-func (n *nullLogger) Error(args ...interface{})                                   {}
-func (n *nullLogger) Errorf(format string, args ...interface{})                   {}
-func (n *nullLogger) Criticalf(format string, args ...interface{})                {}
-func (n *nullLogger) Critical(args ...interface{})                                {}
-func (n *nullLogger) Notice(args ...interface{})                                  {}
-func (n *nullLogger) Noticef(format string, args ...interface{})                  {}
-func (n *nullLogger) WithJob(job core.Job) core.Logger                            { return n }
-func (n *nullLogger) WithJobName(name, jobType, schedule string) core.Logger      { return n }
-func (n *nullLogger) WithContainer(containerID, containerName string) core.Logger { return n }
-func (n *nullLogger) WithScheduler(schedulerName string) core.Logger              { return n }
-func (n *nullLogger) WithJobExecution(name, executionID string) core.Logger       { return n }
-func (n *nullLogger) GetExecutionID() string                                      { return "" }
