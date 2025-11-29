@@ -100,7 +100,7 @@ jobs:
       contents: write
     steps:
       - name: Install Syft
-        uses: anchore/sbom-action/download-syft@v0
+        uses: anchore/sbom-action/download-syft@v0.17.8
 
       - name: Download all release assets
         env:
@@ -238,6 +238,7 @@ EOF
   # Container images (runs in parallel with binary builds)
   docker:
     name: Build and Push Container Images
+    if: github.event_name == 'release'
     needs: resolve-tag
     runs-on: ubuntu-latest
     permissions:
