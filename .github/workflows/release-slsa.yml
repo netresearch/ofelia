@@ -208,29 +208,30 @@ jobs:
         run: |
           set -euo pipefail
           # Append verification instructions to changelog
-          cat >> CHANGELOG.md << 'EOF'
-
----
-
-## Verification
-
-All binaries include SLSA Level 3 provenance attestations.
-
-### Verify binary provenance
-```bash
-slsa-verifier verify-artifact ofelia-linux-amd64 \
-  --provenance-path ofelia-linux-amd64.intoto.jsonl \
-  --source-uri github.com/netresearch/ofelia
-```
-
-### Verify checksums signature
-```bash
-cosign verify-blob \
-  --certificate checksums.txt.pem \
-  --signature checksums.txt.sig \
-  checksums.txt
-```
-EOF
+          # Create verification section without leading spaces
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Verification"
+            echo ""
+            echo "All binaries include SLSA Level 3 provenance attestations."
+            echo ""
+            echo "### Verify binary provenance"
+            echo '```bash'
+            echo 'slsa-verifier verify-artifact ofelia-linux-amd64 \'
+            echo '  --provenance-path ofelia-linux-amd64.intoto.jsonl \'
+            echo '  --source-uri github.com/netresearch/ofelia'
+            echo '```'
+            echo ""
+            echo "### Verify checksums signature"
+            echo '```bash'
+            echo 'cosign verify-blob \'
+            echo '  --certificate checksums.txt.pem \'
+            echo '  --signature checksums.txt.sig \'
+            echo '  checksums.txt'
+            echo '```'
+          } >> CHANGELOG.md
 
           gh release edit "$RELEASE_TAG" \
             --notes-file CHANGELOG.md
