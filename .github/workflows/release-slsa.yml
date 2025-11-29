@@ -3,10 +3,14 @@ name: Release (SLSA Level 3)
 on:
   release:
     types: [published]
+  # NOTE: workflow_dispatch is for testing workflow logic only, NOT for actual releases.
+  # The SLSA generator builds from GITHUB_REF (branch), ignoring inputs.tag.
+  # Binary provenance will reference the branch, not the tag - unsuitable for production.
+  # For real releases, always use the GitHub Release UI to trigger this workflow.
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build (for testing)'
+        description: 'Tag for post-build jobs (SLSA build uses GITHUB_REF, not this)'
         required: false
 
 permissions: read-all
@@ -205,27 +209,27 @@ jobs:
           # Append verification instructions to changelog
           cat >> CHANGELOG.md << 'EOF'
 
-          ---
+---
 
-          ## Verification
+## Verification
 
-          All binaries include SLSA Level 3 provenance attestations.
+All binaries include SLSA Level 3 provenance attestations.
 
-          ### Verify binary provenance
-          ```bash
-          slsa-verifier verify-artifact ofelia-linux-amd64 \
-            --provenance-path ofelia-linux-amd64.intoto.jsonl \
-            --source-uri github.com/netresearch/ofelia
-          ```
+### Verify binary provenance
+```bash
+slsa-verifier verify-artifact ofelia-linux-amd64 \
+  --provenance-path ofelia-linux-amd64.intoto.jsonl \
+  --source-uri github.com/netresearch/ofelia
+```
 
-          ### Verify checksums signature
-          ```bash
-          cosign verify-blob \
-            --certificate checksums.txt.pem \
-            --signature checksums.txt.sig \
-            checksums.txt
-          ```
-          EOF
+### Verify checksums signature
+```bash
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature checksums.txt.sig \
+  checksums.txt
+```
+EOF
 
           gh release edit "$RELEASE_TAG" \
             --notes-file CHANGELOG.md
