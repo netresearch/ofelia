@@ -1,0 +1,9 @@
+# CODEOWNERS - Defines code ownership for pull request reviews
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+* @CybotTM @netresearch/netresearch
+
+# Security-sensitive files require security team review
+/.github/workflows/ @CybotTM @netresearch/sec
+/SECURITY.md @CybotTM @netresearch/sec
