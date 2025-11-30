@@ -187,7 +187,8 @@ jobs:
           go-version-file: go.mod
 
       - name: Install go-licenses
-        run: go install github.com/google/go-licenses@v1.6.0
+        # Pin by hash for OpenSSF Scorecard compliance
+        run: go install github.com/google/go-licenses@5348b744d0983d85713295ea08a20cca1654a45e # v1.6.0
 
       - name: Check licenses
         run: |
@@ -296,7 +297,8 @@ jobs:
           go-version-file: go.mod
 
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.0
+        # Pin by hash for OpenSSF Scorecard compliance
+        run: go install github.com/securego/gosec/v2/cmd/gosec@5d1a18b12ab7a9858baf9b7cffa903028792ed17 # v2.22.0
 
       - name: Run gosec
         run: |

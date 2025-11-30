@@ -15,7 +15,8 @@ echo ""
 # Check if lefthook is installed
 if ! command -v lefthook >/dev/null 2>&1; then
     echo "📦 Installing lefthook..."
-    go install github.com/evilmartians/lefthook@latest
+    # Pin to commit hash for OpenSSF Scorecard compliance (v2.0.4)
+    go install github.com/evilmartians/lefthook@a92b0191f01bd54306f069c371878eeee39611f7
     echo "✅ lefthook installed"
 fi
 
