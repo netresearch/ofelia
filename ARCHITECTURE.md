@@ -50,7 +50,7 @@ The scheduler manages job timing using cron expressions:
 - Triggers job execution at scheduled times
 - Supports multiple concurrent jobs
 
-### 2. Configuration Loader (`core/config.go`)
+### 2. Configuration Loader (`cli/config.go`)
 
 Loads job configurations from multiple sources:
 - **INI file**: Traditional configuration file (`/etc/ofelia/config.ini`)
@@ -67,8 +67,9 @@ Configuration is hot-reloaded when Docker events occur (container start/stop).
 | `job-run` | Start new container for job | Isolated job execution |
 | `job-local` | Execute command on host | System-level tasks |
 | `job-service-run` | Run as Docker Swarm service | Swarm-native execution |
+| `job-compose` | Run docker-compose jobs | Multi-container orchestration tasks |
 
-### 4. Docker Integration (`core/docker.go`)
+### 4. Docker Integration (`core/docker_sdk_provider.go`, `core/docker_interface.go`)
 
 Interfaces with Docker daemon via:
 - Unix socket (`/var/run/docker.sock`)
@@ -80,7 +81,7 @@ Features:
 - Label-based job discovery
 - Container lifecycle management
 
-### 5. Notification System (`core/notifications/`)
+### 5. Notification System (`middlewares/`, e.g. `mail.go`, `slack.go`)
 
 Sends job execution notifications via:
 - **Email** (SMTP)
@@ -93,7 +94,7 @@ Notifications include:
 - Execution output (stdout/stderr)
 - Error details on failure
 
-### 6. Logging (`core/logging.go`)
+### 6. Logging (`logging/structured.go`, `core/logrus_logger.go`)
 
 Structured logging with:
 - Multiple log levels (debug, info, warn, error)
@@ -153,7 +154,7 @@ See [SECURITY.md](SECURITY.md) for security policies and reporting vulnerabiliti
 
 Key external dependencies:
 - `github.com/docker/docker` - Docker API client
-- `github.com/robfig/cron` - Cron expression parsing
+- `github.com/netresearch/go-cron` - Cron expression parsing
 - `github.com/fsouza/go-dockerclient` - Docker client wrapper
 - `gopkg.in/ini.v1` - INI file parsing
 
@@ -179,14 +180,14 @@ make lint
 
 ```
 ofelia/
-├── cmd/                    # CLI entry points
+├── ofelia.go               # Main entry point
+├── cli/                    # Command-line interface implementation
 ├── core/                   # Core business logic
 │   ├── scheduler.go        # Job scheduler
-│   ├── config.go           # Configuration loading
-│   ├── docker.go           # Docker integration
-│   ├── job*.go             # Job type implementations
-│   └── notifications/      # Notification handlers
-├── middlewares/            # Execution middleware
+│   ├── docker_*.go         # Docker integration
+│   └── *job.go             # Job type implementations
+├── middlewares/            # Notification handlers (mail, slack, etc.)
+├── logging/                # Structured logging
 ├── docs/                   # Documentation
 ├── .github/                # CI/CD workflows
 └── docker-compose.yml      # Development environment
