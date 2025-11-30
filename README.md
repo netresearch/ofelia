@@ -25,6 +25,7 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 - [Configuration precedence](#configuration-precedence)
 - [Configuration](#configuration)
 - [Development](#development)
+- [Roadmap](#roadmap)
 - [License](#license)
 
 ## Requirements
@@ -457,6 +458,23 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed development guide.
 ### Testing
 
 See [running tests](docs/tests.md) for Docker requirements and how to run `go test`.
+
+## Roadmap
+
+This project uses GitHub Issues as a living roadmap:
+
+- **[Feature Requests](https://github.com/netresearch/ofelia/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement)** - Planned enhancements and new features
+- **[Bug Reports](https://github.com/netresearch/ofelia/issues?q=is%3Aissue+is%3Aopen+label%3Abug)** - Known issues being addressed
+- **[Good First Issues](https://github.com/netresearch/ofelia/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)** - Great starting points for contributors
+
+### Current Focus Areas
+
+1. **Container orchestration** - Enhanced Docker and Compose integration
+2. **Observability** - Improved logging, metrics, and monitoring
+3. **Configuration** - More flexible job configuration options
+4. **Web UI** - Continued improvements to the management interface
+
+Want to influence the roadmap? [Open an issue](https://github.com/netresearch/ofelia/issues/new) or contribute a PR!
 
 ## License
 
