@@ -8,6 +8,7 @@ Thank you for your interest in contributing to Ofelia! This document provides gu
 - [Testing Strategy](#testing-strategy)
 - [Code Style](#code-style)
 - [Pull Request Process](#pull-request-process)
+- [Release Process](#release-process)
 
 ## Development Setup
 
@@ -266,6 +267,69 @@ job.Run(ctx)
 - [ ] Documentation updated (if needed)
 - [ ] Commit messages are clear and descriptive
 - [ ] No breaking changes (or clearly documented if unavoidable)
+
+## Release Process
+
+### For Maintainers
+
+Ofelia uses [SLSA Level 3](https://slsa.dev/) provenance for all releases, providing cryptographic guarantees about the build process.
+
+#### Creating a Release
+
+Version is automatically derived from the git tag by GoReleaser.
+
+1. **Create signed tag** (recommended for GPG-signed releases):
+   ```bash
+   # Configure GPG signing (one-time setup)
+   git config --global user.signingkey YOUR_GPG_KEY_ID
+   git config --global tag.gpgSign true
+
+   # Create signed tag
+   git tag -s v0.X.Y -m "Release v0.X.Y"
+   git push origin v0.X.Y
+   ```
+
+2. **Create GitHub Release**: Go to [Releases](https://github.com/netresearch/ofelia/releases) → Draft a new release
+   - Select the tag you just created
+   - Generate release notes or write a summary
+   - Publish the release
+
+3. **Automated pipeline**: The release workflow automatically:
+   - Builds binaries with SLSA Level 3 provenance
+   - Generates SBOMs for all artifacts
+   - Creates signed checksums (Cosign keyless)
+   - Builds and signs container images
+   - Updates release notes with verification instructions
+
+#### Supply Chain Security
+
+All releases include:
+
+| Artifact | Verification |
+|----------|-------------|
+| Binaries | SLSA L3 provenance attestation |
+| Checksums | Cosign signature + certificate |
+| Containers | Cosign signature + SBOM |
+| Source | Signed git tag (if created with `-s`) |
+
+#### Verifying Releases
+
+Users can verify releases:
+
+```bash
+# Verify binary provenance
+slsa-verifier verify-artifact ofelia-linux-amd64 \
+  --provenance-path ofelia-linux-amd64.intoto.jsonl \
+  --source-uri github.com/netresearch/ofelia
+
+# Verify checksums signature
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature checksums.txt.sig \
+  --certificate-identity "https://github.com/netresearch/ofelia/.github/workflows/release-slsa.yml@refs/tags/vX.Y.Z" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  checksums.txt
+```
 
 ## Questions or Issues?
 
