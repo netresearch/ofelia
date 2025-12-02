@@ -276,8 +276,9 @@ Ofelia uses [SLSA Level 3](https://slsa.dev/) provenance for all releases, provi
 
 #### Creating a Release
 
-1. **Update version**: Ensure `VERSION` in code reflects the new version
-2. **Create signed tag** (recommended for GPG-signed releases):
+Version is automatically derived from the git tag by GoReleaser.
+
+1. **Create signed tag** (recommended for GPG-signed releases):
    ```bash
    # Configure GPG signing (one-time setup)
    git config --global user.signingkey YOUR_GPG_KEY_ID
@@ -288,12 +289,12 @@ Ofelia uses [SLSA Level 3](https://slsa.dev/) provenance for all releases, provi
    git push origin v0.X.Y
    ```
 
-3. **Create GitHub Release**: Go to [Releases](https://github.com/netresearch/ofelia/releases) → Draft a new release
+2. **Create GitHub Release**: Go to [Releases](https://github.com/netresearch/ofelia/releases) → Draft a new release
    - Select the tag you just created
    - Generate release notes or write a summary
    - Publish the release
 
-4. **Automated pipeline**: The release workflow automatically:
+3. **Automated pipeline**: The release workflow automatically:
    - Builds binaries with SLSA Level 3 provenance
    - Generates SBOMs for all artifacts
    - Creates signed checksums (Cosign keyless)
