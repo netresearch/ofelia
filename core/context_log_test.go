@@ -52,8 +52,8 @@ func (j *stubJob) Hash() (string, error)     { return "stub-hash", nil }
 func (j *stubJob) Running() int32            { return 0 }
 func (j *stubJob) NotifyStart()              {}
 func (j *stubJob) NotifyStop()               {}
-func (j *stubJob) GetCronJobID() int         { return 0 }
-func (j *stubJob) SetCronJobID(id int)       {}
+func (j *stubJob) GetCronJobID() uint64      { return 0 }
+func (j *stubJob) SetCronJobID(id uint64)    {}
 func (j *stubJob) GetHistory() []*Execution  { return nil }
 
 // TestContextLogDefault verifies that Context.Log uses Noticef when no error or skip.

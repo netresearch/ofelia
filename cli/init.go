@@ -420,7 +420,7 @@ func validateSchedule(schedule string) error {
 	}
 
 	// Validate as cron expression
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	parser := cron.MustNewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	if _, err := parser.Parse(schedule); err != nil {
 		return fmt.Errorf("invalid cron expression: %w\n  Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *", err)
 	}

@@ -37,28 +37,61 @@ type Scheduler struct {
 }
 
 func NewScheduler(l Logger) *Scheduler {
+	return NewSchedulerWithMetrics(l, nil)
+}
+
+// NewSchedulerWithMetrics creates a new scheduler with optional metrics recording.
+// If metricsRecorder is non-nil, it will be used to record job scheduling metrics
+// via go-cron's ObservabilityHooks.
+func NewSchedulerWithMetrics(l Logger, metricsRecorder MetricsRecorder) *Scheduler {
 	cronUtils := NewCronUtils(l)
-	cron := cron.New(
+
+	// Build cron options
+	cronOpts := []cron.Option{
 		cron.WithParser(
-			cron.NewParser(
-				cron.SecondOptional|cron.Minute|cron.Hour|
-					cron.Dom|cron.Month|cron.Dow|cron.Descriptor,
+			cron.MustNewParser(
+				cron.SecondOptional | cron.Minute | cron.Hour |
+					cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
 			),
 		),
 		cron.WithLogger(cronUtils),
 		cron.WithChain(cron.Recover(cronUtils)),
-	)
+	}
+
+	// Add observability hooks if metrics recorder is provided
+	if metricsRecorder != nil {
+		hooks := cron.ObservabilityHooks{
+			OnJobStart: func(_ cron.EntryID, name string, _ time.Time) {
+				metricsRecorder.RecordJobStart(name)
+			},
+			OnJobComplete: func(_ cron.EntryID, name string, duration time.Duration, recovered any) {
+				metricsRecorder.RecordJobComplete(name, duration.Seconds(), recovered != nil)
+			},
+			OnSchedule: func(_ cron.EntryID, name string, _ time.Time) {
+				metricsRecorder.RecordJobScheduled(name)
+			},
+		}
+		cronOpts = append(cronOpts, cron.WithObservability(hooks))
+	}
+
+	cronInstance := cron.New(cronOpts...)
 
 	// Default to 10 concurrent jobs, can be configured
 	maxConcurrent := 10
 
 	s := &Scheduler{
 		Logger:            l,
-		cron:              cron,
+		cron:              cronInstance,
 		maxConcurrentJobs: maxConcurrent,
 		jobSemaphore:      make(chan struct{}, maxConcurrent),
 		retryExecutor:     NewRetryExecutor(l),
 		jobsByName:        make(map[string]Job),
+		metricsRecorder:   metricsRecorder,
+	}
+
+	// Also set metrics on retry executor
+	if metricsRecorder != nil {
+		s.retryExecutor.SetMetricsRecorder(metricsRecorder)
 	}
 
 	// Initialize workflow orchestrator
@@ -93,11 +126,23 @@ func (s *Scheduler) SetMetricsRecorder(recorder MetricsRecorder) {
 }
 
 func (s *Scheduler) AddJob(j Job) error {
+	return s.AddJobWithTags(j)
+}
+
+// AddJobWithTags adds a job with optional tags for categorization.
+// Tags can be used to group, filter, and remove related jobs.
+func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	if j.GetSchedule() == "" {
 		return ErrEmptySchedule
 	}
 
-	id, err := s.cron.AddJob(j.GetSchedule(), &jobWrapper{s, j})
+	// Build job options: always include name for O(1) lookup
+	opts := []cron.JobOption{cron.WithName(j.GetName())}
+	if len(tags) > 0 {
+		opts = append(opts, cron.WithTags(tags...))
+	}
+
+	id, err := s.cron.AddJob(j.GetSchedule(), &jobWrapper{s, j}, opts...)
 	if err != nil {
 		s.Logger.Warningf(
 			"Failed to register job %q - %q - %q",
@@ -105,10 +150,11 @@ func (s *Scheduler) AddJob(j Job) error {
 		)
 		return fmt.Errorf("add cron job: %w", err)
 	}
-	j.SetCronJobID(int(id)) // Cast to int in order to avoid pushing cron external to common
+	j.SetCronJobID(uint64(id))
 	j.Use(s.Middlewares()...)
 	s.mu.Lock()
 	s.Jobs = append(s.Jobs, j)
+	s.jobsByName[j.GetName()] = j
 	s.mu.Unlock()
 	s.Logger.Noticef(
 		"New job registered %q - %q - %q - ID: %v",
@@ -122,7 +168,8 @@ func (s *Scheduler) RemoveJob(j Job) error {
 		"Job deregistered (will not fire again) %q - %q - %q - ID: %v",
 		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
 	)
-	s.cron.Remove(cron.EntryID(j.GetCronJobID()))
+	// Use O(1) removal by name if possible
+	s.cron.RemoveByName(j.GetName())
 	s.mu.Lock()
 	for i, job := range s.Jobs {
 		if job == j || job.GetCronJobID() == j.GetCronJobID() {
@@ -130,9 +177,65 @@ func (s *Scheduler) RemoveJob(j Job) error {
 			break
 		}
 	}
+	delete(s.jobsByName, j.GetName())
 	s.Removed = append(s.Removed, j)
 	s.mu.Unlock()
 	return nil
+}
+
+// RemoveJobsByTag removes all jobs with the specified tag.
+// Returns the number of jobs removed.
+func (s *Scheduler) RemoveJobsByTag(tag string) int {
+	// Get entries by tag before removal for logging
+	entries := s.cron.EntriesByTag(tag)
+	if len(entries) == 0 {
+		return 0
+	}
+
+	// Remove from cron using O(1) tag removal
+	count := s.cron.RemoveByTag(tag)
+
+	// Update our internal state
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, entry := range entries {
+		// Find and remove from Jobs slice (iterate backwards for safe removal)
+		for i := len(s.Jobs) - 1; i >= 0; i-- {
+			job := s.Jobs[i]
+			if job.GetCronJobID() == uint64(entry.ID) {
+				s.Logger.Noticef("Job removed by tag %q: %q", tag, job.GetName())
+				delete(s.jobsByName, job.GetName())
+				s.Removed = append(s.Removed, job)
+				s.Jobs = append(s.Jobs[:i], s.Jobs[i+1:]...)
+				break
+			}
+		}
+	}
+
+	return count
+}
+
+// GetJobsByTag returns all jobs with the specified tag.
+func (s *Scheduler) GetJobsByTag(tag string) []Job {
+	entries := s.cron.EntriesByTag(tag)
+	if len(entries) == 0 {
+		return nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	jobs := make([]Job, 0, len(entries))
+	for _, entry := range entries {
+		for _, job := range s.Jobs {
+			if job.GetCronJobID() == uint64(entry.ID) {
+				jobs = append(jobs, job)
+				break
+			}
+		}
+	}
+	return jobs
 }
 
 func (s *Scheduler) Start() error {
@@ -159,8 +262,19 @@ func (s *Scheduler) Start() error {
 	return nil
 }
 
+// DefaultStopTimeout is the default timeout for graceful shutdown.
+const DefaultStopTimeout = 30 * time.Second
+
 func (s *Scheduler) Stop() error {
-	s.cron.Stop() // Stop cron first to prevent new jobs
+	return s.StopWithTimeout(DefaultStopTimeout)
+}
+
+// StopWithTimeout stops the scheduler with a graceful shutdown timeout.
+// It stops accepting new jobs, then waits up to the timeout for running jobs to complete.
+// Returns nil if all jobs completed, or an error if the timeout was exceeded.
+func (s *Scheduler) StopWithTimeout(timeout time.Duration) error {
+	// Use go-cron's StopWithTimeout for graceful shutdown
+	completed := s.cron.StopWithTimeout(timeout)
 
 	s.mu.Lock()
 	s.isRunning = false
@@ -172,8 +286,32 @@ func (s *Scheduler) Stop() error {
 	}
 	s.mu.Unlock()
 
-	s.wg.Wait() // Then wait for existing jobs
+	s.wg.Wait() // Wait for any remaining wrapper goroutines
+
+	if !completed {
+		s.Logger.Warningf("Scheduler stop timed out after %v - some jobs may still be running", timeout)
+		return fmt.Errorf("scheduler stop timed out after %v", timeout)
+	}
+	s.Logger.Debugf("Scheduler stopped gracefully")
 	return nil
+}
+
+// StopAndWait stops the scheduler and waits indefinitely for all jobs to complete.
+func (s *Scheduler) StopAndWait() {
+	s.cron.StopAndWait()
+
+	s.mu.Lock()
+	s.isRunning = false
+
+	// Stop cleanup routine
+	if s.cleanupTicker != nil {
+		s.cleanupTicker.Stop()
+		close(s.cleanupStop)
+	}
+	s.mu.Unlock()
+
+	s.wg.Wait()
+	s.Logger.Debugf("Scheduler stopped and all jobs completed")
 }
 
 // startWorkflowCleanup starts the background cleanup routine for workflow executions
@@ -284,13 +422,29 @@ func (s *Scheduler) GetDisabledJob(name string) Job {
 
 // DisableJob stops scheduling the job but keeps it for later enabling.
 func (s *Scheduler) DisableJob(name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	j, idx := getJob(s.Jobs, name)
+	// First, find the job under read lock
+	s.mu.RLock()
+	j, _ := getJob(s.Jobs, name)
 	if j == nil {
+		s.mu.RUnlock()
 		return fmt.Errorf("job %q not found", name)
 	}
-	s.cron.Remove(cron.EntryID(j.GetCronJobID()))
+	s.mu.RUnlock()
+
+	// Remove from cron without holding our lock (cron has its own lock)
+	// Use RemoveByName to properly clean up the name registry for later re-enabling
+	s.cron.RemoveByName(name)
+
+	// Now acquire write lock to update internal state
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Re-find the job since state may have changed
+	j, idx := getJob(s.Jobs, name)
+	if j == nil {
+		// Job was already removed by another goroutine
+		return nil
+	}
+	delete(s.jobsByName, name)
 	s.Jobs = append(s.Jobs[:idx], s.Jobs[idx+1:]...)
 	s.Disabled = append(s.Disabled, j)
 	return nil
@@ -306,6 +460,23 @@ func (s *Scheduler) EnableJob(name string) error {
 	}
 	s.Disabled = append(s.Disabled[:idx], s.Disabled[idx+1:]...)
 	s.mu.Unlock()
+
+	// Wait for the name to be available in cron (removal is async when cron is running)
+	// Use exponential backoff: 1ms, 2ms, 4ms, 8ms, 16ms, 32ms, 64ms, 100ms, 100ms, 100ms
+	// (capped at 100ms per attempt, ~430ms total worst case)
+	backoff := time.Millisecond
+	for i := 0; i < 10; i++ {
+		entry := s.cron.EntryByName(name)
+		if !entry.Valid() {
+			break
+		}
+		time.Sleep(backoff)
+		backoff *= 2
+		if backoff > 100*time.Millisecond {
+			backoff = 100 * time.Millisecond
+		}
+	}
+
 	return s.AddJob(j)
 }
 

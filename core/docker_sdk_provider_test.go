@@ -646,6 +646,9 @@ func (m *testMetrics) RecordContainerEvent()                                    
 func (m *testMetrics) RecordContainerMonitorFallback()                          {}
 func (m *testMetrics) RecordContainerMonitorMethod(usingEvents bool)            {}
 func (m *testMetrics) RecordContainerWaitDuration(seconds float64)              {}
+func (m *testMetrics) RecordJobStart(jobName string)                            {}
+func (m *testMetrics) RecordJobComplete(jobName string, _ float64, _ bool)      {}
+func (m *testMetrics) RecordJobScheduled(jobName string)                        {}
 
 func TestSDKDockerProviderWithLogger(t *testing.T) {
 	mockClient := mock.NewDockerClient()

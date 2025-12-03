@@ -188,6 +188,31 @@ func (mc *Collector) RecordDockerError(operation string) {
 	mc.IncrementCounter("ofelia_docker_errors_total", 1)
 }
 
+// RecordJobStart records a job starting (from go-cron ObservabilityHooks)
+func (mc *Collector) RecordJobStart(jobName string) {
+	mc.IncrementCounter("ofelia_cron_jobs_started_total", 1)
+	mc.SetGauge("ofelia_jobs_running",
+		mc.getGaugeValue("ofelia_jobs_running")+1)
+}
+
+// RecordJobComplete records a job completing (from go-cron ObservabilityHooks)
+func (mc *Collector) RecordJobComplete(jobName string, durationSeconds float64, panicked bool) {
+	mc.IncrementCounter("ofelia_cron_jobs_completed_total", 1)
+	mc.ObserveHistogram("ofelia_job_duration_seconds", durationSeconds)
+
+	if panicked {
+		mc.IncrementCounter("ofelia_cron_jobs_panicked_total", 1)
+	}
+
+	mc.SetGauge("ofelia_jobs_running",
+		mc.getGaugeValue("ofelia_jobs_running")-1)
+}
+
+// RecordJobScheduled records when a job's next run is scheduled (from go-cron ObservabilityHooks)
+func (mc *Collector) RecordJobScheduled(jobName string) {
+	mc.IncrementCounter("ofelia_cron_jobs_scheduled_total", 1)
+}
+
 // Export formats metrics in Prometheus text format
 func (mc *Collector) Export() string {
 	mc.mu.RLock()
@@ -267,6 +292,12 @@ func (mc *Collector) InitDefaultMetrics() {
 	mc.RegisterHistogram("ofelia_job_retry_delay_seconds", "Retry delay in seconds",
 		[]float64{0.1, 0.5, 1, 2, 5, 10, 30, 60})
 
+	// go-cron ObservabilityHooks metrics
+	mc.RegisterCounter("ofelia_cron_jobs_started_total", "Total cron jobs started")
+	mc.RegisterCounter("ofelia_cron_jobs_completed_total", "Total cron jobs completed")
+	mc.RegisterCounter("ofelia_cron_jobs_panicked_total", "Total cron jobs that panicked")
+	mc.RegisterCounter("ofelia_cron_jobs_scheduled_total", "Total cron job scheduling events")
+
 	// Set initial values
 	mc.SetGauge("ofelia_up", 1)
 	mc.SetGauge("ofelia_jobs_running", 0)
@@ -318,6 +349,8 @@ func (jm *JobMetrics) JobCompleted(jobID string, success bool) {
 }
 
 // Helper method to get gauge value
+//
+//nolint:unparam // name is parameterized for future gauge types
 func (mc *Collector) getGaugeValue(name string) float64 {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()

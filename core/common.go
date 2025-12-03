@@ -31,8 +31,8 @@ type Job interface {
 	Running() int32
 	NotifyStart()
 	NotifyStop()
-	GetCronJobID() int
-	SetCronJobID(int)
+	GetCronJobID() uint64
+	SetCronJobID(uint64)
 	GetHistory() []*Execution
 	Hash() (string, error)
 }

@@ -39,6 +39,10 @@ type MetricsRecorder interface {
 	RecordContainerWaitDuration(seconds float64)
 	RecordDockerOperation(operation string)
 	RecordDockerError(operation string)
+	// Job scheduling metrics (from go-cron ObservabilityHooks)
+	RecordJobStart(jobName string)
+	RecordJobComplete(jobName string, durationSeconds float64, panicked bool)
+	RecordJobScheduled(jobName string)
 }
 
 // RetryExecutor wraps job execution with retry logic

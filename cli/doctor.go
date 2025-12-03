@@ -267,7 +267,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 		return
 	}
 
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	parser := cron.MustNewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	allValid := true
 
 	// Check run jobs

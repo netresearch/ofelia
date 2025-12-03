@@ -10,14 +10,13 @@ import (
 // PerformanceRecorder defines the interface for recording comprehensive performance metrics
 // This extends the existing MetricsRecorder interface with additional capabilities
 type PerformanceRecorder interface {
-	MetricsRecorder // Embed existing interface (includes RecordDockerError)
+	MetricsRecorder // Embed existing interface (includes RecordDockerError and job scheduling metrics)
 
 	// Extended Docker operations
 	RecordDockerLatency(operation string, duration time.Duration)
 
-	// Job operations
+	// Job operations (extended beyond MetricsRecorder)
 	RecordJobExecution(jobName string, duration time.Duration, success bool)
-	RecordJobScheduled(jobName string)
 	RecordJobSkipped(jobName string, reason string)
 
 	// System metrics
@@ -266,6 +265,23 @@ func (pm *PerformanceMetrics) RecordJobExecution(jobName string, duration time.D
 // RecordJobScheduled records when a job is scheduled
 func (pm *PerformanceMetrics) RecordJobScheduled(jobName string) {
 	atomic.AddInt64(&pm.totalJobsScheduled, 1)
+}
+
+// RecordJobStart records a job start (from go-cron ObservabilityHooks)
+func (pm *PerformanceMetrics) RecordJobStart(jobName string) {
+	// Track concurrent jobs
+	count := atomic.AddInt64(&pm.currentJobs, 1)
+	pm.RecordConcurrentJobs(count)
+}
+
+// RecordJobComplete records a job completing (from go-cron ObservabilityHooks)
+func (pm *PerformanceMetrics) RecordJobComplete(jobName string, durationSeconds float64, panicked bool) {
+	duration := time.Duration(durationSeconds * float64(time.Second))
+	success := !panicked
+	pm.RecordJobExecution(jobName, duration, success)
+
+	// Decrement concurrent jobs
+	atomic.AddInt64(&pm.currentJobs, -1)
 }
 
 // RecordJobSkipped records when a job is skipped
