@@ -25,7 +25,7 @@ type BareJob struct {
 	lock    sync.Mutex
 	history []*Execution
 	lastRun *Execution
-	cronID  int
+	cronID  uint64
 }
 
 func (j *BareJob) GetName() string {
@@ -52,11 +52,11 @@ func (j *BareJob) NotifyStop() {
 	atomic.AddInt32(&j.running, -1)
 }
 
-func (j *BareJob) GetCronJobID() int {
+func (j *BareJob) GetCronJobID() uint64 {
 	return j.cronID
 }
 
-func (j *BareJob) SetCronJobID(id int) {
+func (j *BareJob) SetCronJobID(id uint64) {
 	j.cronID = id
 }
 

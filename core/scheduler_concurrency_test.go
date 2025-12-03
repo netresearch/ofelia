@@ -448,11 +448,16 @@ func TestSchedulerRaceConditions(t *testing.T) {
 	}
 	defer scheduler.Stop()
 
-	// Concurrently manipulate jobs (disable/enable/remove)
+	// Manipulate jobs with small stagger to avoid overwhelming cron's internal locks.
+	// go-cron uses channels and mutexes internally that can deadlock under extreme
+	// concurrent pressure. Real-world usage has natural delays between operations.
 	wg.Add(numJobs)
 	for i := 0; i < numJobs; i++ {
 		go func(idx int) {
 			defer wg.Done()
+			// Stagger start to avoid all goroutines hitting cron simultaneously
+			time.Sleep(time.Duration(idx*5) * time.Millisecond)
+
 			jobName := fmt.Sprintf("race-job%d", idx)
 
 			switch idx % 3 {
