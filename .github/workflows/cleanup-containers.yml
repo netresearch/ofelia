@@ -1,0 +1,170 @@
+name: Cleanup Container Images
+
+# Cleans up old "edge" container image versions from ghcr.io
+#
+# Strategy:
+# - Release images (v*, latest*) are kept FOREVER
+# - Edge images (edge*) older than 30 days are deleted
+# - Untagged images referenced by release manifests are preserved
+#
+# Multi-arch builds create multiple images per release:
+# - 5 platform images (386, amd64, arm/v6, arm/v7, arm64)
+# - 2 attestation images (provenance, sbom)
+# Platform images are tagged (e.g., v0.13.2-amd64, edge-amd64)
+# Attestation images remain untagged but are referenced by manifests
+#
+# See: https://github.com/actions/delete-package-versions/issues/162
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2:00 AM UTC
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Dry run (don't delete, just show what would be deleted)"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      edge-retention-days:
+        description: "Days to keep edge images before deletion"
+        required: false
+        default: "30"
+        type: string
+
+permissions:
+  packages: write
+
+env:
+  PACKAGE_NAME: ofelia
+  # Default retention for edge images (30 days)
+  EDGE_RETENTION_DAYS: ${{ inputs.edge-retention-days || '30' }}
+
+jobs:
+  cleanup-edge-images:
+    name: Cleanup Old Edge Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: Cleanup old edge container versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry-run || 'false' }}
+        run: |
+          set -euo pipefail
+
+          echo "🔍 Fetching container versions for $PACKAGE_NAME..."
+          echo "📅 Edge retention: $EDGE_RETENTION_DAYS days"
+          echo "🧪 Dry run: $DRY_RUN"
+          echo ""
+
+          # Calculate cutoff date
+          CUTOFF_DATE=$(date -d "-${EDGE_RETENTION_DAYS} days" -Iseconds)
+          echo "📆 Cutoff date: $CUTOFF_DATE"
+          echo ""
+
+          # Get all versions (paginated)
+          PAGE=1
+          VERSIONS_TO_DELETE=()
+
+          while true; do
+            VERSIONS=$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/orgs/netresearch/packages/container/${PACKAGE_NAME}/versions?per_page=100&page=${PAGE}" 2>/dev/null || echo "[]")
+
+            # Check if we got any versions
+            COUNT=$(echo "$VERSIONS" | jq 'length')
+            if [ "$COUNT" -eq 0 ]; then
+              break
+            fi
+
+            echo "📦 Processing page $PAGE ($COUNT versions)..."
+
+            # Process each version
+            while IFS= read -r version; do
+              VERSION_ID=$(echo "$version" | jq -r '.id')
+              CREATED_AT=$(echo "$version" | jq -r '.created_at')
+              TAGS=$(echo "$version" | jq -r '.metadata.container.tags // [] | join(", ")')
+
+              # Skip if no tags (these are likely attestations referenced by manifests)
+              if [ -z "$TAGS" ]; then
+                continue
+              fi
+
+              # Check if ANY tag is a release tag (v*, latest*)
+              HAS_RELEASE_TAG=$(echo "$version" | jq -r '
+                .metadata.container.tags // [] |
+                any(. | test("^v[0-9]") or test("^latest"))
+              ')
+
+              if [ "$HAS_RELEASE_TAG" = "true" ]; then
+                # Skip - this is a release image
+                continue
+              fi
+
+              # Check if this is an edge image
+              IS_EDGE=$(echo "$version" | jq -r '
+                .metadata.container.tags // [] |
+                any(. | test("^edge"))
+              ')
+
+              if [ "$IS_EDGE" != "true" ]; then
+                # Skip - not an edge image
+                continue
+              fi
+
+              # Check if older than cutoff
+              if [[ "$CREATED_AT" < "$CUTOFF_DATE" ]]; then
+                echo "  🗑️  Version $VERSION_ID (tags: $TAGS) created $CREATED_AT - WILL DELETE"
+                VERSIONS_TO_DELETE+=("$VERSION_ID")
+              fi
+            done < <(echo "$VERSIONS" | jq -c '.[]')
+
+            PAGE=$((PAGE + 1))
+          done
+
+          echo ""
+          echo "📊 Summary: ${#VERSIONS_TO_DELETE[@]} edge versions to delete"
+          echo ""
+
+          if [ ${#VERSIONS_TO_DELETE[@]} -eq 0 ]; then
+            echo "✅ No old edge images to clean up"
+            exit 0
+          fi
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "🧪 DRY RUN - Would delete ${#VERSIONS_TO_DELETE[@]} versions"
+            echo "   Run with dry-run=false to actually delete"
+            exit 0
+          fi
+
+          # Delete the versions
+          DELETED=0
+          FAILED=0
+          for VERSION_ID in "${VERSIONS_TO_DELETE[@]}"; do
+            echo "🗑️  Deleting version $VERSION_ID..."
+            if gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/orgs/netresearch/packages/container/${PACKAGE_NAME}/versions/${VERSION_ID}" 2>/dev/null; then
+              DELETED=$((DELETED + 1))
+            else
+              echo "   ⚠️  Failed to delete version $VERSION_ID"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo ""
+          echo "✅ Deleted $DELETED versions"
+          if [ $FAILED -gt 0 ]; then
+            echo "⚠️  Failed to delete $FAILED versions"
+          fi
