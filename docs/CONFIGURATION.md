@@ -283,15 +283,18 @@ Standard cron expressions with seconds (optional):
 ### Preset Schedules
 
 ```ini
-@yearly    # Run once a year (0 0 1 1 *)
-@annually  # Same as @yearly
-@monthly   # Run once a month (0 0 1 * *)
-@weekly    # Run once a week (0 0 * * 0)
-@daily     # Run once a day (0 0 * * *)
-@midnight  # Same as @daily
-@hourly    # Run once an hour (0 * * * *)
-@every 5m  # Run every 5 minutes
+@yearly     # Run once a year (0 0 1 1 *)
+@annually   # Same as @yearly
+@monthly    # Run once a month (0 0 1 * *)
+@weekly     # Run once a week (0 0 * * 0)
+@daily      # Run once a day (0 0 * * *)
+@midnight   # Same as @daily
+@hourly     # Run once an hour (0 * * * *)
+@every 5m   # Run every 5 minutes
 @every 1h30m # Run every 1.5 hours
+@triggered  # Only run when triggered (via on-success, on-failure, or RunJob)
+@manual     # Alias for @triggered
+@none       # Alias for @triggered
 ```
 
 ### Examples
@@ -404,6 +407,132 @@ command = long-task.sh
 # Prevent overlapping runs
 overlap = false
 ```
+
+## Job Dependencies
+
+Ofelia supports job dependencies to create workflows where jobs can depend on other jobs, or trigger other jobs on success or failure.
+
+### Dependency Configuration
+
+Define job execution order and conditional triggers:
+
+```ini
+[job-exec "init-database"]
+schedule = @daily
+container = postgres
+command = /scripts/init-db.sh
+
+[job-exec "backup-database"]
+schedule = @daily
+container = postgres
+command = /scripts/backup.sh
+# Wait for init-database to complete first
+depends-on = init-database
+
+[job-exec "process-data"]
+schedule = @daily
+container = worker
+command = /scripts/process.sh
+# Multiple dependencies (use multiple lines)
+depends-on = init-database
+depends-on = backup-database
+# Trigger these jobs on success
+on-success = notify-complete
+# Trigger these jobs on failure
+on-failure = alert-ops
+
+[job-exec "notify-complete"]
+schedule = @triggered
+container = notifier
+command = /scripts/success-notify.sh
+
+[job-exec "alert-ops"]
+schedule = @triggered
+container = notifier
+command = /scripts/failure-alert.sh
+```
+
+> **Note**: Jobs triggered only via `on-success` or `on-failure` should use `@triggered` (or aliases `@manual`/`@none`).
+> These jobs are registered but not scheduled in cron - they only run when triggered by another job or manually.
+
+### Dependency Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `depends-on` | Jobs that must complete successfully before this job runs | `depends-on = init-job` |
+| `on-success` | Jobs to trigger when this job completes successfully | `on-success = cleanup-job` |
+| `on-failure` | Jobs to trigger when this job fails | `on-failure = alert-job` |
+
+### Docker Labels Syntax
+
+```yaml
+version: '3.8'
+services:
+  worker:
+    image: myapp:latest
+    labels:
+      ofelia.enabled: "true"
+
+      # Main processing job
+      ofelia.job-exec.process.schedule: "@hourly"
+      ofelia.job-exec.process.command: "process.sh"
+      ofelia.job-exec.process.depends-on: "setup"
+      ofelia.job-exec.process.on-success: "cleanup"
+      ofelia.job-exec.process.on-failure: "alert"
+
+      # Setup job (dependency)
+      ofelia.job-exec.setup.schedule: "@hourly"
+      ofelia.job-exec.setup.command: "setup.sh"
+
+      # Cleanup job (triggered on success)
+      ofelia.job-exec.cleanup.schedule: "@triggered"
+      ofelia.job-exec.cleanup.command: "cleanup.sh"
+
+      # Alert job (triggered on failure)
+      ofelia.job-exec.alert.schedule: "@triggered"
+      ofelia.job-exec.alert.command: "alert.sh"
+```
+
+### Cross-Container Job References (Docker Compose)
+
+When using Docker Compose, jobs are automatically named using the **service name** from `docker-compose.yml`, not the generated container name. This enables intuitive cross-container job references:
+
+```yaml
+version: '3.8'
+services:
+  database:
+    image: postgres:15
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.backup.schedule: "@daily"
+      ofelia.job-exec.backup.command: "pg_dump -U postgres mydb"
+      ofelia.job-exec.backup.on-success: "app.notify"  # Reference job on 'app' service
+
+  app:
+    image: myapp:latest
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.process.schedule: "@hourly"
+      ofelia.job-exec.process.command: "process.sh"
+      ofelia.job-exec.process.depends-on: "database.backup"  # Wait for database backup
+      ofelia.job-exec.notify.schedule: "@triggered"
+      ofelia.job-exec.notify.command: "notify.sh"
+```
+
+Jobs are named as `{service}.{job-name}`:
+- `database.backup` - Backup job on the database service
+- `app.process` - Process job on the app service
+- `app.notify` - Notify job on the app service
+
+For non-Compose containers (without the `com.docker.compose.service` label), the container name is used instead.
+
+### Important Notes
+
+1. **Circular dependencies are detected** - Ofelia will reject configurations with circular dependency chains
+2. **Dependencies must exist** - Referenced jobs must be defined in the configuration
+3. **All job types supported** - Dependencies work across all job types (exec, run, local, service, compose)
+4. **Multiple dependencies** - Use multiple `depends-on` lines in INI format to specify multiple dependencies
+5. **Service name precedence** - Docker Compose service names take precedence over container names for job naming
 
 ## Security Considerations
 

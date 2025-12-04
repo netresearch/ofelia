@@ -15,6 +15,17 @@ var (
 	ErrEmptySchedule  = errors.New("unable to add a job with an empty schedule")
 )
 
+// TriggeredSchedule is a special schedule keyword for jobs that should only run
+// when triggered by another job's on-success/on-failure, or manually via RunJob().
+// Jobs with this schedule are not added to the cron scheduler.
+const TriggeredSchedule = "@triggered"
+
+// IsTriggeredSchedule returns true if the schedule indicates the job should only
+// run when triggered (not on a time-based schedule).
+func IsTriggeredSchedule(schedule string) bool {
+	return schedule == TriggeredSchedule || schedule == "@manual" || schedule == "@none"
+}
+
 type Scheduler struct {
 	Jobs     []Job
 	Removed  []Job
@@ -131,9 +142,24 @@ func (s *Scheduler) AddJob(j Job) error {
 
 // AddJobWithTags adds a job with optional tags for categorization.
 // Tags can be used to group, filter, and remove related jobs.
+// Jobs with @triggered/@manual/@none schedules are stored but not scheduled in cron.
 func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	if j.GetSchedule() == "" {
 		return ErrEmptySchedule
+	}
+
+	// Handle triggered-only jobs: store for manual/workflow execution but don't schedule
+	if IsTriggeredSchedule(j.GetSchedule()) {
+		j.Use(s.Middlewares()...)
+		s.mu.Lock()
+		s.Jobs = append(s.Jobs, j)
+		s.jobsByName[j.GetName()] = j
+		s.mu.Unlock()
+		s.Logger.Noticef(
+			"Triggered-only job registered %q - %q (will run only when triggered)",
+			j.GetName(), j.GetCommand(),
+		)
+		return nil
 	}
 
 	// Build job options: always include name for O(1) lookup

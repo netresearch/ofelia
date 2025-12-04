@@ -137,6 +137,7 @@ func (v *Validator) ValidateCronExpression(field string, value string) {
 		validSpecial := []string{
 			"@yearly", "@annually", "@monthly", "@weekly",
 			"@daily", "@midnight", "@hourly", "@every",
+			"@triggered", "@manual", "@none", // triggered-only jobs
 		}
 
 		isValid := false

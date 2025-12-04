@@ -213,13 +213,16 @@ func (s *Sanitizer) ValidateCronExpression(expr string) error {
 	// Handle special expressions
 	if strings.HasPrefix(expr, "@") {
 		validSpecial := map[string]bool{
-			"@yearly":   true,
-			"@annually": true,
-			"@monthly":  true,
-			"@weekly":   true,
-			"@daily":    true,
-			"@midnight": true,
-			"@hourly":   true,
+			"@yearly":    true,
+			"@annually":  true,
+			"@monthly":   true,
+			"@weekly":    true,
+			"@daily":     true,
+			"@midnight":  true,
+			"@hourly":    true,
+			"@triggered": true, // triggered-only jobs (run via workflow or manual)
+			"@manual":    true, // alias for @triggered
+			"@none":      true, // alias for @triggered
 		}
 
 		// Handle @every expressions
