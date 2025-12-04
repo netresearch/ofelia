@@ -283,15 +283,18 @@ Standard cron expressions with seconds (optional):
 ### Preset Schedules
 
 ```ini
-@yearly    # Run once a year (0 0 1 1 *)
-@annually  # Same as @yearly
-@monthly   # Run once a month (0 0 1 * *)
-@weekly    # Run once a week (0 0 * * 0)
-@daily     # Run once a day (0 0 * * *)
-@midnight  # Same as @daily
-@hourly    # Run once an hour (0 * * * *)
-@every 5m  # Run every 5 minutes
+@yearly     # Run once a year (0 0 1 1 *)
+@annually   # Same as @yearly
+@monthly    # Run once a month (0 0 1 * *)
+@weekly     # Run once a week (0 0 * * 0)
+@daily      # Run once a day (0 0 * * *)
+@midnight   # Same as @daily
+@hourly     # Run once an hour (0 * * * *)
+@every 5m   # Run every 5 minutes
 @every 1h30m # Run every 1.5 hours
+@triggered  # Only run when triggered (via on-success, on-failure, or RunJob)
+@manual     # Alias for @triggered
+@none       # Alias for @triggered
 ```
 
 ### Examples
@@ -439,18 +442,18 @@ on-success = notify-complete
 on-failure = alert-ops
 
 [job-exec "notify-complete"]
-schedule = @yearly
+schedule = @triggered
 container = notifier
 command = /scripts/success-notify.sh
 
 [job-exec "alert-ops"]
-schedule = @yearly
+schedule = @triggered
 container = notifier
 command = /scripts/failure-alert.sh
 ```
 
-> **Note**: Jobs triggered only via `on-success` or `on-failure` still require a valid schedule.
-> Use an infrequent schedule like `@yearly` to prevent scheduled runs while allowing triggered execution.
+> **Note**: Jobs triggered only via `on-success` or `on-failure` should use `@triggered` (or aliases `@manual`/`@none`).
+> These jobs are registered but not scheduled in cron - they only run when triggered by another job or manually.
 
 ### Dependency Options
 
@@ -482,11 +485,11 @@ services:
       ofelia.job-exec.setup.command: "setup.sh"
 
       # Cleanup job (triggered on success)
-      ofelia.job-exec.cleanup.schedule: "@yearly"
+      ofelia.job-exec.cleanup.schedule: "@triggered"
       ofelia.job-exec.cleanup.command: "cleanup.sh"
 
       # Alert job (triggered on failure)
-      ofelia.job-exec.alert.schedule: "@yearly"
+      ofelia.job-exec.alert.schedule: "@triggered"
       ofelia.job-exec.alert.command: "alert.sh"
 ```
 
