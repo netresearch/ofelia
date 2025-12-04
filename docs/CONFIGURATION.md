@@ -493,12 +493,46 @@ services:
       ofelia.job-exec.alert.command: "alert.sh"
 ```
 
+### Cross-Container Job References (Docker Compose)
+
+When using Docker Compose, jobs are automatically named using the **service name** from `docker-compose.yml`, not the generated container name. This enables intuitive cross-container job references:
+
+```yaml
+version: '3.8'
+services:
+  database:
+    image: postgres:15
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.backup.schedule: "@daily"
+      ofelia.job-exec.backup.command: "pg_dump -U postgres mydb"
+      ofelia.job-exec.backup.on-success: "app.notify"  # Reference job on 'app' service
+
+  app:
+    image: myapp:latest
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.process.schedule: "@hourly"
+      ofelia.job-exec.process.command: "process.sh"
+      ofelia.job-exec.process.depends-on: "database.backup"  # Wait for database backup
+      ofelia.job-exec.notify.schedule: "@triggered"
+      ofelia.job-exec.notify.command: "notify.sh"
+```
+
+Jobs are named as `{service}.{job-name}`:
+- `database.backup` - Backup job on the database service
+- `app.process` - Process job on the app service
+- `app.notify` - Notify job on the app service
+
+For non-Compose containers (without the `com.docker.compose.service` label), the container name is used instead.
+
 ### Important Notes
 
 1. **Circular dependencies are detected** - Ofelia will reject configurations with circular dependency chains
 2. **Dependencies must exist** - Referenced jobs must be defined in the configuration
 3. **All job types supported** - Dependencies work across all job types (exec, run, local, service, compose)
 4. **Multiple dependencies** - Use multiple `depends-on` lines in INI format to specify multiple dependencies
+5. **Service name precedence** - Docker Compose service names take precedence over container names for job naming
 
 ## Security Considerations
 

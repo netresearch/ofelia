@@ -274,3 +274,130 @@ command = echo standalone
 		t.Errorf("Expected no on-failure triggers, got %v", job.OnFailure)
 	}
 }
+
+// TestDockerLabels_ComposeServiceName tests that Docker Compose service names are used for job prefixes
+func TestDockerLabels_ComposeServiceName(t *testing.T) {
+	// Simulate Docker Compose containers with com.docker.compose.service labels
+	labels := map[string]map[string]string{
+		"myproject-database-1": {
+			"ofelia.enabled":                     "true",
+			"com.docker.compose.service":         "database",
+			"ofelia.job-exec.backup.schedule":    "@daily",
+			"ofelia.job-exec.backup.command":     "pg_dump",
+			"ofelia.job-exec.cleanup.schedule":   "@triggered",
+			"ofelia.job-exec.cleanup.command":    "cleanup.sh",
+			"ofelia.job-exec.cleanup.on-success": "notify",
+		},
+		"myproject-app-1": {
+			"ofelia.enabled":                     "true",
+			"com.docker.compose.service":         "app",
+			"ofelia.job-exec.process.schedule":   "@hourly",
+			"ofelia.job-exec.process.command":    "process.sh",
+			"ofelia.job-exec.process.depends-on": "database.backup",
+		},
+	}
+
+	logger := test.NewTestLogger()
+	cfg := &Config{logger: logger}
+	err := cfg.buildFromDockerLabels(labels)
+	if err != nil {
+		t.Fatalf("buildFromDockerLabels failed: %v", err)
+	}
+
+	// Jobs should be named using service name, not container name
+	// database.backup instead of myproject-database-1.backup
+	if _, exists := cfg.ExecJobs["database.backup"]; !exists {
+		t.Error("Expected job 'database.backup' using Compose service name, not found")
+		t.Logf("Available jobs: %v", getJobNames(cfg.ExecJobs))
+	}
+
+	if _, exists := cfg.ExecJobs["database.cleanup"]; !exists {
+		t.Error("Expected job 'database.cleanup' using Compose service name, not found")
+	}
+
+	if _, exists := cfg.ExecJobs["app.process"]; !exists {
+		t.Error("Expected job 'app.process' using Compose service name, not found")
+	}
+
+	// Verify cross-container references use service names
+	if processJob, exists := cfg.ExecJobs["app.process"]; exists {
+		if len(processJob.Dependencies) != 1 || processJob.Dependencies[0] != "database.backup" {
+			t.Errorf("Expected dependency 'database.backup', got %v", processJob.Dependencies)
+		}
+	}
+
+	// Container names should NOT be used when Compose service label is present
+	if _, exists := cfg.ExecJobs["myproject-database-1.backup"]; exists {
+		t.Error("Should NOT use container name when Compose service name is available")
+	}
+}
+
+// TestDockerLabels_FallbackToContainerName tests fallback to container name when no Compose label
+func TestDockerLabels_FallbackToContainerName(t *testing.T) {
+	// Non-Compose container (no com.docker.compose.service label)
+	labels := map[string]map[string]string{
+		"standalone-worker": {
+			"ofelia.enabled":                "true",
+			"ofelia.job-exec.task.schedule": "@daily",
+			"ofelia.job-exec.task.command":  "run-task.sh",
+		},
+	}
+
+	logger := test.NewTestLogger()
+	cfg := &Config{logger: logger}
+	err := cfg.buildFromDockerLabels(labels)
+	if err != nil {
+		t.Fatalf("buildFromDockerLabels failed: %v", err)
+	}
+
+	// Should use container name since no Compose service label
+	if _, exists := cfg.ExecJobs["standalone-worker.task"]; !exists {
+		t.Error("Expected job 'standalone-worker.task' using container name fallback, not found")
+		t.Logf("Available jobs: %v", getJobNames(cfg.ExecJobs))
+	}
+}
+
+// TestDockerLabels_MixedComposeAndNonCompose tests mixed Compose and non-Compose containers
+func TestDockerLabels_MixedComposeAndNonCompose(t *testing.T) {
+	labels := map[string]map[string]string{
+		// Compose container
+		"myproject-db-1": {
+			"ofelia.enabled":                  "true",
+			"com.docker.compose.service":      "db",
+			"ofelia.job-exec.backup.schedule": "@daily",
+			"ofelia.job-exec.backup.command":  "backup.sh",
+		},
+		// Non-Compose container
+		"legacy-worker": {
+			"ofelia.enabled":               "true",
+			"ofelia.job-exec.run.schedule": "@hourly",
+			"ofelia.job-exec.run.command":  "run.sh",
+		},
+	}
+
+	logger := test.NewTestLogger()
+	cfg := &Config{logger: logger}
+	err := cfg.buildFromDockerLabels(labels)
+	if err != nil {
+		t.Fatalf("buildFromDockerLabels failed: %v", err)
+	}
+
+	// Compose container should use service name
+	if _, exists := cfg.ExecJobs["db.backup"]; !exists {
+		t.Error("Expected 'db.backup' for Compose container")
+	}
+
+	// Non-Compose container should use container name
+	if _, exists := cfg.ExecJobs["legacy-worker.run"]; !exists {
+		t.Error("Expected 'legacy-worker.run' for non-Compose container")
+	}
+}
+
+// getJobNames helper to list job names for debugging
+func getJobNames[J any](m map[string]J) []string {
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	return names
+}

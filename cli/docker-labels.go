@@ -14,6 +14,10 @@ const (
 	requiredLabel       = labelPrefix + ".enabled"
 	requiredLabelFilter = requiredLabel + "=true"
 	serviceLabel        = labelPrefix + ".service"
+
+	// dockerComposeServiceLabel is the label Docker Compose sets on containers
+	// to indicate the service name from docker-compose.yml
+	dockerComposeServiceLabel = "com.docker.compose.service"
 )
 
 func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) error {
@@ -98,7 +102,9 @@ func splitLabelsByType(labels map[string]map[string]string) (
 			jobType, jobName, jobParam := parts[1], parts[2], parts[3]
 			scopedName := jobName
 			if jobType == jobExec {
-				scopedName = containerName + "." + jobName
+				// Use Docker Compose service name if available, fallback to container name
+				jobPrefix := getJobPrefix(labelSet, containerName)
+				scopedName = jobPrefix + "." + jobName
 			}
 			switch {
 			case jobType == jobExec:
@@ -132,6 +138,18 @@ func hasServiceLabel(labels map[string]string) bool {
 		}
 	}
 	return false
+}
+
+// getJobPrefix returns the prefix to use for job names from a container.
+// For Docker Compose containers, it uses the service name (com.docker.compose.service label).
+// For non-Compose containers, it falls back to the container name.
+// This allows cross-container job references using intuitive service names like "database.backup"
+// instead of generated container names like "myproject-database-1.backup".
+func getJobPrefix(labels map[string]string, containerName string) string {
+	if serviceName, ok := labels[dockerComposeServiceLabel]; ok && serviceName != "" {
+		return serviceName
+	}
+	return containerName
 }
 
 func ensureJob(m map[string]map[string]interface{}, name string) {
