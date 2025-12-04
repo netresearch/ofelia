@@ -25,6 +25,7 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 - [Configuration precedence](#configuration-precedence)
 - [Configuration](#configuration)
 - [Development](#development)
+- [Documentation](#documentation)
 - [Roadmap](#roadmap)
 - [License](#license)
 
@@ -78,6 +79,8 @@ No Docker required - runs commands directly on the host system.
 - **Enhanced web UI** allows editing and deleting jobs, shows job origin and type, displays each job's configuration and renders the scheduler configuration in a table with empty job sections hidden. Action buttons now use clear icons.
 - **Timezone selector** in the web UI lets you view timestamps in local, server or UTC time and remembers your choice.
 - **Job dependencies** allow defining execution order with `depends-on`, and conditional triggers with `on-success` and `on-failure` to create job workflows.
+
+> For detailed feature documentation, see [Configuration Reference](docs/CONFIGURATION.md) and [Job Types](docs/jobs.md).
 
 This fork is based off of [mcuadros/ofelia](https://github.com/mcuadros/ofelia).
 
@@ -158,6 +161,8 @@ they override values from the config file and Docker labels.
 | `OFELIA_PPROF_ADDRESS` | `--pprof-address` | Address for the pprof server |
 | `OFELIA_ENABLE_WEB` | `--enable-web` | Enable the web UI |
 | `OFELIA_WEB_ADDRESS` | `--web-address` | Address for the web UI server |
+
+> See [Configuration Reference](docs/CONFIGURATION.md) for all available options including job-specific parameters.
 
 ### Configuration precedence
 
@@ -459,6 +464,21 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed development guide.
 ### Testing
 
 See [running tests](docs/tests.md) for Docker requirements and how to run `go test`.
+
+## Documentation
+
+Detailed documentation is available in the [`docs/`](docs/) directory:
+
+| Document | Description |
+|----------|-------------|
+| [Configuration Reference](docs/CONFIGURATION.md) | Complete guide to all configuration options, job parameters, and middleware settings |
+| [Job Types](docs/jobs.md) | Detailed documentation for each job type (exec, run, local, service-run, compose) |
+| [Architecture Overview](docs/architecture.md) | System design, scheduler internals, and component interactions |
+| [Security Guide](docs/SECURITY.md) | Security best practices, vulnerability reporting, and hardening recommendations |
+| [API Reference](docs/API.md) | Web UI API endpoints and OpenAPI specification |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| [Development Guide](docs/DEVELOPMENT.md) | Contributing, testing, and local development setup |
+| [Quick Reference](docs/QUICK_REFERENCE.md) | Cheat sheet for common configurations |
 
 ## Roadmap
 
