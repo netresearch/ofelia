@@ -181,6 +181,68 @@ depends-on = config-job
 	}
 }
 
+// TestDockerLabels_Dependencies tests parsing of dependency fields from Docker labels
+func TestDockerLabels_Dependencies(t *testing.T) {
+	labels := map[string]map[string]string{
+		"worker-container": {
+			"ofelia.enabled":                       "true",
+			"ofelia.job-exec.process.schedule":     "@hourly",
+			"ofelia.job-exec.process.command":      "process.sh",
+			"ofelia.job-exec.process.depends-on":   "setup",
+			"ofelia.job-exec.process.on-success":   "cleanup",
+			"ofelia.job-exec.process.on-failure":   "alert",
+			"ofelia.job-exec.setup.schedule":       "@hourly",
+			"ofelia.job-exec.setup.command":        "setup.sh",
+			"ofelia.job-exec.cleanup.schedule":     "@yearly",
+			"ofelia.job-exec.cleanup.command":      "cleanup.sh",
+			"ofelia.job-exec.alert.schedule":       "@yearly",
+			"ofelia.job-exec.alert.command":        "alert.sh",
+			"ofelia.job-exec.multi-dep.schedule":   "@daily",
+			"ofelia.job-exec.multi-dep.command":    "multi.sh",
+			"ofelia.job-exec.multi-dep.depends-on": `["setup", "process"]`,
+			"ofelia.job-exec.multi-dep.on-success": `["cleanup", "notify"]`,
+			"ofelia.job-exec.multi-dep.on-failure": `["alert", "rollback"]`,
+		},
+	}
+
+	logger := test.NewTestLogger()
+	cfg := &Config{logger: logger}
+	err := cfg.buildFromDockerLabels(labels)
+	if err != nil {
+		t.Fatalf("buildFromDockerLabels failed: %v", err)
+	}
+
+	// Test single dependency (process job)
+	processJob, exists := cfg.ExecJobs["worker-container.process"]
+	if !exists {
+		t.Fatal("process job not found")
+	}
+	if len(processJob.Dependencies) != 1 || processJob.Dependencies[0] != "setup" {
+		t.Errorf("process job: expected depends-on=['setup'], got %v", processJob.Dependencies)
+	}
+	if len(processJob.OnSuccess) != 1 || processJob.OnSuccess[0] != "cleanup" {
+		t.Errorf("process job: expected on-success=['cleanup'], got %v", processJob.OnSuccess)
+	}
+	if len(processJob.OnFailure) != 1 || processJob.OnFailure[0] != "alert" {
+		t.Errorf("process job: expected on-failure=['alert'], got %v", processJob.OnFailure)
+	}
+
+	// Test multiple dependencies (multi-dep job with JSON arrays)
+	multiDepJob, exists := cfg.ExecJobs["worker-container.multi-dep"]
+	if !exists {
+		t.Fatal("multi-dep job not found")
+	}
+	if len(multiDepJob.Dependencies) != 2 {
+		t.Errorf("multi-dep job: expected 2 dependencies, got %d: %v", len(multiDepJob.Dependencies), multiDepJob.Dependencies)
+	}
+	if len(multiDepJob.OnSuccess) != 2 {
+		t.Errorf("multi-dep job: expected 2 on-success triggers, got %d: %v", len(multiDepJob.OnSuccess), multiDepJob.OnSuccess)
+	}
+	if len(multiDepJob.OnFailure) != 2 {
+		t.Errorf("multi-dep job: expected 2 on-failure triggers, got %d: %v", len(multiDepJob.OnFailure), multiDepJob.OnFailure)
+	}
+}
+
 // TestBuildFromString_EmptyDependencies verifies jobs without dependencies work correctly
 func TestBuildFromString_EmptyDependencies(t *testing.T) {
 	configStr := `

@@ -439,15 +439,18 @@ on-success = notify-complete
 on-failure = alert-ops
 
 [job-exec "notify-complete"]
-schedule = @manual
+schedule = @yearly
 container = notifier
 command = /scripts/success-notify.sh
 
 [job-exec "alert-ops"]
-schedule = @manual
+schedule = @yearly
 container = notifier
 command = /scripts/failure-alert.sh
 ```
+
+> **Note**: Jobs triggered only via `on-success` or `on-failure` still require a valid schedule.
+> Use an infrequent schedule like `@yearly` to prevent scheduled runs while allowing triggered execution.
 
 ### Dependency Options
 
@@ -479,11 +482,11 @@ services:
       ofelia.job-exec.setup.command: "setup.sh"
 
       # Cleanup job (triggered on success)
-      ofelia.job-exec.cleanup.schedule: "@manual"
+      ofelia.job-exec.cleanup.schedule: "@yearly"
       ofelia.job-exec.cleanup.command: "cleanup.sh"
 
       # Alert job (triggered on failure)
-      ofelia.job-exec.alert.schedule: "@manual"
+      ofelia.job-exec.alert.schedule: "@yearly"
       ofelia.job-exec.alert.command: "alert.sh"
 ```
 

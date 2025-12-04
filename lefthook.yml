@@ -60,8 +60,9 @@ pre-commit:
       glob: "*.go"
       run: |
         echo "🛡️ Running additional linters..."
-        extra_linters="gci,wrapcheck,unparam,revive,misspell,paralleltest,gocyclo,unused,forbidigo,errorlint"
-        golangci-lint run --timeout=3m --enable="$extra_linters" --disable-all
+        # Note: gci is a formatter in golangci-lint v2, so it's excluded here
+        extra_linters="wrapcheck,unparam,revive,misspell,paralleltest,gocyclo,unused,forbidigo,errorlint"
+        golangci-lint run --timeout=3m --enable-only="$extra_linters"
 
     # 6. Security scanning - gosec
     gosec:

@@ -152,8 +152,8 @@ func markJobSource[J interface{ SetJobSource(JobSource) }](m map[string]J, src J
 
 func setJobParam(params map[string]interface{}, paramName, paramVal string) {
 	switch strings.ToLower(paramName) {
-	case "volume", "environment", "volumes-from":
-		arr := []string{} // allow providing JSON arr of volume mounts
+	case "volume", "environment", "volumes-from", "depends-on", "on-success", "on-failure":
+		arr := []string{} // allow providing JSON arr of volume mounts or dependency lists
 		if err := json.Unmarshal([]byte(paramVal), &arr); err == nil {
 			params[paramName] = arr
 			return
