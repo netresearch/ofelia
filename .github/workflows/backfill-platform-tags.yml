@@ -1,0 +1,165 @@
+name: Backfill Platform Tags
+
+# One-time workflow to add platform-specific tags to existing container images.
+# This reduces the "untagged" count in ghcr.io by tagging platform images
+# that were previously only referenced by digest.
+#
+# Run this once after merging, then delete the workflow file.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Dry run (show what would be tagged without tagging)"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: netresearch/ofelia
+
+jobs:
+  backfill-tags:
+    name: Backfill Platform Tags
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+
+      - name: Log in to Container registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Backfill platform tags
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+
+          IMAGE="${REGISTRY}/${IMAGE_NAME}"
+          echo "🔍 Fetching tags for $IMAGE..."
+          echo "🧪 Dry run: $DRY_RUN"
+          echo ""
+
+          # Get all version tags
+          VERSIONS=$(crane ls "$IMAGE" 2>/dev/null | grep -E '^v[0-9]' | sort -V)
+          VERSION_COUNT=$(echo "$VERSIONS" | wc -l)
+          echo "📦 Found $VERSION_COUNT release versions"
+          echo ""
+
+          TAGGED=0
+          SKIPPED=0
+          FAILED=0
+
+          tag_platforms() {
+            local VERSION=$1
+            echo "📦 Processing $VERSION..."
+
+            # Get the manifest
+            MANIFEST=$(crane manifest "$IMAGE:$VERSION" 2>/dev/null || echo "")
+            if [ -z "$MANIFEST" ]; then
+              echo "  ⚠️  Could not fetch manifest"
+              return
+            fi
+
+            # Check if it has manifests array (multi-arch)
+            MANIFESTS=$(echo "$MANIFEST" | jq -r '.manifests // empty')
+            if [ -z "$MANIFESTS" ] || [ "$MANIFESTS" = "null" ]; then
+              echo "  ⏭️  Single-arch image, skipping"
+              return
+            fi
+
+            # Tag each platform
+            for platform in linux/386 linux/amd64 linux/arm/v6 linux/arm/v7 linux/arm64; do
+              # Convert platform to tag suffix
+              suffix=$(echo "$platform" | sed 's|linux/||; s|/|-|g')
+              arch="${platform#linux/}"
+
+              # Handle variant (arm/v6 -> architecture=arm, variant=v6)
+              if [[ "$arch" == *"/"* ]]; then
+                base_arch="${arch%/*}"
+                variant="${arch#*/}"
+                digest=$(echo "$MANIFEST" | jq -r --arg arch "$base_arch" --arg var "$variant" '
+                  .manifests[] |
+                  select(.platform.os == "linux") |
+                  select(.platform.architecture == $arch and .platform.variant == $var) |
+                  .digest
+                ' 2>/dev/null | head -1)
+              else
+                digest=$(echo "$MANIFEST" | jq -r --arg arch "$arch" '
+                  .manifests[] |
+                  select(.platform.os == "linux") |
+                  select(.platform.architecture == $arch) |
+                  select(.platform.variant == null or .platform.variant == "") |
+                  .digest
+                ' 2>/dev/null | head -1)
+              fi
+
+              if [ -n "$digest" ] && [ "$digest" != "null" ]; then
+                NEW_TAG="$VERSION-$suffix"
+
+                # Check if tag already exists
+                if crane manifest "$IMAGE:$NEW_TAG" &>/dev/null; then
+                  echo "  ✓ $NEW_TAG already exists"
+                  ((SKIPPED++)) || true
+                else
+                  if [ "$DRY_RUN" = "true" ]; then
+                    echo "  🏷️  Would tag $NEW_TAG from $digest"
+                  else
+                    echo "  🏷️  Tagging $NEW_TAG from $digest"
+                    if crane tag "$IMAGE@$digest" "$NEW_TAG" 2>&1; then
+                      ((TAGGED++)) || true
+                    else
+                      echo "    ⚠️  Failed to tag"
+                      ((FAILED++)) || true
+                    fi
+                  fi
+                fi
+              fi
+            done
+          }
+
+          for VERSION in $VERSIONS; do
+            tag_platforms "$VERSION"
+            echo ""
+          done
+
+          # Also tag latest and edge
+          echo "📦 Processing latest..."
+          tag_platforms "latest"
+          echo ""
+
+          if crane manifest "$IMAGE:edge" &>/dev/null; then
+            echo "📦 Processing edge..."
+            tag_platforms "edge"
+            echo ""
+          fi
+
+          echo "=========================================="
+          echo "📊 Summary"
+          echo "=========================================="
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "🧪 DRY RUN - no changes made"
+            echo "   Run with dry-run=false to apply tags"
+          else
+            echo "✅ Tagged: $TAGGED"
+            echo "⏭️  Skipped (already exist): $SKIPPED"
+            if [ $FAILED -gt 0 ]; then
+              echo "❌ Failed: $FAILED"
+            fi
+          fi
