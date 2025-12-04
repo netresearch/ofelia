@@ -1,6 +1,6 @@
 # Pin base images by digest for supply chain security
 # Renovate will automatically update these digests
-FROM golang:1.25.0-alpine@sha256:f18a072054848d87a8077455f0ac8a25886f2397f88bfdd222d6fafbb5bba440 AS builder
+FROM golang:1.25.5-alpine@sha256:26111811bc967321e7b6f852e914d14bede324cd1accb7f81811929a6a57fea9 AS builder
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache gcc musl-dev git
