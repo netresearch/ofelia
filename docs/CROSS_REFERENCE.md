@@ -4,6 +4,7 @@
 
 ### By Feature
 - [Job Scheduling](#job-scheduling)
+- [Job Dependencies](#job-dependencies)
 - [Docker Integration](#docker-integration)
 - [Configuration](#configuration)
 - [Monitoring & Metrics](#monitoring--metrics)
@@ -29,6 +30,24 @@
 - **Implementation**: [`core/cron_utils.go`](../core/cron_utils.go)
 - **Tests**: [`core/cron_utils_test.go`](../core/cron_utils_test.go)
 - **Configuration Examples**: [Configuration Guide](./CONFIGURATION.md#schedule-expressions)
+
+## Job Dependencies
+
+### Workflow Orchestrator
+- **Implementation**: [`core/workflow.go`](../core/workflow.go)
+- **Tests**: [`core/workflow_test.go`](../core/workflow_test.go)
+- **Job Fields**: [`core/bare_job.go#L18-L20`](../core/bare_job.go) (`Dependencies`, `OnSuccess`, `OnFailure`)
+- **Configuration**: [Job Dependencies Config](./CONFIGURATION.md#job-dependencies)
+
+### Configuration Parsing
+- **INI Config Tests**: [`cli/config_dependencies_test.go`](../cli/config_dependencies_test.go)
+- **Struct Tags**: `gcfg:"depends-on"`, `mapstructure:"depends-on,"`
+
+### Dependency Features
+- **Execution Order**: Jobs wait for dependencies via `depends-on`
+- **Success Triggers**: Jobs triggered on success via `on-success`
+- **Failure Triggers**: Jobs triggered on failure via `on-failure`
+- **Circular Detection**: Built-in circular dependency detection
 
 ## Job Types
 
