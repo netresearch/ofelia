@@ -1,11 +1,12 @@
 name: Cleanup Container Images
 
-# Cleans up old "edge" container image versions from ghcr.io
+# Cleans up old container image versions from ghcr.io
 #
 # Strategy:
 # - Release images (v*, latest*) are kept FOREVER
 # - Edge images (edge*) older than 30 days are deleted
-# - Untagged images referenced by release manifests are preserved
+# - Orphaned untagged images (not referenced by any manifest) are deleted
+# - Untagged images referenced by manifests (attestations) are preserved
 #
 # Multi-arch builds create multiple images per release:
 # - 5 platform images (386, amd64, arm/v6, arm/v7, arm64)
@@ -34,14 +35,22 @@ on:
         required: false
         default: "30"
         type: string
+      orphan-retention-days:
+        description: "Days to keep orphaned untagged images before deletion"
+        required: false
+        default: "7"
+        type: string
 
 permissions:
   packages: write
 
 env:
   PACKAGE_NAME: ofelia
+  IMAGE: ghcr.io/netresearch/ofelia
   # Default retention for edge images (30 days)
   EDGE_RETENTION_DAYS: ${{ inputs.edge-retention-days || '30' }}
+  # Default retention for orphaned untagged images (7 days)
+  ORPHAN_RETENTION_DAYS: ${{ inputs.orphan-retention-days || '7' }}
 
 jobs:
   cleanup-edge-images:
@@ -165,6 +174,164 @@ jobs:
 
           echo ""
           echo "✅ Deleted $DELETED versions"
+          if [ $FAILED -gt 0 ]; then
+            echo "⚠️  Failed to delete $FAILED versions"
+          fi
+
+  cleanup-orphaned-images:
+    name: Cleanup Orphaned Untagged Images
+    runs-on: ubuntu-latest
+    needs: cleanup-edge-images
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+        with:
+          version: latest
+
+      - name: Log in to Container registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup orphaned untagged images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry-run || 'false' }}
+        run: |
+          set -euo pipefail
+
+          echo "🔍 Collecting referenced digests from all tagged manifests..."
+          echo "📅 Orphan retention: $ORPHAN_RETENTION_DAYS days"
+          echo "🧪 Dry run: $DRY_RUN"
+          echo ""
+
+          # Calculate cutoff date
+          CUTOFF_DATE=$(date -d "-${ORPHAN_RETENTION_DAYS} days" -Iseconds)
+          echo "📆 Cutoff date: $CUTOFF_DATE"
+          echo ""
+
+          # Collect all referenced digests from tagged manifests
+          REFERENCED_DIGESTS=$(mktemp)
+          TAGS=$(crane ls "$IMAGE" 2>/dev/null || echo "")
+
+          if [ -z "$TAGS" ]; then
+            echo "⚠️  No tags found, skipping"
+            exit 0
+          fi
+
+          TAG_COUNT=$(echo "$TAGS" | wc -l)
+          echo "📦 Found $TAG_COUNT tags, collecting referenced digests..."
+
+          for TAG in $TAGS; do
+            # Get manifest and extract all referenced digests
+            MANIFEST=$(crane manifest "$IMAGE:$TAG" 2>/dev/null || echo "{}")
+
+            # Extract digests from manifest list (multi-arch) or single manifest
+            echo "$MANIFEST" | jq -r '
+              # From manifest list
+              (.manifests[]?.digest // empty),
+              # From config
+              (.config?.digest // empty),
+              # From layers
+              (.layers[]?.digest // empty)
+            ' 2>/dev/null >> "$REFERENCED_DIGESTS" || true
+          done
+
+          # Sort and dedupe
+          sort -u "$REFERENCED_DIGESTS" -o "$REFERENCED_DIGESTS"
+          REF_COUNT=$(wc -l < "$REFERENCED_DIGESTS")
+          echo "✅ Found $REF_COUNT unique referenced digests"
+          echo ""
+
+          # Now find orphaned untagged versions
+          echo "🔍 Scanning for orphaned untagged versions..."
+          PAGE=1
+          VERSIONS_TO_DELETE=()
+
+          while true; do
+            VERSIONS=$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/orgs/netresearch/packages/container/${PACKAGE_NAME}/versions?per_page=100&page=${PAGE}" 2>/dev/null || echo "[]")
+
+            COUNT=$(echo "$VERSIONS" | jq 'length')
+            if [ "$COUNT" -eq 0 ]; then
+              break
+            fi
+
+            echo "📦 Processing page $PAGE ($COUNT versions)..."
+
+            while IFS= read -r version; do
+              VERSION_ID=$(echo "$version" | jq -r '.id')
+              CREATED_AT=$(echo "$version" | jq -r '.created_at')
+              TAGS=$(echo "$version" | jq -r '.metadata.container.tags // [] | join(", ")')
+              DIGEST=$(echo "$version" | jq -r '.name')
+
+              # Only process untagged versions
+              if [ -n "$TAGS" ]; then
+                continue
+              fi
+
+              # Check if older than cutoff
+              if [[ ! "$CREATED_AT" < "$CUTOFF_DATE" ]]; then
+                continue
+              fi
+
+              # Check if referenced by any manifest
+              if grep -qF "$DIGEST" "$REFERENCED_DIGESTS" 2>/dev/null; then
+                continue
+              fi
+
+              echo "  🗑️  Orphaned: $VERSION_ID ($DIGEST) created $CREATED_AT"
+              VERSIONS_TO_DELETE+=("$VERSION_ID")
+            done < <(echo "$VERSIONS" | jq -c '.[]')
+
+            PAGE=$((PAGE + 1))
+          done
+
+          rm -f "$REFERENCED_DIGESTS"
+
+          echo ""
+          echo "📊 Summary: ${#VERSIONS_TO_DELETE[@]} orphaned untagged versions to delete"
+          echo ""
+
+          if [ ${#VERSIONS_TO_DELETE[@]} -eq 0 ]; then
+            echo "✅ No orphaned images to clean up"
+            exit 0
+          fi
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "🧪 DRY RUN - Would delete ${#VERSIONS_TO_DELETE[@]} versions"
+            echo "   Run with dry-run=false to actually delete"
+            exit 0
+          fi
+
+          # Delete the versions
+          DELETED=0
+          FAILED=0
+          for VERSION_ID in "${VERSIONS_TO_DELETE[@]}"; do
+            echo "🗑️  Deleting version $VERSION_ID..."
+            if gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/orgs/netresearch/packages/container/${PACKAGE_NAME}/versions/${VERSION_ID}" 2>/dev/null; then
+              DELETED=$((DELETED + 1))
+            else
+              echo "   ⚠️  Failed to delete version $VERSION_ID"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo ""
+          echo "✅ Deleted $DELETED orphaned versions"
           if [ $FAILED -gt 0 ]; then
             echo "⚠️  Failed to delete $FAILED versions"
           fi
