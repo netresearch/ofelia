@@ -302,6 +302,30 @@ jobs:
           provenance: true
           sbom: true
 
+      - name: Install crane
+        uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+
+      - name: Tag platform-specific images
+        run: |
+          set -euo pipefail
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          VERSION="${{ env.VERSION }}"
+
+          # Get the manifest and extract platform digests, then tag each platform
+          for platform in linux/386 linux/amd64 linux/arm/v6 linux/arm/v7 linux/arm64; do
+            # Convert platform to tag suffix (linux/arm/v7 -> arm-v7)
+            suffix=$(echo "$platform" | sed 's|linux/||; s|/|-|g')
+
+            # Get the digest for this specific platform
+            digest=$(crane manifest "$IMAGE:$VERSION" | jq -r ".manifests[] | select(.platform.os + \"/\" + .platform.architecture + (if .platform.variant then \"/\" + .platform.variant else \"\" end) == \"$platform\") | .digest")
+
+            if [ -n "$digest" ] && [ "$digest" != "null" ]; then
+              echo "Tagging $IMAGE:$VERSION-$suffix and $IMAGE:latest-$suffix from $digest"
+              crane tag "$IMAGE@$digest" "$VERSION-$suffix"
+              crane tag "$IMAGE@$digest" "latest-$suffix"
+            fi
+          done
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
 

@@ -1,0 +1,36 @@
+name: Cleanup Container Images
+
+# Cleans up old container image versions from ghcr.io
+# NOTE: Multi-arch builds create ~7 untagged images per release (5 architectures + 2 attestations)
+# These ARE required for the manifest to work. This workflow keeps the 350 most recent versions
+# (approximately 50 releases worth) to avoid breaking older tags.
+#
+# See: https://github.com/actions/delete-package-versions/issues/162
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2:00 AM UTC
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    name: Delete Old Container Versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: Delete old container versions
+        uses: actions/delete-package-versions@e5bc658cc4c965c472edd323a0233f97c7c3c088 # v5.0.0
+        with:
+          package-name: ofelia
+          package-type: container
+          # Keep ~50 releases worth of images (50 releases × 7 images/release = 350)
+          # This preserves multi-arch manifests for recent releases
+          min-versions-to-keep: 350
