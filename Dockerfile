@@ -16,9 +16,22 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /go/bin/ofelia .
 
 FROM alpine:3.21@sha256:5405e8f36ce1878720f71217d664aa3dea32e5e5df11acbf07fc78ef5661465b
 
-# this label is required to identify container with ofelia running
-LABEL ofelia.service=true
-LABEL ofelia.enabled=true
+# OCI Image Annotations
+# See: https://github.com/opencontainers/image-spec/blob/main/annotations.md
+# Dynamic labels (created, version, revision) are added by docker/metadata-action in CI
+LABEL org.opencontainers.image.title="Ofelia" \
+      org.opencontainers.image.description="A docker job scheduler (based on mcuadros/ofelia)" \
+      org.opencontainers.image.url="https://github.com/netresearch/ofelia" \
+      org.opencontainers.image.documentation="https://github.com/netresearch/ofelia#readme" \
+      org.opencontainers.image.source="https://github.com/netresearch/ofelia" \
+      org.opencontainers.image.vendor="Netresearch DTT GmbH" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.authors="Netresearch DTT GmbH <info@netresearch.de>" \
+      org.opencontainers.image.base.name="alpine:3.21"
+
+# This label is required to identify container with ofelia running
+LABEL ofelia.service=true \
+      ofelia.enabled=true
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates tzdata
