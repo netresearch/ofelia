@@ -151,9 +151,6 @@ v0.11.0 introduced OptimizedDockerClient that incorrectly enabled HTTP/2 on all 
    export DOCKER_CERT_PATH=/path/to/certs
    ```
 
-**Technical Details**:
-See `docs/http2_investigation_findings.md` for complete technical analysis.
-
 **References**:
 - Issue: #266
 - Fix: #267
