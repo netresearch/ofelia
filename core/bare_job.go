@@ -11,14 +11,14 @@ type BareJob struct {
 	Name             string   `hash:"true"`
 	Command          string   `hash:"true"`
 	HistoryLimit     int      `default:"10"`
-	MaxRetries       int      `default:"0"`     // Maximum number of retry attempts (0 = no retries)
-	RetryDelayMs     int      `default:"1000"`  // Initial retry delay in milliseconds
-	RetryExponential bool     `default:"true"`  // Use exponential backoff for retries
-	RetryMaxDelayMs  int      `default:"60000"` // Maximum retry delay in milliseconds (1 minute)
-	Dependencies     []string // Names of jobs that must complete successfully before this job
-	OnSuccess        []string // Jobs to trigger on successful completion
-	OnFailure        []string // Jobs to trigger on failure
-	AllowParallel    bool     `default:"true"` // Allow job to run in parallel with others
+	MaxRetries       int      `default:"0"`                                  // Maximum number of retry attempts (0 = no retries)
+	RetryDelayMs     int      `default:"1000"`                               // Initial retry delay in milliseconds
+	RetryExponential bool     `default:"true"`                               // Use exponential backoff for retries
+	RetryMaxDelayMs  int      `default:"60000"`                              // Maximum retry delay in milliseconds (1 minute)
+	Dependencies     []string `gcfg:"depends-on" mapstructure:"depends-on,"` // Jobs that must complete first
+	OnSuccess        []string `gcfg:"on-success" mapstructure:"on-success,"` // Jobs to trigger on success
+	OnFailure        []string `gcfg:"on-failure" mapstructure:"on-failure,"` // Jobs to trigger on failure
+	AllowParallel    bool     `default:"true"`                               // Allow job to run in parallel with others
 
 	middlewareContainer
 	running int32

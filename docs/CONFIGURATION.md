@@ -405,6 +405,95 @@ command = long-task.sh
 overlap = false
 ```
 
+## Job Dependencies
+
+Ofelia supports job dependencies to create workflows where jobs can depend on other jobs, or trigger other jobs on success or failure.
+
+### Dependency Configuration
+
+Define job execution order and conditional triggers:
+
+```ini
+[job-exec "init-database"]
+schedule = @daily
+container = postgres
+command = /scripts/init-db.sh
+
+[job-exec "backup-database"]
+schedule = @daily
+container = postgres
+command = /scripts/backup.sh
+# Wait for init-database to complete first
+depends-on = init-database
+
+[job-exec "process-data"]
+schedule = @daily
+container = worker
+command = /scripts/process.sh
+# Multiple dependencies (use multiple lines)
+depends-on = init-database
+depends-on = backup-database
+# Trigger these jobs on success
+on-success = notify-complete
+# Trigger these jobs on failure
+on-failure = alert-ops
+
+[job-exec "notify-complete"]
+schedule = @manual
+container = notifier
+command = /scripts/success-notify.sh
+
+[job-exec "alert-ops"]
+schedule = @manual
+container = notifier
+command = /scripts/failure-alert.sh
+```
+
+### Dependency Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `depends-on` | Jobs that must complete successfully before this job runs | `depends-on = init-job` |
+| `on-success` | Jobs to trigger when this job completes successfully | `on-success = cleanup-job` |
+| `on-failure` | Jobs to trigger when this job fails | `on-failure = alert-job` |
+
+### Docker Labels Syntax
+
+```yaml
+version: '3.8'
+services:
+  worker:
+    image: myapp:latest
+    labels:
+      ofelia.enabled: "true"
+
+      # Main processing job
+      ofelia.job-exec.process.schedule: "@hourly"
+      ofelia.job-exec.process.command: "process.sh"
+      ofelia.job-exec.process.depends-on: "setup"
+      ofelia.job-exec.process.on-success: "cleanup"
+      ofelia.job-exec.process.on-failure: "alert"
+
+      # Setup job (dependency)
+      ofelia.job-exec.setup.schedule: "@hourly"
+      ofelia.job-exec.setup.command: "setup.sh"
+
+      # Cleanup job (triggered on success)
+      ofelia.job-exec.cleanup.schedule: "@manual"
+      ofelia.job-exec.cleanup.command: "cleanup.sh"
+
+      # Alert job (triggered on failure)
+      ofelia.job-exec.alert.schedule: "@manual"
+      ofelia.job-exec.alert.command: "alert.sh"
+```
+
+### Important Notes
+
+1. **Circular dependencies are detected** - Ofelia will reject configurations with circular dependency chains
+2. **Dependencies must exist** - Referenced jobs must be defined in the configuration
+3. **All job types supported** - Dependencies work across all job types (exec, run, local, service, compose)
+4. **Multiple dependencies** - Use multiple `depends-on` lines in INI format to specify multiple dependencies
+
 ## Security Considerations
 
 ### Restricting Host Jobs
