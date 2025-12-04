@@ -14,7 +14,7 @@ COPY . ${GOPATH}/src/github.com/netresearch/ofelia
 
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /go/bin/ofelia .
 
-FROM alpine:3.21@sha256:5405e8f36ce1878720f71217d664aa3dea32e5e5df11acbf07fc78ef5661465b
+FROM alpine:3.23@sha256:51183f2cfa6320055da30872f211093f9ff1d3cf06f39a0bdb212314c5dc7375
 
 # OCI Image Annotations
 # See: https://github.com/opencontainers/image-spec/blob/main/annotations.md
@@ -27,7 +27,7 @@ LABEL org.opencontainers.image.title="Ofelia" \
       org.opencontainers.image.vendor="Netresearch DTT GmbH" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.authors="Netresearch DTT GmbH <info@netresearch.de>" \
-      org.opencontainers.image.base.name="alpine:3.21"
+      org.opencontainers.image.base.name="alpine:3.23"
 
 # This label is required to identify container with ofelia running
 LABEL ofelia.service=true \
