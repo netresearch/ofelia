@@ -77,6 +77,7 @@ No Docker required - runs commands directly on the host system.
 - **Removed job history** keeps deregistered jobs in memory and shows them in the web UI.
 - **Enhanced web UI** allows editing and deleting jobs, shows job origin and type, displays each job's configuration and renders the scheduler configuration in a table with empty job sections hidden. Action buttons now use clear icons.
 - **Timezone selector** in the web UI lets you view timestamps in local, server or UTC time and remembers your choice.
+- **Job dependencies** allow defining execution order with `depends-on`, and conditional triggers with `on-success` and `on-failure` to create job workflows.
 
 This fork is based off of [mcuadros/ofelia](https://github.com/mcuadros/ofelia).
 
