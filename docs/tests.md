@@ -40,12 +40,35 @@ We use [Gremlins](https://github.com/go-gremlins/gremlins) for mutation testing:
 # Install Gremlins
 go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
 
-# Run full mutation testing
+# Run full mutation testing (unit tests only)
 gremlins unleash --config=.gremlins.yaml
 
 # Run diff-based mutation testing (only changed files)
 gremlins unleash --config=.gremlins.yaml --diff
+
+# Run Docker adapter mutation testing with integration tests
+# Requires Docker daemon - takes ~10 minutes
+gremlins unleash --config=.gremlins-docker.yaml
 ```
+
+### Docker Adapter Mutation Testing
+
+The Docker adapter package (`core/adapters/docker`) benefits significantly from
+integration tests during mutation testing. A separate config file is provided:
+
+```sh
+# Run with integration tests (requires Docker daemon)
+# Note: --tags must be passed on command line as YAML tags field is not respected
+gremlins unleash ./core/adapters/docker --config=.gremlins-docker.yaml --tags integration
+```
+
+**Results comparison:**
+- Without integration tests: ~50% test efficacy
+- With integration tests: ~69% test efficacy
+
+Integration tests exercise real Docker SDK paths that unit tests with mocks
+cannot fully cover. The integration test config uses higher timeouts since each
+mutation requires running tests that connect to the Docker daemon.
 
 ### Configuration
 

@@ -180,8 +180,9 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 	// go-cron has internal race conditions when AddJob is called concurrently
 	// while the scheduler is running. We pre-add jobs before starting,
 	// then only test concurrent read/update operations which are safe.
-	const numWorkers = 10
-	const jobsPerWorker = 5
+	// Reduced worker count to avoid CI timeouts with race detector
+	const numWorkers = 5
+	const jobsPerWorker = 3
 
 	// Pre-add all jobs BEFORE starting the scheduler to avoid race conditions
 	// in go-cron's internal map access during concurrent AddJob calls

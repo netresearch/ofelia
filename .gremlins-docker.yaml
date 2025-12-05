@@ -1,0 +1,43 @@
+# Gremlins Mutation Testing Configuration - Docker Adapter
+# This config runs mutation testing specifically on the Docker adapter
+# with integration tests enabled (requires Docker daemon)
+#
+# IMPORTANT: The --tags flag must be passed on the command line as the
+# YAML tags field is not properly respected by gremlins.
+#
+# Usage:
+#   gremlins unleash ./core/adapters/docker --config .gremlins-docker.yaml --tags integration
+#
+# Note: This takes ~10 minutes due to integration tests connecting
+# to the real Docker daemon for each mutation.
+
+# Mutator types
+mutators:
+  - CONDITIONALS_BOUNDARY
+  - CONDITIONALS_NEGATION
+  - INCREMENT_DECREMENT
+  - INVERT_NEGATIVES
+  - ARITHMETIC_BASE
+
+# Exclude test files
+exclude:
+  - "**/*_test.go"
+
+# Coverage mode
+coverage: true
+
+# Lower threshold for this specific package
+threshold: 60
+
+# Higher timeout for integration tests
+# Integration tests connect to real Docker daemon
+timeout-coefficient: 10
+
+# Number of parallel workers
+workers: 0
+
+# Use integration mode to run full test suite per mutation
+integration: true
+
+# Additional test flags
+test-cpu: 0

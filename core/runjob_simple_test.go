@@ -344,6 +344,7 @@ func TestRunJob_ContainerIDConcurrency(t *testing.T) {
 
 	const numGoroutines = 10
 	const numOperations = 100
+	const testTimeout = 10 * time.Second // Timeout for mutation testing
 
 	// Test concurrent access to container ID
 	done := make(chan bool, numGoroutines)
@@ -364,9 +365,15 @@ func TestRunJob_ContainerIDConcurrency(t *testing.T) {
 		}(i)
 	}
 
-	// Wait for all goroutines to complete
+	// Wait for all goroutines to complete with timeout
+	timeout := time.After(testTimeout)
 	for i := 0; i < numGoroutines; i++ {
-		<-done
+		select {
+		case <-done:
+			// goroutine completed
+		case <-timeout:
+			t.Fatalf("Test timed out waiting for goroutine %d", i)
+		}
 	}
 
 	// Final verification that we have a valid container ID
