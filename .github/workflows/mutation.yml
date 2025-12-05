@@ -1,0 +1,160 @@
+name: Mutation Testing
+
+on:
+  # Run weekly to monitor test quality without slowing down regular CI
+  schedule:
+    - cron: '0 2 * * 0'  # Every Sunday at 2 AM UTC
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      diff_only:
+        description: 'Only test mutations in changed files'
+        required: false
+        default: 'false'
+        type: boolean
+  # Run on PRs for diff-based mutation testing (optional gate)
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.go'
+      - '.gremlins.yaml'
+      - '.github/workflows/mutation.yml'
+
+permissions:
+  contents: read
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: mutation-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutation:
+    name: Mutation Testing
+    runs-on: ubuntu-latest
+    # Skip for merge queue to avoid blocking merges
+    if: github.event_name != 'merge_group'
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0  # Full history for diff mode
+
+      - name: Install Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Install Gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+
+      - name: Run mutation tests (full)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && github.event.inputs.diff_only != 'true'
+        run: |
+          echo "Running full mutation testing..."
+          gremlins unleash --config=.gremlins.yaml 2>&1 | tee mutation-output.txt
+          # Extract mutation score
+          SCORE=$(grep -oP 'Mutation Score: \K[\d.]+' mutation-output.txt || echo "0")
+          echo "MUTATION_SCORE=$SCORE" >> $GITHUB_ENV
+          echo "## Mutation Testing Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Mutation Score:** ${SCORE}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See the full report in the artifacts." >> $GITHUB_STEP_SUMMARY
+        continue-on-error: true  # Don't fail workflow on threshold violations
+
+      - name: Run mutation tests (diff only)
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.diff_only == 'true')
+        run: |
+          echo "Running diff-based mutation testing..."
+          # Get changed Go files
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- '*.go' | grep -v '_test.go' || true)
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No Go source files changed, skipping mutation testing."
+            echo "## Mutation Testing Results" >> $GITHUB_STEP_SUMMARY
+            echo "No Go source files changed - skipped." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          echo "Testing mutations in: $CHANGED_FILES"
+          gremlins unleash --config=.gremlins.yaml --diff 2>&1 | tee mutation-output.txt
+          # Extract mutation score
+          SCORE=$(grep -oP 'Mutation Score: \K[\d.]+' mutation-output.txt || echo "0")
+          echo "MUTATION_SCORE=$SCORE" >> $GITHUB_ENV
+          echo "## Mutation Testing Results (Diff Mode)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Mutation Score:** ${SCORE}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Testing only changed files for faster feedback." >> $GITHUB_STEP_SUMMARY
+        continue-on-error: true
+
+      - name: Upload mutation reports
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        if: always()
+        with:
+          name: mutation-reports
+          path: |
+            mutation-report.json
+            mutation-report.html
+            mutation-output.txt
+          retention-days: 30
+
+      - name: Comment on PR with results
+        if: github.event_name == 'pull_request' && env.MUTATION_SCORE != ''
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const score = process.env.MUTATION_SCORE || '0';
+            const threshold = 60;
+            const emoji = parseFloat(score) >= threshold ? ':white_check_mark:' : ':warning:';
+
+            const body = `## ${emoji} Mutation Testing Results
+
+            **Mutation Score:** ${score}% (threshold: ${threshold}%)
+
+            ${parseFloat(score) < threshold
+              ? '> :warning: Score is below threshold. Consider improving test coverage or test quality.'
+              : '> :sparkles: Good job! Mutation score meets the threshold.'}
+
+            <details>
+            <summary>What is mutation testing?</summary>
+
+            Mutation testing measures test quality by introducing small changes (mutations) to the code and checking if tests detect them. A higher score means better test effectiveness.
+
+            - **Killed mutants**: Tests caught the mutation (good!)
+            - **Survived mutants**: Tests missed the mutation (needs improvement)
+            </details>`;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Mutation Testing Results')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }

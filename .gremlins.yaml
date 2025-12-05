@@ -1,0 +1,61 @@
+# Gremlins Mutation Testing Configuration
+# https://github.com/go-gremlins/gremlins
+
+# Packages to test (default: all in ./...)
+test-packages:
+  - ./cli/...
+  - ./core/...
+  - ./middlewares/...
+
+# Mutator types to enable
+# Available: CONDITIONALS_BOUNDARY, CONDITIONALS_NEGATION, INCREMENT_DECREMENT,
+#            INVERT_ASSIGNMENTS, INVERT_BITWISE, INVERT_BWASSIGN, INVERT_LOGICAL,
+#            INVERT_LOOPCTRL, INVERT_NEGATIVES, REMOVE_SELF_ASSIGNMENTS
+mutators:
+  - CONDITIONALS_BOUNDARY    # Change < to <=, > to >=, etc.
+  - CONDITIONALS_NEGATION    # Negate conditions (== to !=)
+  - INCREMENT_DECREMENT      # Change ++ to -- and vice versa
+  - INVERT_LOGICAL           # Invert && to ||, || to &&
+  - INVERT_NEGATIVES         # Remove negation operators
+  - INVERT_LOOPCTRL          # Change break to continue and vice versa
+
+# Files/patterns to exclude from mutation
+exclude:
+  - "**/*_test.go"           # Test files
+  - "**/test/**"             # Test helpers
+  - "**/static/**"           # Static assets
+  - "**/mock/**"             # Mock implementations
+  - "**/adapters/mock/**"    # Mock adapters
+
+# Coverage mode: only mutate code covered by tests
+# This significantly speeds up mutation testing
+coverage: true
+
+# Threshold for mutation score (percentage of mutants killed)
+# Build fails if score is below this value
+threshold: 60
+
+# Timeout multiplier for individual test runs
+# Helps with tests that may take longer due to mutations
+timeout-coefficient: 3
+
+# Number of parallel workers (0 = auto-detect based on CPU)
+workers: 0
+
+# Output format options
+output:
+  # Generate JSON report for CI integration
+  json: mutation-report.json
+  # Generate HTML report for detailed analysis
+  html: mutation-report.html
+
+# Diff mode: only test mutations in changed files (for CI efficiency)
+# Set via CLI flag --diff for PR workflows
+diff: false
+
+# Tags for conditional compilation
+tags: ""
+
+# Additional test flags
+test-cpu: 0
+test-timeout: 60s
