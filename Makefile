@@ -142,7 +142,47 @@ test-watch:
 		echo "  Ubuntu/Debian: sudo apt install watch"; \
 		echo "  macOS: brew install watch"; \
 		exit 1; \
-	fi 
+	fi
+
+.PHONY: test-integration
+test-integration:
+	@echo "🐳 Running integration tests (requires Docker daemon)..."
+	@go test -tags=integration -v ./...
+
+# Mutation testing commands
+.PHONY: mutation-test
+mutation-test:
+	@if command -v gremlins >/dev/null 2>&1; then \
+		echo "🧬 Running mutation tests..."; \
+		gremlins unleash --config=.gremlins.yaml; \
+	else \
+		echo "❌ gremlins not found. Install with:"; \
+		echo "   go install github.com/go-gremlins/gremlins/cmd/gremlins@latest"; \
+		exit 1; \
+	fi
+
+.PHONY: mutation-test-diff
+mutation-test-diff:
+	@if command -v gremlins >/dev/null 2>&1; then \
+		echo "🧬 Running mutation tests on changed files..."; \
+		gremlins unleash --config=.gremlins.yaml --diff; \
+	else \
+		echo "❌ gremlins not found. Install with:"; \
+		echo "   go install github.com/go-gremlins/gremlins/cmd/gremlins@latest"; \
+		exit 1; \
+	fi
+
+.PHONY: mutation-test-docker
+mutation-test-docker:
+	@if command -v gremlins >/dev/null 2>&1; then \
+		echo "🧬🐳 Running Docker adapter mutation tests with integration tests..."; \
+		echo "⏱️  This takes ~10 minutes (requires Docker daemon)"; \
+		gremlins unleash ./core/adapters/docker --config=.gremlins-docker.yaml --tags integration; \
+	else \
+		echo "❌ gremlins not found. Install with:"; \
+		echo "   go install github.com/go-gremlins/gremlins/cmd/gremlins@latest"; \
+		exit 1; \
+	fi
 
 # Development workflow commands
 .PHONY: setup
@@ -169,6 +209,8 @@ dev-setup:
 	fi
 	@go install github.com/daixiang0/gci@latest
 	@echo "✅ gci installed"
+	@go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+	@echo "✅ gremlins installed (mutation testing)"
 	@echo "🪝 Installing lefthook (Go-native git hooks)..."
 	@go install github.com/evilmartians/lefthook@latest
 	@lefthook install
@@ -203,11 +245,17 @@ help:
 	@echo ""
 	@echo "🧪 Testing:"
 	@echo "  test               - Run unit tests"
+	@echo "  test-integration   - Run integration tests (requires Docker)"
 	@echo "  test-race          - Run tests with race detector"
 	@echo "  test-benchmark     - Run benchmark tests"
 	@echo "  test-coverage      - Generate coverage report"
 	@echo "  test-coverage-html - Generate HTML coverage report"
 	@echo "  test-watch         - Continuously run tests"
+	@echo ""
+	@echo "🧬 Mutation Testing:"
+	@echo "  mutation-test        - Run full mutation tests"
+	@echo "  mutation-test-diff   - Run mutation tests on changed files only"
+	@echo "  mutation-test-docker - Run Docker adapter mutation tests with integration"
 	@echo ""
 	@echo "🔍 Code Quality:"
 	@echo "  fmt                - Format Go code"

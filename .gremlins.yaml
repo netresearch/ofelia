@@ -41,7 +41,8 @@ threshold: 60
 
 # Timeout multiplier for individual test runs
 # Helps with tests that may take longer due to mutations
-timeout-coefficient: 3
+# Increased for integration tests which connect to real Docker daemon
+timeout-coefficient: 5
 
 # Number of parallel workers (0 = auto-detect based on CPU)
 workers: 0
@@ -58,8 +59,16 @@ output:
 diff: false
 
 # Tags for conditional compilation
+# Note: Integration tests are NOT included in the main mutation test run because
+# they connect to real Docker daemon and would cause timeouts for all packages.
+#
+# For Docker adapter mutation testing WITH integration tests, use:
+#   gremlins unleash --config .gremlins-docker.yaml
+#
+# This achieves ~69% test efficacy vs ~50% without integration tests.
 tags: ""
 
 # Additional test flags
 test-cpu: 0
-test-timeout: 60s
+# Increased timeout for integration tests with real Docker daemon
+test-timeout: 120s

@@ -704,6 +704,7 @@ func TestConcurrentLogging(t *testing.T) {
 	logger.SetJSONFormat(true)
 
 	// Test concurrent writes don't cause races in logger
+	const testTimeout = 10 * time.Second // Timeout for mutation testing
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func(id int) {
@@ -712,9 +713,15 @@ func TestConcurrentLogging(t *testing.T) {
 		}(i)
 	}
 
-	// Wait for all goroutines
+	// Wait for all goroutines with timeout
+	timeout := time.After(testTimeout)
 	for i := 0; i < 10; i++ {
-		<-done
+		select {
+		case <-done:
+			// goroutine completed
+		case <-timeout:
+			t.Fatalf("Test timed out waiting for goroutine %d", i)
+		}
 	}
 
 	// Should have 10 log entries

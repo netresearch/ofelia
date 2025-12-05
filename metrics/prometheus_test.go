@@ -503,9 +503,16 @@ func TestConcurrentMetricsAccess(t *testing.T) {
 		}(float64(i))
 	}
 
-	// Wait for all goroutines
+	// Wait for all goroutines with timeout
+	const testTimeout = 10 * time.Second // Timeout for mutation testing
+	timeout := time.After(testTimeout)
 	for i := 0; i < 30; i++ {
-		<-done
+		select {
+		case <-done:
+			// goroutine completed
+		case <-timeout:
+			t.Fatalf("Test timed out waiting for goroutine %d", i)
+		}
 	}
 
 	// Counter should be 10
