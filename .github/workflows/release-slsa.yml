@@ -328,7 +328,7 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          VERSION="${{ env.VERSION }}"
+          VERSION="${{ steps.meta.outputs.version }}"
 
           # Get the manifest and extract platform digests, then tag each platform
           for platform in linux/386 linux/amd64 linux/arm/v6 linux/arm/v7 linux/arm64; do
@@ -352,4 +352,4 @@ jobs:
         run: |
           set -euo pipefail
           cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest@${{ steps.push.outputs.digest }}
-          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}@${{ steps.push.outputs.digest }}
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}@${{ steps.push.outputs.digest }}
