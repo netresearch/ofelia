@@ -159,11 +159,11 @@ The wizard guides you through creating jobs step-by-step, prompting for:
 - Container name (for Docker-based jobs)
 - Optional settings like working directory, user, and environment variables
 
-By default, the configuration is saved to `./ofelia.ini`. Use `--config` to
-specify a different location:
+By default, the configuration is saved to `./ofelia.ini`. Use `--output` (or `-o`)
+to specify a different location:
 
 ```sh
-ofelia init --config=/etc/ofelia/config.ini
+ofelia init --output=/etc/ofelia/config.ini
 ```
 
 #### Health Diagnostics
