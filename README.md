@@ -377,16 +377,60 @@ services:
       ofelia.job-exec.datecron.command: "uname -a"
 ```
 
-Ofelia polls Docker every 10 seconds to detect label changes and reload the INI
-file **only when it has changed**. The interval can be adjusted using
-`--docker-poll-interval`. Event-based updates can be enabled with
-`--docker-events`; when enabled, polling can be disabled entirely with
-`--docker-no-poll`. Setting the interval to `0` also disables both label polling
-and INI reloads. Polling can also be disabled in
-`ofelia.ini` by adding `no-poll = true` under the `[docker]` section:
+### Container Detection and Configuration Reloading
+
+Ofelia separates two concerns:
+
+1. **Container detection**: Detecting when Docker containers start/stop to pick up label changes
+2. **Config file watching**: Reloading the INI file when it changes
+
+#### Default Behavior (Recommended)
+
+By default, Ofelia uses **Docker events** for instant container detection and **polls** the config file every 10 seconds:
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `events` | `true` | Real-time container detection via Docker events |
+| `config-poll-interval` | `10s` | How often to check for INI file changes |
+| `docker-poll-interval` | `0` | Container polling (disabled, events used instead) |
+| `polling-fallback` | `10s` | Auto-enable container polling if events fail |
+
+#### Configuration Options
 
 ```ini
 [docker]
+# INI file reload interval (set to 0 to disable config watching)
+config-poll-interval = 10s
+
+# Container detection via Docker events (recommended)
+events = true
+
+# Explicit container polling interval (0 = disabled)
+# WARNING: Running both events and polling is usually wasteful
+docker-poll-interval = 0
+
+# Auto-fallback to polling if event subscription fails (BC-safe default)
+# Set to 0 to disable fallback (will only log errors)
+polling-fallback = 10s
+```
+
+#### CLI Flags
+
+- `--docker-config-poll-interval`: INI file reload interval
+- `--docker-events`: Enable/disable Docker event-based container detection
+- `--docker-poll-interval`: Container polling interval (fallback)
+- `--docker-polling-fallback`: Auto-fallback interval if events fail
+
+#### Backwards Compatibility
+
+The old `poll-interval` and `no-poll` options still work but are deprecated:
+
+```ini
+[docker]
+# DEPRECATED: Use config-poll-interval and docker-poll-interval instead
+poll-interval = 10s
+
+# DEPRECATED: Use docker-poll-interval=0 instead
 no-poll = true
 ```
 

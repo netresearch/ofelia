@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/netresearch/ofelia/core"
@@ -21,9 +22,18 @@ type DockerHandler struct {
 	dockerProvider core.DockerProvider // SDK-based provider
 	notifier       dockerLabelsUpdate
 	logger         core.Logger
-	pollInterval   time.Duration
-	useEvents      bool
-	disablePolling bool
+
+	// Separated configuration options
+	configPollInterval time.Duration // For INI file watching
+	useEvents          bool          // For container detection via events
+	dockerPollInterval time.Duration // For container polling (explicit)
+	pollingFallback    time.Duration // Auto-enable polling if events fail
+
+	// Runtime state for fallback mechanism
+	mu                    sync.Mutex
+	eventsFailed          bool
+	fallbackPollingActive bool
+	fallbackCancel        context.CancelFunc // To stop fallback polling when events recover
 }
 
 type dockerLabelsUpdate interface {
@@ -34,6 +44,50 @@ type dockerLabelsUpdate interface {
 // This is the preferred method for new code using the official Docker SDK.
 func (c *DockerHandler) GetDockerProvider() core.DockerProvider {
 	return c.dockerProvider
+}
+
+// resolveConfig applies deprecation migration and validates configuration.
+func resolveConfig(cfg *DockerConfig, logger core.Logger) (configPoll, dockerPoll, fallback time.Duration, useEvents bool) {
+	// Start with new defaults
+	configPoll = cfg.ConfigPollInterval
+	dockerPoll = cfg.DockerPollInterval
+	fallback = cfg.PollingFallback
+	useEvents = cfg.UseEvents
+
+	// Handle deprecated PollInterval (BC migration)
+	if cfg.PollInterval > 0 {
+		logger.Warningf("DEPRECATED: 'poll-interval' is deprecated. " +
+			"Use 'config-poll-interval' for INI file watching and " +
+			"'docker-poll-interval' for container polling fallback.")
+		// If new options aren't explicitly set, use deprecated value
+		if configPoll == 10*time.Second { // default value
+			configPoll = cfg.PollInterval
+		}
+		// For BC: if events are disabled and poll-interval was set, enable container polling
+		if !useEvents && dockerPoll == 0 {
+			dockerPoll = cfg.PollInterval
+		}
+		// For BC: use poll-interval as polling-fallback if fallback wasn't explicitly set
+		if fallback == 10*time.Second { // default value
+			fallback = cfg.PollInterval
+		}
+	}
+
+	// Handle deprecated DisablePolling (BC migration)
+	if cfg.DisablePolling {
+		logger.Warningf("DEPRECATED: 'no-poll' is deprecated. Use 'docker-poll-interval=0' to disable container polling.")
+		dockerPoll = 0
+		fallback = 0 // Also disable fallback
+	}
+
+	// Warn if both events and explicit container polling are enabled
+	if useEvents && dockerPoll > 0 {
+		logger.Warningf("WARNING: Both Docker events and container polling are enabled. " +
+			"This is usually wasteful. Consider disabling container polling (docker-poll-interval=0) " +
+			"and relying on events with polling-fallback for resilience.")
+	}
+
+	return configPoll, dockerPoll, fallback, useEvents
 }
 
 func NewDockerHandler(
@@ -48,15 +102,19 @@ func NewDockerHandler(
 	}
 	ctx, cancel := context.WithCancel(ctx)
 
+	// Resolve configuration with deprecation handling
+	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
+
 	c := &DockerHandler{
-		ctx:            ctx,
-		cancel:         cancel,
-		filters:        cfg.Filters,
-		notifier:       notifier,
-		logger:         logger,
-		pollInterval:   cfg.PollInterval,
-		useEvents:      cfg.UseEvents,
-		disablePolling: cfg.DisablePolling,
+		ctx:                ctx,
+		cancel:             cancel,
+		filters:            cfg.Filters,
+		notifier:           notifier,
+		logger:             logger,
+		configPollInterval: configPoll,
+		useEvents:          useEvents,
+		dockerPollInterval: dockerPoll,
+		pollingFallback:    fallback,
 	}
 
 	var err error
@@ -77,12 +135,21 @@ func NewDockerHandler(
 		return nil, fmt.Errorf("failed to connect to Docker daemon: %w\n  → Check Docker daemon is running: systemctl status docker\n  → Verify Docker API is accessible: docker info\n  → Check for Docker daemon errors: journalctl -u docker -n 50", err)
 	}
 
-	if !c.disablePolling && c.pollInterval > 0 {
-		go c.watch()
+	// Start config file watcher (separate from container detection)
+	if c.configPollInterval > 0 {
+		go c.watchConfig()
 	}
+
+	// Start container detection
 	if c.useEvents {
 		go c.watchEvents()
 	}
+
+	// Start explicit container polling (if enabled, separate from events)
+	if c.dockerPollInterval > 0 {
+		go c.watchContainerPolling()
+	}
+
 	return c, nil
 }
 
@@ -102,24 +169,20 @@ func (c *DockerHandler) buildSDKProvider() (core.DockerProvider, error) {
 	return provider, nil
 }
 
-func (c *DockerHandler) watch() {
-	if c.pollInterval <= 0 {
-		// Skip polling when interval is not positive
+// watchConfig handles INI configuration file polling (separate from container detection).
+func (c *DockerHandler) watchConfig() {
+	if c.configPollInterval <= 0 {
 		return
 	}
 
-	ticker := time.NewTicker(c.pollInterval)
+	ticker := time.NewTicker(c.configPollInterval)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
 		case <-ticker.C:
-			labels, err := c.GetDockerLabels()
-			if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
-				c.logger.Debugf("%v", err)
-			}
-			c.notifier.dockerLabelsUpdate(labels)
 			if cfg, ok := c.notifier.(*Config); ok {
 				cfg.logger.Debugf("checking config file %s", cfg.configPath)
 				if err := cfg.iniConfigUpdate(); err != nil {
@@ -130,6 +193,68 @@ func (c *DockerHandler) watch() {
 			}
 		}
 	}
+}
+
+// watchContainerPolling handles explicit container polling (fallback method).
+func (c *DockerHandler) watchContainerPolling() {
+	if c.dockerPollInterval <= 0 {
+		return
+	}
+
+	ticker := time.NewTicker(c.dockerPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-ticker.C:
+			c.refreshContainerLabels()
+		}
+	}
+}
+
+// startFallbackPolling starts container polling as a fallback when events fail.
+// The polling is stopped when events recover (via stopFallbackPolling).
+func (c *DockerHandler) startFallbackPolling() {
+	c.mu.Lock()
+	if c.fallbackPollingActive {
+		c.mu.Unlock()
+		return
+	}
+	c.fallbackPollingActive = true
+	// Create a cancellable context for this fallback polling goroutine
+	fallbackCtx, fallbackCancel := context.WithCancel(c.ctx)
+	c.fallbackCancel = fallbackCancel
+	c.mu.Unlock()
+
+	c.logger.Warningf("Starting fallback container polling at %v interval due to event stream failure", c.pollingFallback)
+
+	ticker := time.NewTicker(c.pollingFallback)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-fallbackCtx.Done():
+			c.mu.Lock()
+			c.fallbackPollingActive = false
+			c.fallbackCancel = nil
+			c.mu.Unlock()
+			c.logger.Noticef("Stopped fallback container polling (events recovered)")
+			return
+		case <-ticker.C:
+			c.refreshContainerLabels()
+		}
+	}
+}
+
+// refreshContainerLabels fetches and updates container labels.
+func (c *DockerHandler) refreshContainerLabels() {
+	labels, err := c.GetDockerLabels()
+	if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
+		c.logger.Debugf("%v", err)
+	}
+	c.notifier.dockerLabelsUpdate(labels)
 }
 
 func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) {
@@ -184,26 +309,100 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 	return labels, nil
 }
 
+// handleEventStreamError marks the event stream as failed and starts fallback polling if configured.
+func (c *DockerHandler) handleEventStreamError() {
+	c.mu.Lock()
+	if c.eventsFailed {
+		c.mu.Unlock()
+		return
+	}
+	c.eventsFailed = true
+
+	// Start fallback polling if configured and not already running
+	if c.pollingFallback > 0 && !c.fallbackPollingActive {
+		c.mu.Unlock()
+		go c.startFallbackPolling()
+		return
+	}
+	c.mu.Unlock()
+
+	if c.pollingFallback == 0 {
+		c.logger.Errorf("Docker event stream failed. " +
+			"Container changes will NOT be detected. " +
+			"Set 'polling-fallback' or 'docker-poll-interval'.")
+	}
+}
+
+// clearEventStreamError marks the event stream as healthy and stops fallback polling.
+func (c *DockerHandler) clearEventStreamError() {
+	c.mu.Lock()
+	c.eventsFailed = false
+	// Stop fallback polling if it's running - events have recovered
+	if c.fallbackCancel != nil {
+		c.fallbackCancel()
+		// Note: fallbackPollingActive and fallbackCancel are reset in startFallbackPolling goroutine
+	}
+	c.mu.Unlock()
+}
+
 func (c *DockerHandler) watchEvents() {
-	eventCh, errCh := c.dockerProvider.SubscribeEvents(c.ctx, domain.EventFilter{
-		Filters: map[string][]string{"type": {"container"}},
-	})
+	const (
+		initialBackoff = 1 * time.Second
+		maxBackoff     = 5 * time.Minute
+		backoffFactor  = 2
+	)
+
+	backoff := initialBackoff
 
 	for {
+		// Check if context is canceled before attempting subscription
 		select {
 		case <-c.ctx.Done():
 			return
-		case err := <-errCh:
-			if err != nil {
-				c.logger.Debugf("Event subscription error: %v", err)
+		default:
+		}
+
+		eventCh, errCh := c.dockerProvider.SubscribeEvents(c.ctx, domain.EventFilter{
+			Filters: map[string][]string{"type": {"container"}},
+		})
+
+		// Inner loop: process events until error or shutdown
+	innerLoop:
+		for {
+			select {
+			case <-c.ctx.Done():
+				return
+			case err, ok := <-errCh:
+				if !ok {
+					// Channel closed, exit inner loop to reconnect
+					break innerLoop
+				}
+				if err != nil {
+					c.logger.Warningf("Docker event stream error, reconnecting in %v: %v", backoff, err)
+					c.handleEventStreamError()
+				}
+				// Wait with backoff before reconnecting
+				select {
+				case <-c.ctx.Done():
+					return
+				case <-time.After(backoff):
+				}
+				// Increase backoff for next failure (capped at maxBackoff)
+				backoff = time.Duration(float64(backoff) * backoffFactor)
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				break innerLoop // Exit inner loop to reconnect
+			case _, ok := <-eventCh:
+				if !ok {
+					// Channel closed, exit inner loop to reconnect
+					break innerLoop
+				}
+				// Success - reset backoff and clear failed state
+				backoff = initialBackoff
+				c.clearEventStreamError()
+				c.refreshContainerLabels()
 			}
-			return
-		case <-eventCh:
-			labels, err := c.GetDockerLabels()
-			if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
-				c.logger.Debugf("%v", err)
-			}
-			c.notifier.dockerLabelsUpdate(labels)
 		}
 	}
 }

@@ -99,6 +99,11 @@ func NewClientWithConfig(config *ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("creating docker client: %w", err)
 	}
 
+	// Force early API version negotiation to prevent race conditions.
+	// Without this, concurrent goroutines (e.g., Events and ContainerList) making their
+	// first API calls simultaneously will race on the lazy version negotiation.
+	sdk.NegotiateAPIVersion(context.Background())
+
 	return newClientFromSDK(sdk), nil
 }
 
