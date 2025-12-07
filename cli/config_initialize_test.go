@@ -137,14 +137,15 @@ func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
 	defer func() { newDockerHandler = origFactory }()
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{
-			ctx:            ctx,
-			filters:        cfg.Filters,
-			notifier:       notifier,
-			logger:         logger,
-			dockerProvider: &mockDockerProviderForInit{},
-			pollInterval:   cfg.PollInterval,
-			useEvents:      cfg.UseEvents,
-			disablePolling: cfg.DisablePolling,
+			ctx:                ctx,
+			filters:            cfg.Filters,
+			notifier:           notifier,
+			logger:             logger,
+			dockerProvider:     &mockDockerProviderForInit{},
+			configPollInterval: cfg.ConfigPollInterval,
+			useEvents:          cfg.UseEvents,
+			dockerPollInterval: cfg.DockerPollInterval,
+			pollingFallback:    cfg.PollingFallback,
 		}, nil
 	}
 
@@ -181,12 +182,12 @@ func (s *ConfigInitSuite) TestInitializeAppLabelConflict(c *C) {
 	defer func() { newDockerHandler = origFactory }()
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{
-			ctx:            ctx,
-			filters:        cfg.Filters,
-			notifier:       notifier,
-			logger:         logger,
-			dockerProvider: mockProvider,
-			pollInterval:   0,
+			ctx:                ctx,
+			filters:            cfg.Filters,
+			notifier:           notifier,
+			logger:             logger,
+			dockerProvider:     mockProvider,
+			configPollInterval: 0,
 		}, nil
 	}
 
@@ -223,7 +224,7 @@ func (s *ConfigInitSuite) TestInitializeAppComposeConflict(c *C) {
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
-		return &DockerHandler{ctx: ctx, filters: cfg.Filters, notifier: notifier, logger: logger, dockerProvider: mockProvider, pollInterval: 0}, nil
+		return &DockerHandler{ctx: ctx, filters: cfg.Filters, notifier: notifier, logger: logger, dockerProvider: mockProvider, configPollInterval: 0}, nil
 	}
 
 	cfg.logger = &TestLogger{}

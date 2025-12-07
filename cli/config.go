@@ -619,10 +619,35 @@ func (c *RunServiceConfig) buildMiddlewares() {
 }
 
 type DockerConfig struct {
-	Filters        []string      `mapstructure:"filters"`
-	PollInterval   time.Duration `mapstructure:"poll-interval" default:"10s"`
-	UseEvents      bool          `mapstructure:"events" default:"false"`
-	DisablePolling bool          `mapstructure:"no-poll" default:"false"`
+	Filters []string `mapstructure:"filters"`
+
+	// ConfigPollInterval controls how often to check for INI config file changes.
+	// This is independent of container detection. Set to 0 to disable config file watching.
+	ConfigPollInterval time.Duration `mapstructure:"config-poll-interval" default:"10s"`
+
+	// UseEvents enables Docker event-based container detection (recommended).
+	// When enabled, Ofelia reacts immediately to container start/stop events.
+	UseEvents bool `mapstructure:"events" default:"true"`
+
+	// DockerPollInterval enables periodic polling for container changes.
+	// This is a fallback for environments where Docker events don't work reliably.
+	// Set to 0 (default) to disable explicit container polling.
+	// WARNING: If both events and polling are enabled, this is usually wasteful.
+	DockerPollInterval time.Duration `mapstructure:"docker-poll-interval" default:"0"`
+
+	// PollingFallback auto-enables container polling if event subscription fails.
+	// This provides backwards compatibility and resilience.
+	// Set to 0 to disable auto-fallback (will only log errors on event failure).
+	// Default is 10s for backwards compatibility.
+	PollingFallback time.Duration `mapstructure:"polling-fallback" default:"10s"`
+
+	// Deprecated: Use ConfigPollInterval and DockerPollInterval instead.
+	// If set, this value is used for both config and container polling (BC).
+	PollInterval time.Duration `mapstructure:"poll-interval"`
+
+	// Deprecated: Use DockerPollInterval=0 instead.
+	// If true, disables container polling entirely.
+	DisablePolling bool `mapstructure:"no-poll" default:"false"`
 }
 
 func parseIni(cfg *ini.File, c *Config) error {

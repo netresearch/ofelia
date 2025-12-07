@@ -167,13 +167,14 @@ func (s *DaemonLifecycleSuite) TestSuccessfulBootStartShutdown(c *C) {
 
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
-			ctx:            ctx,
-			dockerProvider: &mockDockerProvider{},
-			notifier:       &mockDockerLabelsUpdate{},
-			logger:         logger,
-			pollInterval:   cfg.PollInterval,
-			useEvents:      cfg.UseEvents,
-			disablePolling: cfg.DisablePolling,
+			ctx:                ctx,
+			dockerProvider:     &mockDockerProvider{},
+			notifier:           &mockDockerLabelsUpdate{},
+			logger:             logger,
+			configPollInterval: cfg.ConfigPollInterval,
+			useEvents:          cfg.UseEvents,
+			dockerPollInterval: cfg.DockerPollInterval,
+			pollingFallback:    cfg.PollingFallback,
 		}
 		return handler, nil
 	}
@@ -332,13 +333,14 @@ func (s *DaemonLifecycleSuite) TestWebServerStartup(c *C) {
 
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
-			ctx:            ctx,
-			dockerProvider: &mockDockerProvider{},
-			notifier:       &mockDockerLabelsUpdate{},
-			logger:         logger,
-			pollInterval:   cfg.PollInterval,
-			useEvents:      cfg.UseEvents,
-			disablePolling: cfg.DisablePolling,
+			ctx:                ctx,
+			dockerProvider:     &mockDockerProvider{},
+			notifier:           &mockDockerLabelsUpdate{},
+			logger:             logger,
+			configPollInterval: cfg.ConfigPollInterval,
+			useEvents:          cfg.UseEvents,
+			dockerPollInterval: cfg.DockerPollInterval,
+			pollingFallback:    cfg.PollingFallback,
 		}
 		return handler, nil
 	}
@@ -504,13 +506,14 @@ func (s *DaemonLifecycleSuite) TestConfigurationOptionApplication(c *C) {
 
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
-			ctx:            ctx,
-			dockerProvider: &mockDockerProvider{},
-			notifier:       &mockDockerLabelsUpdate{},
-			logger:         logger,
-			pollInterval:   cfg.PollInterval,
-			useEvents:      cfg.UseEvents,
-			disablePolling: cfg.DisablePolling,
+			ctx:                ctx,
+			dockerProvider:     &mockDockerProvider{},
+			notifier:           &mockDockerLabelsUpdate{},
+			logger:             logger,
+			configPollInterval: cfg.ConfigPollInterval,
+			useEvents:          cfg.UseEvents,
+			dockerPollInterval: cfg.DockerPollInterval,
+			pollingFallback:    cfg.PollingFallback,
 		}
 		return handler, nil
 	}
@@ -550,13 +553,14 @@ func (s *DaemonLifecycleSuite) TestConcurrentServerStartup(c *C) {
 
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
-			ctx:            ctx,
-			dockerProvider: &mockDockerProvider{},
-			notifier:       &mockDockerLabelsUpdate{},
-			logger:         logger,
-			pollInterval:   cfg.PollInterval,
-			useEvents:      cfg.UseEvents,
-			disablePolling: cfg.DisablePolling,
+			ctx:                ctx,
+			dockerProvider:     &mockDockerProvider{},
+			notifier:           &mockDockerLabelsUpdate{},
+			logger:             logger,
+			configPollInterval: cfg.ConfigPollInterval,
+			useEvents:          cfg.UseEvents,
+			dockerPollInterval: cfg.DockerPollInterval,
+			pollingFallback:    cfg.PollingFallback,
 		}
 		return handler, nil
 	}
@@ -630,13 +634,14 @@ func (s *DaemonLifecycleSuite) TestHealthCheckerInitialization(c *C) {
 
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
-			ctx:            ctx,
-			dockerProvider: &mockDockerProvider{},
-			notifier:       &mockDockerLabelsUpdate{},
-			logger:         logger,
-			pollInterval:   cfg.PollInterval,
-			useEvents:      cfg.UseEvents,
-			disablePolling: cfg.DisablePolling,
+			ctx:                ctx,
+			dockerProvider:     &mockDockerProvider{},
+			notifier:           &mockDockerLabelsUpdate{},
+			logger:             logger,
+			configPollInterval: cfg.ConfigPollInterval,
+			useEvents:          cfg.UseEvents,
+			dockerPollInterval: cfg.DockerPollInterval,
+			pollingFallback:    cfg.PollingFallback,
 		}
 		return handler, nil
 	}
@@ -698,13 +703,14 @@ func (s *DaemonLifecycleSuite) TestCompleteExecuteWorkflow(c *C) {
 
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
-			ctx:            ctx,
-			dockerProvider: &mockDockerProvider{},
-			notifier:       &mockDockerLabelsUpdate{},
-			logger:         logger,
-			pollInterval:   cfg.PollInterval,
-			useEvents:      cfg.UseEvents,
-			disablePolling: cfg.DisablePolling,
+			ctx:                ctx,
+			dockerProvider:     &mockDockerProvider{},
+			notifier:           &mockDockerLabelsUpdate{},
+			logger:             logger,
+			configPollInterval: cfg.ConfigPollInterval,
+			useEvents:          cfg.UseEvents,
+			dockerPollInterval: cfg.DockerPollInterval,
+			pollingFallback:    cfg.PollingFallback,
 		}
 		return handler, nil
 	}

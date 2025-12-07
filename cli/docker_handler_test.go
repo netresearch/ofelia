@@ -247,13 +247,13 @@ func (s *DockerHandlerSuite) TestGetDockerLabelsValid(c *C) {
 	c.Assert(labels, DeepEquals, expected)
 }
 
-// TestWatchInvalidInterval verifies that watch exits immediately when
-// PollInterval is zero or negative.
-func (s *DockerHandlerSuite) TestWatchInvalidInterval(c *C) {
-	h := &DockerHandler{pollInterval: 0, notifier: &dummyNotifier{}, logger: &TestLogger{}, ctx: context.Background(), cancel: func() {}}
+// TestWatchConfigInvalidInterval verifies that watchConfig exits immediately when
+// configPollInterval is zero or negative.
+func (s *DockerHandlerSuite) TestWatchConfigInvalidInterval(c *C) {
+	h := &DockerHandler{configPollInterval: 0, notifier: &dummyNotifier{}, logger: &TestLogger{}, ctx: context.Background(), cancel: func() {}}
 	done := make(chan struct{})
 	go func() {
-		h.watch()
+		h.watchConfig()
 		close(done)
 	}()
 
@@ -261,13 +261,13 @@ func (s *DockerHandlerSuite) TestWatchInvalidInterval(c *C) {
 	case <-done:
 		// ok
 	case <-time.After(time.Millisecond * 50):
-		c.Error("watch did not return for zero interval")
+		c.Error("watchConfig did not return for zero interval")
 	}
 
-	h = &DockerHandler{pollInterval: -time.Second, notifier: &dummyNotifier{}, logger: &TestLogger{}, ctx: context.Background(), cancel: func() {}}
+	h = &DockerHandler{configPollInterval: -time.Second, notifier: &dummyNotifier{}, logger: &TestLogger{}, ctx: context.Background(), cancel: func() {}}
 	done = make(chan struct{})
 	go func() {
-		h.watch()
+		h.watchConfig()
 		close(done)
 	}()
 
@@ -275,7 +275,7 @@ func (s *DockerHandlerSuite) TestWatchInvalidInterval(c *C) {
 	case <-done:
 		// ok
 	case <-time.After(time.Millisecond * 50):
-		c.Error("watch did not return for negative interval")
+		c.Error("watchConfig did not return for negative interval")
 	}
 }
 
