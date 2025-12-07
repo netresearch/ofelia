@@ -621,7 +621,7 @@ func (c *RunServiceConfig) buildMiddlewares() {
 type DockerConfig struct {
 	Filters        []string      `mapstructure:"filters"`
 	PollInterval   time.Duration `mapstructure:"poll-interval" default:"10s"`
-	UseEvents      bool          `mapstructure:"events" default:"false"`
+	UseEvents      bool          `mapstructure:"events" default:"true"`
 	DisablePolling bool          `mapstructure:"no-poll" default:"false"`
 }
 

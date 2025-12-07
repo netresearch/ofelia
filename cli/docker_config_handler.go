@@ -185,25 +185,57 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 }
 
 func (c *DockerHandler) watchEvents() {
-	eventCh, errCh := c.dockerProvider.SubscribeEvents(c.ctx, domain.EventFilter{
-		Filters: map[string][]string{"type": {"container"}},
-	})
+	const (
+		initialBackoff = 1 * time.Second
+		maxBackoff     = 5 * time.Minute
+		backoffFactor  = 2
+	)
+
+	backoff := initialBackoff
 
 	for {
+		// Check if context is canceled before attempting subscription
 		select {
 		case <-c.ctx.Done():
 			return
-		case err := <-errCh:
-			if err != nil {
-				c.logger.Debugf("Event subscription error: %v", err)
+		default:
+		}
+
+		eventCh, errCh := c.dockerProvider.SubscribeEvents(c.ctx, domain.EventFilter{
+			Filters: map[string][]string{"type": {"container"}},
+		})
+
+		// Inner loop: process events until error or shutdown
+	innerLoop:
+		for {
+			select {
+			case <-c.ctx.Done():
+				return
+			case err := <-errCh:
+				if err != nil {
+					c.logger.Warningf("Docker event stream error, reconnecting in %v: %v", backoff, err)
+				}
+				// Wait with backoff before reconnecting
+				select {
+				case <-c.ctx.Done():
+					return
+				case <-time.After(backoff):
+				}
+				// Increase backoff for next failure (capped at maxBackoff)
+				backoff = time.Duration(float64(backoff) * backoffFactor)
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				break innerLoop // Exit inner loop to reconnect
+			case <-eventCh:
+				// Success - reset backoff
+				backoff = initialBackoff
+				labels, err := c.GetDockerLabels()
+				if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
+					c.logger.Debugf("%v", err)
+				}
+				c.notifier.dockerLabelsUpdate(labels)
 			}
-			return
-		case <-eventCh:
-			labels, err := c.GetDockerLabels()
-			if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
-				c.logger.Debugf("%v", err)
-			}
-			c.notifier.dockerLabelsUpdate(labels)
 		}
 	}
 }
