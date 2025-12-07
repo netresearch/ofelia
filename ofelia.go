@@ -96,7 +96,7 @@ func main() {
 		"doctor",
 		"diagnose Ofelia configuration and environment health",
 		"",
-		&cli.DoctorCommand{Logger: logger, LogLevel: pre.LogLevel, ConfigFile: pre.ConfigFile},
+		&cli.DoctorCommand{Logger: logger, LogLevel: pre.LogLevel},
 	)
 
 	if _, err := parser.ParseArgs(args); err != nil {

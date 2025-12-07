@@ -14,10 +14,31 @@ import (
 
 // DoctorCommand runs comprehensive health checks on Ofelia configuration and environment
 type DoctorCommand struct {
-	ConfigFile string `long:"config" description:"Path to configuration file" default:"/etc/ofelia/config.ini"`
+	ConfigFile string `long:"config" description:"Path to configuration file"`
 	LogLevel   string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level"`
 	JSON       bool   `long:"json" description:"Output results as JSON"`
 	Logger     core.Logger
+
+	// configAutoDetected tracks whether auto-detection was used (for error hints)
+	configAutoDetected bool
+}
+
+// commonConfigPaths lists config file locations to search (in order of priority)
+var commonConfigPaths = []string{
+	"./ofelia.ini",
+	"./config.ini",
+	"/etc/ofelia/config.ini",
+	"/etc/ofelia.ini",
+}
+
+// findConfigFile searches for a config file in common locations
+func findConfigFile() string {
+	for _, path := range commonConfigPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return "" // No config found
 }
 
 // CheckResult represents the result of a single health check
@@ -39,6 +60,16 @@ type DoctorReport struct {
 func (c *DoctorCommand) Execute(_ []string) error {
 	if err := ApplyLogLevel(c.LogLevel); err != nil {
 		c.Logger.Warningf("Failed to apply log level (using default): %v", err)
+	}
+
+	// Auto-detect config file if not specified
+	if c.ConfigFile == "" {
+		c.configAutoDetected = true
+		if found := findConfigFile(); found != "" {
+			c.ConfigFile = found
+		} else {
+			c.ConfigFile = "/etc/ofelia/config.ini" // Fallback for error messages
+		}
 	}
 
 	report := &DoctorReport{
@@ -103,15 +134,20 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 	if _, err := os.Stat(c.ConfigFile); err != nil {
 		if os.IsNotExist(err) {
 			report.Healthy = false
+			hints := []string{
+				"Run 'ofelia init' to create a config file interactively",
+			}
+			// Only show "Searched:" hint when auto-detection was attempted
+			if c.configAutoDetected {
+				hints = append(hints, "Searched: "+strings.Join(commonConfigPaths, ", "))
+			}
+			hints = append(hints, "Or specify path with: --config=/path/to/config.ini")
 			report.Checks = append(report.Checks, CheckResult{
 				Category: "Configuration",
 				Name:     "File Exists",
 				Status:   "fail",
 				Message:  fmt.Sprintf("Config file not found: %s", c.ConfigFile),
-				Hints: []string{
-					"Create a sample config file manually or copy from examples",
-					"Or specify path with: --config=/path/to/config.ini",
-				},
+				Hints:    hints,
 			})
 			return
 		}

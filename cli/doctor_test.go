@@ -378,3 +378,183 @@ command = echo test`
 		}
 	}
 }
+
+// TestFindConfigFile tests the config file auto-detection logic
+func TestFindConfigFile(t *testing.T) {
+	// Save original working directory
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+
+	t.Run("finds ofelia.ini in current directory", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatalf("Failed to change directory: %v", err)
+		}
+		defer func() { _ = os.Chdir(origDir) }()
+
+		// Create ./ofelia.ini
+		configPath := filepath.Join(tmpDir, "ofelia.ini")
+		if err := os.WriteFile(configPath, []byte("[global]\n"), 0o644); err != nil {
+			t.Fatalf("Failed to create config: %v", err)
+		}
+
+		found := findConfigFile()
+		if found != "./ofelia.ini" {
+			t.Errorf("findConfigFile() = %q, want %q", found, "./ofelia.ini")
+		}
+	})
+
+	t.Run("finds config.ini when ofelia.ini not present", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatalf("Failed to change directory: %v", err)
+		}
+		defer func() { _ = os.Chdir(origDir) }()
+
+		// Create ./config.ini (but not ./ofelia.ini)
+		configPath := filepath.Join(tmpDir, "config.ini")
+		if err := os.WriteFile(configPath, []byte("[global]\n"), 0o644); err != nil {
+			t.Fatalf("Failed to create config: %v", err)
+		}
+
+		found := findConfigFile()
+		if found != "./config.ini" {
+			t.Errorf("findConfigFile() = %q, want %q", found, "./config.ini")
+		}
+	})
+
+	t.Run("priority order - ofelia.ini wins over config.ini", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatalf("Failed to change directory: %v", err)
+		}
+		defer func() { _ = os.Chdir(origDir) }()
+
+		// Create both files
+		if err := os.WriteFile(filepath.Join(tmpDir, "ofelia.ini"), []byte("[global]\n"), 0o644); err != nil {
+			t.Fatalf("Failed to create ofelia.ini: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(tmpDir, "config.ini"), []byte("[global]\n"), 0o644); err != nil {
+			t.Fatalf("Failed to create config.ini: %v", err)
+		}
+
+		found := findConfigFile()
+		if found != "./ofelia.ini" {
+			t.Errorf("findConfigFile() = %q, want %q (first in priority)", found, "./ofelia.ini")
+		}
+	})
+
+	t.Run("returns empty string when no config exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatalf("Failed to change directory: %v", err)
+		}
+		defer func() { _ = os.Chdir(origDir) }()
+
+		// Don't create any config files
+		found := findConfigFile()
+		if found != "" {
+			t.Errorf("findConfigFile() = %q, want empty string", found)
+		}
+	})
+}
+
+// TestDoctorCommand_AutoDetection tests the auto-detection flow in Execute
+func TestDoctorCommand_AutoDetection(t *testing.T) {
+	// Save original working directory
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+
+	t.Run("auto-detects config when ConfigFile is empty", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatalf("Failed to change directory: %v", err)
+		}
+		defer func() { _ = os.Chdir(origDir) }()
+
+		// Create a valid config file
+		configContent := `[global]
+[job-local "test"]
+schedule = @daily
+command = echo test`
+		if err := os.WriteFile(filepath.Join(tmpDir, "ofelia.ini"), []byte(configContent), 0o644); err != nil {
+			t.Fatalf("Failed to create config: %v", err)
+		}
+
+		cmd := &DoctorCommand{
+			ConfigFile: "", // Empty - should auto-detect
+			Logger:     &test.Logger{},
+			JSON:       true,
+		}
+
+		// Should succeed by finding ./ofelia.ini
+		if err := cmd.Execute(nil); err != nil {
+			t.Errorf("Expected auto-detection to find config, got error: %v", err)
+		}
+
+		// Verify auto-detection flag was set
+		if !cmd.configAutoDetected {
+			t.Error("configAutoDetected should be true when ConfigFile was empty")
+		}
+	})
+
+	t.Run("explicit config bypasses auto-detection", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create a config file at explicit path
+		configContent := `[global]
+[job-local "test"]
+schedule = @daily
+command = echo test`
+		configPath := filepath.Join(tmpDir, "explicit.ini")
+		if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+			t.Fatalf("Failed to create config: %v", err)
+		}
+
+		cmd := &DoctorCommand{
+			ConfigFile: configPath, // Explicit path provided
+			Logger:     &test.Logger{},
+			JSON:       true,
+		}
+
+		// Should succeed using explicit path
+		if err := cmd.Execute(nil); err != nil {
+			t.Errorf("Expected explicit config to work, got error: %v", err)
+		}
+
+		// Verify auto-detection flag was NOT set
+		if cmd.configAutoDetected {
+			t.Error("configAutoDetected should be false when explicit ConfigFile was provided")
+		}
+	})
+
+	t.Run("auto-detection fallback when no config exists", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatalf("Failed to change directory: %v", err)
+		}
+		defer func() { _ = os.Chdir(origDir) }()
+
+		// Don't create any config files
+		cmd := &DoctorCommand{
+			ConfigFile: "", // Empty - will fail to auto-detect
+			Logger:     &test.Logger{},
+			JSON:       true,
+		}
+
+		// Should fail because no config exists
+		err := cmd.Execute(nil)
+		if err == nil {
+			t.Error("Expected error when no config file exists")
+		}
+
+		// Verify auto-detection flag was set (it was attempted)
+		if !cmd.configAutoDetected {
+			t.Error("configAutoDetected should be true even when auto-detection fails")
+		}
+	})
+}
