@@ -295,6 +295,37 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 	return labels, nil
 }
 
+// handleEventStreamError marks the event stream as failed and starts fallback polling if configured.
+func (c *DockerHandler) handleEventStreamError() {
+	c.mu.Lock()
+	if c.eventsFailed {
+		c.mu.Unlock()
+		return
+	}
+	c.eventsFailed = true
+
+	// Start fallback polling if configured and not already running
+	if c.pollingFallback > 0 && !c.fallbackPollingActive {
+		c.mu.Unlock()
+		go c.startFallbackPolling()
+		return
+	}
+	c.mu.Unlock()
+
+	if c.pollingFallback == 0 {
+		c.logger.Errorf("Docker event stream failed. " +
+			"Container changes will NOT be detected. " +
+			"Set 'polling-fallback' or 'docker-poll-interval'.")
+	}
+}
+
+// clearEventStreamError marks the event stream as healthy.
+func (c *DockerHandler) clearEventStreamError() {
+	c.mu.Lock()
+	c.eventsFailed = false
+	c.mu.Unlock()
+}
+
 func (c *DockerHandler) watchEvents() {
 	const (
 		initialBackoff = 1 * time.Second
@@ -322,29 +353,14 @@ func (c *DockerHandler) watchEvents() {
 			select {
 			case <-c.ctx.Done():
 				return
-			case err := <-errCh:
+			case err, ok := <-errCh:
+				if !ok {
+					// Channel closed, exit inner loop to reconnect
+					break innerLoop
+				}
 				if err != nil {
 					c.logger.Warningf("Docker event stream error, reconnecting in %v: %v", backoff, err)
-
-					// Mark events as failed for fallback mechanism
-					c.mu.Lock()
-					if !c.eventsFailed {
-						c.eventsFailed = true
-						// Start fallback polling if configured and not already running
-						if c.pollingFallback > 0 && !c.fallbackPollingActive {
-							c.mu.Unlock()
-							go c.startFallbackPolling()
-						} else {
-							c.mu.Unlock()
-							if c.pollingFallback == 0 {
-								c.logger.Errorf("Docker event stream failed. " +
-									"Container changes will NOT be detected. " +
-									"Set 'polling-fallback' or 'docker-poll-interval'.")
-							}
-						}
-					} else {
-						c.mu.Unlock()
-					}
+					c.handleEventStreamError()
 				}
 				// Wait with backoff before reconnecting
 				select {
@@ -358,13 +374,14 @@ func (c *DockerHandler) watchEvents() {
 					backoff = maxBackoff
 				}
 				break innerLoop // Exit inner loop to reconnect
-			case <-eventCh:
+			case _, ok := <-eventCh:
+				if !ok {
+					// Channel closed, exit inner loop to reconnect
+					break innerLoop
+				}
 				// Success - reset backoff and clear failed state
 				backoff = initialBackoff
-				c.mu.Lock()
-				c.eventsFailed = false
-				c.mu.Unlock()
-
+				c.clearEventStreamError()
 				c.refreshContainerLabels()
 			}
 		}
