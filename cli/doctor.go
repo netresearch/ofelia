@@ -14,10 +14,28 @@ import (
 
 // DoctorCommand runs comprehensive health checks on Ofelia configuration and environment
 type DoctorCommand struct {
-	ConfigFile string `long:"config" description:"Path to configuration file" default:"/etc/ofelia/config.ini"`
+	ConfigFile string `long:"config" description:"Path to configuration file"`
 	LogLevel   string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level"`
 	JSON       bool   `long:"json" description:"Output results as JSON"`
 	Logger     core.Logger
+}
+
+// commonConfigPaths lists config file locations to search (in order of priority)
+var commonConfigPaths = []string{
+	"./ofelia.ini",
+	"./config.ini",
+	"/etc/ofelia/config.ini",
+	"/etc/ofelia.ini",
+}
+
+// findConfigFile searches for a config file in common locations
+func findConfigFile() string {
+	for _, path := range commonConfigPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return "" // No config found
 }
 
 // CheckResult represents the result of a single health check
@@ -39,6 +57,15 @@ type DoctorReport struct {
 func (c *DoctorCommand) Execute(_ []string) error {
 	if err := ApplyLogLevel(c.LogLevel); err != nil {
 		c.Logger.Warningf("Failed to apply log level (using default): %v", err)
+	}
+
+	// Auto-detect config file if not specified
+	if c.ConfigFile == "" {
+		if found := findConfigFile(); found != "" {
+			c.ConfigFile = found
+		} else {
+			c.ConfigFile = "/etc/ofelia/config.ini" // Fallback for error messages
+		}
 	}
 
 	report := &DoctorReport{
@@ -109,7 +136,8 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 				Status:   "fail",
 				Message:  fmt.Sprintf("Config file not found: %s", c.ConfigFile),
 				Hints: []string{
-					"Create a sample config file manually or copy from examples",
+					"Run 'ofelia init' to create a config file interactively",
+					"Searched: " + strings.Join(commonConfigPaths, ", "),
 					"Or specify path with: --config=/path/to/config.ini",
 				},
 			})

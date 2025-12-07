@@ -144,6 +144,48 @@ UTC and have that preference saved locally.
 Creating `run` or `exec` jobs requires Ofelia to run with Docker access; the
 server rejects such requests if no Docker client is available.
 
+#### Interactive Setup
+
+Use `ofelia init` to create a configuration file interactively:
+
+```sh
+ofelia init
+```
+
+The wizard guides you through creating jobs step-by-step, prompting for:
+- Job type (local, run, exec, service-run)
+- Job name and schedule (cron expression)
+- Command to execute
+- Container name (for Docker-based jobs)
+- Optional settings like working directory, user, and environment variables
+
+By default, the configuration is saved to `./ofelia.ini`. Use `--config` to
+specify a different location:
+
+```sh
+ofelia init --config=/etc/ofelia/config.ini
+```
+
+#### Health Diagnostics
+
+Use `ofelia doctor` to check your Ofelia setup and diagnose common issues:
+
+```sh
+ofelia doctor
+ofelia doctor --config=/path/to/config.ini
+```
+
+The doctor command performs comprehensive health checks:
+- **Configuration**: Validates config file syntax and job definitions
+- **Docker**: Tests Docker daemon connectivity and permissions
+- **Jobs**: Checks for schedule conflicts, invalid cron expressions, and
+  container references
+
+If no `--config` is specified, doctor searches these locations (in order):
+`./ofelia.ini`, `./config.ini`, `/etc/ofelia/config.ini`, `/etc/ofelia.ini`.
+
+Use `--json` for machine-readable output suitable for monitoring integrations.
+
 ### Environment variables
 
 You can configure the same options with environment variables. When set,
