@@ -302,3 +302,286 @@ func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniExecJobs(c *C) {
 
 	assertKeepsIniJobs(c, cfg, func() int { return len(cfg.ExecJobs) })
 }
+
+// TestResolveConfigDefaults verifies that resolveConfig returns correct defaults
+func (s *DockerHandlerSuite) TestResolveConfigDefaults(c *C) {
+	logger := &TestLogger{}
+	cfg := &DockerConfig{
+		ConfigPollInterval: 10 * time.Second,
+		DockerPollInterval: 0,
+		PollingFallback:    10 * time.Second,
+		UseEvents:          true,
+	}
+
+	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
+
+	c.Assert(configPoll, Equals, 10*time.Second)
+	c.Assert(dockerPoll, Equals, time.Duration(0))
+	c.Assert(fallback, Equals, 10*time.Second)
+	c.Assert(useEvents, Equals, true)
+}
+
+// TestResolveConfigDeprecatedPollInterval verifies backward compatibility migration
+func (s *DockerHandlerSuite) TestResolveConfigDeprecatedPollInterval(c *C) {
+	logger := &TestLogger{}
+	cfg := &DockerConfig{
+		PollInterval:       30 * time.Second, // deprecated, explicitly set
+		ConfigPollInterval: 10 * time.Second, // default
+		DockerPollInterval: 0,
+		PollingFallback:    10 * time.Second, // default
+		UseEvents:          false,            // events disabled
+	}
+
+	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
+
+	// With deprecated poll-interval and default values, should migrate
+	c.Assert(configPoll, Equals, 30*time.Second) // migrated from poll-interval
+	c.Assert(dockerPoll, Equals, 30*time.Second) // migrated when events disabled
+	c.Assert(fallback, Equals, 30*time.Second)   // migrated from poll-interval
+	c.Assert(useEvents, Equals, false)
+}
+
+// TestResolveConfigDeprecatedPollIntervalExplicitOverride verifies explicit options override deprecated
+func (s *DockerHandlerSuite) TestResolveConfigDeprecatedPollIntervalExplicitOverride(c *C) {
+	logger := &TestLogger{}
+	cfg := &DockerConfig{
+		PollInterval:       30 * time.Second, // deprecated
+		ConfigPollInterval: 20 * time.Second, // explicitly set (not default)
+		DockerPollInterval: 15 * time.Second, // explicitly set
+		PollingFallback:    5 * time.Second,  // explicitly set (not default)
+		UseEvents:          true,
+	}
+
+	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
+
+	// Explicit values should take precedence
+	c.Assert(configPoll, Equals, 20*time.Second) // kept explicit value
+	c.Assert(dockerPoll, Equals, 15*time.Second) // kept explicit value
+	c.Assert(fallback, Equals, 5*time.Second)    // kept explicit value
+	c.Assert(useEvents, Equals, true)
+}
+
+// TestResolveConfigDeprecatedDisablePolling verifies no-poll migration
+func (s *DockerHandlerSuite) TestResolveConfigDeprecatedDisablePolling(c *C) {
+	logger := &TestLogger{}
+	cfg := &DockerConfig{
+		DisablePolling:     true, // deprecated no-poll
+		ConfigPollInterval: 10 * time.Second,
+		DockerPollInterval: 30 * time.Second,
+		PollingFallback:    10 * time.Second,
+		UseEvents:          true,
+	}
+
+	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
+
+	c.Assert(configPoll, Equals, 10*time.Second)
+	c.Assert(dockerPoll, Equals, time.Duration(0)) // disabled by no-poll
+	c.Assert(fallback, Equals, time.Duration(0))   // also disabled
+	c.Assert(useEvents, Equals, true)
+}
+
+// TestWatchContainerPollingInvalidInterval verifies watchContainerPolling exits immediately
+// when dockerPollInterval is zero or negative.
+func (s *DockerHandlerSuite) TestWatchContainerPollingInvalidInterval(c *C) {
+	mockProvider := &mockDockerProviderForHandler{}
+	h := &DockerHandler{
+		dockerPollInterval: 0,
+		notifier:           &dummyNotifier{},
+		logger:             &TestLogger{},
+		ctx:                context.Background(),
+		dockerProvider:     mockProvider,
+	}
+	done := make(chan struct{})
+	go func() {
+		h.watchContainerPolling()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// ok - should return immediately for zero interval
+	case <-time.After(time.Millisecond * 50):
+		c.Error("watchContainerPolling did not return for zero interval")
+	}
+
+	// Test negative interval
+	h = &DockerHandler{
+		dockerPollInterval: -time.Second,
+		notifier:           &dummyNotifier{},
+		logger:             &TestLogger{},
+		ctx:                context.Background(),
+		dockerProvider:     mockProvider,
+	}
+	done = make(chan struct{})
+	go func() {
+		h.watchContainerPolling()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// ok
+	case <-time.After(time.Millisecond * 50):
+		c.Error("watchContainerPolling did not return for negative interval")
+	}
+}
+
+// TestWatchContainerPollingContextCancellation verifies watchContainerPolling exits on context cancellation
+func (s *DockerHandlerSuite) TestWatchContainerPollingContextCancellation(c *C) {
+	ctx, cancel := context.WithCancel(context.Background())
+	mockProvider := &mockDockerProviderForHandler{
+		containers: []domain.Container{},
+	}
+	h := &DockerHandler{
+		dockerPollInterval: 100 * time.Millisecond,
+		notifier:           &dummyNotifier{},
+		logger:             &TestLogger{},
+		ctx:                ctx,
+		dockerProvider:     mockProvider,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		h.watchContainerPolling()
+		close(done)
+	}()
+
+	// Cancel context after short delay
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// ok - should exit on context cancellation
+	case <-time.After(time.Millisecond * 200):
+		c.Error("watchContainerPolling did not exit on context cancellation")
+	}
+}
+
+// TestStartFallbackPollingAlreadyActive verifies startFallbackPolling returns early if already active
+func (s *DockerHandlerSuite) TestStartFallbackPollingAlreadyActive(c *C) {
+	mockProvider := &mockDockerProviderForHandler{
+		containers: []domain.Container{},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h := &DockerHandler{
+		pollingFallback:       100 * time.Millisecond,
+		notifier:              &dummyNotifier{},
+		logger:                &TestLogger{},
+		ctx:                   ctx,
+		dockerProvider:        mockProvider,
+		fallbackPollingActive: true, // Already active
+	}
+
+	done := make(chan struct{})
+	go func() {
+		h.startFallbackPolling()
+		close(done)
+	}()
+
+	// Should return immediately since already active
+	select {
+	case <-done:
+		// ok - returned early
+	case <-time.After(time.Millisecond * 50):
+		c.Error("startFallbackPolling did not return early when already active")
+	}
+}
+
+// TestStartFallbackPollingCancellation verifies fallback polling stops when cancelled
+func (s *DockerHandlerSuite) TestStartFallbackPollingCancellation(c *C) {
+	mockProvider := &mockDockerProviderForHandler{
+		containers: []domain.Container{},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h := &DockerHandler{
+		pollingFallback: 100 * time.Millisecond,
+		notifier:        &dummyNotifier{},
+		logger:          &TestLogger{},
+		ctx:             ctx,
+		dockerProvider:  mockProvider,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		h.startFallbackPolling()
+		close(done)
+	}()
+
+	// Wait for fallback to start
+	time.Sleep(20 * time.Millisecond)
+
+	// Verify fallbackCancel was set
+	h.mu.Lock()
+	c.Assert(h.fallbackPollingActive, Equals, true)
+	c.Assert(h.fallbackCancel, NotNil)
+	fallbackCancel := h.fallbackCancel
+	h.mu.Unlock()
+
+	// Cancel the fallback polling
+	fallbackCancel()
+
+	select {
+	case <-done:
+		// ok - should exit on cancellation
+	case <-time.After(time.Millisecond * 200):
+		c.Error("startFallbackPolling did not exit on cancellation")
+	}
+
+	// Verify state was reset
+	h.mu.Lock()
+	c.Assert(h.fallbackPollingActive, Equals, false)
+	c.Assert(h.fallbackCancel, IsNil)
+	h.mu.Unlock()
+}
+
+// TestClearEventStreamErrorStopsFallback verifies that clearing event error stops fallback polling
+func (s *DockerHandlerSuite) TestClearEventStreamErrorStopsFallback(c *C) {
+	mockProvider := &mockDockerProviderForHandler{
+		containers: []domain.Container{},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	h := &DockerHandler{
+		pollingFallback: 100 * time.Millisecond,
+		notifier:        &dummyNotifier{},
+		logger:          &TestLogger{},
+		ctx:             ctx,
+		dockerProvider:  mockProvider,
+	}
+
+	// Start fallback polling
+	done := make(chan struct{})
+	go func() {
+		h.startFallbackPolling()
+		close(done)
+	}()
+
+	// Wait for fallback to start
+	time.Sleep(20 * time.Millisecond)
+
+	h.mu.Lock()
+	c.Assert(h.fallbackPollingActive, Equals, true)
+	h.mu.Unlock()
+
+	// Simulate events recovering - this should stop fallback polling
+	h.clearEventStreamError()
+
+	select {
+	case <-done:
+		// ok - fallback polling should have stopped
+	case <-time.After(time.Millisecond * 200):
+		c.Error("clearEventStreamError did not stop fallback polling")
+	}
+
+	// Verify state
+	h.mu.Lock()
+	c.Assert(h.eventsFailed, Equals, false)
+	c.Assert(h.fallbackPollingActive, Equals, false)
+	h.mu.Unlock()
+}

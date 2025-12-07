@@ -33,6 +33,7 @@ type DockerHandler struct {
 	mu                    sync.Mutex
 	eventsFailed          bool
 	fallbackPollingActive bool
+	fallbackCancel        context.CancelFunc // To stop fallback polling when events recover
 }
 
 type dockerLabelsUpdate interface {
@@ -65,6 +66,10 @@ func resolveConfig(cfg *DockerConfig, logger core.Logger) (configPoll, dockerPol
 		// For BC: if events are disabled and poll-interval was set, enable container polling
 		if !useEvents && dockerPoll == 0 {
 			dockerPoll = cfg.PollInterval
+		}
+		// For BC: use poll-interval as polling-fallback if fallback wasn't explicitly set
+		if fallback == 10*time.Second { // default value
+			fallback = cfg.PollInterval
 		}
 	}
 
@@ -210,6 +215,7 @@ func (c *DockerHandler) watchContainerPolling() {
 }
 
 // startFallbackPolling starts container polling as a fallback when events fail.
+// The polling is stopped when events recover (via stopFallbackPolling).
 func (c *DockerHandler) startFallbackPolling() {
 	c.mu.Lock()
 	if c.fallbackPollingActive {
@@ -217,6 +223,9 @@ func (c *DockerHandler) startFallbackPolling() {
 		return
 	}
 	c.fallbackPollingActive = true
+	// Create a cancellable context for this fallback polling goroutine
+	fallbackCtx, fallbackCancel := context.WithCancel(c.ctx)
+	c.fallbackCancel = fallbackCancel
 	c.mu.Unlock()
 
 	c.logger.Warningf("Starting fallback container polling at %v interval due to event stream failure", c.pollingFallback)
@@ -226,7 +235,12 @@ func (c *DockerHandler) startFallbackPolling() {
 
 	for {
 		select {
-		case <-c.ctx.Done():
+		case <-fallbackCtx.Done():
+			c.mu.Lock()
+			c.fallbackPollingActive = false
+			c.fallbackCancel = nil
+			c.mu.Unlock()
+			c.logger.Noticef("Stopped fallback container polling (events recovered)")
 			return
 		case <-ticker.C:
 			c.refreshContainerLabels()
@@ -319,10 +333,15 @@ func (c *DockerHandler) handleEventStreamError() {
 	}
 }
 
-// clearEventStreamError marks the event stream as healthy.
+// clearEventStreamError marks the event stream as healthy and stops fallback polling.
 func (c *DockerHandler) clearEventStreamError() {
 	c.mu.Lock()
 	c.eventsFailed = false
+	// Stop fallback polling if it's running - events have recovered
+	if c.fallbackCancel != nil {
+		c.fallbackCancel()
+		// Note: fallbackPollingActive and fallbackCancel are reset in startFallbackPolling goroutine
+	}
 	c.mu.Unlock()
 }
 
