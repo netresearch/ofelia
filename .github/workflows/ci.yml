@@ -425,6 +425,18 @@ jobs:
           set -euo pipefail
           cosign sign --yes ${{ env.REGISTRY }}/${{ github.repository_owner }}/ofelia:edge@${{ steps.push.outputs.digest }}
 
+      - name: Update package description
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          curl -sS -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/orgs/${OWNER}/packages/container/ofelia" \
+            -d '{"description":"A docker job scheduler (based on mcuadros/ofelia)"}'
+
   hadolint:
     name: hadolint
     runs-on: ubuntu-latest
