@@ -50,6 +50,10 @@ type Config struct {
 		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`
 		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels" default:"false"` //nolint:revive
 		EnableStrictValidation  bool          `gcfg:"enable-strict-validation" mapstructure:"enable-strict-validation" default:"false"`
+		// DefaultUser sets the default user for exec/run/service jobs when not specified per-job.
+		// Set to empty string "" to use the container's default user.
+		// Default: "nobody" (secure unprivileged user)
+		DefaultUser string `gcfg:"default-user" mapstructure:"default-user" default:"nobody"`
 	}
 	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
@@ -218,6 +222,7 @@ func (c *Config) registerAllJobs() {
 
 	for name, j := range c.ExecJobs {
 		_ = defaults.Set(j)
+		c.applyDefaultUser(&j.User)
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -226,6 +231,7 @@ func (c *Config) registerAllJobs() {
 	}
 	for name, j := range c.RunJobs {
 		_ = defaults.Set(j)
+		c.applyDefaultUser(&j.User)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -243,6 +249,7 @@ func (c *Config) registerAllJobs() {
 	}
 	for name, j := range c.ServiceJobs {
 		_ = defaults.Set(j)
+		c.applyDefaultUser(&j.User)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -257,6 +264,14 @@ func (c *Config) registerAllJobs() {
 		j.Name = name
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
+	}
+}
+
+// applyDefaultUser sets the job's User field to the global default if not explicitly configured.
+// This allows per-job override while respecting the global default-user setting.
+func (c *Config) applyDefaultUser(user *string) {
+	if *user == "" {
+		*user = c.Global.DefaultUser
 	}
 }
 
@@ -360,6 +375,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
+		c.applyDefaultUser(&j.User)
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -368,6 +384,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 
 	runPrep := func(name string, j *RunJobConfig) {
 		_ = defaults.Set(j)
+		c.applyDefaultUser(&j.User)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -384,6 +401,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 
 	servicePrep := func(name string, j *RunServiceConfig) {
 		_ = defaults.Set(j)
+		c.applyDefaultUser(&j.User)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -468,6 +486,7 @@ func (c *Config) iniConfigUpdate() error {
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
+		c.applyDefaultUser(&j.User)
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -476,6 +495,7 @@ func (c *Config) iniConfigUpdate() error {
 
 	runPrep := func(name string, j *RunJobConfig) {
 		_ = defaults.Set(j)
+		c.applyDefaultUser(&j.User)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}
@@ -493,6 +513,7 @@ func (c *Config) iniConfigUpdate() error {
 
 	svcPrep := func(name string, j *RunServiceConfig) {
 		_ = defaults.Set(j)
+		c.applyDefaultUser(&j.User)
 		if j.MaxRuntime == 0 {
 			j.MaxRuntime = c.Global.MaxRuntime
 		}

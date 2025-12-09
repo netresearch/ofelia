@@ -598,3 +598,66 @@ func (s *SuiteConfig) TestBuildSchedulerMiddlewares(c *C) {
 	_, ok = ms[2].(*middlewares.Mail)
 	c.Assert(ok, Equals, true)
 }
+
+// Test DefaultUser global configuration
+func (s *SuiteConfig) TestDefaultUserGlobalConfig(c *C) {
+	mockLogger := TestLogger{}
+
+	// Test 1: Default value should be "nobody"
+	cfg, err := BuildFromString(`
+		[job-exec "test"]
+		schedule = @every 10s
+		container = test-container
+		command = echo test
+	`, &mockLogger)
+	c.Assert(err, IsNil)
+	c.Assert(cfg.Global.DefaultUser, Equals, "nobody")
+
+	// Test 2: Global default-user can be changed
+	cfg, err = BuildFromString(`
+		[global]
+		default-user = root
+
+		[job-exec "test"]
+		schedule = @every 10s
+		container = test-container
+		command = echo test
+	`, &mockLogger)
+	c.Assert(err, IsNil)
+	c.Assert(cfg.Global.DefaultUser, Equals, "root")
+
+	// Test 3: Empty string global default-user (use container's default)
+	cfg, err = BuildFromString(`
+		[global]
+		default-user =
+
+		[job-exec "test"]
+		schedule = @every 10s
+		container = test-container
+		command = echo test
+	`, &mockLogger)
+	c.Assert(err, IsNil)
+	c.Assert(cfg.Global.DefaultUser, Equals, "")
+}
+
+// Test applyDefaultUser function
+func (s *SuiteConfig) TestApplyDefaultUser(c *C) {
+	cfg := NewConfig(&TestLogger{})
+	cfg.Global.DefaultUser = "testuser"
+
+	// Test 1: Empty user gets global default
+	user := ""
+	cfg.applyDefaultUser(&user)
+	c.Assert(user, Equals, "testuser")
+
+	// Test 2: Explicit user is preserved
+	user = "specificuser"
+	cfg.applyDefaultUser(&user)
+	c.Assert(user, Equals, "specificuser")
+
+	// Test 3: When global default is empty, user stays empty
+	cfg.Global.DefaultUser = ""
+	user = ""
+	cfg.applyDefaultUser(&user)
+	c.Assert(user, Equals, "")
+}

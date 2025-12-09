@@ -14,8 +14,11 @@ type ExecJob struct {
 	BareJob     `mapstructure:",squash"`
 	Provider    DockerProvider `json:"-"` // SDK-based Docker provider
 	Container   string         `hash:"true"`
-	User        string         `default:"nobody" hash:"true"`
-	TTY         bool           `default:"false" hash:"true"`
+	// User specifies the user to run the command as.
+	// If empty, uses the global default-user setting (default: "nobody").
+	// Set explicitly to "" in config to use the container's default user.
+	User        string `hash:"true"`
+	TTY         bool   `default:"false" hash:"true"`
 	Environment []string       `mapstructure:"environment" hash:"true"`
 	WorkingDir  string         `mapstructure:"working-dir" hash:"true"`
 }

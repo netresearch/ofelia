@@ -16,7 +16,10 @@ import (
 type RunJob struct {
 	BareJob  `mapstructure:",squash"`
 	Provider DockerProvider `json:"-"` // SDK-based Docker provider
-	User     string         `default:"nobody" hash:"true"`
+	// User specifies the user to run the container as.
+	// If empty, uses the global default-user setting (default: "nobody").
+	// Set explicitly to "" in config to use the container's default user.
+	User string `hash:"true"`
 
 	// ContainerName specifies the name of the container to be created. If
 	// nil, the job name will be used. If set to an empty string, Docker
