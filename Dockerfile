@@ -34,13 +34,16 @@ LABEL ofelia.service=true \
       ofelia.enabled=true
 
 # hadolint ignore=DL3018
-RUN apk add --no-cache ca-certificates tzdata
+# tini is used as init process (PID 1) to properly reap zombie processes
+# from local jobs. See: https://github.com/krallin/tini
+RUN apk add --no-cache ca-certificates tini tzdata
 
 COPY --from=builder /go/bin/ofelia /usr/bin/ofelia
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
   CMD pgrep ofelia >/dev/null || exit 1
 
-ENTRYPOINT ["/usr/bin/ofelia"]
+# Use tini as init to handle zombie process reaping
+ENTRYPOINT ["/sbin/tini", "--"]
 
-CMD ["daemon", "--config", "/etc/ofelia/config.ini"]
+CMD ["/usr/bin/ofelia", "daemon", "--config", "/etc/ofelia/config.ini"]
