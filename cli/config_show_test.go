@@ -73,6 +73,7 @@ command = echo local
 
 [job-service-run "service-job"]
 schedule = @every 20s
+image = nginx
 command = echo service
 `,
 			expectedError: false,

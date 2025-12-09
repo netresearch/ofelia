@@ -341,6 +341,15 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, prep func(string, J), source JobSource) bool {
 	prep(name, newJob)
 	newJob.SetJobSource(source)
+
+	// Validate job configuration if the job type supports it
+	if v, ok := any(newJob).(validatable); ok {
+		if err := v.Validate(); err != nil {
+			c.logger.Errorf("Job %q configuration error: %v", name, err)
+			return false
+		}
+	}
+
 	newHash, err1 := newJob.Hash()
 	if err1 != nil {
 		c.logger.Errorf("hash calculation failed: %v", err1)
@@ -361,11 +370,25 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 	return true
 }
 
+// validatable is an optional interface for jobs that support validation
+type validatable interface {
+	Validate() error
+}
+
 func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J) {
 	if source != "" {
 		j.SetJobSource(source)
 	}
 	prep(name, j)
+
+	// Validate job configuration if the job type supports it
+	if v, ok := any(j).(validatable); ok {
+		if err := v.Validate(); err != nil {
+			c.logger.Errorf("Job %q configuration error: %v", name, err)
+			return
+		}
+	}
+
 	j.buildMiddlewares()
 	_ = c.sh.AddJob(j)
 	current[name] = j
@@ -769,6 +792,15 @@ func decodeJob[T jobConfig](section *ini.Section, job T, set func(string, T), pr
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
 		return fmt.Errorf("failed to decode job %q configuration: %w\n  → Check job section syntax in config file\n  → Verify all required fields are set (schedule, command, container, etc.)\n  → Check for typos in configuration keys\n  → Use 'ofelia validate --config=<file>' to validate configuration\n  → Review job type requirements (job-exec, job-run, job-local, job-service-run)", jobName, err)
 	}
+
+	// Validate job configuration if the job type supports it
+	if v, ok := any(job).(validatable); ok {
+		if err := v.Validate(); err != nil {
+			//nolint:revive // Error message intentionally verbose for UX
+			return fmt.Errorf("job %q configuration error: %w\n  → Check required fields for this job type\n  → job-run requires 'image' OR 'container'\n  → job-service-run requires 'image'", jobName, err)
+		}
+	}
+
 	set(jobName, job)
 	return nil
 }

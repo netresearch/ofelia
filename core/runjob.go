@@ -63,6 +63,15 @@ func (j *RunJob) InitializeRuntimeFields() {
 	// No additional initialization needed with DockerProvider
 }
 
+// Validate checks that the job configuration is valid.
+// For job-run, either Image or Container must be specified.
+func (j *RunJob) Validate() error {
+	if j.Image == "" && j.Container == "" {
+		return errors.New("job-run requires either 'image' (to create a new container) or 'container' (to start an existing container)")
+	}
+	return nil
+}
+
 func (j *RunJob) setContainerID(id string) {
 	j.mu.Lock()
 	j.containerID = id

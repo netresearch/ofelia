@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -42,6 +43,15 @@ func NewRunServiceJob(provider DockerProvider) *RunServiceJob {
 // This should be called after the Provider field is set.
 func (j *RunServiceJob) InitializeRuntimeFields() {
 	// No additional initialization needed with DockerProvider
+}
+
+// Validate checks that the job configuration is valid.
+// For job-service-run, Image is required.
+func (j *RunServiceJob) Validate() error {
+	if j.Image == "" {
+		return errors.New("job-service-run requires 'image' to create a new swarm service")
+	}
+	return nil
 }
 
 func (j *RunServiceJob) Run(ctx *Context) error {
