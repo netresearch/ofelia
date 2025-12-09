@@ -54,19 +54,25 @@ type Config struct {
 		// Set to empty string "" to use the container's default user.
 		// Default: "nobody" (secure unprivileged user)
 		DefaultUser string `gcfg:"default-user" mapstructure:"default-user" default:"nobody"`
+		// NotificationCooldown sets the minimum time between duplicate error notifications.
+		// When a job fails with the same error, notifications (Slack, email, save) will be
+		// suppressed until this cooldown period expires. Set to 0 to disable deduplication.
+		// Default: 0 (disabled - all notifications sent)
+		NotificationCooldown time.Duration `gcfg:"notification-cooldown" mapstructure:"notification-cooldown" default:"0"`
 	}
-	ExecJobs      map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
-	RunJobs       map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
-	ServiceJobs   map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
-	LocalJobs     map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
-	ComposeJobs   map[string]*ComposeJobConfig `gcfg:"job-compose" mapstructure:"job-compose,squash"`
-	Docker        DockerConfig
-	configPath    string
-	configFiles   []string
-	configModTime time.Time
-	sh            *core.Scheduler
-	dockerHandler *DockerHandler
-	logger        core.Logger
+	ExecJobs          map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
+	RunJobs           map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
+	ServiceJobs       map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
+	LocalJobs         map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
+	ComposeJobs       map[string]*ComposeJobConfig `gcfg:"job-compose" mapstructure:"job-compose,squash"`
+	Docker            DockerConfig
+	configPath        string
+	configFiles       []string
+	configModTime     time.Time
+	sh                *core.Scheduler
+	dockerHandler     *DockerHandler
+	logger            core.Logger
+	notificationDedup *middlewares.NotificationDedup
 }
 
 func NewConfig(logger core.Logger) *Config {
@@ -171,6 +177,10 @@ func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
 // Call this only once at app init
 func (c *Config) InitializeApp() error {
 	c.sh = core.NewScheduler(c.logger)
+
+	// Initialize notification deduplication if cooldown is set
+	c.initNotificationDedup()
+
 	c.buildSchedulerMiddlewares(c.sh)
 
 	if err := c.initDockerHandler(); err != nil {
@@ -179,6 +189,22 @@ func (c *Config) InitializeApp() error {
 	c.mergeJobsFromDockerLabels()
 	c.registerAllJobs()
 	return nil
+}
+
+// initNotificationDedup initializes the deduplicator and injects it into middleware configs
+func (c *Config) initNotificationDedup() {
+	if c.Global.NotificationCooldown <= 0 {
+		return // Dedup disabled
+	}
+
+	c.notificationDedup = middlewares.NewNotificationDedup(c.Global.NotificationCooldown)
+	middlewares.InitNotificationDedup(c.Global.NotificationCooldown)
+
+	// Inject dedup into global middleware configs
+	c.Global.SlackConfig.Dedup = c.notificationDedup
+	c.Global.MailConfig.Dedup = c.notificationDedup
+
+	c.logger.Noticef("Notification deduplication enabled with cooldown: %s", c.Global.NotificationCooldown)
 }
 
 func (c *Config) initDockerHandler() error {
@@ -226,6 +252,7 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
+		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
 	}
@@ -238,12 +265,14 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
+		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
 	}
 	for name, j := range c.LocalJobs {
 		_ = defaults.Set(j)
 		j.Name = name
+		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
 	}
@@ -256,15 +285,26 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
+		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
 	}
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
 		j.Name = name
+		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
 	}
+}
+
+// injectDedup sets the notification deduplicator on job-level middleware configs
+func (c *Config) injectDedup(slack *middlewares.SlackConfig, mail *middlewares.MailConfig) {
+	if c.notificationDedup == nil {
+		return
+	}
+	slack.Dedup = c.notificationDedup
+	mail.Dedup = c.notificationDedup
 }
 
 // UserContainerDefault is the sentinel value that explicitly requests the container's default user,

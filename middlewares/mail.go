@@ -25,6 +25,8 @@ type MailConfig struct {
 	EmailTo           string `gcfg:"email-to" mapstructure:"email-to"`
 	EmailFrom         string `gcfg:"email-from" mapstructure:"email-from"`
 	MailOnlyOnError   bool   `gcfg:"mail-only-on-error" mapstructure:"mail-only-on-error"`
+	// Dedup is the notification deduplicator (set by config loader, not INI)
+	Dedup *NotificationDedup `mapstructure:"-" json:"-"`
 }
 
 // NewMail returns a Mail middleware if the given configuration is not empty
@@ -54,6 +56,11 @@ func (m *Mail) Run(ctx *core.Context) error {
 	ctx.Stop(err)
 
 	if !(ctx.Execution.Failed || !m.MailOnlyOnError) {
+		return err
+	}
+	// Check deduplication - suppress duplicate error notifications
+	if m.Dedup != nil && ctx.Execution.Failed && !m.Dedup.ShouldNotify(ctx) {
+		ctx.Logger.Debugf("Mail notification suppressed (duplicate within cooldown)")
 		return err
 	}
 	if mailErr := m.sendMail(ctx); mailErr != nil {
