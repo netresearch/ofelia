@@ -33,9 +33,9 @@ LABEL org.opencontainers.image.title="Ofelia" \
 LABEL ofelia.service=true \
       ofelia.enabled=true
 
-# hadolint ignore=DL3018
 # tini is used as init process (PID 1) to properly reap zombie processes
 # from local jobs. See: https://github.com/krallin/tini
+# hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates tini tzdata
 
 COPY --from=builder /go/bin/ofelia /usr/bin/ofelia
