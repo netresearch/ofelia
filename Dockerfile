@@ -44,6 +44,7 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
   CMD pgrep ofelia >/dev/null || exit 1
 
 # Use tini as init to handle zombie process reaping
-ENTRYPOINT ["/sbin/tini", "--"]
+# The -g flag ensures tini kills the entire process group on signal
+ENTRYPOINT ["/sbin/tini", "-g", "--", "/usr/bin/ofelia"]
 
-CMD ["/usr/bin/ofelia", "daemon", "--config", "/etc/ofelia/config.ini"]
+CMD ["daemon", "--config", "/etc/ofelia/config.ini"]
