@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,6 +22,8 @@ var (
 type SlackConfig struct {
 	SlackWebhook     string `gcfg:"slack-webhook" mapstructure:"slack-webhook" json:"-"`
 	SlackOnlyOnError bool   `gcfg:"slack-only-on-error" mapstructure:"slack-only-on-error"`
+	// Dedup is the notification deduplicator (set by config loader, not INI)
+	Dedup *NotificationDedup `mapstructure:"-" json:"-"`
 }
 
 // NewSlack returns a Slack middleware if the given configuration is not empty
@@ -55,7 +56,13 @@ func (m *Slack) Run(ctx *core.Context) error {
 	err := ctx.Next()
 	ctx.Stop(err)
 
-	if ctx.Execution.Failed || !m.SlackOnlyOnError {
+	shouldNotify := ctx.Execution.Failed || !m.SlackOnlyOnError
+	if shouldNotify {
+		// Check deduplication - suppress duplicate error notifications
+		if m.Dedup != nil && ctx.Execution.Failed && !m.Dedup.ShouldNotify(ctx) {
+			ctx.Logger.Debugf("Slack notification suppressed (duplicate within cooldown)")
+			return err
+		}
 		m.pushMessage(ctx)
 	}
 
@@ -76,9 +83,6 @@ func (m *Slack) pushMessage(ctx *core.Context) {
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		ctx.Logger.Errorf("Slack webhook URL is invalid: %q", m.SlackWebhook)
 		return
-	}
-	if host, _, herr := net.SplitHostPort(u.Host); herr == nil {
-		u.Host = host // normalize host:port to host if port is standard
 	}
 	ctxReq, cancel := context.WithTimeout(context.Background(), m.Client.Timeout)
 	defer cancel()
