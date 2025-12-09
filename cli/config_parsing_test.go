@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -286,7 +287,7 @@ command = echo hello
 					t.Error("Expected error but got nil")
 					return
 				}
-				if tt.errSubstr != "" && !containsSubstring(err.Error(), tt.errSubstr) {
+				if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
 					t.Errorf("Expected error to contain %q, got %q", tt.errSubstr, err.Error())
 				}
 			} else {
@@ -296,20 +297,6 @@ command = echo hello
 			}
 		})
 	}
-}
-
-func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // TestResolveConfigFiles tests the resolveConfigFiles function

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -48,7 +49,7 @@ func (j *RunServiceJob) InitializeRuntimeFields() {
 // For job-service-run, Image is required.
 func (j *RunServiceJob) Validate() error {
 	if j.Image == "" {
-		return fmt.Errorf("job-service-run requires 'image' to create a new swarm service")
+		return errors.New("job-service-run requires 'image' to create a new swarm service")
 	}
 	return nil
 }
