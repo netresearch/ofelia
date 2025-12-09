@@ -11,13 +11,16 @@ import (
 )
 
 type ExecJob struct {
-	BareJob     `mapstructure:",squash"`
-	Provider    DockerProvider `json:"-"` // SDK-based Docker provider
-	Container   string         `hash:"true"`
-	User        string         `default:"nobody" hash:"true"`
-	TTY         bool           `default:"false" hash:"true"`
-	Environment []string       `mapstructure:"environment" hash:"true"`
-	WorkingDir  string         `mapstructure:"working-dir" hash:"true"`
+	BareJob   `mapstructure:",squash"`
+	Provider  DockerProvider `json:"-"` // SDK-based Docker provider
+	Container string         `hash:"true"`
+	// User specifies the user to run the command as.
+	// If not set, uses the global default-user setting (default: "nobody").
+	// Set to "default" to explicitly use the container's default user, overriding global setting.
+	User        string   `hash:"true"`
+	TTY         bool     `default:"false" hash:"true"`
+	Environment []string `mapstructure:"environment" hash:"true"`
+	WorkingDir  string   `mapstructure:"working-dir" hash:"true"`
 }
 
 func NewExecJob(provider DockerProvider) *ExecJob {

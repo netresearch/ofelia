@@ -18,8 +18,11 @@ import (
 type RunServiceJob struct {
 	BareJob  `mapstructure:",squash"`
 	Provider DockerProvider `json:"-"` // SDK-based Docker provider
-	User     string         `default:"nobody" hash:"true"`
-	TTY      bool           `default:"false" hash:"true"`
+	// User specifies the user to run the service as.
+	// If not set, uses the global default-user setting (default: "nobody").
+	// Set to "default" to explicitly use the container's default user, overriding global setting.
+	User string `hash:"true"`
+	TTY  bool   `default:"false" hash:"true"`
 	// do not use bool values with "default:true" because if
 	// user would set it to "false" explicitly, it still will be
 	// changed to "true" https://github.com/netresearch/ofelia/issues/135
