@@ -15,9 +15,10 @@ type ExecJob struct {
 	Provider    DockerProvider `json:"-"` // SDK-based Docker provider
 	Container   string         `hash:"true"`
 	// User specifies the user to run the command as.
-	// If empty, uses the global default-user setting (default: "nobody").
-	// Set explicitly to "" in config to use the container's default user.
-	User        string `hash:"true"`
+	// If not set, uses the global default-user setting (default: "nobody").
+	// To use the container's default user, set "default-user =" (empty) in the [global] section,
+	// or set "user =" (empty) for this specific job to inherit the global setting.
+	User string `hash:"true"`
 	TTY         bool   `default:"false" hash:"true"`
 	Environment []string       `mapstructure:"environment" hash:"true"`
 	WorkingDir  string         `mapstructure:"working-dir" hash:"true"`
