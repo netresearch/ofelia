@@ -78,8 +78,16 @@ jobs:
         if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.diff_only == 'true')
         run: |
           echo "Running diff-based mutation testing..."
+          # Determine the base ref to diff against
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+          else
+            # For workflow_dispatch, diff against main branch
+            BASE_REF="origin/main"
+          fi
+          echo "Diffing against: $BASE_REF"
           # Check if there are any Go source files changed
-          if ! git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD -- '*.go' | grep -v '_test.go' > /dev/null 2>&1; then
+          if ! git diff --name-only "$BASE_REF"...HEAD -- '*.go' | grep -v '_test.go' > /dev/null 2>&1; then
             echo "No Go source files changed, skipping mutation testing."
             {
               echo "## Mutation Testing Results"
@@ -88,7 +96,7 @@ jobs:
             exit 0
           fi
           echo "Testing mutations in changed files..."
-          gremlins unleash --config=.gremlins.yaml --diff 2>&1 | tee mutation-output.txt
+          gremlins unleash --config=.gremlins.yaml --diff "$BASE_REF" 2>&1 | tee mutation-output.txt
           # Extract mutation score
           SCORE=$(grep -oP 'Mutation Score: \K[\d.]+' mutation-output.txt || echo "0")
           echo "MUTATION_SCORE=${SCORE}" >> "$GITHUB_ENV"
