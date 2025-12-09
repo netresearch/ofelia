@@ -660,4 +660,10 @@ func (s *SuiteConfig) TestApplyDefaultUser(c *C) {
 	user = ""
 	cfg.applyDefaultUser(&user)
 	c.Assert(user, Equals, "")
+
+	// Test 4: Sentinel value "default" overrides global to use container's default
+	cfg.Global.DefaultUser = "nobody"
+	user = UserContainerDefault
+	cfg.applyDefaultUser(&user)
+	c.Assert(user, Equals, "") // Should be empty (container's default)
 }

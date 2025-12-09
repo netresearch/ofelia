@@ -20,8 +20,7 @@ type RunServiceJob struct {
 	Provider DockerProvider `json:"-"` // SDK-based Docker provider
 	// User specifies the user to run the service as.
 	// If not set, uses the global default-user setting (default: "nobody").
-	// To use the container's default user, set "default-user =" (empty) in the [global] section,
-	// or set "user =" (empty) for this specific job to inherit the global setting.
+	// Set to "default" to explicitly use the container's default user, overriding global setting.
 	User string `hash:"true"`
 	TTY  bool   `default:"false" hash:"true"`
 	// do not use bool values with "default:true" because if

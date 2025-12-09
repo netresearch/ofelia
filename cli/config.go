@@ -267,11 +267,18 @@ func (c *Config) registerAllJobs() {
 	}
 }
 
+// UserContainerDefault is the sentinel value that explicitly requests the container's default user,
+// overriding any global default-user setting.
+const UserContainerDefault = "default"
+
 // applyDefaultUser sets the job's User field to the global default if not explicitly configured.
 // This allows per-job override while respecting the global default-user setting.
+// Special value "default" explicitly uses the container's default user (empty string).
 func (c *Config) applyDefaultUser(user *string) {
 	if *user == "" {
 		*user = c.Global.DefaultUser
+	} else if *user == UserContainerDefault {
+		*user = "" // Use container's default user
 	}
 }
 
