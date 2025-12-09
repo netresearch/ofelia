@@ -33,14 +33,18 @@ LABEL org.opencontainers.image.title="Ofelia" \
 LABEL ofelia.service=true \
       ofelia.enabled=true
 
+# tini is used as init process (PID 1) to properly reap zombie processes
+# from local jobs. See: https://github.com/krallin/tini
 # hadolint ignore=DL3018
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tini tzdata
 
 COPY --from=builder /go/bin/ofelia /usr/bin/ofelia
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
   CMD pgrep ofelia >/dev/null || exit 1
 
-ENTRYPOINT ["/usr/bin/ofelia"]
+# Use tini as init to handle zombie process reaping
+# The -g flag ensures tini kills the entire process group on signal
+ENTRYPOINT ["/sbin/tini", "-g", "--", "/usr/bin/ofelia"]
 
 CMD ["daemon", "--config", "/etc/ofelia/config.ini"]
