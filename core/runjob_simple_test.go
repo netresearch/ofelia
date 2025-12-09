@@ -489,6 +489,65 @@ func TestRunJob_EnvironmentVariables(t *testing.T) {
 	}
 }
 
+func TestRunJob_Validate(t *testing.T) {
+	testCases := []struct {
+		name        string
+		image       string
+		container   string
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "valid_with_image",
+			image:       "nginx:latest",
+			container:   "",
+			expectError: false,
+		},
+		{
+			name:        "valid_with_container",
+			image:       "",
+			container:   "existing-container",
+			expectError: false,
+		},
+		{
+			name:        "valid_with_both",
+			image:       "nginx:latest",
+			container:   "my-container",
+			expectError: false,
+		},
+		{
+			name:        "invalid_missing_both",
+			image:       "",
+			container:   "",
+			expectError: true,
+			errorMsg:    "job-run requires either 'image' (to create a new container) or 'container' (to start an existing container)",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			job := &RunJob{
+				Image:     tc.image,
+				Container: tc.container,
+			}
+
+			err := job.Validate()
+
+			if tc.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+				} else if tc.errorMsg != "" && err.Error() != tc.errorMsg {
+					t.Errorf("Expected error message %q, got %q", tc.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
+	}
+}
+
 // Helper functions for testing
 
 func stringPtr(s string) *string {

@@ -218,6 +218,100 @@ command = echo updated
 	}
 }
 
+// TestBuildFromString_JobValidation tests job configuration validation
+func TestBuildFromString_JobValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		config    string
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name: "job-run_valid_with_image",
+			config: `
+[job-run "valid-run"]
+schedule = @every 10s
+image = alpine
+command = echo hello
+`,
+			wantErr: false,
+		},
+		{
+			name: "job-run_valid_with_container",
+			config: `
+[job-run "valid-run"]
+schedule = @every 10s
+container = existing-container
+`,
+			wantErr: false,
+		},
+		{
+			name: "job-run_invalid_missing_image_and_container",
+			config: `
+[job-run "invalid-run"]
+schedule = @every 10s
+command = echo hello
+`,
+			wantErr:   true,
+			errSubstr: "job-run requires either 'image'",
+		},
+		{
+			name: "job-service-run_valid_with_image",
+			config: `
+[job-service-run "valid-service"]
+schedule = @every 10s
+image = nginx
+`,
+			wantErr: false,
+		},
+		{
+			name: "job-service-run_invalid_missing_image",
+			config: `
+[job-service-run "invalid-service"]
+schedule = @every 10s
+command = echo hello
+`,
+			wantErr:   true,
+			errSubstr: "job-service-run requires 'image'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := test.NewTestLogger()
+			_, err := BuildFromString(tt.config, logger)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Expected error but got nil")
+					return
+				}
+				if tt.errSubstr != "" && !containsSubstring(err.Error(), tt.errSubstr) {
+					t.Errorf("Expected error to contain %q, got %q", tt.errSubstr, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func containsSubstring(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 // TestResolveConfigFiles tests the resolveConfigFiles function
 func TestResolveConfigFiles(t *testing.T) {
 	tests := []struct {

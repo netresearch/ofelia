@@ -173,6 +173,7 @@ func (s *SuiteConfig) TestDockerLabelsUpdateStaleJobs(c *C) {
 			labelPrefix + ".job-local.l.schedule":       "@daily",
 			labelPrefix + ".job-local.l.command":        "echo loc",
 			labelPrefix + ".job-service-run.s.schedule": "@hourly",
+			labelPrefix + ".job-service-run.s.image":    "nginx",
 			labelPrefix + ".job-service-run.s.command":  "echo svc",
 		},
 	}

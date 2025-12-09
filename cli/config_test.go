@@ -34,12 +34,14 @@ func (s *SuiteConfig) TestBuildFromString(c *C) {
 
 		[job-run "qux"]
 		schedule = @every 10s
+		image = alpine
 
 		[job-local "baz"]
 		schedule = @every 10s
 
 		[job-service-run "bob"]
 		schedule = @every 10s
+		image = nginx
   `, &mockLogger)
 
 	c.Assert(err, IsNil)
@@ -102,6 +104,7 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 			Ini: `
 				[job-run "foo"]
 				schedule = @every 10s
+				image = alpine
 				environment = "KEY1=value1"
 				Environment = "KEY2=value2"
 				`,
@@ -111,6 +114,7 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 						BareJob: core.BareJob{
 							Schedule: "@every 10s",
 						},
+						Image:       "alpine",
 						Environment: []string{"KEY1=value1", "KEY2=value2"},
 					}},
 				},
@@ -121,6 +125,7 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 			Ini: `
                                 [job-run "foo"]
                                 schedule = @every 10s
+                                image = alpine
                                 volumes-from = "volume1"
                                 volumes-from = "volume2"
                                 `,
@@ -130,16 +135,18 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 						BareJob: core.BareJob{
 							Schedule: "@every 10s",
 						},
+						Image:       "alpine",
 						VolumesFrom: []string{"volume1", "volume2"},
 					}},
 				},
 			},
-			Comment: "Test job-run with Env Variables",
+			Comment: "Test job-run with Volumes",
 		},
 		{
 			Ini: `
                                 [job-run "foo"]
                                 schedule = @every 10s
+                                image = alpine
                                 entrypoint = ""
                                 `,
 			ExpectedConfig: Config{
@@ -148,6 +155,7 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 						BareJob: core.BareJob{
 							Schedule: "@every 10s",
 						},
+						Image:      "alpine",
 						Entrypoint: func() *string { s := ""; return &s }(),
 					}},
 				},
@@ -524,6 +532,7 @@ func (s *SuiteConfig) TestBuildFromFile(c *C) {
 	content := `
 [ job-run "foo" ]
 schedule = @every 5s
+image = alpine
 command = echo test123
 `
 	_, _ = tmpFile.WriteString(content)

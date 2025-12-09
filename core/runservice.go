@@ -44,6 +44,15 @@ func (j *RunServiceJob) InitializeRuntimeFields() {
 	// No additional initialization needed with DockerProvider
 }
 
+// Validate checks that the job configuration is valid.
+// For job-service-run, Image is required.
+func (j *RunServiceJob) Validate() error {
+	if j.Image == "" {
+		return fmt.Errorf("job-service-run requires 'image' to create a new swarm service")
+	}
+	return nil
+}
+
 func (j *RunServiceJob) Run(ctx *Context) error {
 	bgCtx := context.Background()
 
