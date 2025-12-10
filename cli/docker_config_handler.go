@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/netresearch/ofelia/core"
+	dockeradapter "github.com/netresearch/ofelia/core/adapters/docker"
 	"github.com/netresearch/ofelia/core/domain"
 )
 
@@ -155,7 +156,12 @@ func NewDockerHandler(
 
 // buildSDKProvider creates the new SDK-based Docker provider.
 func (c *DockerHandler) buildSDKProvider() (core.DockerProvider, error) {
-	provider, err := core.NewSDKDockerProviderDefault()
+	// Create auth provider for registry authentication
+	authProvider := dockeradapter.NewConfigAuthProvider()
+
+	provider, err := core.NewSDKDockerProvider(&core.SDKDockerProviderConfig{
+		AuthProvider: authProvider,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SDK Docker provider: %w", err)
 	}
