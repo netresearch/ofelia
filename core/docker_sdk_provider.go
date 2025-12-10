@@ -17,6 +17,7 @@ type SDKDockerProvider struct {
 	client          ports.DockerClient
 	logger          Logger
 	metricsRecorder MetricsRecorder
+	authProvider    ports.AuthProvider
 }
 
 // SDKDockerProviderConfig configures the SDK provider.
@@ -27,6 +28,8 @@ type SDKDockerProviderConfig struct {
 	Logger Logger
 	// MetricsRecorder for metrics tracking
 	MetricsRecorder MetricsRecorder
+	// AuthProvider for registry authentication (optional)
+	AuthProvider ports.AuthProvider
 }
 
 // NewSDKDockerProvider creates a new SDK-based Docker provider.
@@ -43,15 +46,18 @@ func NewSDKDockerProvider(cfg *SDKDockerProviderConfig) (*SDKDockerProvider, err
 
 	var logger Logger
 	var metricsRecorder MetricsRecorder
+	var authProvider ports.AuthProvider
 	if cfg != nil {
 		logger = cfg.Logger
 		metricsRecorder = cfg.MetricsRecorder
+		authProvider = cfg.AuthProvider
 	}
 
 	return &SDKDockerProvider{
 		client:          client,
 		logger:          logger,
 		metricsRecorder: metricsRecorder,
+		authProvider:    authProvider,
 	}, nil
 }
 
@@ -280,6 +286,15 @@ func (p *SDKDockerProvider) PullImage(ctx context.Context, image string) error {
 	opts := domain.PullOptions{
 		Repository: ref.Repository,
 		Tag:        ref.Tag,
+	}
+
+	// Get registry auth if provider configured
+	if p.authProvider != nil {
+		registry := dockeradapter.ExtractRegistry(image)
+		if auth, err := p.authProvider.GetEncodedAuth(registry); err == nil && auth != "" {
+			opts.RegistryAuth = auth
+			p.logDebug("Using registry auth for %s", registry)
+		}
 	}
 
 	if err := p.client.Images().PullAndWait(ctx, opts); err != nil {
