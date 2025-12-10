@@ -86,6 +86,74 @@ func (s *MailSuite) TestRunSuccess(c *C) {
 	<-done
 }
 
+// TestRunWithEmptyStreams verifies that zero-sized attachments are not sent
+// when stdout/stderr streams are empty (fixes issue #326 - SMTP servers like
+// Postmark reject zero-sized attachments).
+func (s *MailSuite) TestRunWithEmptyStreams(c *C) {
+	s.ctx.Start()
+	s.ctx.Stop(nil)
+
+	// Ensure streams are empty (they should be by default)
+	c.Assert(s.ctx.Execution.OutputStream.TotalWritten(), Equals, int64(0))
+	c.Assert(s.ctx.Execution.ErrorStream.TotalWritten(), Equals, int64(0))
+
+	m := NewMail(&MailConfig{
+		SMTPHost:  s.smtpdHost,
+		SMTPPort:  s.smtpdPort,
+		EmailTo:   "foo@foo.com",
+		EmailFrom: "qux@qux.com",
+	})
+
+	done := make(chan struct{})
+	go func() {
+		c.Assert(m.Run(s.ctx), IsNil)
+		close(done)
+	}()
+
+	select {
+	case from := <-s.fromCh:
+		c.Assert(from, Equals, "qux@qux.com")
+	case <-time.After(3 * time.Second):
+		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+	}
+
+	<-done
+}
+
+// TestRunWithNonEmptyStreams verifies that attachments are sent when streams have content.
+func (s *MailSuite) TestRunWithNonEmptyStreams(c *C) {
+	s.ctx.Start()
+	// Write some output to streams
+	_, _ = s.ctx.Execution.OutputStream.Write([]byte("stdout content"))
+	_, _ = s.ctx.Execution.ErrorStream.Write([]byte("stderr content"))
+	s.ctx.Stop(nil)
+
+	c.Assert(s.ctx.Execution.OutputStream.TotalWritten() > 0, Equals, true)
+	c.Assert(s.ctx.Execution.ErrorStream.TotalWritten() > 0, Equals, true)
+
+	m := NewMail(&MailConfig{
+		SMTPHost:  s.smtpdHost,
+		SMTPPort:  s.smtpdPort,
+		EmailTo:   "foo@foo.com",
+		EmailFrom: "qux@qux.com",
+	})
+
+	done := make(chan struct{})
+	go func() {
+		c.Assert(m.Run(s.ctx), IsNil)
+		close(done)
+	}()
+
+	select {
+	case from := <-s.fromCh:
+		c.Assert(from, Equals, "qux@qux.com")
+	case <-time.After(3 * time.Second):
+		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+	}
+
+	<-done
+}
+
 // test SMTP backend using github.com/emersion/go-smtp
 type testBackend struct {
 	fromCh chan string
