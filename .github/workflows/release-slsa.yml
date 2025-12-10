@@ -291,6 +291,10 @@ jobs:
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
+        # GHCR reads description from manifest index annotations, not image labels
+        # See: https://docs.docker.com/build/metadata/annotations/
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # Generate OCI Image annotations
@@ -353,23 +357,3 @@ jobs:
           set -euo pipefail
           cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest@${{ steps.push.outputs.digest }}
           cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}@${{ steps.push.outputs.digest }}
-
-      - name: Update package description
-        env:
-          OWNER: ${{ github.repository_owner }}
-        run: |
-          set -euo pipefail
-          # Try organization endpoint first, fall back to user endpoint if it fails
-          if ! curl -sSf -X PATCH \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/orgs/${OWNER}/packages/container/ofelia" \
-            -d '{"description":"A docker job scheduler (based on mcuadros/ofelia)"}'; then
-            curl -sSf -X PATCH \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/users/${OWNER}/packages/container/ofelia" \
-              -d '{"description":"A docker job scheduler (based on mcuadros/ofelia)"}'
-          fi
