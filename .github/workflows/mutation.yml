@@ -62,8 +62,8 @@ jobs:
         run: |
           echo "Running full mutation testing..."
           gremlins unleash --config=.gremlins.yaml 2>&1 | tee mutation-output.txt
-          # Extract mutation score
-          SCORE=$(grep -oP 'Mutation Score: \K[\d.]+' mutation-output.txt || echo "0")
+          # Extract mutation score (gremlins outputs "Test efficacy: X.XX%")
+          SCORE=$(grep -oP 'Test efficacy: \K[\d.]+' mutation-output.txt || echo "0")
           echo "MUTATION_SCORE=${SCORE}" >> "$GITHUB_ENV"
           {
             echo "## Mutation Testing Results"
@@ -97,8 +97,8 @@ jobs:
           fi
           echo "Testing mutations in changed files..."
           gremlins unleash --config=.gremlins.yaml --diff "$BASE_REF" 2>&1 | tee mutation-output.txt
-          # Extract mutation score
-          SCORE=$(grep -oP 'Mutation Score: \K[\d.]+' mutation-output.txt || echo "0")
+          # Extract mutation score (gremlins outputs "Test efficacy: X.XX%")
+          SCORE=$(grep -oP 'Test efficacy: \K[\d.]+' mutation-output.txt || echo "0")
           echo "MUTATION_SCORE=${SCORE}" >> "$GITHUB_ENV"
           {
             echo "## Mutation Testing Results (Diff Mode)"
