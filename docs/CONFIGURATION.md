@@ -85,6 +85,96 @@ services:
 - Global settings centralized in one place
 - Environment variable substitution for secrets (`${SMTP_PASSWORD}`)
 
+### Labels-Only Configuration (No INI File)
+
+Ofelia can run entirely without an INI configuration file, using only Docker labels and environment variables. This is ideal for simple setups, Kubernetes environments, or when you want all configuration in one place.
+
+**When the INI file is missing or unreadable, Ofelia**:
+- Logs a warning but continues running
+- Creates an empty internal configuration
+- Relies entirely on Docker labels for job definitions
+- Uses environment variables for daemon settings
+
+**Example: Pure Docker Labels Setup**
+
+```yaml
+version: '3.8'
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    command: daemon --docker-events
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Daemon settings via environment variables
+      - OFELIA_LOG_LEVEL=info
+      - OFELIA_ENABLE_WEB=true
+      - OFELIA_WEB_ADDRESS=:8081
+    labels:
+      # Mark this as the Ofelia service container
+      ofelia.service: "true"
+      ofelia.enabled: "true"
+      # Global settings via labels (on Ofelia container with ofelia.service=true)
+      ofelia.slack-webhook: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+      ofelia.slack-only-on-error: "true"
+      # job-run can be defined on Ofelia container
+      ofelia.job-run.cleanup.schedule: "@daily"
+      ofelia.job-run.cleanup.image: "alpine:latest"
+      ofelia.job-run.cleanup.command: "echo 'Daily cleanup'"
+      ofelia.job-run.cleanup.delete: "true"
+    ports:
+      - "8081:8081"
+
+  app:
+    image: myapp:latest
+    labels:
+      ofelia.enabled: "true"
+      # job-exec defined on target container
+      ofelia.job-exec.health.schedule: "*/5 * * * *"
+      ofelia.job-exec.health.command: "curl -f http://localhost:8080/health"
+```
+
+**Key Points**:
+
+| Setting Type | Configuration Method | Notes |
+|--------------|---------------------|-------|
+| Daemon options | Environment variables | `OFELIA_*` prefix |
+| Global notifications | Labels on Ofelia container | Requires `ofelia.service=true` |
+| job-exec | Labels on target container | Container auto-detected |
+| job-run, job-local, job-service | Labels on Ofelia container | Requires `ofelia.service=true` |
+
+**Available Environment Variables**:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OFELIA_CONFIG` | Config file path | `/etc/ofelia/config.ini` |
+| `OFELIA_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | INFO |
+| `OFELIA_DOCKER_FILTER` | Docker container filter | (none) |
+| `OFELIA_POLL_INTERVAL` | Docker poll interval | 10s |
+| `OFELIA_DOCKER_EVENTS` | Use Docker events instead of polling | false |
+| `OFELIA_DOCKER_NO_POLL` | Disable Docker polling | false |
+| `OFELIA_ENABLE_WEB` | Enable web UI | false |
+| `OFELIA_WEB_ADDRESS` | Web UI bind address | :8081 |
+| `OFELIA_ENABLE_PPROF` | Enable pprof profiling | false |
+| `OFELIA_PPROF_ADDRESS` | pprof bind address | 127.0.0.1:8080 |
+
+**Limitations of Labels-Only Configuration**:
+- No environment variable substitution in label values (`${VAR}` won't expand)
+- Sensitive values (passwords, API keys) visible in `docker inspect`
+- Global notification settings require `ofelia.service=true` on Ofelia container
+- Per-job SMTP credentials not recommended (use INI for credentials)
+
+**When to Use Labels-Only**:
+- Simple setups without email notifications
+- Slack-only notifications (webhook URL is less sensitive)
+- Development and testing environments
+- When all configuration should be in docker-compose.yml
+
+**When to Use Hybrid (INI + Labels)**:
+- Production environments with email notifications
+- When credentials must be protected
+- When you need environment variable substitution for secrets
+
 ## INI Configuration
 
 ### Basic Structure
