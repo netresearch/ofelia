@@ -345,8 +345,16 @@ func (c *Config) mergeMailDefaults(job *middlewares.MailConfig) {
 	if job.SMTPPassword == "" {
 		job.SMTPPassword = global.SMTPPassword
 	}
-	// SMTPTLSSkipVerify: bool - inherit if global is true and job didn't set it
-	// Since we can't distinguish "not set" from "false", we only inherit true
+	// SMTPTLSSkipVerify is a bool field with inherent Go limitation:
+	// We cannot distinguish "not explicitly set" (zero value) from "explicitly set to false".
+	// Inheritance behavior:
+	//   - Global=true,  Job=false  → Job gets true  (inherits global's insecure setting)
+	//   - Global=false, Job=false  → Job stays false (secure default, no change needed)
+	//   - Global=true,  Job=true   → Job stays true  (already insecure)
+	//   - Global=false, Job=true   → Job stays true  (job explicitly set insecure - CANNOT override)
+	// The last case means a job CANNOT be forced to use TLS verification if it was
+	// explicitly configured with smtp-tls-skip-verify=true. This is acceptable since
+	// per-job security settings should be explicit, not silently inherited.
 	if global.SMTPTLSSkipVerify && !job.SMTPTLSSkipVerify {
 		job.SMTPTLSSkipVerify = global.SMTPTLSSkipVerify
 	}

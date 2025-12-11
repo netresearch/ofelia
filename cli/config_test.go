@@ -759,3 +759,49 @@ func (s *SuiteConfig) TestMergeSlackDefaults(c *C) {
 
 	c.Assert(jobSlack2.SlackWebhook, Equals, "https://hooks.slack.com/services/job-specific")
 }
+
+// TestMergeMailDefaults_BoolFieldLimitation documents the Go bool field inheritance limitation.
+// Since we cannot distinguish "not set" from "explicitly false", the behavior is asymmetric:
+// - Global=true, Job=false → Job inherits true (insecure setting propagates)
+// - Global=false, Job=true → Job keeps true (secure global CANNOT force secure on job)
+// This is acceptable since per-job security settings should be explicit.
+func (s *SuiteConfig) TestMergeMailDefaults_BoolFieldLimitation(c *C) {
+	// Case 1: Global smtp-tls-skip-verify=true propagates to job with default (false)
+	cfg1 := NewConfig(&TestLogger{})
+	cfg1.Global.MailConfig.SMTPTLSSkipVerify = true
+	jobMail1 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
+	cfg1.mergeMailDefaults(&jobMail1)
+	c.Assert(jobMail1.SMTPTLSSkipVerify, Equals, true,
+		Commentf("Global skip-verify=true should propagate to job"))
+
+	// Case 2: Global smtp-tls-skip-verify=false does NOT override job with true
+	// This is the documented limitation - we cannot force TLS verification
+	cfg2 := NewConfig(&TestLogger{})
+	cfg2.Global.MailConfig.SMTPTLSSkipVerify = false
+	jobMail2 := middlewares.MailConfig{
+		SMTPHost:          "mail.example.com",
+		SMTPTLSSkipVerify: true, // Job explicitly skips verification
+	}
+	cfg2.mergeMailDefaults(&jobMail2)
+	c.Assert(jobMail2.SMTPTLSSkipVerify, Equals, true,
+		Commentf("Job skip-verify=true should NOT be overridden by global false (Go bool limitation)"))
+
+	// Case 3: Both false - secure default maintained
+	cfg3 := NewConfig(&TestLogger{})
+	cfg3.Global.MailConfig.SMTPTLSSkipVerify = false
+	jobMail3 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
+	cfg3.mergeMailDefaults(&jobMail3)
+	c.Assert(jobMail3.SMTPTLSSkipVerify, Equals, false,
+		Commentf("Both false - secure default should be maintained"))
+
+	// Case 4: Both true - insecure settings preserved
+	cfg4 := NewConfig(&TestLogger{})
+	cfg4.Global.MailConfig.SMTPTLSSkipVerify = true
+	jobMail4 := middlewares.MailConfig{
+		SMTPHost:          "mail.example.com",
+		SMTPTLSSkipVerify: true,
+	}
+	cfg4.mergeMailDefaults(&jobMail4)
+	c.Assert(jobMail4.SMTPTLSSkipVerify, Equals, true,
+		Commentf("Both true - insecure setting should be preserved"))
+}

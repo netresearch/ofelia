@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"bytes"
 	"io"
 	"net"
 	"strconv"
@@ -19,6 +20,7 @@ type MailSuite struct {
 	smtpdHost string
 	smtpdPort int
 	fromCh    chan string
+	dataCh    chan string // Channel to receive email body data for attachment verification
 }
 
 var _ = Suite(&MailSuite{})
@@ -27,6 +29,7 @@ func (s *MailSuite) SetUpTest(c *C) {
 	s.BaseSuite.SetUpTest(c)
 
 	s.fromCh = make(chan string, 1)
+	s.dataCh = make(chan string, 1)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	c.Assert(err, IsNil)
@@ -34,7 +37,8 @@ func (s *MailSuite) SetUpTest(c *C) {
 	s.l = ln
 	// Initialize server outside of the goroutine to avoid racy field writes
 	fromCh := s.fromCh
-	srv := smtp.NewServer(&testBackend{fromCh: fromCh})
+	dataCh := s.dataCh
+	srv := smtp.NewServer(&testBackend{fromCh: fromCh, dataCh: dataCh})
 	srv.AllowInsecureAuth = true
 	s.server = srv
 	go func(srv *smtp.Server, ln net.Listener) {
@@ -117,6 +121,21 @@ func (s *MailSuite) TestRunWithEmptyStreams(c *C) {
 		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
 	}
 
+	// Verify that stdout/stderr attachments are NOT included when streams are empty
+	select {
+	case emailData := <-s.dataCh:
+		// Email should NOT contain stdout.log or stderr.log attachments
+		c.Assert(strings.Contains(emailData, "stdout.log"), Equals, false,
+			Commentf("stdout.log attachment should not be included for empty streams"))
+		c.Assert(strings.Contains(emailData, "stderr.log"), Equals, false,
+			Commentf("stderr.log attachment should not be included for empty streams"))
+		// But should still contain the JSON attachment with job metadata
+		c.Assert(strings.Contains(emailData, ".json"), Equals, true,
+			Commentf("JSON attachment with job metadata should always be included"))
+	case <-time.After(3 * time.Second):
+		c.Errorf("timeout waiting for email data")
+	}
+
 	<-done
 }
 
@@ -151,20 +170,37 @@ func (s *MailSuite) TestRunWithNonEmptyStreams(c *C) {
 		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
 	}
 
+	// Verify that stdout/stderr attachments ARE included when streams have content
+	select {
+	case emailData := <-s.dataCh:
+		// Email should contain stdout.log and stderr.log attachments
+		c.Assert(strings.Contains(emailData, "stdout.log"), Equals, true,
+			Commentf("stdout.log attachment should be included for non-empty streams"))
+		c.Assert(strings.Contains(emailData, "stderr.log"), Equals, true,
+			Commentf("stderr.log attachment should be included for non-empty streams"))
+		// Should also contain the JSON attachment with job metadata
+		c.Assert(strings.Contains(emailData, ".json"), Equals, true,
+			Commentf("JSON attachment with job metadata should always be included"))
+	case <-time.After(3 * time.Second):
+		c.Errorf("timeout waiting for email data")
+	}
+
 	<-done
 }
 
 // test SMTP backend using github.com/emersion/go-smtp
 type testBackend struct {
 	fromCh chan string
+	dataCh chan string
 }
 
 func (b *testBackend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
-	return &testSession{fromCh: b.fromCh}, nil
+	return &testSession{fromCh: b.fromCh, dataCh: b.dataCh}, nil
 }
 
 type testSession struct {
 	fromCh chan string
+	dataCh chan string
 }
 
 func (s *testSession) Mail(from string, _ *smtp.MailOptions) error {
@@ -175,8 +211,12 @@ func (s *testSession) Mail(from string, _ *smtp.MailOptions) error {
 func (s *testSession) Rcpt(_ string, _ *smtp.RcptOptions) error { return nil }
 
 func (s *testSession) Data(r io.Reader) error {
-	// Drain data
-	_, _ = io.Copy(io.Discard, r)
+	// Capture email body for attachment verification
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	if s.dataCh != nil {
+		s.dataCh <- buf.String()
+	}
 	return nil
 }
 
