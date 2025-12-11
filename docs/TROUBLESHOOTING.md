@@ -467,6 +467,68 @@ docker exec ofelia env | grep JWT_SECRET
    docker exec ofelia env | grep JWT_SECRET
    ```
 
+### Job-Run Labels Not Discovered
+
+**Symptoms**:
+```
+Error: unable to start a empty scheduler
+```
+
+Labels configured on application containers (nginx, postgres, etc.) with `job-run` jobs are not being detected by Ofelia.
+
+**Root Cause**:
+
+Different job types have different label placement requirements:
+
+| Job Type | Label Placement | Reason |
+|----------|----------------|--------|
+| `job-exec` | Target container | Executes commands inside the labeled container |
+| `job-run` | Ofelia container | Creates new containers, not tied to any specific existing container |
+| `job-local` | Ofelia container | Runs on host, labels must be on Ofelia itself |
+| `job-service` | Ofelia container | Creates Swarm services, not tied to existing containers |
+
+**Incorrect Configuration** (Labels on nginx, not discovered):
+```yaml
+services:
+  nginx:
+    image: nginx:latest
+    labels:
+      ofelia.enabled: "true"
+      # ❌ WRONG: job-run labels on nginx won't be discovered
+      ofelia.job-run.backup.schedule: "@daily"
+      ofelia.job-run.backup.image: "postgres:15"
+      ofelia.job-run.backup.command: "pg_dump mydb"
+```
+
+**Correct Configuration** (Labels on Ofelia container):
+```yaml
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      ofelia.enabled: "true"
+      # ✅ CORRECT: job-run labels on Ofelia container
+      ofelia.job-run.backup.schedule: "@daily"
+      ofelia.job-run.backup.image: "postgres:15"
+      ofelia.job-run.backup.command: "pg_dump mydb"
+
+  nginx:
+    image: nginx:latest
+    labels:
+      ofelia.enabled: "true"
+      # ✅ CORRECT: job-exec labels on target container
+      ofelia.job-exec.reload.schedule: "@hourly"
+      ofelia.job-exec.reload.command: "nginx -s reload"
+```
+
+**Key Distinction**:
+- `job-exec` requires a `container` parameter (implicit when using labels on target container)
+- `job-run` requires an `image` parameter (creates new container, no existing container needed)
+
+**Alternative**: Use INI configuration file instead of labels for `job-run` jobs, which avoids this confusion entirely.
+
 ## Authentication Issues
 
 ### JWT Secret Too Short
