@@ -381,6 +381,50 @@ email-from = ofelia@example.com
 email-only-on-error = true
 ```
 
+### Configuration Inheritance
+
+Notification settings support inheritance from global to job-level configuration. When a job specifies only some notification settings, the missing values are automatically inherited from the `[global]` section.
+
+**Inheritance Rules:**
+
+| Setting Type | Inherited Fields | Notes |
+|--------------|------------------|-------|
+| **Email** | `smtp-host`, `smtp-port`, `smtp-user`, `smtp-password`, `email-from`, `email-to` | SMTP connection details are inherited |
+| **Slack** | `slack-webhook` | Webhook URL is inherited |
+
+**Example: Partial Override**
+
+```ini
+[global]
+# Define SMTP settings once
+smtp-host = smtp.example.com
+smtp-port = 587
+smtp-user = notifications@example.com
+smtp-password = ${SMTP_PASSWORD}
+email-from = ofelia@example.com
+email-to = ops@example.com
+
+[job-exec "backup"]
+schedule = @daily
+container = postgres
+command = pg_dump mydb > /backup/db.sql
+# Only override error-only behavior - inherits all SMTP settings from global
+email-only-on-error = true
+
+[job-exec "critical-check"]
+schedule = @hourly
+container = app
+command = health-check.sh
+# Override recipient - inherits SMTP settings from global
+email-to = critical-alerts@example.com
+```
+
+**Important Notes:**
+
+- Boolean fields (`email-only-on-error`, `slack-only-on-error`) are NOT inherited due to Go's zero-value semantics (cannot distinguish "not set" from "explicitly false")
+- Job-level settings always take precedence over global settings when explicitly set
+- To enable notifications for a job, at minimum specify `email-to` or `slack-webhook` at either global or job level
+
 ### Output Saving
 
 ```ini
