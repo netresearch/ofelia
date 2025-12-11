@@ -98,6 +98,84 @@ ls -la /var/run/docker.sock
    - Start Docker Desktop application
    - Wait for "Docker Desktop is running" status
 
+### Docker Socket with User Namespace Remapping
+
+**Symptoms**:
+```
+Error: dial unix /var/run/docker.sock: connect: permission denied
+```
+
+This occurs when Docker is configured with user namespace remapping (`"userns-remap": "default"` in `/etc/docker/daemon.json`), which remaps container UIDs/GIDs for security isolation.
+
+**Root Cause**:
+
+User namespace remapping creates a mapping between container users and host users. The Ofelia container runs as a different effective UID on the host, which may not have permission to access the Docker socket.
+
+**Diagnosis**:
+```bash
+# Check if userns-remap is enabled
+docker info | grep "Docker Root Dir"
+# If it shows /var/lib/docker/100000.100000, userns-remap is active
+
+# Check the remapped user
+grep dockremap /etc/subuid /etc/subgid
+
+# Check socket ownership
+ls -la /var/run/docker.sock
+
+# Check Ofelia's effective UID in the container
+docker exec ofelia id
+```
+
+**Solutions**:
+
+1. **Match socket permissions to remapped user**:
+   ```bash
+   # Find the remapped UID (typically 100000 for dockremap)
+   REMAP_UID=$(grep dockremap /etc/subuid | cut -d: -f2)
+
+   # Grant access via ACL
+   sudo setfacl -m u:$REMAP_UID:rwx /var/run/docker.sock
+   ```
+
+2. **Run Ofelia outside namespace remapping**:
+   ```yaml
+   # docker-compose.yml
+   services:
+     ofelia:
+       image: ghcr.io/netresearch/ofelia:latest
+       userns_mode: "host"  # Bypass namespace remapping
+       volumes:
+         - /var/run/docker.sock:/var/run/docker.sock:ro
+   ```
+
+3. **Use Docker TCP socket instead**:
+   ```ini
+   [global]
+   docker-host = tcp://localhost:2375
+   ```
+
+   Enable TCP in Docker daemon:
+   ```json
+   {
+     "hosts": ["unix:///var/run/docker.sock", "tcp://127.0.0.1:2375"]
+   }
+   ```
+
+4. **Disable userns-remap for development**:
+   ```json
+   // /etc/docker/daemon.json
+   {
+     "userns-remap": ""
+   }
+   ```
+   Then restart Docker: `sudo systemctl restart docker`
+
+**Security Considerations**:
+- `userns_mode: "host"` reduces container isolation
+- TCP socket should only bind to localhost, not 0.0.0.0
+- Consider the security implications before disabling userns-remap in production
+
 ### HTTP/2 Protocol Errors (v0.11.0 Only)
 
 **Symptoms**:
