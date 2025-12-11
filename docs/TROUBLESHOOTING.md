@@ -534,6 +534,86 @@ docker logs ofelia | grep "backup-db"
    overlap = false  # Remove or set to true
    ```
 
+### Jobs Being Skipped
+
+**Symptoms**:
+- Jobs run initially but start getting skipped after some time
+- Log shows "skipping job - already running"
+- Scheduled executions are missed without errors
+
+**Root Cause**:
+
+When `overlap = false` (or `no-overlap: 'true'` in Docker labels), Ofelia prevents concurrent executions of the same job. If a previous execution appears to still be running (e.g., a hung process that never terminated), subsequent scheduled runs will be skipped.
+
+Common causes of "stuck" jobs:
+- **Node.js**: Unhandled promise rejections don't exit by default
+- **Python**: Background threads keeping process alive
+- **Shell scripts**: Backgrounded processes or orphaned subprocesses
+- **Deadlocks**: Application waiting for resources indefinitely
+
+**Diagnosis**:
+```bash
+# Check if previous job is still "running"
+docker logs ofelia 2>&1 | grep -i "already running\|skipping"
+
+# Check container processes
+docker exec <container> ps aux
+
+# Check for zombie processes
+docker exec <container> ps aux | grep defunct
+```
+
+**Solutions**:
+
+1. **Ensure proper process exit for Node.js**:
+   ```bash
+   # Force exit on unhandled rejections
+   node --unhandled-rejections=strict index.js
+   ```
+
+2. **Add explicit exit handling**:
+   ```javascript
+   // Node.js
+   process.on('uncaughtException', (err) => {
+     console.error('Uncaught exception:', err);
+     process.exit(1);
+   });
+   ```
+
+   ```python
+   # Python
+   import sys
+   import atexit
+   atexit.register(lambda: sys.exit(0))
+   ```
+
+3. **Set command timeout**:
+   ```ini
+   [job-exec "my-job"]
+   schedule = @hourly
+   container = app
+   command = timeout 300 ./my-script.sh  # 5-minute timeout
+   ```
+
+4. **Temporarily disable overlap protection**:
+   ```ini
+   # For debugging - allows concurrent runs
+   overlap = true
+   ```
+
+5. **Use shell wrapper with timeout**:
+   ```bash
+   #!/bin/bash
+   set -e  # Exit on error
+   timeout 600 ./actual-command.sh || exit $?
+   ```
+
+**Prevention**:
+- Always use `set -e` in shell scripts
+- Implement proper signal handling in long-running processes
+- Add timeouts to external API calls and database queries
+- Use process supervisors for complex jobs
+
 ### Job Execution Fails
 
 **Symptoms**:
