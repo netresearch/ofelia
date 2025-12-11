@@ -98,6 +98,89 @@ ls -la /var/run/docker.sock
    - Start Docker Desktop application
    - Wait for "Docker Desktop is running" status
 
+### Docker Socket with User Namespace Remapping
+
+**Symptoms**:
+```
+Error: dial unix /var/run/docker.sock: connect: permission denied
+```
+
+This occurs when Docker is configured with user namespace remapping (`"userns-remap": "default"` in `/etc/docker/daemon.json`), which remaps container UIDs/GIDs for security isolation.
+
+**Root Cause**:
+
+User namespace remapping creates a mapping between container users and host users. The Ofelia container runs as a different effective UID on the host, which may not have permission to access the Docker socket.
+
+**Diagnosis**:
+```bash
+# Check if userns-remap is enabled
+docker info | grep "Docker Root Dir"
+# If it shows /var/lib/docker/100000.100000, userns-remap is active
+
+# Check the remapped user
+grep dockremap /etc/subuid /etc/subgid
+
+# Check socket ownership
+ls -la /var/run/docker.sock
+
+# Check Ofelia's effective UID in the container
+docker exec ofelia id
+```
+
+**Solutions**:
+
+1. **Match socket permissions to remapped user**:
+   ```bash
+   # Find the remapped UID (typically 100000 for dockremap)
+   REMAP_UID=$(grep dockremap /etc/subuid | cut -d: -f2)
+
+   # Grant access via ACL
+   sudo setfacl -m u:$REMAP_UID:rwx /var/run/docker.sock
+   ```
+
+2. **Run Ofelia outside namespace remapping**:
+   ```yaml
+   # docker-compose.yml
+   services:
+     ofelia:
+       image: ghcr.io/netresearch/ofelia:latest
+       userns_mode: "host"  # Bypass namespace remapping
+       volumes:
+         - /var/run/docker.sock:/var/run/docker.sock:ro
+   ```
+
+3. **Use Docker TCP socket instead** (development only):
+
+   > **WARNING**: This exposes the Docker daemon API without authentication.
+   > Any local process can gain full Docker control, enabling privilege escalation
+   > to root. Only use in isolated development environments, never in production.
+
+   ```ini
+   [global]
+   docker-host = tcp://localhost:2375
+   ```
+
+   Enable TCP in Docker daemon:
+   ```json
+   {
+     "hosts": ["unix:///var/run/docker.sock", "tcp://127.0.0.1:2375"]
+   }
+   ```
+
+4. **Disable userns-remap for development**:
+   ```json
+   // /etc/docker/daemon.json
+   {
+     "userns-remap": ""
+   }
+   ```
+   Then restart Docker: `sudo systemctl restart docker`
+
+**Security Considerations**:
+- `userns_mode: "host"` reduces container isolation
+- TCP socket should only bind to localhost, not 0.0.0.0
+- Consider the security implications before disabling userns-remap in production
+
 ### HTTP/2 Protocol Errors (v0.11.0 Only)
 
 **Symptoms**:
@@ -389,6 +472,68 @@ docker exec ofelia env | grep JWT_SECRET
    docker exec ofelia env | grep JWT_SECRET
    ```
 
+### Job-Run Labels Not Discovered
+
+**Symptoms**:
+```
+Error: unable to start a empty scheduler
+```
+
+Labels configured on application containers (nginx, postgres, etc.) with `job-run` jobs are not being detected by Ofelia.
+
+**Root Cause**:
+
+Different job types have different label placement requirements:
+
+| Job Type | Label Placement | Reason |
+|----------|----------------|--------|
+| `job-exec` | Target container | Executes commands inside the labeled container |
+| `job-run` | Ofelia container | Creates new containers, not tied to any specific existing container |
+| `job-local` | Ofelia container | Runs on host, labels must be on Ofelia itself |
+| `job-service` | Ofelia container | Creates Swarm services, not tied to existing containers |
+
+**Incorrect Configuration** (Labels on nginx, not discovered):
+```yaml
+services:
+  nginx:
+    image: nginx:latest
+    labels:
+      ofelia.enabled: "true"
+      # ❌ WRONG: job-run labels on nginx won't be discovered
+      ofelia.job-run.backup.schedule: "@daily"
+      ofelia.job-run.backup.image: "postgres:15"
+      ofelia.job-run.backup.command: "pg_dump mydb"
+```
+
+**Correct Configuration** (Labels on Ofelia container):
+```yaml
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      ofelia.enabled: "true"
+      # ✅ CORRECT: job-run labels on Ofelia container
+      ofelia.job-run.backup.schedule: "@daily"
+      ofelia.job-run.backup.image: "postgres:15"
+      ofelia.job-run.backup.command: "pg_dump mydb"
+
+  nginx:
+    image: nginx:latest
+    labels:
+      ofelia.enabled: "true"
+      # ✅ CORRECT: job-exec labels on target container
+      ofelia.job-exec.reload.schedule: "@hourly"
+      ofelia.job-exec.reload.command: "nginx -s reload"
+```
+
+**Key Distinction**:
+- `job-exec` requires a `container` parameter (implicit when using labels on target container)
+- `job-run` requires an `image` parameter (creates new container, no existing container needed)
+
+**Alternative**: Use INI configuration file instead of labels for `job-run` jobs, which avoids this confusion entirely.
+
 ## Authentication Issues
 
 ### JWT Secret Too Short
@@ -533,6 +678,86 @@ docker logs ofelia | grep "backup-db"
    # Previous job still running
    overlap = false  # Remove or set to true
    ```
+
+### Jobs Being Skipped
+
+**Symptoms**:
+- Jobs run initially but start getting skipped after some time
+- Log shows "skipping job - already running"
+- Scheduled executions are missed without errors
+
+**Root Cause**:
+
+When `overlap = false` (or `no-overlap: 'true'` in Docker labels), Ofelia prevents concurrent executions of the same job. If a previous execution appears to still be running (e.g., a hung process that never terminated), subsequent scheduled runs will be skipped.
+
+Common causes of "stuck" jobs:
+- **Node.js**: Unhandled promise rejections don't exit by default
+- **Python**: Background threads keeping process alive
+- **Shell scripts**: Backgrounded processes or orphaned subprocesses
+- **Deadlocks**: Application waiting for resources indefinitely
+
+**Diagnosis**:
+```bash
+# Check if previous job is still "running"
+docker logs ofelia 2>&1 | grep -i "already running\|skipping"
+
+# Check container processes
+docker exec <container> ps aux
+
+# Check for zombie processes
+docker exec <container> ps aux | grep defunct
+```
+
+**Solutions**:
+
+1. **Ensure proper process exit for Node.js**:
+   ```bash
+   # Force exit on unhandled rejections
+   node --unhandled-rejections=strict index.js
+   ```
+
+2. **Add explicit exit handling**:
+   ```javascript
+   // Node.js
+   process.on('uncaughtException', (err) => {
+     console.error('Uncaught exception:', err);
+     process.exit(1);
+   });
+   ```
+
+   ```python
+   # Python
+   import sys
+   import atexit
+   atexit.register(lambda: sys.exit(0))
+   ```
+
+3. **Set command timeout**:
+   ```ini
+   [job-exec "my-job"]
+   schedule = @hourly
+   container = app
+   command = timeout 300 ./my-script.sh  # 5-minute timeout
+   ```
+
+4. **Temporarily disable overlap protection**:
+   ```ini
+   # For debugging - allows concurrent runs
+   overlap = true
+   ```
+
+5. **Use shell wrapper with timeout**:
+   ```bash
+   #!/bin/bash
+   set -e  # Exit on error
+   timeout 600 ./actual-command.sh || exit $?
+   ```
+
+**Prevention**:
+- Always use `set -e` in shell scripts
+- Implement proper signal handling in long-running processes
+- Add timeouts to external API calls and database queries
+- Use process supervisors for complex jobs
 
 ### Job Execution Fails
 

@@ -18,6 +18,163 @@ Configuration sources are evaluated in the following order (highest to lowest pr
 3. INI configuration file
 4. Docker labels
 
+### Hybrid Configuration (INI + Docker Labels)
+
+A common pattern is using INI configuration for global settings (like email credentials) while using Docker labels for job definitions. This keeps sensitive credentials out of container metadata and allows dynamic job discovery.
+
+**Example Setup**:
+
+1. **Create INI config with global settings only** (`/etc/ofelia/config.ini`):
+
+```ini
+[global]
+# Email notification settings (credentials hidden from labels)
+smtp-host = smtp.gmail.com
+smtp-port = 587
+smtp-user = notifications@example.com
+smtp-password = ${SMTP_PASSWORD}
+email-from = notifications@example.com
+email-to = admin@example.com
+
+# Slack notifications
+slack-webhook = https://hooks.slack.com/services/XXX/YYY/ZZZ
+slack-only-on-error = true
+
+# Output settings
+save-folder = /var/log/ofelia
+save-only-on-error = true
+
+# No job definitions in INI - jobs come from Docker labels
+```
+
+2. **Docker Compose with config volume and labels** (`docker-compose.yml`):
+
+```yaml
+version: '3.8'
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    command: daemon --config=/etc/ofelia/config.ini
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.ini:/etc/ofelia/config.ini:ro
+      - ./logs:/var/log/ofelia
+    environment:
+      - SMTP_PASSWORD=${SMTP_PASSWORD}  # Injected from .env file
+
+  database:
+    image: postgres:15
+    labels:
+      ofelia.enabled: "true"
+      # Jobs inherit email settings from INI [global] section
+      ofelia.job-exec.backup.schedule: "@daily"
+      ofelia.job-exec.backup.command: "pg_dump -U postgres mydb > /backup/db.sql"
+      ofelia.job-exec.backup.email-to: "dba@example.com"  # Override recipient
+```
+
+**How It Works**:
+- Ofelia always reads the config file first (defaults to `/etc/ofelia/config.ini`)
+- Global settings (email, slack, save options) are loaded from INI
+- Docker labels provide job definitions dynamically
+- Jobs inherit global notification settings unless explicitly overridden
+- If a job is defined in both INI and labels with the same name, the INI version takes precedence
+
+**Benefits**:
+- Credentials stay in config files, not exposed in `docker inspect`
+- Jobs can be added/removed by updating container labels
+- Global settings centralized in one place
+- Environment variable substitution for secrets (`${SMTP_PASSWORD}`)
+
+### Labels-Only Configuration (No INI File)
+
+Ofelia can run entirely without an INI configuration file, using only Docker labels and environment variables. This is ideal for simple setups, Kubernetes environments, or when you want all configuration in one place.
+
+**When the INI file is missing or unreadable, Ofelia**:
+- Logs a warning but continues running
+- Creates an empty internal configuration
+- Relies entirely on Docker labels for job definitions
+- Uses environment variables for daemon settings
+
+**Example: Pure Docker Labels Setup**
+
+```yaml
+version: '3.8'
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    command: daemon --docker-events
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Daemon settings via environment variables
+      - OFELIA_LOG_LEVEL=info
+      - OFELIA_ENABLE_WEB=true
+      - OFELIA_WEB_ADDRESS=:8081
+    labels:
+      # Mark this as the Ofelia service container
+      ofelia.service: "true"
+      ofelia.enabled: "true"
+      # Global settings via labels (on Ofelia container with ofelia.service=true)
+      ofelia.slack-webhook: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+      ofelia.slack-only-on-error: "true"
+      # job-run can be defined on Ofelia container
+      ofelia.job-run.cleanup.schedule: "@daily"
+      ofelia.job-run.cleanup.image: "alpine:latest"
+      ofelia.job-run.cleanup.command: "echo 'Daily cleanup'"
+      ofelia.job-run.cleanup.delete: "true"
+    ports:
+      - "8081:8081"
+
+  app:
+    image: myapp:latest
+    labels:
+      ofelia.enabled: "true"
+      # job-exec defined on target container
+      ofelia.job-exec.health.schedule: "*/5 * * * *"
+      ofelia.job-exec.health.command: "curl -f http://localhost:8080/health"
+```
+
+**Key Points**:
+
+| Setting Type | Configuration Method | Notes |
+|--------------|---------------------|-------|
+| Daemon options | Environment variables | `OFELIA_*` prefix |
+| Global notifications | Labels on Ofelia container | Requires `ofelia.service=true` |
+| job-exec | Labels on target container | Container auto-detected |
+| job-run, job-local, job-service | Labels on Ofelia container | Requires `ofelia.service=true` |
+
+**Available Environment Variables**:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OFELIA_CONFIG` | Config file path | `/etc/ofelia/config.ini` |
+| `OFELIA_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | INFO |
+| `OFELIA_DOCKER_FILTER` | Docker container filter | (none) |
+| `OFELIA_POLL_INTERVAL` | Docker poll interval | 10s |
+| `OFELIA_DOCKER_EVENTS` | Use Docker events instead of polling | false |
+| `OFELIA_DOCKER_NO_POLL` | Disable Docker polling | false |
+| `OFELIA_ENABLE_WEB` | Enable web UI | false |
+| `OFELIA_WEB_ADDRESS` | Web UI bind address | :8081 |
+| `OFELIA_ENABLE_PPROF` | Enable pprof profiling | false |
+| `OFELIA_PPROF_ADDRESS` | pprof bind address | 127.0.0.1:8080 |
+
+**Limitations of Labels-Only Configuration**:
+- No environment variable substitution in label values (`${VAR}` won't expand)
+- Sensitive values (passwords, API keys) visible in `docker inspect`
+- Global notification settings require `ofelia.service=true` on Ofelia container
+- Per-job SMTP credentials not recommended (use INI for credentials)
+
+**When to Use Labels-Only**:
+- Simple setups without email notifications
+- Slack-only notifications (webhook URL is less sensitive)
+- Development and testing environments
+- When all configuration should be in docker-compose.yml
+
+**When to Use Hybrid (INI + Labels)**:
+- Production environments with email notifications
+- When credentials must be protected
+- When you need environment variable substitution for secrets
+
 ## INI Configuration
 
 ### Basic Structure
@@ -262,6 +419,55 @@ services:
       ofelia.job-exec.queue-process.command: "php artisan queue:work --stop-when-empty"
 ```
 
+### Global Settings in Docker Compose
+
+Docker labels configure **jobs only**, not global settings like logging or output storage. For global configuration in Docker Compose, use environment variables on the Ofelia container:
+
+```yaml
+version: '3.8'
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./logs:/var/log/ofelia  # Mount for save-folder
+    environment:
+      # Logging Configuration
+      - OFELIA_LOG_LEVEL=debug            # DEBUG, INFO, WARNING, ERROR
+
+      # Docker Settings
+      - OFELIA_DOCKER_EVENTS=true         # Use events instead of polling
+      - OFELIA_POLL_INTERVAL=30s          # Poll interval for labels
+      - OFELIA_DOCKER_FILTER=label=monitored=true  # Filter containers
+
+      # Web UI
+      - OFELIA_ENABLE_WEB=true
+      - OFELIA_WEB_ADDRESS=:8080
+
+      # Performance Profiling
+      - OFELIA_ENABLE_PPROF=false
+    labels:
+      ofelia.enabled: "true"
+      # Job-run labels go on Ofelia container
+      ofelia.job-run.cleanup.schedule: "@daily"
+      ofelia.job-run.cleanup.image: "alpine:latest"
+      ofelia.job-run.cleanup.command: "rm -rf /tmp/*"
+```
+
+**Configuration by Method**:
+
+| Setting Type | Docker Labels | Environment Variables | INI Config |
+|--------------|---------------|----------------------|------------|
+| Job schedules | ✅ Yes | ❌ No | ✅ Yes |
+| Job commands | ✅ Yes | ❌ No | ✅ Yes |
+| Log level | ❌ No | ✅ `OFELIA_LOG_LEVEL` | ✅ `log-level` |
+| Save folder | ❌ No | ❌ No | ✅ `save-folder` |
+| Save only on error | ❌ No | ❌ No | ✅ `save-only-on-error` |
+| Docker host | ❌ No | ❌ No | ✅ `docker-host` |
+| Web UI | ❌ No | ✅ `OFELIA_ENABLE_WEB` | ✅ `enable-web` |
+
+**Note**: For output capture (`save-folder`, `save-only-on-error`), use an INI configuration file. These settings require file system paths and are not available via environment variables or labels.
+
 ## Schedule Expressions
 
 ### Cron Format
@@ -380,6 +586,50 @@ email-subject = Critical Job Report
 email-from = ofelia@example.com
 email-only-on-error = true
 ```
+
+### Configuration Inheritance
+
+Notification settings support inheritance from global to job-level configuration. When a job specifies only some notification settings, the missing values are automatically inherited from the `[global]` section.
+
+**Inheritance Rules:**
+
+| Setting Type | Inherited Fields | Notes |
+|--------------|------------------|-------|
+| **Email** | `smtp-host`, `smtp-port`, `smtp-user`, `smtp-password`, `email-from`, `email-to` | SMTP connection details are inherited |
+| **Slack** | `slack-webhook` | Webhook URL is inherited |
+
+**Example: Partial Override**
+
+```ini
+[global]
+# Define SMTP settings once
+smtp-host = smtp.example.com
+smtp-port = 587
+smtp-user = notifications@example.com
+smtp-password = ${SMTP_PASSWORD}
+email-from = ofelia@example.com
+email-to = ops@example.com
+
+[job-exec "backup"]
+schedule = @daily
+container = postgres
+command = pg_dump mydb > /backup/db.sql
+# Only override error-only behavior - inherits all SMTP settings from global
+email-only-on-error = true
+
+[job-exec "critical-check"]
+schedule = @hourly
+container = app
+command = health-check.sh
+# Override recipient - inherits SMTP settings from global
+email-to = critical-alerts@example.com
+```
+
+**Important Notes:**
+
+- Boolean fields (`email-only-on-error`, `slack-only-on-error`) are NOT inherited due to Go's zero-value semantics (cannot distinguish "not set" from "explicitly false")
+- Job-level settings always take precedence over global settings when explicitly set
+- To enable notifications for a job, at minimum specify `email-to` or `slack-webhook` at either global or job level
 
 ### Output Saving
 
