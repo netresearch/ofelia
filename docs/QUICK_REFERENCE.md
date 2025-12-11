@@ -403,6 +403,143 @@ schedule = 0 3 * * 0            # Sunday 3 AM
 command = docker system prune -af --volumes
 ```
 
+### Redis Cache Flush
+```ini
+[job-exec "redis-flush"]
+schedule = 0 4 * * *            # 4 AM daily
+container = redis
+command = redis-cli FLUSHDB
+```
+
+### SSL Certificate Renewal
+```ini
+[job-run "certbot-renew"]
+schedule = 0 0 1 * *            # 1st of each month
+image = certbot/certbot:latest
+command = renew --webroot -w /var/www/html
+volume = /etc/letsencrypt:/etc/letsencrypt:rw
+volume = /var/www/html:/var/www/html:ro
+delete = true
+```
+
+## Docker Compose Examples
+
+### Minimal Setup (Labels Only)
+```yaml
+version: '3.8'
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-run.cleanup.schedule: "@daily"
+      ofelia.job-run.cleanup.image: "alpine:latest"
+      ofelia.job-run.cleanup.command: "echo 'Hello from Ofelia'"
+      ofelia.job-run.cleanup.delete: "true"
+```
+
+### With Web UI and Notifications
+```yaml
+version: '3.8'
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    command: daemon --config=/etc/ofelia/config.ini
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ofelia.ini:/etc/ofelia/config.ini:ro
+    environment:
+      - OFELIA_ENABLE_WEB=true
+      - OFELIA_WEB_ADDRESS=:8080
+      - OFELIA_LOG_LEVEL=INFO
+    ports:
+      - "8080:8080"
+
+  app:
+    image: myapp:latest
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.task.schedule: "@every 1h"
+      ofelia.job-exec.task.command: "php artisan schedule:run"
+```
+
+### Multi-Container Stack
+```yaml
+version: '3.8'
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  postgres:
+    image: postgres:15
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.backup.schedule: "0 2 * * *"
+      ofelia.job-exec.backup.command: "pg_dump -U postgres mydb > /backup/db.sql"
+      ofelia.job-exec.backup.user: "postgres"
+      ofelia.job-exec.vacuum.schedule: "@weekly"
+      ofelia.job-exec.vacuum.command: "vacuumdb --all --analyze"
+
+  redis:
+    image: redis:7
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.flush.schedule: "@daily"
+      ofelia.job-exec.flush.command: "redis-cli FLUSHDB"
+```
+
+## Notification Examples
+
+### Slack Notification (Error Only)
+```ini
+[global]
+slack-webhook = https://hooks.slack.com/services/XXX/YYY/ZZZ
+slack-only-on-error = true
+
+[job-exec "backup"]
+schedule = @daily
+container = postgres
+command = pg_dump mydb > /backup/db.sql
+```
+
+### Email Notification with TLS
+```ini
+[global]
+smtp-host = smtp.gmail.com
+smtp-port = 587
+smtp-user = alerts@example.com
+smtp-password = ${SMTP_PASSWORD}
+email-from = alerts@example.com
+email-to = admin@example.com
+
+[job-exec "critical-task"]
+schedule = @hourly
+container = app
+command = /critical-job.sh
+email-only-on-error = false          # Get success notifications too
+```
+
+### Both Slack and Email
+```ini
+[job-exec "important"]
+schedule = @daily
+container = app
+command = /important-task.sh
+
+# Slack for quick alerts
+slack-webhook = https://hooks.slack.com/...
+slack-channel = #ops
+slack-only-on-error = true
+
+# Email for detailed logs
+email-to = team@example.com
+email-only-on-error = false
+```
+
 ## Security Checklist
 
 - [ ] Mount Docker socket as read-only (`:ro`)
