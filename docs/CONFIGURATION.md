@@ -18,6 +18,73 @@ Configuration sources are evaluated in the following order (highest to lowest pr
 3. INI configuration file
 4. Docker labels
 
+### Hybrid Configuration (INI + Docker Labels)
+
+A common pattern is using INI configuration for global settings (like email credentials) while using Docker labels for job definitions. This keeps sensitive credentials out of container metadata and allows dynamic job discovery.
+
+**Example Setup**:
+
+1. **Create INI config with global settings only** (`/etc/ofelia/config.ini`):
+
+```ini
+[global]
+# Email notification settings (credentials hidden from labels)
+smtp-host = smtp.gmail.com
+smtp-port = 587
+smtp-user = notifications@example.com
+smtp-password = ${SMTP_PASSWORD}
+email-from = notifications@example.com
+email-to = admin@example.com
+
+# Slack notifications
+slack-webhook = https://hooks.slack.com/services/XXX/YYY/ZZZ
+slack-only-on-error = true
+
+# Output settings
+save-folder = /var/log/ofelia
+save-only-on-error = true
+
+# No job definitions in INI - jobs come from Docker labels
+```
+
+2. **Docker Compose with config volume and labels** (`docker-compose.yml`):
+
+```yaml
+version: '3.8'
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    command: daemon --config=/etc/ofelia/config.ini
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.ini:/etc/ofelia/config.ini:ro
+      - ./logs:/var/log/ofelia
+    environment:
+      - SMTP_PASSWORD=${SMTP_PASSWORD}  # Injected from .env file
+
+  database:
+    image: postgres:15
+    labels:
+      ofelia.enabled: "true"
+      # Jobs inherit email settings from INI [global] section
+      ofelia.job-exec.backup.schedule: "@daily"
+      ofelia.job-exec.backup.command: "pg_dump -U postgres mydb > /backup/db.sql"
+      ofelia.job-exec.backup.email-to: "dba@example.com"  # Override recipient
+```
+
+**How It Works**:
+- Ofelia always reads the config file first (defaults to `/etc/ofelia/config.ini`)
+- Global settings (email, slack, save options) are loaded from INI
+- Docker labels provide job definitions dynamically
+- Jobs inherit global notification settings unless explicitly overridden
+- If a job is defined in both INI and labels with the same name, the INI version takes precedence
+
+**Benefits**:
+- Credentials stay in config files, not exposed in `docker inspect`
+- Jobs can be added/removed by updating container labels
+- Global settings centralized in one place
+- Environment variable substitution for secrets (`${SMTP_PASSWORD}`)
+
 ## INI Configuration
 
 ### Basic Structure
