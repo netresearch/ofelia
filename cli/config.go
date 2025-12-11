@@ -252,6 +252,7 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -265,6 +266,7 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -272,6 +274,7 @@ func (c *Config) registerAllJobs() {
 	for name, j := range c.LocalJobs {
 		_ = defaults.Set(j)
 		j.Name = name
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -285,6 +288,7 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -292,6 +296,7 @@ func (c *Config) registerAllJobs() {
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
 		j.Name = name
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares()
 		_ = c.sh.AddJob(j)
@@ -305,6 +310,54 @@ func (c *Config) injectDedup(slack *middlewares.SlackConfig, mail *middlewares.M
 	}
 	slack.Dedup = c.notificationDedup
 	mail.Dedup = c.notificationDedup
+}
+
+// mergeNotificationDefaults copies global notification settings to job-level configs
+// when the job-level field has its zero value. This allows partial overrides where
+// a job can specify only `mail-only-on-error: true` while inheriting SMTP settings.
+func (c *Config) mergeNotificationDefaults(slack *middlewares.SlackConfig, mail *middlewares.MailConfig) {
+	c.mergeSlackDefaults(slack)
+	c.mergeMailDefaults(mail)
+}
+
+// mergeSlackDefaults copies global Slack settings to job config where job has zero values
+func (c *Config) mergeSlackDefaults(job *middlewares.SlackConfig) {
+	global := &c.Global.SlackConfig
+	if job.SlackWebhook == "" {
+		job.SlackWebhook = global.SlackWebhook
+	}
+	// Note: SlackOnlyOnError is a bool - we can't distinguish "not set" from "explicitly false"
+	// So we don't inherit it; job must explicitly set it if they want error-only behavior
+}
+
+// mergeMailDefaults copies global Mail settings to job config where job has zero values
+func (c *Config) mergeMailDefaults(job *middlewares.MailConfig) {
+	global := &c.Global.MailConfig
+	if job.SMTPHost == "" {
+		job.SMTPHost = global.SMTPHost
+	}
+	if job.SMTPPort == 0 {
+		job.SMTPPort = global.SMTPPort
+	}
+	if job.SMTPUser == "" {
+		job.SMTPUser = global.SMTPUser
+	}
+	if job.SMTPPassword == "" {
+		job.SMTPPassword = global.SMTPPassword
+	}
+	// SMTPTLSSkipVerify: bool - inherit if global is true and job didn't set it
+	// Since we can't distinguish "not set" from "false", we only inherit true
+	if global.SMTPTLSSkipVerify && !job.SMTPTLSSkipVerify {
+		job.SMTPTLSSkipVerify = global.SMTPTLSSkipVerify
+	}
+	if job.EmailTo == "" {
+		job.EmailTo = global.EmailTo
+	}
+	if job.EmailFrom == "" {
+		job.EmailFrom = global.EmailFrom
+	}
+	// Note: MailOnlyOnError is a bool - we can't distinguish "not set" from "explicitly false"
+	// So we don't inherit it; job must explicitly set it if they want error-only behavior
 }
 
 // UserContainerDefault is the sentinel value that explicitly requests the container's default user,
