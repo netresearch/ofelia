@@ -110,7 +110,9 @@ func splitLabelsByType(labels map[string]map[string]string) (
 			case jobType == jobExec:
 				ensureJob(execJobs, scopedName)
 				setJobParam(execJobs[scopedName], jobParam, v)
-				if !isService {
+				// Only set default container if not explicitly specified via label
+				// This allows cross-container job execution via ofelia.job-exec.*.container
+				if !isService && execJobs[scopedName]["container"] == nil {
 					execJobs[scopedName]["container"] = containerName
 				}
 			case jobType == jobLocal && isService:

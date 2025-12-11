@@ -393,6 +393,74 @@ func TestDockerLabels_MixedComposeAndNonCompose(t *testing.T) {
 	}
 }
 
+// TestDockerLabels_ExplicitContainerOverride tests that an explicit container label
+// overrides the default container (fixes #356 / upstream #227)
+func TestDockerLabels_ExplicitContainerOverride(t *testing.T) {
+	// Container "my_container" defines a job that should run in "backup" container
+	// This is the exact scenario from upstream issue #227
+	labels := map[string]map[string]string{
+		"my_container": {
+			"ofelia.enabled":                       "true",
+			"ofelia.job-exec.backup-pg1.schedule":  "@every 2m",
+			"ofelia.job-exec.backup-pg1.command":   "/backup my_container",
+			"ofelia.job-exec.backup-pg1.container": "backup",
+		},
+	}
+
+	logger := test.NewTestLogger()
+	cfg := &Config{logger: logger}
+	err := cfg.buildFromDockerLabels(labels)
+	if err != nil {
+		t.Fatalf("buildFromDockerLabels failed: %v", err)
+	}
+
+	// Job should exist with scoped name
+	job, exists := cfg.ExecJobs["my_container.backup-pg1"]
+	if !exists {
+		t.Fatalf("Expected job 'my_container.backup-pg1', not found. Available: %v", getJobNames(cfg.ExecJobs))
+	}
+
+	// The container should be "backup" (explicitly specified), NOT "my_container" (where label was defined)
+	if job.Container != "backup" {
+		t.Errorf("Expected container 'backup' (explicit override), got '%s'", job.Container)
+	}
+
+	// Verify the command is correct
+	if job.Command != "/backup my_container" {
+		t.Errorf("Expected command '/backup my_container', got '%s'", job.Command)
+	}
+}
+
+// TestDockerLabels_DefaultContainerWhenNotSpecified tests that container defaults to label source
+func TestDockerLabels_DefaultContainerWhenNotSpecified(t *testing.T) {
+	// Container "web" defines a job without explicit container - should default to "web"
+	labels := map[string]map[string]string{
+		"web": {
+			"ofelia.enabled":                "true",
+			"ofelia.job-exec.logs.schedule": "@hourly",
+			"ofelia.job-exec.logs.command":  "cat /var/log/app.log",
+			// No container label - should default to "web"
+		},
+	}
+
+	logger := test.NewTestLogger()
+	cfg := &Config{logger: logger}
+	err := cfg.buildFromDockerLabels(labels)
+	if err != nil {
+		t.Fatalf("buildFromDockerLabels failed: %v", err)
+	}
+
+	job, exists := cfg.ExecJobs["web.logs"]
+	if !exists {
+		t.Fatalf("Expected job 'web.logs', not found. Available: %v", getJobNames(cfg.ExecJobs))
+	}
+
+	// Container should default to "web" since no explicit container was specified
+	if job.Container != "web" {
+		t.Errorf("Expected container 'web' (default from label source), got '%s'", job.Container)
+	}
+}
+
 // getJobNames helper to list job names for debugging
 func getJobNames[J any](m map[string]J) []string {
 	names := make([]string, 0, len(m))

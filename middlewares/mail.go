@@ -77,19 +77,26 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 	msg.SetBody("text/html", m.body(ctx))
 
 	base := fmt.Sprintf("%s_%s", ctx.Job.GetName(), ctx.Execution.ID)
-	msg.Attach(base+".stdout.log", mail.SetCopyFunc(func(w io.Writer) error {
-		if _, err := w.Write(ctx.Execution.OutputStream.Bytes()); err != nil {
-			return fmt.Errorf("write stdout attachment: %w", err)
-		}
-		return nil
-	}))
 
-	msg.Attach(base+".stderr.log", mail.SetCopyFunc(func(w io.Writer) error {
-		if _, err := w.Write(ctx.Execution.ErrorStream.Bytes()); err != nil {
-			return fmt.Errorf("write stderr attachment: %w", err)
-		}
-		return nil
-	}))
+	// Only attach stdout if there's output (some SMTP servers reject zero-sized attachments)
+	if ctx.Execution.OutputStream.TotalWritten() > 0 {
+		msg.Attach(base+".stdout.log", mail.SetCopyFunc(func(w io.Writer) error {
+			if _, err := w.Write(ctx.Execution.OutputStream.Bytes()); err != nil {
+				return fmt.Errorf("write stdout attachment: %w", err)
+			}
+			return nil
+		}))
+	}
+
+	// Only attach stderr if there's output (some SMTP servers reject zero-sized attachments)
+	if ctx.Execution.ErrorStream.TotalWritten() > 0 {
+		msg.Attach(base+".stderr.log", mail.SetCopyFunc(func(w io.Writer) error {
+			if _, err := w.Write(ctx.Execution.ErrorStream.Bytes()); err != nil {
+				return fmt.Errorf("write stderr attachment: %w", err)
+			}
+			return nil
+		}))
+	}
 
 	msg.Attach(base+".stderr.json", mail.SetCopyFunc(func(w io.Writer) error {
 		js, _ := json.MarshalIndent(map[string]interface{}{

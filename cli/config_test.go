@@ -675,3 +675,133 @@ func (s *SuiteConfig) TestApplyDefaultUser(c *C) {
 	cfg.applyDefaultUser(&user)
 	c.Assert(user, Equals, "") // Should be empty (container's default)
 }
+
+// TestMergeMailDefaults tests that job-level mail configs inherit global SMTP settings
+// This tests the fix for issue #330 (upstream #124) where partial mail config overrides
+// would lose SMTP connection details.
+func (s *SuiteConfig) TestMergeMailDefaults(c *C) {
+	cfg := NewConfig(&TestLogger{})
+
+	// Set global mail configuration
+	cfg.Global.MailConfig.SMTPHost = "smtp.example.com"
+	cfg.Global.MailConfig.SMTPPort = 587
+	cfg.Global.MailConfig.SMTPUser = "globaluser"
+	cfg.Global.MailConfig.SMTPPassword = "globalpwd"
+	cfg.Global.MailConfig.SMTPTLSSkipVerify = true
+	cfg.Global.MailConfig.EmailTo = "global@example.com"
+	cfg.Global.MailConfig.EmailFrom = "sender@example.com"
+	cfg.Global.MailConfig.MailOnlyOnError = false
+
+	// Test 1: Job with only mail-only-on-error inherits all SMTP settings
+	jobMail := middlewares.MailConfig{
+		MailOnlyOnError: true, // Only this is set by user
+	}
+	cfg.mergeMailDefaults(&jobMail)
+
+	c.Assert(jobMail.SMTPHost, Equals, "smtp.example.com")
+	c.Assert(jobMail.SMTPPort, Equals, 587)
+	c.Assert(jobMail.SMTPUser, Equals, "globaluser")
+	c.Assert(jobMail.SMTPPassword, Equals, "globalpwd")
+	c.Assert(jobMail.SMTPTLSSkipVerify, Equals, true)
+	c.Assert(jobMail.EmailTo, Equals, "global@example.com")
+	c.Assert(jobMail.EmailFrom, Equals, "sender@example.com")
+	c.Assert(jobMail.MailOnlyOnError, Equals, true) // Preserved from job
+
+	// Test 2: Job with explicit values are preserved (no override)
+	jobMail2 := middlewares.MailConfig{
+		SMTPHost:        "job-smtp.example.com",
+		SMTPPort:        465,
+		EmailTo:         "job@example.com",
+		MailOnlyOnError: true,
+	}
+	cfg.mergeMailDefaults(&jobMail2)
+
+	c.Assert(jobMail2.SMTPHost, Equals, "job-smtp.example.com") // Job value preserved
+	c.Assert(jobMail2.SMTPPort, Equals, 465)                    // Job value preserved
+	c.Assert(jobMail2.SMTPUser, Equals, "globaluser")           // Inherited from global
+	c.Assert(jobMail2.SMTPPassword, Equals, "globalpwd")        // Inherited from global
+	c.Assert(jobMail2.EmailTo, Equals, "job@example.com")       // Job value preserved
+	c.Assert(jobMail2.EmailFrom, Equals, "sender@example.com")  // Inherited from global
+
+	// Test 3: Empty global config doesn't cause issues
+	cfgEmpty := NewConfig(&TestLogger{})
+	jobMail3 := middlewares.MailConfig{
+		SMTPHost: "job-only.example.com",
+		SMTPPort: 25,
+	}
+	cfgEmpty.mergeMailDefaults(&jobMail3)
+
+	c.Assert(jobMail3.SMTPHost, Equals, "job-only.example.com") // Job value preserved
+	c.Assert(jobMail3.SMTPPort, Equals, 25)                     // Job value preserved
+	c.Assert(jobMail3.SMTPUser, Equals, "")                     // No global to inherit
+}
+
+// TestMergeSlackDefaults tests that job-level slack configs inherit global webhook
+func (s *SuiteConfig) TestMergeSlackDefaults(c *C) {
+	cfg := NewConfig(&TestLogger{})
+	cfg.Global.SlackConfig.SlackWebhook = "https://hooks.slack.com/services/global"
+	cfg.Global.SlackConfig.SlackOnlyOnError = false
+
+	// Test 1: Job with only slack-only-on-error inherits webhook
+	jobSlack := middlewares.SlackConfig{
+		SlackOnlyOnError: true,
+	}
+	cfg.mergeSlackDefaults(&jobSlack)
+
+	c.Assert(jobSlack.SlackWebhook, Equals, "https://hooks.slack.com/services/global")
+	c.Assert(jobSlack.SlackOnlyOnError, Equals, true) // Job value preserved
+
+	// Test 2: Job with explicit webhook preserves it
+	jobSlack2 := middlewares.SlackConfig{
+		SlackWebhook: "https://hooks.slack.com/services/job-specific",
+	}
+	cfg.mergeSlackDefaults(&jobSlack2)
+
+	c.Assert(jobSlack2.SlackWebhook, Equals, "https://hooks.slack.com/services/job-specific")
+}
+
+// TestMergeMailDefaults_BoolFieldLimitation documents the Go bool field inheritance limitation.
+// Since we cannot distinguish "not set" from "explicitly false", the behavior is asymmetric:
+// - Global=true, Job=false → Job inherits true (insecure setting propagates)
+// - Global=false, Job=true → Job keeps true (secure global CANNOT force secure on job)
+// This is acceptable since per-job security settings should be explicit.
+func (s *SuiteConfig) TestMergeMailDefaults_BoolFieldLimitation(c *C) {
+	// Case 1: Global smtp-tls-skip-verify=true propagates to job with default (false)
+	cfg1 := NewConfig(&TestLogger{})
+	cfg1.Global.MailConfig.SMTPTLSSkipVerify = true
+	jobMail1 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
+	cfg1.mergeMailDefaults(&jobMail1)
+	c.Assert(jobMail1.SMTPTLSSkipVerify, Equals, true,
+		Commentf("Global skip-verify=true should propagate to job"))
+
+	// Case 2: Global smtp-tls-skip-verify=false does NOT override job with true
+	// This is the documented limitation - we cannot force TLS verification
+	cfg2 := NewConfig(&TestLogger{})
+	cfg2.Global.MailConfig.SMTPTLSSkipVerify = false
+	jobMail2 := middlewares.MailConfig{
+		SMTPHost:          "mail.example.com",
+		SMTPTLSSkipVerify: true, // Job explicitly skips verification
+	}
+	cfg2.mergeMailDefaults(&jobMail2)
+	c.Assert(jobMail2.SMTPTLSSkipVerify, Equals, true,
+		Commentf("Job skip-verify=true should NOT be overridden by global false (Go bool limitation)"))
+
+	// Case 3: Both false - secure default maintained
+	cfg3 := NewConfig(&TestLogger{})
+	cfg3.Global.MailConfig.SMTPTLSSkipVerify = false
+	jobMail3 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
+	cfg3.mergeMailDefaults(&jobMail3)
+	c.Assert(jobMail3.SMTPTLSSkipVerify, Equals, false,
+		Commentf("Both false - secure default should be maintained"))
+
+	// Case 4: Both true - insecure settings preserved
+	cfg4 := NewConfig(&TestLogger{})
+	cfg4.Global.MailConfig.SMTPTLSSkipVerify = true
+	jobMail4 := middlewares.MailConfig{
+		SMTPHost:          "mail.example.com",
+		SMTPTLSSkipVerify: true,
+	}
+	cfg4.mergeMailDefaults(&jobMail4)
+	c.Assert(jobMail4.SMTPTLSSkipVerify, Equals, true,
+		Commentf("Both true - insecure setting should be preserved"))
+}
