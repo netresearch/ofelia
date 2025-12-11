@@ -262,6 +262,55 @@ services:
       ofelia.job-exec.queue-process.command: "php artisan queue:work --stop-when-empty"
 ```
 
+### Global Settings in Docker Compose
+
+Docker labels configure **jobs only**, not global settings like logging or output storage. For global configuration in Docker Compose, use environment variables on the Ofelia container:
+
+```yaml
+version: '3.8'
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./logs:/var/log/ofelia  # Mount for save-folder
+    environment:
+      # Logging Configuration
+      - OFELIA_LOG_LEVEL=debug            # DEBUG, INFO, WARNING, ERROR
+
+      # Docker Settings
+      - OFELIA_DOCKER_EVENTS=true         # Use events instead of polling
+      - OFELIA_POLL_INTERVAL=30s          # Poll interval for labels
+      - OFELIA_DOCKER_FILTER=label=monitored=true  # Filter containers
+
+      # Web UI
+      - OFELIA_ENABLE_WEB=true
+      - OFELIA_WEB_ADDRESS=:8080
+
+      # Performance Profiling
+      - OFELIA_ENABLE_PPROF=false
+    labels:
+      ofelia.enabled: "true"
+      # Job-run labels go on Ofelia container
+      ofelia.job-run.cleanup.schedule: "@daily"
+      ofelia.job-run.cleanup.image: "alpine:latest"
+      ofelia.job-run.cleanup.command: "rm -rf /tmp/*"
+```
+
+**Configuration by Method**:
+
+| Setting Type | Docker Labels | Environment Variables | INI Config |
+|--------------|---------------|----------------------|------------|
+| Job schedules | ✅ Yes | ✅ Yes | ✅ Yes |
+| Job commands | ✅ Yes | ✅ Yes | ✅ Yes |
+| Log level | ❌ No | ✅ `OFELIA_LOG_LEVEL` | ✅ `log-level` |
+| Save folder | ❌ No | ❌ No | ✅ `save-folder` |
+| Save only on error | ❌ No | ❌ No | ✅ `save-only-on-error` |
+| Docker host | ❌ No | ✅ `OFELIA_DOCKER_HOST` | ✅ `docker-host` |
+| Web UI | ❌ No | ✅ `OFELIA_ENABLE_WEB` | ✅ `enable-web` |
+
+**Note**: For output capture (`save-folder`, `save-only-on-error`), use an INI configuration file. These settings require file system paths and are not available via environment variables or labels.
+
 ## Schedule Expressions
 
 ### Cron Format
