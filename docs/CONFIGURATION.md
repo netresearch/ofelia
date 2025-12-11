@@ -458,12 +458,12 @@ services:
 
 | Setting Type | Docker Labels | Environment Variables | INI Config |
 |--------------|---------------|----------------------|------------|
-| Job schedules | ✅ Yes | ✅ Yes | ✅ Yes |
-| Job commands | ✅ Yes | ✅ Yes | ✅ Yes |
+| Job schedules | ✅ Yes | ❌ No | ✅ Yes |
+| Job commands | ✅ Yes | ❌ No | ✅ Yes |
 | Log level | ❌ No | ✅ `OFELIA_LOG_LEVEL` | ✅ `log-level` |
 | Save folder | ❌ No | ❌ No | ✅ `save-folder` |
 | Save only on error | ❌ No | ❌ No | ✅ `save-only-on-error` |
-| Docker host | ❌ No | ✅ `OFELIA_DOCKER_HOST` | ✅ `docker-host` |
+| Docker host | ❌ No | ❌ No | ✅ `docker-host` |
 | Web UI | ❌ No | ✅ `OFELIA_ENABLE_WEB` | ✅ `enable-web` |
 
 **Note**: For output capture (`save-folder`, `save-only-on-error`), use an INI configuration file. These settings require file system paths and are not available via environment variables or labels.

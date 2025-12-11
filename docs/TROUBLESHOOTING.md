@@ -149,7 +149,12 @@ docker exec ofelia id
          - /var/run/docker.sock:/var/run/docker.sock:ro
    ```
 
-3. **Use Docker TCP socket instead**:
+3. **Use Docker TCP socket instead** (development only):
+
+   > **WARNING**: This exposes the Docker daemon API without authentication.
+   > Any local process can gain full Docker control, enabling privilege escalation
+   > to root. Only use in isolated development environments, never in production.
+
    ```ini
    [global]
    docker-host = tcp://localhost:2375
