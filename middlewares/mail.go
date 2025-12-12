@@ -24,9 +24,13 @@ type MailConfig struct {
 	SMTPTLSSkipVerify bool   `gcfg:"smtp-tls-skip-verify" mapstructure:"smtp-tls-skip-verify"`
 	EmailTo           string `gcfg:"email-to" mapstructure:"email-to"`
 	EmailFrom         string `gcfg:"email-from" mapstructure:"email-from"`
+	EmailSubject      string `gcfg:"email-subject" mapstructure:"email-subject"`
 	MailOnlyOnError   bool   `gcfg:"mail-only-on-error" mapstructure:"mail-only-on-error"`
 	// Dedup is the notification deduplicator (set by config loader, not INI)
 	Dedup *NotificationDedup `mapstructure:"-" json:"-"`
+
+	// subjectTemplate is parsed from EmailSubject (internal, set by NewMail)
+	subjectTemplate *template.Template
 }
 
 // NewMail returns a Mail middleware if the given configuration is not empty
@@ -34,7 +38,18 @@ func NewMail(c *MailConfig) core.Middleware {
 	var m core.Middleware
 
 	if !IsEmpty(c) {
-		m = &Mail{*c}
+		// Parse custom subject template if provided
+		if c.EmailSubject != "" {
+			tmpl := template.New("custom-mail-subject")
+			tmpl.Funcs(map[string]interface{}{
+				"status": executionLabel,
+			})
+			if parsed, err := tmpl.Parse(c.EmailSubject); err == nil {
+				c.subjectTemplate = parsed
+			}
+			// If parsing fails, fall back to default (subjectTemplate stays nil)
+		}
+		m = &Mail{MailConfig: *c}
 	}
 
 	return m
@@ -133,7 +148,13 @@ func (m *Mail) from() string {
 
 func (m *Mail) subject(ctx *core.Context) string {
 	buf := bytes.NewBuffer(nil)
-	_ = mailSubjectTemplate.Execute(buf, ctx)
+
+	// Use custom subject template if configured, otherwise use default
+	tmpl := mailSubjectTemplate
+	if m.subjectTemplate != nil {
+		tmpl = m.subjectTemplate
+	}
+	_ = tmpl.Execute(buf, ctx)
 
 	return buf.String()
 }

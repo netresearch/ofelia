@@ -71,7 +71,7 @@ Ofelia includes presets for popular notification services:
 | `secret` | string | Service-specific secret/token |
 | `link` | string | Optional URL to include in notification (e.g., link to logs) |
 | `link-text` | string | Display text for link (default: "View Details") |
-| `trigger` | string | When to send: `always`, `error`, `success` (default: `always`) |
+| `trigger` | string | When to send: `always`, `error`, `success`, `skipped` (default: `error`) |
 | `timeout` | duration | HTTP request timeout (default: `30s`) |
 | `retry-count` | int | Number of retries on failure (default: `3`) |
 | `retry-delay` | duration | Delay between retries (default: `5s`) |

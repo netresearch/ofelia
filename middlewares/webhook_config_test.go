@@ -35,6 +35,7 @@ func (s *SuiteWebhookConfig) TestTriggerType_Constants(c *C) {
 	c.Assert(TriggerAlways, Equals, TriggerType("always"))
 	c.Assert(TriggerSuccess, Equals, TriggerType("success"))
 	c.Assert(TriggerError, Equals, TriggerType("error"))
+	c.Assert(TriggerSkipped, Equals, TriggerType("skipped"))
 }
 
 func (s *SuiteWebhookConfig) TestParseWebhookNames_Empty(c *C) {
@@ -123,6 +124,14 @@ func (s *SuiteWebhookConfig) TestWebhookConfig_ShouldNotify_Always(c *C) {
 	c.Assert(config.ShouldNotify(true, false), Equals, true)  // Failed
 	c.Assert(config.ShouldNotify(false, false), Equals, true) // Success
 	c.Assert(config.ShouldNotify(false, true), Equals, true)  // Skipped
+}
+
+func (s *SuiteWebhookConfig) TestWebhookConfig_ShouldNotify_Skipped(c *C) {
+	config := &WebhookConfig{Trigger: TriggerSkipped}
+
+	c.Assert(config.ShouldNotify(true, false), Equals, false)  // Failed
+	c.Assert(config.ShouldNotify(false, false), Equals, false) // Success
+	c.Assert(config.ShouldNotify(false, true), Equals, true)   // Skipped
 }
 
 func (s *SuiteWebhookConfig) TestWebhookConfig_ApplyDefaults(c *C) {
