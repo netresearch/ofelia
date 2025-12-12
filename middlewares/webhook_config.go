@@ -13,6 +13,7 @@ const (
 	TriggerAlways  TriggerType = "always"  // Send on every execution
 	TriggerError   TriggerType = "error"   // Send only on errors
 	TriggerSuccess TriggerType = "success" // Send only on success
+	TriggerSkipped TriggerType = "skipped" // Send only on skipped executions
 )
 
 // WebhookConfig holds configuration for a single webhook endpoint
@@ -151,10 +152,10 @@ func (c *WebhookConfig) Validate() error {
 
 	// Validate trigger type
 	switch c.Trigger {
-	case TriggerAlways, TriggerError, TriggerSuccess, "":
+	case TriggerAlways, TriggerError, TriggerSuccess, TriggerSkipped, "":
 		// Valid or empty (will use default)
 	default:
-		return fmt.Errorf("webhook %q: invalid trigger %q (must be always, error, or success)", c.Name, c.Trigger)
+		return fmt.Errorf("webhook %q: invalid trigger %q (must be always, error, success, or skipped)", c.Name, c.Trigger)
 	}
 
 	if c.Timeout < 0 {
@@ -197,6 +198,8 @@ func (c *WebhookConfig) ShouldNotify(failed, skipped bool) bool {
 		return failed
 	case TriggerSuccess:
 		return !failed && !skipped
+	case TriggerSkipped:
+		return skipped
 	case TriggerAlways:
 		return true
 	default:

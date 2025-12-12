@@ -222,3 +222,84 @@ func (s *testSession) Data(r io.Reader) error {
 
 func (s *testSession) Reset()        {}
 func (s *testSession) Logout() error { return nil }
+
+// TestCustomEmailSubject verifies that custom email subject template is used when configured.
+func (s *MailSuite) TestCustomEmailSubject(c *C) {
+	s.ctx.Start()
+	s.ctx.Stop(nil)
+
+	m := NewMail(&MailConfig{
+		SMTPHost:     s.smtpdHost,
+		SMTPPort:     s.smtpdPort,
+		EmailTo:      "foo@foo.com",
+		EmailFrom:    "qux@qux.com",
+		EmailSubject: "[CUSTOM] Job {{.Job.GetName}} - {{status .Execution}}",
+	})
+
+	done := make(chan struct{})
+	go func() {
+		c.Assert(m.Run(s.ctx), IsNil)
+		close(done)
+	}()
+
+	select {
+	case <-s.fromCh:
+		// Got MAIL FROM
+	case <-time.After(3 * time.Second):
+		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+	}
+
+	// Verify custom subject is used
+	select {
+	case emailData := <-s.dataCh:
+		c.Assert(strings.Contains(emailData, "Subject: [CUSTOM]"), Equals, true,
+			Commentf("Custom subject prefix should be present"))
+		c.Assert(strings.Contains(emailData, s.ctx.Job.GetName()), Equals, true,
+			Commentf("Job name should be in subject"))
+	case <-time.After(3 * time.Second):
+		c.Errorf("timeout waiting for email data")
+	}
+
+	<-done
+}
+
+// TestDefaultEmailSubject verifies that default subject is used when EmailSubject is not set.
+func (s *MailSuite) TestDefaultEmailSubject(c *C) {
+	s.ctx.Start()
+	s.ctx.Stop(nil)
+
+	m := NewMail(&MailConfig{
+		SMTPHost:  s.smtpdHost,
+		SMTPPort:  s.smtpdPort,
+		EmailTo:   "foo@foo.com",
+		EmailFrom: "qux@qux.com",
+		// EmailSubject not set - should use default
+	})
+
+	done := make(chan struct{})
+	go func() {
+		c.Assert(m.Run(s.ctx), IsNil)
+		close(done)
+	}()
+
+	select {
+	case <-s.fromCh:
+		// Got MAIL FROM
+	case <-time.After(3 * time.Second):
+		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+	}
+
+	// Verify default subject is used (contains "Execution" and job name)
+	select {
+	case emailData := <-s.dataCh:
+		// Subject may be MIME-encoded, so check for key parts
+		c.Assert(strings.Contains(emailData, "Execution"), Equals, true,
+			Commentf("Default subject should contain 'Execution'"))
+		c.Assert(strings.Contains(emailData, s.ctx.Job.GetName()), Equals, true,
+			Commentf("Default subject should contain job name"))
+	case <-time.After(3 * time.Second):
+		c.Errorf("timeout waiting for email data")
+	}
+
+	<-done
+}

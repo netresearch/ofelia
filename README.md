@@ -267,6 +267,7 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `smtp-tls-skip-verify` - when `true` ignores certificate signed by unknown authority error.
 - `email-to` - mail address of the receiver of the mail.
 - `email-from` - mail address of the sender of the mail.
+- `email-subject` - custom subject template for emails. Uses Go template syntax with access to `.Job` and `.Execution`. Example: `[ALERT] Job {{.Job.GetName}} {{status .Execution}}`. If not set, uses default format.
 - `mail-only-on-error` - only send a mail if the execution was not successful.
 
 - `save-folder` - directory in which the reports shall be written. The folder is created automatically if it doesn't exist using an equivalent of `mkdir -p`.
