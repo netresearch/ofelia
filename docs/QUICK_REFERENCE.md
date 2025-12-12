@@ -179,6 +179,44 @@ ofelia.web-address=:8081
 
 ## Middleware Configuration
 
+### Webhooks (Recommended)
+```ini
+# Define named webhooks
+[webhook "slack-alerts"]
+preset = slack
+id = T00000000/B00000000000
+secret = XXXXXXXXXXXXXXXXXXXXXXXX
+trigger = error
+
+[webhook "discord"]
+preset = discord
+id = 1234567890123456789
+secret = abcdefghijklmnopqrstuvwxyz
+trigger = always
+
+# Assign to jobs
+[job-exec "backup"]
+schedule = @daily
+container = postgres
+command = pg_dump mydb
+webhooks = slack-alerts, discord
+```
+
+Docker labels:
+```bash
+ofelia.webhook.slack.preset=slack
+ofelia.webhook.slack.id=T00000000/B00000000000
+ofelia.webhook.slack.secret=XXXXXXXXXXXXXXXXXXXXXXXX
+ofelia.webhook.slack.trigger=error
+ofelia.job-exec.backup.webhooks=slack
+```
+
+**Bundled Presets**: `slack`, `discord`, `teams`, `matrix`, `ntfy`, `pushover`, `pagerduty`, `gotify`
+
+**Triggers**: `always` (default), `error`, `success`
+
+> See [Webhook Documentation](./webhooks.md) for full reference.
+
 ### Email
 ```ini
 [global]
@@ -191,8 +229,9 @@ email-from = ofelia@example.com
 mail-only-on-error = true      # Only send on failure
 ```
 
-### Slack
+### Slack (Deprecated)
 ```ini
+# DEPRECATED - Use [webhook "name"] sections instead
 [global]
 slack-webhook = https://hooks.slack.com/services/...
 slack-only-on-error = false     # Send all notifications
@@ -494,8 +533,36 @@ services:
 
 ## Notification Examples
 
-### Slack Notification (Error Only)
+### Webhook Notifications (Recommended)
 ```ini
+# Multi-service webhook notifications
+[webhook "slack-alerts"]
+preset = slack
+id = T00000000/B00000000000
+secret = XXXXXXXXXXXXXXXXXXXXXXXX
+trigger = error
+
+[webhook "discord-all"]
+preset = discord
+id = 1234567890123456789
+secret = abcdefghijklmnopqrstuvwxyz
+trigger = always
+
+[webhook "pagerduty-critical"]
+preset = pagerduty
+secret = your-routing-key
+trigger = error
+
+[job-exec "backup"]
+schedule = @daily
+container = postgres
+command = pg_dump mydb > /backup/db.sql
+webhooks = slack-alerts, discord-all
+```
+
+### Slack Notification (Deprecated)
+```ini
+# DEPRECATED - Use [webhook "name"] sections instead
 [global]
 slack-webhook = https://hooks.slack.com/services/XXX/YYY/ZZZ
 slack-only-on-error = true
@@ -557,6 +624,7 @@ email-only-on-error = false
 
 - [Full Documentation](../README.md)
 - [Configuration Guide](./CONFIGURATION.md)
+- [Webhook Notifications](./webhooks.md)
 - [Jobs Reference](./jobs.md)
 - [API Documentation](./API.md)
 - [Integration Patterns](./INTEGRATION_PATTERNS.md)

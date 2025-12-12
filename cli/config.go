@@ -73,16 +73,18 @@ type Config struct {
 	dockerHandler     *DockerHandler
 	logger            core.Logger
 	notificationDedup *middlewares.NotificationDedup
+	WebhookConfigs    *WebhookConfigs
 }
 
 func NewConfig(logger core.Logger) *Config {
 	c := &Config{
-		ExecJobs:    make(map[string]*ExecJobConfig),
-		RunJobs:     make(map[string]*RunJobConfig),
-		ServiceJobs: make(map[string]*RunServiceConfig),
-		LocalJobs:   make(map[string]*LocalJobConfig),
-		ComposeJobs: make(map[string]*ComposeJobConfig),
-		logger:      logger,
+		ExecJobs:       make(map[string]*ExecJobConfig),
+		RunJobs:        make(map[string]*RunJobConfig),
+		ServiceJobs:    make(map[string]*RunServiceConfig),
+		LocalJobs:      make(map[string]*LocalJobConfig),
+		ComposeJobs:    make(map[string]*ComposeJobConfig),
+		WebhookConfigs: NewWebhookConfigs(),
+		logger:         logger,
 	}
 
 	_ = defaults.Set(c)
@@ -181,6 +183,14 @@ func (c *Config) InitializeApp() error {
 	// Initialize notification deduplication if cooldown is set
 	c.initNotificationDedup()
 
+	// Initialize webhook manager if webhooks are configured
+	if c.WebhookConfigs != nil && len(c.WebhookConfigs.Webhooks) > 0 {
+		if err := c.WebhookConfigs.InitManager(); err != nil {
+			return fmt.Errorf("initialize webhook manager: %w", err)
+		}
+		c.logger.Noticef("Webhook notification system initialized with %d webhooks", len(c.WebhookConfigs.Webhooks))
+	}
+
 	c.buildSchedulerMiddlewares(c.sh)
 
 	if err := c.initDockerHandler(); err != nil {
@@ -205,6 +215,14 @@ func (c *Config) initNotificationDedup() {
 	c.Global.MailConfig.Dedup = c.notificationDedup
 
 	c.logger.Noticef("Notification deduplication enabled with cooldown: %s", c.Global.NotificationCooldown)
+}
+
+// getWebhookManager returns the webhook manager if initialized, nil otherwise
+func (c *Config) getWebhookManager() *middlewares.WebhookManager {
+	if c.WebhookConfigs != nil {
+		return c.WebhookConfigs.Manager
+	}
+	return nil
 }
 
 func (c *Config) initDockerHandler() error {
@@ -246,6 +264,8 @@ func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind 
 func (c *Config) registerAllJobs() {
 	provider := c.dockerHandler.GetDockerProvider()
 
+	wm := c.getWebhookManager()
+
 	for name, j := range c.ExecJobs {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
@@ -254,7 +274,7 @@ func (c *Config) registerAllJobs() {
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares()
+		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
 	}
 	for name, j := range c.RunJobs {
@@ -268,7 +288,7 @@ func (c *Config) registerAllJobs() {
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares()
+		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
 	}
 	for name, j := range c.LocalJobs {
@@ -276,7 +296,7 @@ func (c *Config) registerAllJobs() {
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares()
+		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
 	}
 	for name, j := range c.ServiceJobs {
@@ -290,7 +310,7 @@ func (c *Config) registerAllJobs() {
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares()
+		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
 	}
 	for name, j := range c.ComposeJobs {
@@ -298,7 +318,7 @@ func (c *Config) registerAllJobs() {
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares()
+		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
 	}
 }
@@ -384,16 +404,25 @@ func (c *Config) applyDefaultUser(user *string) {
 }
 
 func (c *Config) buildSchedulerMiddlewares(sh *core.Scheduler) {
-	sh.Use(middlewares.NewSlack(&c.Global.SlackConfig))
+	sh.Use(middlewares.NewSlack(&c.Global.SlackConfig)) //nolint:staticcheck // deprecated but kept for backwards compatibility
 	sh.Use(middlewares.NewSave(&c.Global.SaveConfig))
 	sh.Use(middlewares.NewMail(&c.Global.MailConfig))
+
+	// Add global webhook middlewares
+	if wm := c.getWebhookManager(); wm != nil {
+		if mws, err := wm.GetGlobalMiddlewares(); err == nil {
+			for _, mw := range mws {
+				sh.Use(mw)
+			}
+		}
+	}
 }
 
 // jobConfig is implemented by all job configuration types that can be
 // scheduled. It allows handling job maps in a generic way.
 type jobConfig interface {
 	core.Job
-	buildMiddlewares()
+	buildMiddlewares(wm *middlewares.WebhookManager)
 	Hash() (string, error)
 	GetJobSource() JobSource
 	SetJobSource(JobSource)
@@ -465,7 +494,7 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 		return false
 	}
 	_ = c.sh.RemoveJob(oldJob)
-	newJob.buildMiddlewares()
+	newJob.buildMiddlewares(c.getWebhookManager())
 	_ = c.sh.AddJob(newJob)
 	// caller updates current map entry
 	return true
@@ -490,7 +519,7 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 		}
 	}
 
-	j.buildMiddlewares()
+	j.buildMiddlewares(c.getWebhookManager())
 	_ = c.sh.AddJob(j)
 	current[name] = j
 }
@@ -596,17 +625,18 @@ func (c *Config) iniConfigUpdate() error {
 		c.Global = parsed.Global
 		c.sh.ResetMiddlewares()
 		c.buildSchedulerMiddlewares(c.sh)
+		wm := c.getWebhookManager()
 		for _, j := range c.sh.Jobs {
 			if jc, ok := j.(jobConfig); ok {
 				jc.ResetMiddlewares()
-				jc.buildMiddlewares()
+				jc.buildMiddlewares(wm)
 				j.Use(c.sh.Middlewares()...)
 			}
 		}
 		for _, j := range c.sh.Disabled {
 			if jc, ok := j.(jobConfig); ok {
 				jc.ResetMiddlewares()
-				jc.buildMiddlewares()
+				jc.buildMiddlewares(wm)
 				j.Use(c.sh.Middlewares()...)
 			}
 		}
@@ -670,14 +700,22 @@ type ExecJobConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobWebhookConfig          `mapstructure:",squash"`
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
-func (c *ExecJobConfig) buildMiddlewares() {
+func (c *ExecJobConfig) buildMiddlewares(wm *middlewares.WebhookManager) {
 	c.ExecJob.Use(middlewares.NewOverlap(&c.OverlapConfig))
-	c.ExecJob.Use(middlewares.NewSlack(&c.SlackConfig))
+	c.ExecJob.Use(middlewares.NewSlack(&c.SlackConfig)) //nolint:staticcheck // deprecated but kept for backwards compatibility
 	c.ExecJob.Use(middlewares.NewSave(&c.SaveConfig))
 	c.ExecJob.Use(middlewares.NewMail(&c.MailConfig))
+	if wm != nil {
+		if mws, err := wm.GetMiddlewares(c.GetWebhookNames()); err == nil {
+			for _, mw := range mws {
+				c.ExecJob.Use(mw)
+			}
+		}
+	}
 }
 
 func (c *ExecJobConfig) GetJobSource() JobSource  { return c.JobSource }
@@ -690,6 +728,7 @@ type RunServiceConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobWebhookConfig          `mapstructure:",squash"`
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
@@ -702,14 +741,22 @@ type RunJobConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobWebhookConfig          `mapstructure:",squash"`
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
-func (c *RunJobConfig) buildMiddlewares() {
+func (c *RunJobConfig) buildMiddlewares(wm *middlewares.WebhookManager) {
 	c.RunJob.Use(middlewares.NewOverlap(&c.OverlapConfig))
-	c.RunJob.Use(middlewares.NewSlack(&c.SlackConfig))
+	c.RunJob.Use(middlewares.NewSlack(&c.SlackConfig)) //nolint:staticcheck // deprecated but kept for backwards compatibility
 	c.RunJob.Use(middlewares.NewSave(&c.SaveConfig))
 	c.RunJob.Use(middlewares.NewMail(&c.MailConfig))
+	if wm != nil {
+		if mws, err := wm.GetMiddlewares(c.GetWebhookNames()); err == nil {
+			for _, mw := range mws {
+				c.RunJob.Use(mw)
+			}
+		}
+	}
 }
 
 func (c *RunJobConfig) GetJobSource() JobSource  { return c.JobSource }
@@ -731,6 +778,7 @@ type LocalJobConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobWebhookConfig          `mapstructure:",squash"`
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
@@ -743,31 +791,53 @@ type ComposeJobConfig struct {
 	middlewares.SlackConfig   `mapstructure:",squash"`
 	middlewares.SaveConfig    `mapstructure:",squash"`
 	middlewares.MailConfig    `mapstructure:",squash"`
+	JobWebhookConfig          `mapstructure:",squash"`
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
 func (c *ComposeJobConfig) GetJobSource() JobSource  { return c.JobSource }
 func (c *ComposeJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
-func (c *LocalJobConfig) buildMiddlewares() {
+func (c *LocalJobConfig) buildMiddlewares(wm *middlewares.WebhookManager) {
 	c.LocalJob.Use(middlewares.NewOverlap(&c.OverlapConfig))
-	c.LocalJob.Use(middlewares.NewSlack(&c.SlackConfig))
+	c.LocalJob.Use(middlewares.NewSlack(&c.SlackConfig)) //nolint:staticcheck // deprecated but kept for backwards compatibility
 	c.LocalJob.Use(middlewares.NewSave(&c.SaveConfig))
 	c.LocalJob.Use(middlewares.NewMail(&c.MailConfig))
+	if wm != nil {
+		if mws, err := wm.GetMiddlewares(c.GetWebhookNames()); err == nil {
+			for _, mw := range mws {
+				c.LocalJob.Use(mw)
+			}
+		}
+	}
 }
 
-func (c *ComposeJobConfig) buildMiddlewares() {
+func (c *ComposeJobConfig) buildMiddlewares(wm *middlewares.WebhookManager) {
 	c.ComposeJob.Use(middlewares.NewOverlap(&c.OverlapConfig))
-	c.ComposeJob.Use(middlewares.NewSlack(&c.SlackConfig))
+	c.ComposeJob.Use(middlewares.NewSlack(&c.SlackConfig)) //nolint:staticcheck // deprecated but kept for backwards compatibility
 	c.ComposeJob.Use(middlewares.NewSave(&c.SaveConfig))
 	c.ComposeJob.Use(middlewares.NewMail(&c.MailConfig))
+	if wm != nil {
+		if mws, err := wm.GetMiddlewares(c.GetWebhookNames()); err == nil {
+			for _, mw := range mws {
+				c.ComposeJob.Use(mw)
+			}
+		}
+	}
 }
 
-func (c *RunServiceConfig) buildMiddlewares() {
+func (c *RunServiceConfig) buildMiddlewares(wm *middlewares.WebhookManager) {
 	c.RunServiceJob.Use(middlewares.NewOverlap(&c.OverlapConfig))
-	c.RunServiceJob.Use(middlewares.NewSlack(&c.SlackConfig))
+	c.RunServiceJob.Use(middlewares.NewSlack(&c.SlackConfig)) //nolint:staticcheck // deprecated but kept for backwards compatibility
 	c.RunServiceJob.Use(middlewares.NewSave(&c.SaveConfig))
 	c.RunServiceJob.Use(middlewares.NewMail(&c.MailConfig))
+	if wm != nil {
+		if mws, err := wm.GetMiddlewares(c.GetWebhookNames()); err == nil {
+			for _, mw := range mws {
+				c.RunServiceJob.Use(mw)
+			}
+		}
+	}
 }
 
 type DockerConfig struct {
@@ -804,6 +874,10 @@ type DockerConfig struct {
 
 func parseIni(cfg *ini.File, c *Config) error {
 	if err := parseGlobalAndDocker(cfg, c); err != nil {
+		return err
+	}
+	// Parse webhook sections
+	if err := parseWebhookSections(cfg, c); err != nil {
 		return err
 	}
 	for _, section := range cfg.Sections() {
@@ -878,6 +952,8 @@ func parseGlobalAndDocker(cfg *ini.File, c *Config) error {
 		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Global); err != nil {
 			return fmt.Errorf("decode [global]: %w", err)
 		}
+		// Parse global webhook configuration
+		parseGlobalWebhookConfig(sec, c)
 	}
 	if sec, err := cfg.GetSection("docker"); err == nil {
 		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Docker); err != nil {

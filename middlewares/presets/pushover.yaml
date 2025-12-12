@@ -1,0 +1,24 @@
+name: pushover
+description: "Pushover push notifications"
+version: "1.0.0"
+
+url_scheme: "https://api.pushover.net/1/messages.json"
+
+method: POST
+headers:
+  Content-Type: "application/x-www-form-urlencoded"
+
+variables:
+  id:
+    description: "Pushover user key"
+    required: true
+    sensitive: true
+    example: "uQiRzpo4DXghDmr9QzzfQu27cmVRsG"
+  secret:
+    description: "Pushover application API token"
+    required: true
+    sensitive: true
+    example: "azGDORePK8gMaC0QOYAMyEEuzJnyUi"
+
+body: |
+  token={{.Preset.Secret}}&user={{.Preset.ID}}&title=Ofelia: {{.Job.Name}}&message=Job {{.Job.Name}} {{if .Execution.Failed}}failed{{else if .Execution.Skipped}}was skipped{{else}}completed{{end}} in {{.Execution.Duration}}{{if .Execution.Failed}}%0A%0AError: {{json .Execution.Error}}{{end}}&priority={{if .Execution.Failed}}1{{else}}0{{end}}&sound={{if .Execution.Failed}}siren{{else}}pushover{{end}}

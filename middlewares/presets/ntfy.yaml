@@ -1,0 +1,36 @@
+name: ntfy
+description: "ntfy.sh push notifications"
+version: "1.0.0"
+
+url_scheme: "https://ntfy.sh/{id}"
+
+method: POST
+headers:
+  Content-Type: "application/json"
+
+variables:
+  id:
+    description: "ntfy topic name"
+    required: true
+    example: "ofelia-alerts"
+  secret:
+    description: "ntfy access token (optional, for private topics)"
+    required: false
+    sensitive: true
+    example: "tk_..."
+
+body: |
+  {
+    "topic": "{{.Job.Name}}",
+    "title": "Ofelia: {{.Job.Name}} - {{.Execution.Status}}",
+    "message": "Job {{.Job.Name}} {{if .Execution.Failed}}failed{{else if .Execution.Skipped}}was skipped{{else}}completed successfully{{end}} in {{.Execution.Duration}}{{if .Execution.Failed}}\n\nError: {{.Execution.Error}}{{end}}",
+    "priority": {{if .Execution.Failed}}5{{else if .Execution.Skipped}}3{{else}}3{{end}},
+    "tags": [
+      {{- if .Execution.Failed }}"warning","x"
+      {{- else if .Execution.Skipped }}"hourglass"
+      {{- else }}"white_check_mark"
+      {{- end }}
+    ],
+    "click": "",
+    "actions": []
+  }

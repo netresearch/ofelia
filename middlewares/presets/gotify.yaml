@@ -1,0 +1,33 @@
+name: gotify
+description: "Gotify push notifications"
+version: "1.0.0"
+
+url_scheme: "{url}/message"
+
+method: POST
+headers:
+  Content-Type: "application/json"
+  X-Gotify-Key: "{secret}"
+
+variables:
+  url:
+    description: "Gotify server URL (without /message)"
+    required: true
+    example: "https://gotify.example.com"
+  secret:
+    description: "Gotify application token"
+    required: true
+    sensitive: true
+    example: "A..."
+
+body: |
+  {
+    "title": "Ofelia: {{.Job.Name}}",
+    "message": "{{if .Execution.Failed}}❌ Failed{{else if .Execution.Skipped}}⏭️ Skipped{{else}}✅ Success{{end}}\n\nJob: {{.Job.Name}}\nDuration: {{.Execution.Duration}}\nHost: {{.Host.Hostname}}{{if .Execution.Failed}}\n\nError: {{.Execution.Error}}{{end}}",
+    "priority": {{if .Execution.Failed}}8{{else if .Execution.Skipped}}4{{else}}4{{end}},
+    "extras": {
+      "client::display": {
+        "contentType": "text/plain"
+      }
+    }
+  }

@@ -1,0 +1,60 @@
+name: matrix
+description: "Matrix webhook notifications via hookshot bridge"
+version: "1.0.0"
+
+# Matrix hookshot expects the full URL to be provided
+url_scheme: "{url}"
+
+method: POST
+headers:
+  Content-Type: "application/json"
+
+variables:
+  url:
+    description: "Full Matrix hookshot webhook URL"
+    required: true
+    example: "https://matrix.example.com/hookshot/webhooks/webhook/your-webhook-id"
+  link:
+    description: "Optional URL to include in the notification (e.g., link to logs or dashboard)"
+    required: false
+    example: "https://logs.example.com/jobs/backup"
+  link_text:
+    description: "Display text for the link (defaults to 'View Details')"
+    required: false
+    example: "View Logs"
+
+body: |
+  {
+    "text": "Ofelia: {{if .Execution.Failed}}🔴{{else if .Execution.Skipped}}🟡{{else}}🟢{{end}} **{{.Job.Name}}** {{.Execution.Status}}{{if .Preset.Link}} - [{{.Preset.LinkText}}]({{.Preset.Link}}){{end}}",
+    "job": {
+      "name": "{{.Job.Name}}",
+      "command": "{{json .Job.Command}}",
+      "schedule": "{{.Job.Schedule}}",
+      "type": "{{.Job.Type}}"
+    },
+    "execution": {
+      "id": "{{.Execution.ID}}",
+      "status": "{{.Execution.Status}}",
+      "failed": {{.Execution.Failed}},
+      "skipped": {{.Execution.Skipped}},
+      {{- if .Execution.Failed }}
+      "error": "{{json .Execution.Error}}",
+      {{- end }}
+      "duration": "{{.Execution.Duration}}",
+      "start_time": "{{isoTime .Execution.StartTime}}",
+      "end_time": "{{isoTime .Execution.EndTime}}"
+    },
+    "host": {
+      "hostname": "{{.Host.Hostname}}",
+      "timestamp": "{{isoTime .Host.Timestamp}}"
+    },
+    "ofelia": {
+      "version": "{{.Ofelia.Version}}"
+    }
+    {{- if .Preset.Link }},
+    "link": {
+      "url": "{{.Preset.Link}}",
+      "text": "{{.Preset.LinkText}}"
+    }
+    {{- end }}
+  }

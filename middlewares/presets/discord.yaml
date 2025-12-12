@@ -1,0 +1,67 @@
+name: discord
+description: "Discord webhook notifications"
+version: "1.0.0"
+
+url_scheme: "https://discord.com/api/webhooks/{id}/{secret}"
+
+method: POST
+headers:
+  Content-Type: "application/json"
+
+variables:
+  id:
+    description: "Discord webhook ID"
+    required: true
+    example: "1234567890123456789"
+  secret:
+    description: "Discord webhook token"
+    required: true
+    sensitive: true
+    example: "abcdefghijklmnopqrstuvwxyz1234567890ABCDEF"
+
+body: |
+  {
+    "username": "Ofelia",
+    "avatar_url": "https://raw.githubusercontent.com/netresearch/ofelia/master/static/avatar.png",
+    "embeds": [
+      {
+        "title": "{{if .Execution.Failed}}:red_circle:{{else if .Execution.Skipped}}:orange_circle:{{else}}:green_circle:{{end}} Job: {{.Job.Name}}",
+        "description": "{{if .Execution.Failed}}Execution failed{{else if .Execution.Skipped}}Execution skipped{{else}}Execution successful{{end}}",
+        {{- if .Execution.Failed }}
+        "color": 15940352,
+        {{- else if .Execution.Skipped }}
+        "color": 16753920,
+        {{- else }}
+        "color": 8179095,
+        {{- end }}
+        "fields": [
+          {
+            "name": "Duration",
+            "value": "{{.Execution.Duration}}",
+            "inline": true
+          },
+          {
+            "name": "Host",
+            "value": "{{.Host.Hostname}}",
+            "inline": true
+          },
+          {
+            "name": "Status",
+            "value": "{{.Execution.Status}}",
+            "inline": true
+          }
+          {{- if .Execution.Failed }},
+          {
+            "name": "Error",
+            "value": "```{{truncate 1000 (json .Execution.Error)}}```",
+            "inline": false
+          }
+          {{- end }}
+        ],
+        "footer": {
+          "text": "Ofelia {{.Ofelia.Version}}"
+        },
+        "timestamp": "{{isoTime .Host.Timestamp}}"
+      }
+    ]
+  }

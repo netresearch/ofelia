@@ -555,7 +555,38 @@ ofelia daemon \
 
 ## Middleware Configuration
 
-### Slack Notifications
+### Webhook Notifications (Recommended)
+
+The new webhook notification system supports multiple services (Slack, Discord, Teams, Matrix, ntfy, Pushover, PagerDuty, Gotify) with named webhooks that can be assigned to specific jobs.
+
+```ini
+[global]
+webhook-allow-remote-presets = false
+
+[webhook "slack-alerts"]
+preset = slack
+id = T00000000/B00000000000
+secret = XXXXXXXXXXXXXXXXXXXXXXXX
+trigger = error
+
+[webhook "discord-notify"]
+preset = discord
+id = 1234567890123456789
+secret = abcdefghijklmnopqrstuvwxyz1234567890ABCDEF
+trigger = always
+
+[job-exec "important-task"]
+schedule = @daily
+container = worker
+command = important-task.sh
+webhooks = slack-alerts, discord-notify
+```
+
+> **See [Webhook Documentation](./webhooks.md)** for complete configuration options, all bundled presets, custom preset creation, and security considerations.
+
+### Slack Notifications (Deprecated)
+
+> **Note**: The `slack-webhook` option is deprecated. Please migrate to the new [webhook notification system](#webhook-notifications-recommended) which provides better flexibility, multiple service support, and per-job webhook assignment.
 
 ```ini
 [job-exec "important-task"]
@@ -563,7 +594,7 @@ schedule = @daily
 container = worker
 command = important-task.sh
 
-# Slack settings
+# Slack settings (DEPRECATED - use [webhook "name"] sections instead)
 slack-webhook = https://hooks.slack.com/services/XXX/YYY/ZZZ
 slack-channel = #alerts
 slack-only-on-error = false
