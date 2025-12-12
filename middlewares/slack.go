@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/netresearch/ofelia/core"
@@ -16,6 +18,9 @@ var (
 	slackUsername   = "Ofelia"
 	slackAvatarURL  = "https://raw.githubusercontent.com/netresearch/ofelia/master/static/avatar.png"
 	slackPayloadVar = "payload"
+
+	// slackDeprecationOnce ensures deprecation warning is only shown once
+	slackDeprecationOnce sync.Once
 )
 
 // SlackConfig configuration for the Slack middleware
@@ -27,9 +32,33 @@ type SlackConfig struct {
 }
 
 // NewSlack returns a Slack middleware if the given configuration is not empty
+//
+// Deprecated: The Slack middleware is deprecated and will be removed in v0.8.0.
+// Please migrate to the generic webhook notification system with the "slack" preset:
+//
+//	[webhook "slack-alerts"]
+//	preset = slack
+//	id = T00000000/B00000000
+//	secret = XXXXXXXXXXXXXXXXXXXXXXXX
+//	trigger = error
+//
+// The new webhook system provides retry logic, multiple webhooks, and support
+// for other services (Discord, Teams, ntfy, Pushover, PagerDuty, Gotify, etc.)
 func NewSlack(c *SlackConfig) core.Middleware {
 	var m core.Middleware
 	if !IsEmpty(c) {
+		// Show deprecation warning once
+		slackDeprecationOnce.Do(func() {
+			fmt.Fprintln(os.Stderr, "DEPRECATION WARNING: The 'slack-webhook' configuration is deprecated and will be removed in v0.8.0.")
+			fmt.Fprintln(os.Stderr, "Please migrate to the new webhook notification system:")
+			fmt.Fprintln(os.Stderr, "  [webhook \"slack\"]")
+			fmt.Fprintln(os.Stderr, "  preset = slack")
+			fmt.Fprintln(os.Stderr, "  id = T.../B...")
+			fmt.Fprintln(os.Stderr, "  secret = XXXX...")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "See documentation for migration guide: https://github.com/netresearch/ofelia#webhook-notifications")
+		})
+
 		m = &Slack{
 			SlackConfig: *c,
 			Client:      &http.Client{Timeout: 5 * time.Second},

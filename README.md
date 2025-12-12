@@ -63,7 +63,8 @@ No Docker required - runs commands directly on the host system.
 
 - **Job types** for running commands in running containers, new containers,
   on the host or as one-off swarm services.
-- **Logging middlewares** integrate with systems like Slack or StatsD to report
+- **Webhook notifications** send job execution results to Slack, Discord, Teams, Matrix, ntfy, Pushover, PagerDuty, Gotify, or custom endpoints with preset-based configuration and SSRF protection.
+- **Logging middlewares** integrate with email, file saves, and legacy Slack to report
   job output and status.
 - **Dynamic Docker detection** polls containers at an interval controlled by
   `--docker-poll-interval` or listens for events with `--docker-events`. The same
@@ -250,11 +251,12 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 
 ### Logging
 
-**Ofelia** comes with three different logging drivers that can be configured in the `[global]` section or as top-level Docker labels:
+**Ofelia** comes with several logging/notification drivers:
 
+- `webhook` to send notifications via Slack, Discord, Teams, ntfy, Pushover, PagerDuty, Gotify, or custom HTTP endpoints. See [Webhook Documentation](docs/webhooks.md) for configuration details.
 - `mail` to send mails
 - `save` to save structured execution reports to a directory. The destination folder is created automatically if it doesn't exist.
-- `slack` to send messages via a slack webhook
+- `slack` (**deprecated**) to send messages via a slack webhook - migrate to the new webhook system
 
 ### Global Options
 
@@ -270,8 +272,11 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `save-folder` - directory in which the reports shall be written. The folder is created automatically if it doesn't exist using an equivalent of `mkdir -p`.
 - `save-only-on-error` - only save a report if the execution was not successful.
 
-- `slack-webhook` - URL of the slack webhook.
-- `slack-only-on-error` - only send a slack message if the execution was not successful.
+- `webhook-allow-remote-presets` - allow fetching presets from remote URLs (default: `false`).
+- `webhook-preset-cache-ttl` - cache duration for remote presets (default: `24h`).
+
+- `slack-webhook` - (**deprecated**) URL of the slack webhook. Migrate to `[webhook "name"]` sections.
+- `slack-only-on-error` - (**deprecated**) only send a slack message if the execution was not successful.
 - `log-level` - logging level (DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL). When set in the config file this level is applied from startup unless `--log-level` is provided.
 - `enable-web` - enable the built-in web UI.
 - `web-address` - address for the web UI server (default `:8081`).
@@ -559,6 +564,7 @@ Detailed documentation is available in the [`docs/`](docs/) directory:
 |----------|-------------|
 | [Configuration Reference](docs/CONFIGURATION.md) | Complete guide to all configuration options, job parameters, and middleware settings |
 | [Job Types](docs/jobs.md) | Detailed documentation for each job type (exec, run, local, service-run, compose) |
+| [Webhook Notifications](docs/webhooks.md) | Configure notifications via Slack, Discord, Teams, Matrix, ntfy, Pushover, PagerDuty, Gotify |
 | [Architecture Overview](docs/architecture.md) | System design, scheduler internals, and component interactions |
 | [Security Guide](docs/SECURITY.md) | Security best practices, vulnerability reporting, and hardening recommendations |
 | [API Reference](docs/API.md) | Web UI API endpoints and OpenAPI specification |

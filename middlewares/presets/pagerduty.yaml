@@ -1,0 +1,48 @@
+name: pagerduty
+description: "PagerDuty Events API v2 notifications"
+version: "1.0.0"
+
+url_scheme: "https://events.pagerduty.com/v2/enqueue"
+
+method: POST
+headers:
+  Content-Type: "application/json"
+
+variables:
+  id:
+    description: "PagerDuty routing key (integration key)"
+    required: true
+    sensitive: true
+    example: "R01234567890123456789012345678901"
+  secret:
+    description: "Not used for PagerDuty (kept for consistency)"
+    required: false
+
+body: |
+  {
+    "routing_key": "{{.Preset.ID}}",
+    "event_action": "{{if .Execution.Failed}}trigger{{else}}resolve{{end}}",
+    "dedup_key": "ofelia-{{.Job.Name}}",
+    "payload": {
+      "summary": "Ofelia: {{.Job.Name}} - {{.Execution.Status}}",
+      "source": "{{.Host.Hostname}}",
+      "severity": "{{if .Execution.Failed}}error{{else if .Execution.Skipped}}warning{{else}}info{{end}}",
+      "timestamp": "{{isoTime .Host.Timestamp}}",
+      "component": "ofelia",
+      "group": "scheduled-jobs",
+      "class": "job-execution",
+      "custom_details": {
+        "job_name": "{{.Job.Name}}",
+        "job_command": "{{json .Job.Command}}",
+        "job_schedule": "{{.Job.Schedule}}",
+        "execution_id": "{{.Execution.ID}}",
+        "duration": "{{.Execution.Duration}}",
+        "exit_code": {{.Execution.ExitCode}}
+        {{- if .Execution.Failed }},
+        "error": "{{json .Execution.Error}}"
+        {{- end }}
+      }
+    },
+    "client": "Ofelia",
+    "client_url": "https://github.com/netresearch/ofelia"
+  }

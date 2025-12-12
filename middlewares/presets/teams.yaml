@@ -1,0 +1,53 @@
+name: teams
+description: "Microsoft Teams webhook notifications (Incoming Webhook connector)"
+version: "1.0.0"
+
+url_scheme: "{url}"
+
+method: POST
+headers:
+  Content-Type: "application/json"
+
+variables:
+  url:
+    description: "Full Teams incoming webhook URL"
+    required: true
+    sensitive: true
+    example: "https://outlook.office.com/webhook/..."
+
+body: |
+  {
+    "@type": "MessageCard",
+    "@context": "https://schema.org/extensions",
+    "themeColor": "{{if .Execution.Failed}}F35A00{{else if .Execution.Skipped}}FFA500{{else}}7CD197{{end}}",
+    "summary": "Ofelia: {{.Job.Name}} - {{.Execution.Status}}",
+    "sections": [
+      {
+        "activityTitle": "{{if .Execution.Failed}}&#x1F534;{{else if .Execution.Skipped}}&#x1F7E0;{{else}}&#x1F7E2;{{end}} Job: {{.Job.Name}}",
+        "activitySubtitle": "{{.Execution.Status}}",
+        "activityImage": "https://raw.githubusercontent.com/netresearch/ofelia/master/static/avatar.png",
+        "facts": [
+          {
+            "name": "Duration",
+            "value": "{{.Execution.Duration}}"
+          },
+          {
+            "name": "Host",
+            "value": "{{.Host.Hostname}}"
+          },
+          {
+            "name": "Schedule",
+            "value": "{{.Job.Schedule}}"
+          }
+          {{- if .Execution.Failed }},
+          {
+            "name": "Error",
+            "value": "{{truncate 500 (json .Execution.Error)}}"
+          }
+          {{- end }}
+        ],
+        "markdown": true
+      }
+    ],
+    "potentialAction": []
+  }

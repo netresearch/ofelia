@@ -1,0 +1,75 @@
+name: slack
+description: "Slack incoming webhook notifications"
+version: "1.0.0"
+
+url_scheme: "https://hooks.slack.com/services/{id}/{secret}"
+
+method: POST
+headers:
+  Content-Type: "application/json"
+
+variables:
+  id:
+    description: "Slack workspace and bot ID (format: T.../B...)"
+    required: true
+    example: "T00000000/B00000000"
+  secret:
+    description: "Webhook secret token"
+    required: true
+    sensitive: true
+    example: "XXXXXXXXXXXXXXXXXXXXXXXX"
+
+body: |
+  {
+    "username": "Ofelia",
+    "icon_url": "https://raw.githubusercontent.com/netresearch/ofelia/master/static/avatar.png",
+    "text": "Job *{{.Job.Name}}* finished in *{{.Execution.Duration}}*",
+    "attachments": [
+      {
+        {{- if .Execution.Failed }}
+        "color": "#F35A00",
+        "title": "Execution failed",
+        "text": "{{json .Execution.Error}}"
+        {{- else if .Execution.Skipped }}
+        "color": "#FFA500",
+        "title": "Execution skipped",
+        "text": ""
+        {{- else }}
+        "color": "#7CD197",
+        "title": "Execution successful",
+        "text": ""
+        {{- end }}
+      }
+    ],
+    "blocks": [
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "{{if .Execution.Failed}}:red_circle:{{else if .Execution.Skipped}}:large_orange_circle:{{else}}:large_green_circle:{{end}} *{{.Job.Name}}* - {{.Execution.Status}}"
+        }
+      },
+      {
+        "type": "section",
+        "fields": [
+          {
+            "type": "mrkdwn",
+            "text": "*Duration:*\n{{.Execution.Duration}}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "*Host:*\n{{.Host.Hostname}}"
+          }
+        ]
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Command: `{{json .Job.Command}}`"
+          }
+        ]
+      }
+    ]
+  }

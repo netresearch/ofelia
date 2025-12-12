@@ -73,7 +73,7 @@ func (s *SuiteConfig) TestExecJobBuildEmpty(c *C) {
 func (s *SuiteConfig) TestExecJobBuild(c *C) {
 	j := &ExecJobConfig{}
 	j.OverlapConfig.NoOverlap = true
-	j.buildMiddlewares()
+	j.buildMiddlewares(nil)
 
 	c.Assert(j.Middlewares(), HasLen, 1)
 }
