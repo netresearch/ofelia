@@ -303,12 +303,11 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 		return
 	}
 
-	parser := cron.MustNewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	allValid := true
 
 	// Check run jobs
 	for name, job := range conf.RunJobs {
-		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+		if err := validateCronSchedule(job.Schedule); err != nil {
 			allValid = false
 			report.Healthy = false
 			report.Checks = append(report.Checks, CheckResult{
@@ -326,7 +325,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 
 	// Check local jobs
 	for name, job := range conf.LocalJobs {
-		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+		if err := validateCronSchedule(job.Schedule); err != nil {
 			allValid = false
 			report.Healthy = false
 			report.Checks = append(report.Checks, CheckResult{
@@ -344,7 +343,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 
 	// Check exec jobs
 	for name, job := range conf.ExecJobs {
-		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+		if err := validateCronSchedule(job.Schedule); err != nil {
 			allValid = false
 			report.Healthy = false
 			report.Checks = append(report.Checks, CheckResult{
@@ -362,7 +361,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 
 	// Check service-run jobs
 	for name, job := range conf.ServiceJobs {
-		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+		if err := validateCronSchedule(job.Schedule); err != nil {
 			allValid = false
 			report.Healthy = false
 			report.Checks = append(report.Checks, CheckResult{
@@ -380,7 +379,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 
 	// Check compose jobs
 	for name, job := range conf.ComposeJobs {
-		if err := validateCronSchedule(parser, job.Schedule); err != nil {
+		if err := validateCronSchedule(job.Schedule); err != nil {
 			allValid = false
 			report.Healthy = false
 			report.Checks = append(report.Checks, CheckResult{
@@ -469,41 +468,16 @@ func (c *DoctorCommand) checkDockerImages(report *DoctorReport) {
 	}
 }
 
-// validateCronSchedule validates a cron schedule expression
-func validateCronSchedule(parser cron.Parser, schedule string) error {
-	// Check for special descriptors
-	descriptors := []string{"@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly"}
-	for _, desc := range descriptors {
-		if schedule == desc {
-			return nil
-		}
+// validateCronSchedule validates a cron schedule expression using go-cron v0.7.0's ValidateSpec API.
+// This provides cleaner validation with proper handling of all cron formats including descriptors,
+// @every intervals, and standard cron expressions.
+func validateCronSchedule(schedule string) error {
+	// Use go-cron v0.7.0's ValidateSpec for cleaner validation
+	// This handles all formats: descriptors (@daily, @hourly), @every intervals, and cron expressions
+	parseOpts := cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor
+	if err := cron.ValidateSpec(schedule, parseOpts); err != nil {
+		return fmt.Errorf("invalid cron schedule %q: %w", schedule, err)
 	}
-
-	// Check for @every format and validate duration
-	if strings.HasPrefix(schedule, "@every ") {
-		durationStr := strings.TrimPrefix(schedule, "@every ")
-		durationStr = strings.TrimSpace(durationStr)
-
-		// Check for negative durations
-		if strings.HasPrefix(durationStr, "-") {
-			return fmt.Errorf("negative duration not allowed")
-		}
-
-		// Try parsing the cron.Every using the actual cron library's approach
-		sched, err := cron.ParseStandard(schedule)
-		if err != nil {
-			return fmt.Errorf("invalid @every duration format: %w", err)
-		}
-		// Successfully parsed if we got here
-		_ = sched
-		return nil
-	}
-
-	// Parse as cron expression
-	if _, err := parser.Parse(schedule); err != nil {
-		return fmt.Errorf("invalid cron schedule: %w", err)
-	}
-
 	return nil
 }
 
