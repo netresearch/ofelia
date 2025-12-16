@@ -200,7 +200,6 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 	if err := scheduler.Start(); err != nil {
 		t.Fatalf("Failed to start scheduler: %v", err)
 	}
-	defer scheduler.Stop()
 
 	var wg sync.WaitGroup
 	wg.Add(numWorkers)
@@ -244,6 +243,11 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 	if !scheduler.IsRunning() {
 		t.Error("Scheduler should still be running after concurrent operations")
 	}
+
+	// Stop scheduler before adding new jobs to avoid race conditions in go-cron
+	// Note: In our testing, go-cron exhibits race conditions when AddJob is called while running
+	// See: https://github.com/netresearch/go-cron/issues/262
+	scheduler.Stop()
 
 	// Test basic functionality still works (add a new job after stress test)
 	testJob := NewErrorJob("final-test", "@daily")

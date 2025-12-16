@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/netresearch/go-cron"
-
 	"github.com/netresearch/ofelia/test"
 )
 
@@ -139,12 +137,9 @@ func TestValidateCronSchedule(t *testing.T) {
 		{"random text", "not a schedule", true},
 	}
 
-	// Create parser
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateCronSchedule(parser, tt.schedule)
+			err := validateCronSchedule(tt.schedule)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateCronSchedule(%q) error = %v, wantErr %v", tt.schedule, err, tt.wantErr)
 			}
@@ -330,8 +325,6 @@ func TestDoctorCommand_SpecialSchedules(t *testing.T) {
 		{"valid with trailing space", "@daily ", true}, // Space breaks descriptor
 	}
 
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Trim spaces as the actual config parser might do
@@ -341,7 +334,7 @@ func TestDoctorCommand_SpecialSchedules(t *testing.T) {
 				return
 			}
 
-			err := validateCronSchedule(parser, tt.schedule)
+			err := validateCronSchedule(tt.schedule)
 			if (err != nil) != tt.expectErr {
 				t.Errorf("validateCronSchedule(%q) error = %v, wantErr %v", tt.schedule, err, tt.expectErr)
 			}
