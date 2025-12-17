@@ -155,6 +155,12 @@ services:
 | `OFELIA_DOCKER_NO_POLL` | Disable Docker polling | false |
 | `OFELIA_ENABLE_WEB` | Enable web UI | false |
 | `OFELIA_WEB_ADDRESS` | Web UI bind address | :8081 |
+| `OFELIA_WEB_AUTH_ENABLED` | Enable web UI authentication | false |
+| `OFELIA_WEB_USERNAME` | Web UI username | (none) |
+| `OFELIA_WEB_PASSWORD_HASH` | bcrypt hash of password | (none) |
+| `OFELIA_WEB_SECRET_KEY` | Secret for token signing | (auto-generated) |
+| `OFELIA_WEB_TOKEN_EXPIRY` | Token expiry in hours | 24 |
+| `OFELIA_WEB_MAX_LOGIN_ATTEMPTS` | Max login attempts per minute | 5 |
 | `OFELIA_ENABLE_PPROF` | Enable pprof profiling | false |
 | `OFELIA_PPROF_ADDRESS` | pprof bind address | 127.0.0.1:8080 |
 
@@ -220,13 +226,19 @@ save-only-on-error = false
 enable-web = true
 web-address = :8080
 
+# Web UI Authentication (optional)
+web-auth-enabled = false
+web-username = admin
+web-password-hash = $2a$12$...  # bcrypt hash of password
+web-secret-key = ${WEB_SECRET_KEY}
+web-token-expiry = 24  # hours
+web-max-login-attempts = 5
+
 # Monitoring
 enable-pprof = false
 pprof-address = :6060
 
 # Security
-jwt-secret = ${JWT_SECRET}
-jwt-expiry-hours = 24
 enable-strict-validation = false
 ```
 
@@ -825,16 +837,45 @@ For non-Compose containers (without the `com.docker.compose.service` label), the
 allow-host-jobs-from-labels = false
 ```
 
-### JWT Configuration
+### Web UI Authentication
+
+Ofelia's web UI supports optional authentication to protect API endpoints:
 
 ```ini
 [global]
-# JWT for API authentication
-jwt-secret = ${JWT_SECRET}  # From environment
-jwt-expiry-hours = 24
-jwt-refresh-enabled = true
-jwt-refresh-hours = 168  # 1 week
+# Enable authentication
+web-auth-enabled = true
+web-username = admin
+web-password-hash = $2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.F3V7Y8GdDmz7hG
+
+# Token configuration
+web-secret-key = ${WEB_SECRET_KEY}  # Auto-generated if not set
+web-token-expiry = 24               # Hours
+web-max-login-attempts = 5          # Per minute per IP
 ```
+
+**Generating a password hash:**
+
+```bash
+# Using htpasswd (Apache utils)
+htpasswd -bnBC 12 "" 'your-password' | tr -d ':\n'
+
+# Using Python
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+```
+
+**Authentication flow:**
+1. POST `/api/login` with `{"username":"...", "password":"..."}`
+2. Receive token in response and `auth_token` cookie
+3. Include token as `Authorization: Bearer <token>` or cookie for subsequent requests
+4. POST `/api/logout` to invalidate token
+
+**Security features:**
+- bcrypt password hashing (cost 12)
+- Rate limiting per IP
+- CSRF token protection
+- Secure cookie settings (HttpOnly, SameSite=Strict)
+- Constant-time credential comparison
 
 ### Input Validation
 

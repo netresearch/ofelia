@@ -62,8 +62,6 @@ github.com/go-mail/mail/v2 v2.3.0 h1:wha99yf2v3cpUzD1V9ujP404Jbw2uEvs+rBJybkdYcw
 github.com/go-mail/mail/v2 v2.3.0/go.mod h1:oE2UK8qebZAjjV1ZYUpY7FPnbi/kIU53l1dmqPRb4go=
 github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93 h1:70jFzur8/dg4E5NKFMOPLAxk4wSyGm3vQ+7PuBEoHzE=
 github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93/go.mod h1:ZpqkpUmnBz2Jz7hMGSPRbHtYC82FP/IZ1Y7A2riYH0s=
-github.com/golang-jwt/jwt/v5 v5.3.0 h1:pv4AsKCKKZuqlgs5sUmn4x8UlGa0kEVt/puTpKx9vvo=
-github.com/golang-jwt/jwt/v5 v5.3.0/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=

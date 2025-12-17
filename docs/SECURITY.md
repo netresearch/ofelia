@@ -84,35 +84,34 @@ Understanding what security controls belong where is critical for proper deploym
 ## OWASP Top 10 Coverage
 
 ### A01:2021 - Broken Access Control
-**Protection**: JWT-based authentication (single-user model)
-
-- ✅ **JWT Authentication** ([web/jwt_auth.go](../web/jwt_auth.go)):
-  - HS256 signing algorithm with validation
-  - Token expiry enforcement (configurable, default 24 hours)
-  - Secure token generation with cryptographic randomness
-  - Token refresh capability with separate expiry
+**Protection**: Token-based authentication (single-user model)
 
 - ✅ **Secure Authentication** ([web/auth_secure.go](../web/auth_secure.go)):
   - Bcrypt password hashing (cost factor 12)
+  - Cryptographically secure token generation
+  - Token expiry enforcement (configurable, default 24 hours)
   - Constant-time username comparison
   - Rate limiting per IP (default 5 attempts/minute)
   - Session management with secure cookies
 
 - ⚠️ **Current Limitations**:
   - **No RBAC**: Single credential model - any authenticated user has full access
-  - **No JWT revocation**: Tokens valid until expiry (use short expiry in sensitive environments)
+  - **No token revocation list**: Tokens valid until expiry (use short expiry in sensitive environments)
   - LocalJob restrictions only apply to Docker label sources
 
 - ✅ **Access Control**:
-  - API endpoints require valid JWT (when auth enabled)
+  - API endpoints require valid token (when auth enabled)
   - LocalJob execution from labels restricted by default
   - Docker socket access delegated to infrastructure
 
 **Configuration**:
 ```ini
 [global]
-jwt-secret = ${JWT_SECRET}  # Minimum 32 characters
-jwt-expiry-hours = 24
+web-auth-enabled = true
+web-username = admin
+web-password-hash = $2a$12$...  # bcrypt hash
+web-secret-key = ${WEB_SECRET_KEY}
+web-token-expiry = 24  # hours
 allow-host-jobs-from-labels = false  # Restrict LocalJobs
 ```
 
@@ -134,15 +133,16 @@ allow-host-jobs-from-labels = false  # Restrict LocalJobs
   - Environment variable injection for secrets
   - Bcrypt hashing for production passwords
 
-- ⚠️ **Migration Note**: Plain text password fallback exists for migration period ([web/jwt_handlers.go:61-63](../web/jwt_handlers.go)). Use `password-hash` instead of `password` in production.
-
 **Best Practices**:
 ```bash
-# Generate strong JWT secret
+# Generate bcrypt password hash
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+
+# Generate secret key
 openssl rand -base64 48
 
 # Store in environment
-export OFELIA_JWT_SECRET="your-generated-secret-here"
+export OFELIA_WEB_SECRET_KEY="your-generated-secret-here"
 ```
 
 ### A03:2021 - Injection Attacks
@@ -390,61 +390,13 @@ webhook-allowed-hosts = hooks.slack.com, discord.com, ntfy.internal, 192.168.1.2
 
 ## Authentication & Authorization
 
-### JWT Authentication
-
-**Implementation**: [web/jwt_auth.go](../web/jwt_auth.go)
-
-**Features**:
-- Industry-standard JWT (RFC 7519)
-- HS256 signing algorithm
-- Configurable token expiry
-- Token refresh mechanism
-- Automatic token validation
-
-**Token Structure**:
-```json
-{
-  "username": "admin",
-  "exp": 1642348800,  // Expiry timestamp
-  "iat": 1642262400,  // Issued at
-  "nbf": 1642262400,  // Not before
-  "iss": "ofelia",    // Issuer
-  "sub": "admin"      // Subject
-}
-```
-
-**Security Requirements**:
-```go
-// JWT secret must be >= 32 characters
-if len(secretKey) < 32 {
-    return nil, errors.New("JWT secret key must be at least 32 characters long")
-}
-```
-
-**Usage**:
-```bash
-# Login
-curl -X POST http://localhost:8080/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"secure123"}'
-
-# Response
-{
-  "token": "eyJhbGc...",
-  "expires_in": 86400
-}
-
-# Use token
-curl -H "Authorization: Bearer eyJhbGc..." \
-  http://localhost:8080/api/jobs
-```
-
-### Secure Authentication
+### Token-Based Authentication
 
 **Implementation**: [web/auth_secure.go](../web/auth_secure.go)
 
 **Features**:
 - Bcrypt password hashing (cost 12)
+- Cryptographically secure token generation
 - Constant-time username comparison
 - Rate limiting (5 attempts/minute)
 - CSRF token protection
@@ -454,7 +406,26 @@ curl -H "Authorization: Bearer eyJhbGc..." \
 **Password Hashing**:
 ```bash
 # Generate bcrypt hash for configuration
-go run -tags tools tools/hashpw/main.go "your-password"
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+```
+
+**Usage**:
+```bash
+# Login
+curl -X POST http://localhost:8081/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"your-password"}'
+
+# Response
+{
+  "token": "abc123...",
+  "csrf_token": "xyz789...",
+  "expires_in": 86400
+}
+
+# Use token
+curl -H "Authorization: Bearer abc123..." \
+  http://localhost:8081/api/jobs
 ```
 
 **Rate Limiting**:
@@ -928,36 +899,37 @@ gosec ./...
 - ✅ **Have rollback procedures documented**
 - ✅ **Conduct post-incident reviews**
 
-## Security Updates (September 2025)
+## Security Updates (December 2025)
 
 Recent security enhancements implemented:
 
-### JWT Authentication System (Sept 2, 2025)
-- Industry-standard JWT implementation
-- HS256 signing with 32+ character secrets
+### Web Authentication System (Dec 17, 2025)
+- Secure token-based authentication wired up to web API
+- Bcrypt password hashing (cost factor 12)
+- Cryptographically secure token generation
 - Configurable token expiry
-- Token refresh mechanism
-- Middleware integration
+- Auth middleware protects /api/* endpoints
+- Dead auth code removed (legacy plain text auth, unused JWT handlers)
 
-### Enhanced Password Security (Sept 3, 2025)
+### Enhanced Password Security
 - Bcrypt hashing (cost factor 12)
 - Constant-time username comparison
 - Timing attack protection
 - 100ms delay on authentication failure
 
-### CSRF Protection (Sept 4, 2025)
+### CSRF Protection
 - One-time use CSRF tokens
 - Token validation middleware
 - Secure cookie attributes
 - SameSite cookie protection
 
-### Rate Limiting (Sept 5, 2025)
+### Rate Limiting
 - Per-IP rate limiting (5 attempts/minute for auth)
 - HTTP rate limiting (100 requests/minute)
 - Sliding window algorithm
 - Automatic cleanup of old entries
 
-### Input Validation Enhancements (Sept 6, 2025)
+### Input Validation
 - Docker image validation
 - Command argument sanitization
 - Environment variable validation
@@ -1012,8 +984,9 @@ All security-relevant events are logged:
 
 ### Pre-Deployment
 
-- [ ] JWT secret ≥32 characters configured
-- [ ] HTTPS/TLS enabled
+- [ ] Web auth enabled with bcrypt password hash
+- [ ] Secret key configured (or auto-generated)
+- [ ] HTTPS/TLS enabled (via reverse proxy)
 - [ ] All secrets in environment variables
 - [ ] Container resource limits set
 - [ ] Non-root user configured

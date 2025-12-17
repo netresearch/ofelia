@@ -14,16 +14,22 @@ import (
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile         string         `long:"config" env:"OFELIA_CONFIG" default:"/etc/ofelia/config.ini"`
-	DockerFilters      []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER"`
-	DockerPollInterval *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL"`
-	DockerUseEvents    *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS"`
-	DockerNoPoll       *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL"`
-	LogLevel           string         `long:"log-level" env:"OFELIA_LOG_LEVEL"`
-	EnablePprof        bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF"`
-	PprofAddr          string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" default:"127.0.0.1:8080"`
-	EnableWeb          bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
-	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
+	ConfigFile          string         `long:"config" env:"OFELIA_CONFIG" default:"/etc/ofelia/config.ini"`
+	DockerFilters       []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER"`
+	DockerPollInterval  *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL"`
+	DockerUseEvents     *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS"`
+	DockerNoPoll        *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL"`
+	LogLevel            string         `long:"log-level" env:"OFELIA_LOG_LEVEL"`
+	EnablePprof         bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF"`
+	PprofAddr           string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" default:"127.0.0.1:8080"`
+	EnableWeb           bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
+	WebAddr             string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
+	WebAuthEnabled      bool           `long:"web-auth-enabled" env:"OFELIA_WEB_AUTH_ENABLED"`
+	WebUsername         string         `long:"web-username" env:"OFELIA_WEB_USERNAME"`
+	WebPasswordHash     string         `long:"web-password-hash" env:"OFELIA_WEB_PASSWORD_HASH"`
+	WebSecretKey        string         `long:"web-secret-key" env:"OFELIA_WEB_SECRET_KEY"`
+	WebTokenExpiry      int            `long:"web-token-expiry" env:"OFELIA_WEB_TOKEN_EXPIRY" default:"24"`
+	WebMaxLoginAttempts int            `long:"web-max-login-attempts" env:"OFELIA_WEB_MAX_LOGIN_ATTEMPTS" default:"5"`
 
 	scheduler       *core.Scheduler
 	pprofServer     *http.Server
@@ -69,20 +75,7 @@ func (c *DaemonCommand) boot() (err error) {
 		config = NewConfig(c.Logger)
 	}
 	c.applyOptions(config)
-
-	// Apply global settings from config if flags were not provided
-	if !c.EnableWeb {
-		c.EnableWeb = config.Global.EnableWeb
-	}
-	if c.WebAddr == ":8081" && config.Global.WebAddr != "" {
-		c.WebAddr = config.Global.WebAddr
-	}
-	if !c.EnablePprof {
-		c.EnablePprof = config.Global.EnablePprof
-	}
-	if c.PprofAddr == "127.0.0.1:8080" && config.Global.PprofAddr != "" {
-		c.PprofAddr = config.Global.PprofAddr
-	}
+	c.applyConfigDefaults(config)
 
 	c.pprofServer = &http.Server{
 		Addr:              c.PprofAddr,
@@ -123,14 +116,24 @@ func (c *DaemonCommand) boot() (err error) {
 		if c.dockerHandler != nil {
 			provider = c.dockerHandler.GetDockerProvider()
 		}
-		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, provider)
 
-		// Register health endpoints
+		var authCfg *web.SecureAuthConfig
+		if c.WebAuthEnabled {
+			authCfg = &web.SecureAuthConfig{
+				Enabled:      true,
+				Username:     c.WebUsername,
+				PasswordHash: c.WebPasswordHash,
+				SecretKey:    c.WebSecretKey,
+				TokenExpiry:  c.WebTokenExpiry,
+				MaxAttempts:  c.WebMaxLoginAttempts,
+			}
+		}
+		c.webServer = web.NewServerWithAuth(c.WebAddr, c.scheduler, c.config, provider, authCfg)
+
 		c.webServer.RegisterHealthEndpoints(c.healthChecker)
 
-		// Create graceful server with shutdown support
 		gracefulServer := core.NewGracefulServer(c.webServer.GetHTTPServer(), c.shutdownManager, c.Logger)
-		_ = gracefulServer // The hooks are registered internally
+		_ = gracefulServer
 	}
 
 	return err
@@ -236,12 +239,42 @@ func (c *DaemonCommand) applyOptions(config *Config) {
 		config.Docker.DisablePolling = *c.DockerNoPoll
 	}
 
+	c.applyWebOptions(config)
+	c.applyAuthOptions(config)
+	c.applyServerOptions(config)
+}
+
+func (c *DaemonCommand) applyWebOptions(config *Config) {
 	if c.EnableWeb {
 		config.Global.EnableWeb = true
 	}
 	if c.WebAddr != ":8081" {
 		config.Global.WebAddr = c.WebAddr
 	}
+}
+
+func (c *DaemonCommand) applyAuthOptions(config *Config) {
+	if c.WebAuthEnabled {
+		config.Global.WebAuthEnabled = true
+	}
+	if c.WebUsername != "" {
+		config.Global.WebUsername = c.WebUsername
+	}
+	if c.WebPasswordHash != "" {
+		config.Global.WebPasswordHash = c.WebPasswordHash
+	}
+	if c.WebSecretKey != "" {
+		config.Global.WebSecretKey = c.WebSecretKey
+	}
+	if c.WebTokenExpiry != 24 {
+		config.Global.WebTokenExpiry = c.WebTokenExpiry
+	}
+	if c.WebMaxLoginAttempts != 5 {
+		config.Global.WebMaxLoginAttempts = c.WebMaxLoginAttempts
+	}
+}
+
+func (c *DaemonCommand) applyServerOptions(config *Config) {
 	if c.EnablePprof {
 		config.Global.EnablePprof = true
 	}
@@ -258,7 +291,51 @@ func (c *DaemonCommand) Config() *Config {
 	return c.config
 }
 
-// waitForServer waits for a TCP server to start accepting connections
+func (c *DaemonCommand) applyConfigDefaults(config *Config) {
+	c.applyWebDefaults(config)
+	c.applyAuthDefaults(config)
+	c.applyServerDefaults(config)
+}
+
+func (c *DaemonCommand) applyWebDefaults(config *Config) {
+	if !c.EnableWeb {
+		c.EnableWeb = config.Global.EnableWeb
+	}
+	if c.WebAddr == ":8081" && config.Global.WebAddr != "" {
+		c.WebAddr = config.Global.WebAddr
+	}
+}
+
+func (c *DaemonCommand) applyAuthDefaults(config *Config) {
+	if !c.WebAuthEnabled {
+		c.WebAuthEnabled = config.Global.WebAuthEnabled
+	}
+	if c.WebUsername == "" && config.Global.WebUsername != "" {
+		c.WebUsername = config.Global.WebUsername
+	}
+	if c.WebPasswordHash == "" && config.Global.WebPasswordHash != "" {
+		c.WebPasswordHash = config.Global.WebPasswordHash
+	}
+	if c.WebSecretKey == "" && config.Global.WebSecretKey != "" {
+		c.WebSecretKey = config.Global.WebSecretKey
+	}
+	if c.WebTokenExpiry == 24 && config.Global.WebTokenExpiry != 0 {
+		c.WebTokenExpiry = config.Global.WebTokenExpiry
+	}
+	if c.WebMaxLoginAttempts == 5 && config.Global.WebMaxLoginAttempts != 0 {
+		c.WebMaxLoginAttempts = config.Global.WebMaxLoginAttempts
+	}
+}
+
+func (c *DaemonCommand) applyServerDefaults(config *Config) {
+	if !c.EnablePprof {
+		c.EnablePprof = config.Global.EnablePprof
+	}
+	if c.PprofAddr == "127.0.0.1:8080" && config.Global.PprofAddr != "" {
+		c.PprofAddr = config.Global.PprofAddr
+	}
+}
+
 func waitForServer(ctx context.Context, addr string) error {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()

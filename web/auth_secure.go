@@ -15,6 +15,11 @@ import (
 	"golang.org/x/time/rate"
 )
 
+type TokenData struct {
+	Username  string    `json:"username"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
 // SecureAuthConfig holds secure authentication configuration
 type SecureAuthConfig struct {
 	Enabled      bool   `json:"enabled"`
