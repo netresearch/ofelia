@@ -1,11 +1,46 @@
 # Security Considerations
 
-**Last Updated**: 2025-01-15
-**Security Review Date**: 2025-09-06
+**Last Updated**: 2025-12-17
+**Security Review Date**: 2025-12-17
 
 ## Overview
 
-Ofelia implements defense-in-depth security practices across authentication, input validation, container isolation, and network security. This document covers security features, best practices, and deployment considerations for production environments.
+Ofelia implements defense-in-depth security practices across authentication, input validation, and application stability. This document covers security features, best practices, and deployment considerations for production environments.
+
+## Security Responsibility Model
+
+Understanding what security controls belong where is critical for proper deployment:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                 INFRASTRUCTURE RESPONSIBILITY                        │
+│  (Docker daemon, Kubernetes, host OS, network)                       │
+│                                                                      │
+│  • Container privileges (--privileged, capabilities)                 │
+│  • Host mounts and volume permissions                                │
+│  • Network isolation and firewall rules                              │
+│  • Resource limits (cgroups, ulimits)                                │
+│  • Security profiles (AppArmor, SELinux, seccomp)                    │
+│  • Docker socket access control                                      │
+│  • TLS termination (reverse proxy)                                   │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   OFELIA RESPONSIBILITY                              │
+│  (Application-level controls)                                        │
+│                                                                      │
+│  • Authentication (JWT, passwords)                                   │
+│  • Authorization (who can create/run jobs) - Note: No RBAC yet       │
+│  • Input format validation (cron syntax, image names)                │
+│  • Rate limiting for API endpoints                                   │
+│  • Session management and token handling                             │
+│  • Application stability (memory bounds, graceful shutdown)          │
+│  • Audit logging of security events                                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Principle**: Ofelia schedules jobs as requested. The infrastructure enforces what's permitted. If you need to restrict container privileges, configure your Docker daemon, use rootless Docker, or deploy with Kubernetes PodSecurityStandards. See [ADR-002](./adr/ADR-002-security-boundaries.md) for the full rationale.
 
 ## Security Architecture
 
@@ -49,10 +84,10 @@ Ofelia implements defense-in-depth security practices across authentication, inp
 ## OWASP Top 10 Coverage
 
 ### A01:2021 - Broken Access Control
-**Protection**: JWT-based authentication with role-based access control
+**Protection**: JWT-based authentication (single-user model)
 
 - ✅ **JWT Authentication** ([web/jwt_auth.go](../web/jwt_auth.go)):
-  - HS256 signing algorithm
+  - HS256 signing algorithm with validation
   - Token expiry enforcement (configurable, default 24 hours)
   - Secure token generation with cryptographic randomness
   - Token refresh capability with separate expiry
@@ -63,11 +98,15 @@ Ofelia implements defense-in-depth security practices across authentication, inp
   - Rate limiting per IP (default 5 attempts/minute)
   - Session management with secure cookies
 
+- ⚠️ **Current Limitations**:
+  - **No RBAC**: Single credential model - any authenticated user has full access
+  - **No JWT revocation**: Tokens valid until expiry (use short expiry in sensitive environments)
+  - LocalJob restrictions only apply to Docker label sources
+
 - ✅ **Access Control**:
-  - API endpoints require valid JWT
-  - LocalJob execution restricted (configurable)
-  - Docker socket access controlled
-  - File system access sandboxed
+  - API endpoints require valid JWT (when auth enabled)
+  - LocalJob execution from labels restricted by default
+  - Docker socket access delegated to infrastructure
 
 **Configuration**:
 ```ini
@@ -89,12 +128,13 @@ allow-host-jobs-from-labels = false  # Restrict LocalJobs
 - ✅ **JWT Signing**:
   - HS256 algorithm with minimum 32-byte secret
   - Automatic key validation on startup
-  - Token payload encryption available
 
 - ✅ **Secure Storage**:
   - Credentials never logged
   - Environment variable injection for secrets
-  - No plaintext password storage
+  - Bcrypt hashing for production passwords
+
+- ⚠️ **Migration Note**: Plain text password fallback exists for migration period ([web/jwt_handlers.go:61-63](../web/jwt_handlers.go)). Use `password-hash` instead of `password` in production.
 
 **Best Practices**:
 ```bash
@@ -204,9 +244,11 @@ overlap = false
   X-Frame-Options: DENY
   X-XSS-Protection: 1; mode=block
   Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'
   Strict-Transport-Security: max-age=31536000 (when HTTPS)
   ```
+  
+  ⚠️ **Note**: CSP allows `'unsafe-inline'` for scripts and styles to support the embedded web UI. For stricter CSP, deploy behind a reverse proxy with custom headers.
 
 ### A06:2021 - Vulnerable and Outdated Components
 **Protection**: Dependency management and security updates
@@ -236,7 +278,7 @@ overlap = false
 ### A07:2021 - Identification and Authentication Failures
 **Protection**: Robust authentication mechanisms
 
-- ✅ **Multi-Factor Authentication Support**:
+- ✅ **Authentication Protections**:
   - JWT tokens with configurable expiry
   - CSRF tokens for state-changing operations
   - Rate limiting prevents brute force
@@ -921,6 +963,15 @@ Recent security enhancements implemented:
 - Environment variable validation
 - Enhanced path traversal prevention
 
+## Web UI Security
+
+The web UI and API are **disabled by default**. If you enable them (`enable-web = true`), see [Web Package Security](./packages/web.md#security-considerations) for:
+
+- JWT authentication configuration
+- Password hashing with bcrypt
+- Rate limiting and CSRF protection
+- Security headers
+
 ## Vulnerability Reporting
 
 ### Security Contact
@@ -994,6 +1045,7 @@ All security-relevant events are logged:
 
 ## Related Documentation
 
+- [ADR-002: Security Boundaries](./adr/ADR-002-security-boundaries.md) - Architectural decision on security responsibilities
 - [Web Package](./packages/web.md) - Authentication and API security
 - [Config Package](./packages/config.md) - Input validation and sanitization
 - [Middlewares Package](./packages/middlewares.md) - Middleware security
