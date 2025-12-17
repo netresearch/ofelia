@@ -177,15 +177,11 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 	scheduler := NewScheduler(&TestLogger{})
 	scheduler.SetMaxConcurrentJobs(5)
 
-	// go-cron has internal race conditions when AddJob is called concurrently
-	// while the scheduler is running. We pre-add jobs before starting,
-	// then only test concurrent read/update operations which are safe.
 	// Reduced worker count to avoid CI timeouts with race detector
 	const numWorkers = 5
 	const jobsPerWorker = 3
 
-	// Pre-add all jobs BEFORE starting the scheduler to avoid race conditions
-	// in go-cron's internal map access during concurrent AddJob calls
+	// Pre-add jobs before starting the scheduler
 	for worker := 0; worker < numWorkers; worker++ {
 		for jobIdx := 0; jobIdx < jobsPerWorker; jobIdx++ {
 			jobName := fmt.Sprintf("worker%d-job%d", worker, jobIdx)
@@ -200,6 +196,7 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 	if err := scheduler.Start(); err != nil {
 		t.Fatalf("Failed to start scheduler: %v", err)
 	}
+	defer scheduler.Stop()
 
 	var wg sync.WaitGroup
 	wg.Add(numWorkers)
@@ -244,15 +241,10 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 		t.Error("Scheduler should still be running after concurrent operations")
 	}
 
-	// Stop scheduler before adding new jobs to avoid race conditions in go-cron
-	// Note: In our testing, go-cron exhibits race conditions when AddJob is called while running
-	// See: https://github.com/netresearch/go-cron/issues/262
-	scheduler.Stop()
-
-	// Test basic functionality still works (add a new job after stress test)
+	// Test adding a new job while scheduler is running (go-cron v0.7.1 fixed race conditions)
 	testJob := NewErrorJob("final-test", "@daily")
 	if err := scheduler.AddJob(testJob); err != nil {
-		t.Errorf("Scheduler should still accept jobs after stress test: %v", err)
+		t.Errorf("Scheduler should accept jobs while running: %v", err)
 	}
 }
 
