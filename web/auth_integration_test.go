@@ -348,6 +348,63 @@ func TestLogoutFlow(t *testing.T) {
 			t.Errorf("expected status 405, got %d", w.Code)
 		}
 	})
+
+	t.Run("logout_cookie_secure_flag_without_https", func(t *testing.T) {
+		body := `{"username":"admin","password":"password"}`
+		loginReq := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		loginReq.Header.Set("Content-Type", "application/json")
+		loginReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+		loginW := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(loginW, loginReq)
+
+		var resp map[string]interface{}
+		_ = json.NewDecoder(loginW.Body).Decode(&resp)
+		tkn := resp["token"].(string)
+
+		logoutReq := httptest.NewRequest("POST", "/api/logout", nil)
+		logoutReq.Header.Set("Authorization", "Bearer "+tkn)
+		logoutW := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(logoutW, logoutReq)
+
+		cookies := logoutW.Result().Cookies()
+		for _, c := range cookies {
+			if c.Name == "auth_token" {
+				if c.Secure {
+					t.Error("expected Secure=false without HTTPS")
+				}
+				break
+			}
+		}
+	})
+
+	t.Run("logout_cookie_secure_flag_with_forwarded_proto", func(t *testing.T) {
+		body := `{"username":"admin","password":"password"}`
+		loginReq := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		loginReq.Header.Set("Content-Type", "application/json")
+		loginReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+		loginW := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(loginW, loginReq)
+
+		var resp map[string]interface{}
+		_ = json.NewDecoder(loginW.Body).Decode(&resp)
+		tkn := resp["token"].(string)
+
+		logoutReq := httptest.NewRequest("POST", "/api/logout", nil)
+		logoutReq.Header.Set("Authorization", "Bearer "+tkn)
+		logoutReq.Header.Set("X-Forwarded-Proto", "https")
+		logoutW := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(logoutW, logoutReq)
+
+		cookies := logoutW.Result().Cookies()
+		for _, c := range cookies {
+			if c.Name == "auth_token" {
+				if !c.Secure {
+					t.Error("expected Secure=true with X-Forwarded-Proto: https")
+				}
+				break
+			}
+		}
+	})
 }
 
 func TestServerWithoutAuth(t *testing.T) {

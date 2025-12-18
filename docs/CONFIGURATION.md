@@ -224,13 +224,17 @@ save-only-on-error = false
 
 # Web UI Settings
 enable-web = true
-web-address = :8080
+# Bind to localhost by default to avoid exposing the web UI to untrusted networks.
+# Change only when you have proper network access controls in place.
+web-address = 127.0.0.1:8080
 
-# Web UI Authentication (optional)
-web-auth-enabled = false
+# Web UI Authentication (RECOMMENDED for production)
+# WARNING: Disabling auth exposes /api/* endpoints including job creation/execution.
+# If auth is disabled, ensure web-address is bound to localhost or a protected interface.
+web-auth-enabled = true
 web-username = admin
-web-password-hash = $2a$12$...  # bcrypt hash of password
-web-secret-key = ${WEB_SECRET_KEY}
+web-password-hash = $2a$12$...  # bcrypt hash - use 'ofelia hash-password' to generate
+web-secret-key = ${WEB_SECRET_KEY}  # Required for persistent sessions across restarts
 web-token-expiry = 24  # hours
 web-max-login-attempts = 5
 

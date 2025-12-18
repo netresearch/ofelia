@@ -143,6 +143,9 @@ func (c *DaemonCommand) boot() (err error) {
 			}
 		}
 		c.webServer = web.NewServerWithAuth(c.WebAddr, c.scheduler, c.config, provider, authCfg)
+		if c.webServer == nil {
+			return fmt.Errorf("failed to initialize web server (check logs for details)")
+		}
 
 		c.webServer.RegisterHealthEndpoints(c.healthChecker)
 

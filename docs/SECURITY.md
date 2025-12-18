@@ -124,9 +124,9 @@ allow-host-jobs-from-labels = false  # Restrict LocalJobs
   hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
   ```
 
-- ✅ **JWT Signing**:
-  - HS256 algorithm with minimum 32-byte secret
-  - Automatic key validation on startup
+- ✅ **Token Signing**:
+  - HMAC-based token signing with minimum 32-byte secret
+  - Automatic token key validation on startup
 
 - ✅ **Secure Storage**:
   - Credentials never logged
@@ -279,7 +279,7 @@ overlap = false
 **Protection**: Robust authentication mechanisms
 
 - ✅ **Authentication Protections**:
-  - JWT tokens with configurable expiry
+  - Authentication tokens with configurable expiry
   - CSRF tokens for state-changing operations
   - Rate limiting prevents brute force
 
