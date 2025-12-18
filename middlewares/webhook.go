@@ -296,6 +296,11 @@ func NewWebhookManager(globalConfig *WebhookGlobalConfig) *WebhookManager {
 		globalConfig = DefaultWebhookGlobalConfig()
 	}
 
+	// Configure global security settings based on the webhook global config
+	// This affects URL validation and DNS rebinding protection
+	securityConfig := SecurityConfigFromGlobal(globalConfig)
+	SetGlobalSecurityConfig(securityConfig)
+
 	return &WebhookManager{
 		webhooks:     make(map[string]*WebhookConfig),
 		presetLoader: NewPresetLoader(globalConfig),

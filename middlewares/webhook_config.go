@@ -75,6 +75,12 @@ type WebhookGlobalConfig struct {
 
 	// PresetCacheDir is the directory for caching remote presets
 	PresetCacheDir string `gcfg:"preset-cache-dir" mapstructure:"preset-cache-dir"`
+
+	// AllowedHosts controls which hosts webhooks can target.
+	// Default: "*" (allow all hosts) - consistent with local command execution trust model
+	// Set to specific hosts for whitelist mode: "hooks.slack.com, ntfy.internal, 192.168.1.20"
+	// Supports wildcards: "*.example.com"
+	AllowedHosts string `gcfg:"allowed-hosts" mapstructure:"allowed-hosts"`
 }
 
 // WebhookData is the data structure passed to webhook templates
@@ -141,6 +147,7 @@ func DefaultWebhookGlobalConfig() *WebhookGlobalConfig {
 		TrustedPresetSources: "",
 		PresetCacheTTL:       24 * time.Hour,
 		PresetCacheDir:       cacheDir,
+		AllowedHosts:         "*", // Default: allow all hosts (consistent with local command trust model)
 	}
 }
 

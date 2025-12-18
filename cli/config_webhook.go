@@ -169,6 +169,11 @@ func parseGlobalWebhookConfig(section *ini.Section, c *Config) {
 	if key, err := section.GetKey("preset-cache-dir"); err == nil {
 		c.WebhookConfigs.Global.PresetCacheDir = key.String()
 	}
+
+	// Host whitelist: "*" = allow all (default), specific list = whitelist mode
+	if key, err := section.GetKey("webhook-allowed-hosts"); err == nil {
+		c.WebhookConfigs.Global.AllowedHosts = key.String()
+	}
 }
 
 // JobWebhookConfig holds per-job webhook configuration
