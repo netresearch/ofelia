@@ -54,6 +54,22 @@ func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_Ntfy(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(preset, NotNil)
 	c.Assert(preset.Name, Equals, "ntfy")
+	// ntfy preset is for public topics - should NOT have Authorization header
+	_, hasAuth := preset.Headers["Authorization"]
+	c.Assert(hasAuth, Equals, false)
+}
+
+func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_NtfyToken(c *C) {
+	loader := NewPresetLoader(nil)
+	preset, err := loader.Load("ntfy-token")
+
+	c.Assert(err, IsNil)
+	c.Assert(preset, NotNil)
+	c.Assert(preset.Name, Equals, "ntfy-token")
+	// ntfy-token preset should have Bearer Authorization header
+	c.Assert(preset.Headers["Authorization"], Equals, "Bearer {secret}")
+	// Secret should be required
+	c.Assert(preset.Variables["secret"].Required, Equals, true)
 }
 
 func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_Pushover(c *C) {
@@ -190,7 +206,7 @@ func (s *SuitePreset) TestListBundledPresets(c *C) {
 	loader := NewPresetLoader(nil)
 	presets := loader.ListBundledPresets()
 
-	c.Assert(len(presets) >= 7, Equals, true)
+	c.Assert(len(presets) >= 9, Equals, true)
 
 	// Check that expected presets are present
 	hasSlack := false

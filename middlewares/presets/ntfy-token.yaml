@@ -1,18 +1,24 @@
-name: ntfy
-description: "ntfy.sh push notifications for public topics (use ntfy-token for authenticated access)"
-version: "1.0.1"
+name: ntfy-token
+description: "ntfy.sh push notifications with Bearer token authentication for self-hosted instances or private topics"
+version: "1.0.0"
 
 url_scheme: "https://ntfy.sh/{id}"
 
 method: POST
 headers:
   Content-Type: "application/json"
+  Authorization: "Bearer {secret}"
 
 variables:
   id:
-    description: "ntfy topic name (public topic, no authentication)"
+    description: "ntfy topic name"
     required: true
     example: "ofelia-alerts"
+  secret:
+    description: "ntfy access token (required for private topics)"
+    required: true
+    sensitive: true
+    example: "tk_AgQdq7mVBoFD37zQVN29RhuMzNIz2"
 
 body: |
   {
