@@ -209,13 +209,13 @@ func (h *LoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set cookie for web UI
+	// Set cookie for web UI with security attributes
 	http.SetCookie(w, &http.Cookie{
 		Name:     "auth_token",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(h.tokenManager.tokenExpiry.Seconds()),
 	})
@@ -258,12 +258,14 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.tokenManager.RevokeToken(token)
 	}
 
-	// Clear cookie
+	// Clear cookie with security attributes
 	http.SetCookie(w, &http.Cookie{
 		Name:     "auth_token",
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})
 
