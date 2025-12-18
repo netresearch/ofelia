@@ -7,6 +7,17 @@ import (
 	"time"
 )
 
+func getUnusedAddr(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to get unused port: %v", err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+	return addr
+}
+
 // TestWaitForServer_Success tests successful server connection
 func TestWaitForServer_Success(t *testing.T) {
 	// Start a test TCP server
@@ -29,8 +40,8 @@ func TestWaitForServer_Success(t *testing.T) {
 
 // TestWaitForServer_Timeout tests timeout when server doesn't start
 func TestWaitForServer_Timeout(t *testing.T) {
-	// Use an address that will never have a server
-	addr := "127.0.0.1:65535"
+	// Get an ephemeral port that's guaranteed to be unused
+	addr := getUnusedAddr(t)
 
 	// Use a very short timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -81,7 +92,7 @@ func TestWaitForServer_DelayedStart(t *testing.T) {
 
 // TestWaitForServer_CancelContext tests cancellation behavior
 func TestWaitForServer_CancelContext(t *testing.T) {
-	addr := "127.0.0.1:65534"
+	addr := getUnusedAddr(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
