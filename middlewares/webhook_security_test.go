@@ -12,80 +12,7 @@ type SuiteWebhookSecurity struct {
 
 var _ = Suite(&SuiteWebhookSecurity{})
 
-// SSRF Protection Tests - Blocked Hosts
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksLocalhost(c *C) {
-	err := ValidateWebhookURLImpl("http://localhost/webhook")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*blocked host.*")
-}
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_Blocks127001(c *C) {
-	err := ValidateWebhookURLImpl("http://127.0.0.1/webhook")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*blocked host.*")
-}
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksIPv6Localhost(c *C) {
-	err := ValidateWebhookURLImpl("http://[::1]/webhook")
-	c.Assert(err, NotNil)
-}
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksMetadataEndpoint(c *C) {
-	err := ValidateWebhookURLImpl("http://169.254.169.254/latest/meta-data/")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*blocked host.*")
-}
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksGCPMetadata(c *C) {
-	err := ValidateWebhookURLImpl("http://metadata.google.internal/computeMetadata/v1/")
-	c.Assert(err, NotNil)
-}
-
-// SSRF Protection Tests - Private Networks
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksPrivateClassA(c *C) {
-	err := ValidateWebhookURLImpl("http://10.0.0.1/webhook")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*private network.*")
-}
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksPrivateClassB(c *C) {
-	err := ValidateWebhookURLImpl("http://172.16.0.1/webhook")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*private network.*")
-
-	err = ValidateWebhookURLImpl("http://172.31.255.255/webhook")
-	c.Assert(err, NotNil)
-}
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksPrivateClassC(c *C) {
-	err := ValidateWebhookURLImpl("http://192.168.1.1/webhook")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*private network.*")
-}
-
-// SSRF Protection Tests - Internal Hostnames
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksLocalSuffix(c *C) {
-	err := ValidateWebhookURLImpl("http://myservice.local/webhook")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*internal hostname.*")
-}
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksInternalSuffix(c *C) {
-	err := ValidateWebhookURLImpl("http://api.internal/webhook")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*internal hostname.*")
-}
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksCorpSuffix(c *C) {
-	err := ValidateWebhookURLImpl("http://intranet.corp/webhook")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*internal hostname.*")
-}
-
-// SSRF Protection Tests - URL Scheme
+// URL Scheme Validation Tests
 
 func (s *SuiteWebhookSecurity) TestValidateWebhookURL_RequiresHTTP(c *C) {
 	err := ValidateWebhookURLImpl("ftp://example.com/file")
@@ -99,33 +26,47 @@ func (s *SuiteWebhookSecurity) TestValidateWebhookURL_RequiresHost(c *C) {
 	c.Assert(err.Error(), Matches, ".*host.*")
 }
 
-// SSRF Protection Tests - Bypass Attempts
-
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksHexIP(c *C) {
-	err := ValidateWebhookURLImpl("http://0x7f.0x0.0x0.0x1/webhook")
-	c.Assert(err, NotNil)
+func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsHTTP(c *C) {
+	err := ValidateWebhookURLImpl("http://example.com/webhook")
+	c.Assert(err, IsNil)
 }
 
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksDecimalIP(c *C) {
-	err := ValidateWebhookURLImpl("http://2130706433/webhook") // 127.0.0.1 in decimal
-	c.Assert(err, NotNil)
+func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsHTTPS(c *C) {
+	err := ValidateWebhookURLImpl("https://example.com/webhook")
+	c.Assert(err, IsNil)
 }
 
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksURLEncodedLocalhost(c *C) {
-	// URL-encoded "localhost"
-	err := ValidateWebhookURLImpl("http://%6c%6f%63%61%6c%68%6f%73%74/webhook")
-	c.Assert(err, NotNil)
+// Default Allow-All Behavior Tests (Trust-the-Config Model)
+// Since users can run arbitrary local commands, they can send webhooks anywhere
+
+func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsLocalhost(c *C) {
+	// Default behavior: allow all hosts (consistent with local command trust model)
+	err := ValidateWebhookURLImpl("http://localhost/webhook")
+	c.Assert(err, IsNil)
 }
 
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_BlocksCredentialBypass(c *C) {
-	err := ValidateWebhookURLImpl("http://user@localhost:8080/webhook")
-	c.Assert(err, NotNil)
+func (s *SuiteWebhookSecurity) TestValidateWebhookURL_Allows127001(c *C) {
+	err := ValidateWebhookURLImpl("http://127.0.0.1/webhook")
+	c.Assert(err, IsNil)
 }
 
-// SSRF Protection Tests - Valid URLs
+func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsPrivateClassA(c *C) {
+	err := ValidateWebhookURLImpl("http://10.0.0.1/webhook")
+	c.Assert(err, IsNil)
+}
 
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsPublicHTTP(c *C) {
-	err := ValidateWebhookURLImpl("http://hooks.example.com/webhook")
+func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsPrivateClassB(c *C) {
+	err := ValidateWebhookURLImpl("http://172.16.0.1/webhook")
+	c.Assert(err, IsNil)
+}
+
+func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsPrivateClassC(c *C) {
+	err := ValidateWebhookURLImpl("http://192.168.1.1/webhook")
+	c.Assert(err, IsNil)
+}
+
+func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsInternalHostname(c *C) {
+	err := ValidateWebhookURLImpl("http://ntfy.local/webhook")
 	c.Assert(err, IsNil)
 }
 
@@ -134,119 +75,132 @@ func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsPublicHTTPS(c *C) {
 	c.Assert(err, IsNil)
 }
 
-func (s *SuiteWebhookSecurity) TestValidateWebhookURL_AllowsDiscord(c *C) {
-	err := ValidateWebhookURLImpl("https://discord.com/api/webhooks/123/secret")
-	c.Assert(err, IsNil)
-}
-
-// Configurable Security Validator Tests
+// Security Config Default Tests
 
 func (s *SuiteWebhookSecurity) TestSecurityValidator_DefaultConfig(c *C) {
 	validator := NewWebhookSecurityValidator(nil)
 	c.Assert(validator, NotNil)
-	c.Assert(validator.config.AllowLocalhost, Equals, false)
-	c.Assert(validator.config.AllowPrivateNetworks, Equals, false)
+	// Default: AllowedHosts = ["*"] (allow all)
+	c.Assert(len(validator.config.AllowedHosts), Equals, 1)
+	c.Assert(validator.config.AllowedHosts[0], Equals, "*")
 }
 
-func (s *SuiteWebhookSecurity) TestSecurityValidator_AllowLocalhost(c *C) {
+func (s *SuiteWebhookSecurity) TestSecurityValidator_DefaultAllowsAll(c *C) {
+	validator := NewWebhookSecurityValidator(nil)
+
+	// All hosts should be allowed by default
+	testURLs := []string{
+		"http://localhost/webhook",
+		"http://127.0.0.1/webhook",
+		"http://10.0.0.1/webhook",
+		"http://192.168.1.1/webhook",
+		"http://ntfy.internal/webhook",
+		"https://hooks.slack.com/webhook",
+	}
+
+	for _, url := range testURLs {
+		err := validator.Validate(url)
+		c.Assert(err, IsNil, Commentf("Expected URL %s to be allowed", url))
+	}
+}
+
+// Whitelist Mode Tests
+
+func (s *SuiteWebhookSecurity) TestSecurityValidator_WhitelistMode(c *C) {
 	config := &WebhookSecurityConfig{
-		AllowLocalhost: true,
+		AllowedHosts: []string{"hooks.slack.com", "ntfy.local"},
 	}
 	validator := NewWebhookSecurityValidator(config)
 
-	err := validator.Validate("http://localhost/webhook")
+	// Allowed: exact match
+	err := validator.Validate("https://hooks.slack.com/webhook")
 	c.Assert(err, IsNil)
+
+	err = validator.Validate("http://ntfy.local/webhook")
+	c.Assert(err, IsNil)
+
+	// Blocked: not in whitelist
+	err = validator.Validate("http://192.168.1.1/webhook")
+	c.Assert(err, NotNil)
+	c.Assert(err.Error(), Matches, ".*not in allowed hosts.*")
 }
 
-func (s *SuiteWebhookSecurity) TestSecurityValidator_AllowPrivateNetworks(c *C) {
+func (s *SuiteWebhookSecurity) TestSecurityValidator_WhitelistWildcard(c *C) {
 	config := &WebhookSecurityConfig{
-		AllowPrivateNetworks: true,
+		AllowedHosts: []string{"*.slack.com", "*.internal.example.com"},
 	}
 	validator := NewWebhookSecurityValidator(config)
 
-	err := validator.Validate("http://192.168.1.1/webhook")
-	c.Assert(err, IsNil)
-}
-
-func (s *SuiteWebhookSecurity) TestSecurityValidator_AllowedHostsWhitelist(c *C) {
-	config := &WebhookSecurityConfig{
-		AllowedHosts: []string{"hooks.example.com", "*.slack.com"},
-	}
-	validator := NewWebhookSecurityValidator(config)
-
-	// Allowed exact match
-	err := validator.Validate("https://hooks.example.com/webhook")
+	// Allowed: wildcard match
+	err := validator.Validate("https://hooks.slack.com/webhook")
 	c.Assert(err, IsNil)
 
-	// Allowed wildcard match
-	err = validator.Validate("https://hooks.slack.com/webhook")
+	err = validator.Validate("http://ntfy.internal.example.com/webhook")
 	c.Assert(err, IsNil)
 
-	// Not allowed - not in whitelist
-	err = validator.Validate("https://other.example.com/webhook")
+	// Blocked: doesn't match wildcard
+	err = validator.Validate("https://discord.com/webhook")
 	c.Assert(err, NotNil)
 }
 
-func (s *SuiteWebhookSecurity) TestSecurityValidator_BlockedHosts(c *C) {
+func (s *SuiteWebhookSecurity) TestSecurityValidator_ExplicitAllowAll(c *C) {
 	config := &WebhookSecurityConfig{
-		BlockedHosts: []string{"blocked.example.com"},
+		AllowedHosts: []string{"*"},
 	}
 	validator := NewWebhookSecurityValidator(config)
 
-	err := validator.Validate("https://blocked.example.com/webhook")
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*blocked.*")
+	// All hosts should be allowed
+	testURLs := []string{
+		"http://localhost/webhook",
+		"http://192.168.1.1/webhook",
+		"https://hooks.slack.com/webhook",
+	}
 
-	// Other hosts should work
-	err = validator.Validate("https://allowed.example.com/webhook")
+	for _, url := range testURLs {
+		err := validator.Validate(url)
+		c.Assert(err, IsNil, Commentf("Expected URL %s to be allowed with explicit *", url))
+	}
+}
+
+func (s *SuiteWebhookSecurity) TestSecurityValidator_MixedWithWildcard(c *C) {
+	// If "*" is in the list, all hosts are allowed
+	config := &WebhookSecurityConfig{
+		AllowedHosts: []string{"hooks.slack.com", "*"},
+	}
+	validator := NewWebhookSecurityValidator(config)
+
+	// All hosts should be allowed because * is in the list
+	err := validator.Validate("http://any-host.example.com/webhook")
 	c.Assert(err, IsNil)
 }
 
 // Standard Go testing for integration tests
 
-func TestSSRFProtection_ComprehensiveBlocklist(t *testing.T) {
-	blockedURLs := []string{
-		// Localhost variations
-		"http://localhost/",
-		"http://127.0.0.1/",
-		"http://[::1]/",
-		"http://0.0.0.0/",
+func TestSecurityConfig_Default(t *testing.T) {
+	config := DefaultWebhookSecurityConfig()
 
-		// Cloud metadata endpoints
-		"http://169.254.169.254/",
-		"http://metadata.google.internal/",
-
-		// Private networks
-		"http://10.0.0.1/",
-		"http://10.255.255.255/",
-		"http://172.16.0.1/",
-		"http://172.31.255.255/",
-		"http://192.168.0.1/",
-		"http://192.168.255.255/",
-
-		// Internal hostnames
-		"http://api.local/",
-		"http://service.internal/",
-		"http://server.corp/",
-		"http://host.localhost/",
+	// Default: AllowedHosts = ["*"] (allow all hosts)
+	if len(config.AllowedHosts) != 1 {
+		t.Errorf("Expected 1 entry in AllowedHosts, got %d", len(config.AllowedHosts))
 	}
 
-	for _, url := range blockedURLs {
-		err := ValidateWebhookURLImpl(url)
-		if err == nil {
-			t.Errorf("Expected URL %s to be blocked, but it was allowed", url)
-		}
+	if config.AllowedHosts[0] != "*" {
+		t.Errorf("Expected AllowedHosts[0] to be '*', got %q", config.AllowedHosts[0])
 	}
 }
 
-func TestSSRFProtection_AllowedURLs(t *testing.T) {
+func TestURLValidation_AllowsAllHostsByDefault(t *testing.T) {
+	// These URLs should all be allowed with default validation
 	allowedURLs := []string{
 		"https://hooks.slack.com/services/T123/B456/secret",
 		"https://discord.com/api/webhooks/123/secret",
-		"https://api.pushover.net/1/messages.json",
-		"https://api.pagerduty.com/v2/enqueue",
 		"https://ntfy.sh/mytopic",
-		"https://hooks.example.com/webhook",
+		"http://localhost/webhook",
+		"http://127.0.0.1/webhook",
+		"http://10.0.0.1/webhook",
+		"http://192.168.1.20/webhook",
+		"http://ntfy.internal/webhook",
+		"http://metadata.google.internal/computeMetadata/v1/",
 	}
 
 	for _, url := range allowedURLs {
@@ -257,62 +211,190 @@ func TestSSRFProtection_AllowedURLs(t *testing.T) {
 	}
 }
 
-func TestSecurityConfig_Default(t *testing.T) {
-	config := DefaultWebhookSecurityConfig()
-
-	if config.AllowLocalhost {
-		t.Error("Default config should not allow localhost")
+func TestURLValidation_BlocksInvalidSchemes(t *testing.T) {
+	invalidURLs := []string{
+		"ftp://example.com/file",
+		"file:///etc/passwd",
+		"gopher://example.com/",
+		"javascript:alert(1)",
 	}
 
-	if config.AllowPrivateNetworks {
-		t.Error("Default config should not allow private networks")
-	}
-
-	if len(config.AllowedHosts) != 0 {
-		t.Error("Default config should have empty allowed hosts")
-	}
-
-	if len(config.BlockedHosts) != 0 {
-		t.Error("Default config should have empty blocked hosts")
+	for _, url := range invalidURLs {
+		err := ValidateWebhookURLImpl(url)
+		if err == nil {
+			t.Errorf("Expected URL %s to be blocked (invalid scheme), but it was allowed", url)
+		}
 	}
 }
 
-// DNS Rebinding Protection Tests
+func TestURLValidation_RequiresHostname(t *testing.T) {
+	invalidURLs := []string{
+		"http:///path",
+		"https://",
+	}
 
-func TestValidateResolvedIP_BlocksLoopback(t *testing.T) {
-	// Test that resolved IPs are validated
-	err := validateIP([]byte{127, 0, 0, 1})
-	if err == nil {
-		t.Error("Expected loopback IP to be blocked")
+	for _, url := range invalidURLs {
+		err := ValidateWebhookURLImpl(url)
+		if err == nil {
+			t.Errorf("Expected URL %s to be blocked (no hostname), but it was allowed", url)
+		}
 	}
 }
 
-func TestValidateResolvedIP_BlocksPrivate10(t *testing.T) {
-	err := validateIP([]byte{10, 0, 0, 1})
-	if err == nil {
-		t.Error("Expected 10.x.x.x IP to be blocked")
+// Tests for SecurityConfigFromGlobal
+
+func TestSecurityConfigFromGlobal_NilConfig(t *testing.T) {
+	config := SecurityConfigFromGlobal(nil)
+
+	if config == nil {
+		t.Fatal("SecurityConfigFromGlobal should return non-nil config for nil input")
+	}
+
+	// Default: AllowedHosts = ["*"]
+	if len(config.AllowedHosts) != 1 || config.AllowedHosts[0] != "*" {
+		t.Error("Default should have AllowedHosts = [\"*\"]")
 	}
 }
 
-func TestValidateResolvedIP_BlocksPrivate172(t *testing.T) {
-	err := validateIP([]byte{172, 16, 0, 1})
-	if err == nil {
-		t.Error("Expected 172.16.x.x IP to be blocked")
+func TestSecurityConfigFromGlobal_EmptyAllowedHosts(t *testing.T) {
+	global := &WebhookGlobalConfig{
+		AllowedHosts: "",
+	}
+
+	config := SecurityConfigFromGlobal(global)
+
+	// Empty string defaults to "*"
+	if len(config.AllowedHosts) != 1 || config.AllowedHosts[0] != "*" {
+		t.Errorf("Empty AllowedHosts should default to [\"*\"], got %v", config.AllowedHosts)
 	}
 }
 
-func TestValidateResolvedIP_BlocksPrivate192(t *testing.T) {
-	err := validateIP([]byte{192, 168, 1, 1})
-	if err == nil {
-		t.Error("Expected 192.168.x.x IP to be blocked")
+func TestSecurityConfigFromGlobal_ExplicitStar(t *testing.T) {
+	global := &WebhookGlobalConfig{
+		AllowedHosts: "*",
+	}
+
+	config := SecurityConfigFromGlobal(global)
+
+	if len(config.AllowedHosts) != 1 || config.AllowedHosts[0] != "*" {
+		t.Errorf("Expected [\"*\"], got %v", config.AllowedHosts)
 	}
 }
 
-func TestValidateResolvedIP_AllowsPublic(t *testing.T) {
-	// Google's DNS
-	err := validateIP([]byte{8, 8, 8, 8})
+func TestSecurityValidator_EmptyAllowedHostsDefaultsToAll(t *testing.T) {
+	// Empty slice should default to allow all (defensive handling)
+	config := &WebhookSecurityConfig{
+		AllowedHosts: []string{},
+	}
+	validator := NewWebhookSecurityValidator(config)
+
+	// Should allow all hosts since empty defaults to "*"
+	err := validator.Validate("http://any-host.example.com/webhook")
 	if err != nil {
-		t.Errorf("Expected public IP 8.8.8.8 to be allowed, got error: %v", err)
+		t.Errorf("Expected empty AllowedHosts to default to allow-all, got error: %v", err)
+	}
+
+	err = validator.Validate("http://192.168.1.1/webhook")
+	if err != nil {
+		t.Errorf("Expected empty AllowedHosts to allow private IPs, got error: %v", err)
+	}
+}
+
+func TestSecurityConfigFromGlobal_SpecificHosts(t *testing.T) {
+	global := &WebhookGlobalConfig{
+		AllowedHosts: "192.168.1.20, ntfy.local, *.internal.example.com",
+	}
+
+	config := SecurityConfigFromGlobal(global)
+
+	if len(config.AllowedHosts) != 3 {
+		t.Errorf("Expected 3 allowed hosts, got %d", len(config.AllowedHosts))
+	}
+
+	expectedHosts := []string{"192.168.1.20", "ntfy.local", "*.internal.example.com"}
+	for i, expected := range expectedHosts {
+		if i >= len(config.AllowedHosts) {
+			t.Errorf("Missing expected host: %s", expected)
+			continue
+		}
+		if config.AllowedHosts[i] != expected {
+			t.Errorf("Expected host %q, got %q", expected, config.AllowedHosts[i])
+		}
+	}
+}
+
+// Tests for SetGlobalSecurityConfig
+
+func TestSetGlobalSecurityConfig_SetsValidator(t *testing.T) {
+	// Save original functions
+	originalValidator := ValidateWebhookURL
+	originalTransport := TransportFactory
+	defer func() {
+		ValidateWebhookURL = originalValidator
+		TransportFactory = originalTransport
+	}()
+
+	// Set whitelist config
+	config := &WebhookSecurityConfig{
+		AllowedHosts: []string{"hooks.slack.com"},
+	}
+
+	SetGlobalSecurityConfig(config)
+
+	// Test that only whitelisted host is allowed
+	err := ValidateWebhookURL("https://hooks.slack.com/webhook")
+	if err != nil {
+		t.Errorf("Expected whitelisted host to be allowed, got error: %v", err)
+	}
+
+	// Test that other hosts are blocked
+	err = ValidateWebhookURL("http://192.168.1.20/webhook")
+	if err == nil {
+		t.Error("Expected non-whitelisted host to be blocked in whitelist mode")
+	}
+}
+
+func TestSetGlobalSecurityConfig_NilResetsToDefault(t *testing.T) {
+	// Save original functions
+	originalValidator := ValidateWebhookURL
+	originalTransport := TransportFactory
+	defer func() {
+		ValidateWebhookURL = originalValidator
+		TransportFactory = originalTransport
+	}()
+
+	// First set a restrictive config
+	SetGlobalSecurityConfig(&WebhookSecurityConfig{AllowedHosts: []string{"hooks.slack.com"}})
+
+	// Then reset to default
+	SetGlobalSecurityConfig(nil)
+
+	// Test that all hosts are now allowed
+	err := ValidateWebhookURL("http://192.168.1.20/webhook")
+	if err != nil {
+		t.Errorf("Expected all hosts to be allowed after reset to default, got error: %v", err)
+	}
+}
+
+// Tests for NewConfigurableTransport
+
+func TestNewConfigurableTransport_Creation(t *testing.T) {
+	config := &WebhookSecurityConfig{
+		AllowedHosts: []string{"*"},
+	}
+
+	transport := NewConfigurableTransport(config)
+
+	if transport == nil {
+		t.Fatal("NewConfigurableTransport returned nil")
+	}
+}
+
+func TestNewConfigurableTransport_NilConfigUsesDefaults(t *testing.T) {
+	transport := NewConfigurableTransport(nil)
+
+	if transport == nil {
+		t.Fatal("NewConfigurableTransport should return non-nil transport for nil config")
 	}
 }
 
@@ -321,19 +403,69 @@ func TestSafeTransport_Creation(t *testing.T) {
 	if transport == nil {
 		t.Fatal("NewSafeTransport returned nil")
 	}
+}
 
-	if transport.DialContext == nil {
-		t.Error("SafeTransport should have custom DialContext")
+// Whitelist Matching Tests
+
+func TestSecurityValidator_WhitelistCaseInsensitive(t *testing.T) {
+	config := &WebhookSecurityConfig{
+		AllowedHosts: []string{"HOOKS.SLACK.COM"},
+	}
+	validator := NewWebhookSecurityValidator(config)
+
+	// Should match case-insensitively
+	err := validator.Validate("https://hooks.slack.com/webhook")
+	if err != nil {
+		t.Errorf("Expected case-insensitive match, got error: %v", err)
 	}
 }
 
-func TestSafeTransport_BlocksResolvedLoopback(t *testing.T) {
-	transport := NewSafeTransport()
+func TestSecurityValidator_WildcardMatchesSuffix(t *testing.T) {
+	config := &WebhookSecurityConfig{
+		AllowedHosts: []string{"*.example.com"},
+	}
+	validator := NewWebhookSecurityValidator(config)
 
-	// Create a test that would resolve to localhost
-	// Note: This test verifies the transport exists and has the right structure
-	// Actual DNS resolution testing would require mocking
-	if transport.DialContext == nil {
-		t.Error("Transport should have DialContext for DNS validation")
+	// Should match subdomain
+	err := validator.Validate("http://api.example.com/webhook")
+	if err != nil {
+		t.Errorf("Expected *.example.com to match api.example.com, got error: %v", err)
+	}
+
+	// Should match deeper subdomain
+	err = validator.Validate("http://deep.nested.example.com/webhook")
+	if err != nil {
+		t.Errorf("Expected *.example.com to match deep.nested.example.com, got error: %v", err)
+	}
+
+	// Should NOT match just "example.com"
+	err = validator.Validate("http://example.com/webhook")
+	if err == nil {
+		t.Error("Expected *.example.com to NOT match example.com (no subdomain)")
+	}
+}
+
+func TestSecurityValidator_IPAddressWhitelist(t *testing.T) {
+	config := &WebhookSecurityConfig{
+		AllowedHosts: []string{"192.168.1.20", "10.0.0.1"},
+	}
+	validator := NewWebhookSecurityValidator(config)
+
+	// Exact IP match
+	err := validator.Validate("http://192.168.1.20/webhook")
+	if err != nil {
+		t.Errorf("Expected exact IP match, got error: %v", err)
+	}
+
+	// Another exact IP match
+	err = validator.Validate("http://10.0.0.1/webhook")
+	if err != nil {
+		t.Errorf("Expected exact IP match for 10.0.0.1, got error: %v", err)
+	}
+
+	// Different IP blocked
+	err = validator.Validate("http://192.168.1.21/webhook")
+	if err == nil {
+		t.Error("Expected non-whitelisted IP to be blocked")
 	}
 }

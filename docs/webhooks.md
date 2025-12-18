@@ -365,15 +365,50 @@ body: |
 
 ## Security
 
-### SSRF Protection
+### Security Model
 
-Ofelia includes Server-Side Request Forgery (SSRF) protection that blocks webhooks to:
+Ofelia's webhook security follows the same trust model as local command execution: **if you control the configuration, you control the behavior**. Since Ofelia already trusts users to run arbitrary commands on the host or in containers, it applies the same trust level to webhook destinations.
 
-- Localhost and loopback addresses (`127.0.0.1`, `::1`, `localhost`)
-- Private networks (`10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`)
-- Link-local addresses (`169.254.x.x`)
-- Cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`)
-- Internal hostnames (`.local`, `.internal`, `.corp`)
+### Host Whitelist
+
+The `webhook-allowed-hosts` setting controls which hosts webhooks can target:
+
+| Value | Behavior |
+|-------|----------|
+| `*` (default) | Allow all hosts - webhooks can target any URL |
+| Specific hosts | Whitelist mode - only listed hosts are allowed |
+
+#### Default: Allow All Hosts
+
+```ini
+[global]
+; Default behavior - all hosts allowed (no config needed)
+webhook-allowed-hosts = *
+```
+
+Webhooks can target any host including `192.168.x.x`, `10.x.x.x`, `localhost`, etc.
+
+#### Whitelist Mode
+
+For multi-tenant or cloud deployments, restrict webhooks to specific hosts:
+
+```ini
+[global]
+webhook-allowed-hosts = hooks.slack.com, discord.com, ntfy.sh, 192.168.1.20
+```
+
+Only the listed hosts can receive webhooks. Supports domain wildcards:
+
+```ini
+[global]
+webhook-allowed-hosts = *.slack.com, *.internal.example.com
+```
+
+#### Configuration Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `webhook-allowed-hosts` | string | `*` | Host whitelist. `*` = allow all, specific list = whitelist mode. Supports domain wildcards (`*.example.com`) |
 
 ### Best Practices
 
@@ -381,6 +416,7 @@ Ofelia includes Server-Side Request Forgery (SSRF) protection that blocks webhoo
 2. **Use HTTPS**: Always use HTTPS URLs for production webhooks
 3. **Limit remote presets**: Keep `webhook-allow-remote-presets = false` unless necessary
 4. **Audit presets**: Review remote preset sources before enabling them
+5. **Use whitelist in cloud**: Set `webhook-allowed-hosts` to specific hosts for multi-tenant deployments
 
 ## Migration from Slack Middleware
 
@@ -441,10 +477,20 @@ retry-count = 5
 retry-delay = 10s
 ```
 
-### SSRF blocked
+### Host not allowed (whitelist mode)
 
-If you need to send webhooks to internal services, consider:
+If you've configured `webhook-allowed-hosts` with specific hosts and get "host not in allowed hosts list":
 
-1. Using a webhook relay service
-2. Running Ofelia with custom SSRF allowlists (requires code modification)
-3. Setting up a proxy that forwards to internal services
+1. **Add the host to the whitelist**:
+   ```ini
+   [global]
+   webhook-allowed-hosts = hooks.slack.com, 192.168.1.20, ntfy.local
+   ```
+
+2. **Allow all hosts** (default behavior):
+   ```ini
+   [global]
+   webhook-allowed-hosts = *
+   ```
+
+See the [Host Whitelist](#host-whitelist) section for details.

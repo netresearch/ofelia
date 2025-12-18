@@ -315,31 +315,35 @@ pull = always
   ```
 
 ### A10:2021 - Server-Side Request Forgery (SSRF)
-**Protection**: URL validation and network restrictions
+**Protection**: Trust-the-config model with optional host whitelist
 
-- ✅ **SSRF Prevention** ([config/sanitizer.go](../config/sanitizer.go)):
-  ```go
-  // Blocked targets
-  localhost, 127.0.0.1, 0.0.0.0
-  192.168.x.x, 10.x.x.x, 172.16-31.x.x
-  *.local
+Ofelia follows a **trust-the-config** security model for webhooks: since users can already run arbitrary commands via local/exec jobs, the same trust level applies to webhook destinations. **All hosts are allowed by default.**
 
-  // Only http:// and https:// allowed
-  err := sanitizer.ValidateURL("https://api.example.com/webhook")
-  ```
+- ✅ **Trust Model** ([middlewares/webhook_security.go](../middlewares/webhook_security.go)):
+  - If you control the configuration, you control the behavior
+  - Same trust level as local command execution
+  - Default: `webhook-allowed-hosts = *` (allow all hosts)
 
-- ✅ **Network Isolation**:
-  - Docker network segmentation
-  - Container-to-container restrictions
-  - Egress filtering (optional)
+- ✅ **URL Validation**:
+  - Only `http://` and `https://` schemes allowed
+  - URL must have a valid hostname
 
-**Configuration**:
+- ✅ **Optional Whitelist Mode** (for multi-tenant/cloud deployments):
+  - Set specific hosts to enable whitelist mode
+  - Supports wildcards: `*.example.com`
+
+**Default** (self-hosted/trusted environments):
 ```ini
-# Restrict container networking
-network = isolated_network
+[global]
+# All hosts allowed by default (no config needed)
+# webhook-allowed-hosts = *
+```
 
-# Disable direct internet access
-dns = 10.0.0.1  # Internal DNS only
+**Whitelist Mode** (for cloud/multi-tenant deployments):
+```ini
+[global]
+# Only allow specific hosts
+webhook-allowed-hosts = hooks.slack.com, discord.com, ntfy.internal, 192.168.1.20
 ```
 
 ## Authentication & Authorization
@@ -482,7 +486,7 @@ if validator.HasErrors() {
 | Shell Injection | Command validation | `; & \| < >`, `&&`, `\|\|`, `$()`, `` ` `` |
 | Path Traversal | Path sanitization | `../`, `..\\`, `%2e%2e`, `~` |
 | XSS | HTML escaping | `<`, `>`, `&`, `"`, `'` |
-| SSRF | URL validation | `localhost`, `127.0.0.1`, private IPs |
+| SSRF | URL validation + optional whitelist | Scheme validation, optional host whitelist |
 | LDAP Injection | Character filtering | `( ) * \| & !` |
 
 **Usage Examples**:
@@ -505,7 +509,7 @@ err := sanitizer.ValidateDockerImage("nginx:1.21-alpine")
 // Environment variable validation
 err := sanitizer.ValidateEnvironmentVar("MY_VAR", "value123")
 
-// URL validation (SSRF prevention)
+// URL validation (scheme and format)
 err := sanitizer.ValidateURL("https://api.example.com/webhook")
 ```
 
