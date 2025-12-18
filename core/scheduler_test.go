@@ -25,17 +25,28 @@ func (s *SuiteScheduler) TestAddJob(c *C) {
 
 func (s *SuiteScheduler) TestStartStop(c *C) {
 	job := &TestJob{}
-	const every1s = "@every 1s"
-	job.Schedule = every1s
+	job.Schedule = "@every 1s"
 
 	sc := NewScheduler(&TestLogger{})
 	err := sc.AddJob(job)
 	c.Assert(err, IsNil)
 
+	jobCompleted := make(chan struct{}, 1)
+	sc.SetOnJobComplete(func(_ string, _ bool) {
+		select {
+		case jobCompleted <- struct{}{}:
+		default:
+		}
+	})
+
 	_ = sc.Start()
 	c.Assert(sc.IsRunning(), Equals, true)
 
-	time.Sleep(time.Second * 2)
+	select {
+	case <-jobCompleted:
+	case <-time.After(2 * time.Second):
+		c.Fatal("Timeout waiting for job to complete")
+	}
 
 	_ = sc.Stop()
 	c.Assert(sc.IsRunning(), Equals, false)
@@ -65,8 +76,22 @@ func (s *SuiteScheduler) TestLastRunRecorded(c *C) {
 	err := sc.AddJob(job)
 	c.Assert(err, IsNil)
 
+	jobCompleted := make(chan struct{}, 1)
+	sc.SetOnJobComplete(func(_ string, _ bool) {
+		select {
+		case jobCompleted <- struct{}{}:
+		default:
+		}
+	})
+
 	_ = sc.Start()
-	time.Sleep(time.Second * 2)
+
+	select {
+	case <-jobCompleted:
+	case <-time.After(2 * time.Second):
+		c.Fatal("Timeout waiting for job to complete")
+	}
+
 	_ = sc.Stop()
 
 	lr := job.GetLastRun()
@@ -77,14 +102,10 @@ func (s *SuiteScheduler) TestLastRunRecorded(c *C) {
 func (s *SuiteScheduler) TestWorkflowOrchestratorInit(c *C) {
 	sc := NewScheduler(&TestLogger{})
 
-	// Initialize workflow orchestrator
 	sc.workflowOrchestrator = NewWorkflowOrchestrator(sc, &TestLogger{})
 	c.Assert(sc.workflowOrchestrator, NotNil)
-
-	// Test that executions map is initialized
 	c.Assert(sc.workflowOrchestrator.executions, NotNil)
 
-	// Test creating a workflow execution
 	exec := &WorkflowExecution{
 		ID:            "test-exec",
 		StartTime:     time.Now(),
@@ -98,17 +119,31 @@ func (s *SuiteScheduler) TestWorkflowOrchestratorInit(c *C) {
 }
 
 func (s *SuiteScheduler) TestSchedulerCleanupTicker(c *C) {
+	fakeClock := NewFakeClock(time.Now())
 	sc := NewScheduler(&TestLogger{})
+	sc.SetClock(fakeClock)
 
-	// Test that cleanup ticker can be initialized
-	sc.cleanupTicker = time.NewTicker(1 * time.Hour)
-	c.Assert(sc.cleanupTicker, NotNil)
-
-	// Test that cleanup stop channel can be initialized
-	sc.cleanupStop = make(chan struct{})
+	c.Assert(sc.clock, Equals, fakeClock)
 	c.Assert(sc.cleanupStop, NotNil)
+}
 
-	// Clean up
-	sc.cleanupTicker.Stop()
-	close(sc.cleanupStop)
+func (s *SuiteScheduler) TestSetClock(c *C) {
+	sc := NewScheduler(&TestLogger{})
+	fakeClock := NewFakeClock(time.Now())
+
+	sc.SetClock(fakeClock)
+	c.Assert(sc.clock, Equals, fakeClock)
+}
+
+func (s *SuiteScheduler) TestSetOnJobComplete(c *C) {
+	sc := NewScheduler(&TestLogger{})
+	called := false
+
+	sc.SetOnJobComplete(func(_ string, _ bool) {
+		called = true
+	})
+
+	c.Assert(sc.onJobComplete, NotNil)
+	sc.onJobComplete("test", true)
+	c.Assert(called, Equals, true)
 }
