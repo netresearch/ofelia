@@ -119,6 +119,19 @@ func (c *DaemonCommand) boot() (err error) {
 
 		var authCfg *web.SecureAuthConfig
 		if c.WebAuthEnabled {
+			if c.WebUsername == "" {
+				return fmt.Errorf("web-auth-enabled requires web-username to be set")
+			}
+			if c.WebPasswordHash == "" {
+				return fmt.Errorf("web-auth-enabled requires web-password-hash to be set (use 'ofelia hash-password' to generate one)")
+			}
+
+			if c.WebSecretKey == "" {
+				c.Logger.Warningf("⚠️  No web-secret-key provided. " +
+					"Auth tokens will not survive daemon restarts. " +
+					"Set OFELIA_WEB_SECRET_KEY for persistent sessions.")
+			}
+
 			authCfg = &web.SecureAuthConfig{
 				Enabled:      true,
 				Username:     c.WebUsername,

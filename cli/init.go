@@ -10,6 +10,7 @@ import (
 
 	"github.com/manifoldco/promptui"
 	"github.com/netresearch/go-cron"
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/ini.v1"
 
 	"github.com/netresearch/ofelia/core"
@@ -79,9 +80,12 @@ type initConfig struct {
 
 // globalConfig holds global settings
 type globalConfig struct {
-	EnableWeb bool
-	WebAddr   string
-	LogLevel  string
+	EnableWeb       bool
+	WebAddr         string
+	LogLevel        string
+	WebAuthEnabled  bool
+	WebUsername     string
+	WebPasswordHash string
 }
 
 // initJobConfig interface for different job types in init wizard
@@ -154,7 +158,6 @@ func (c *InitCommand) confirmOverwrite() bool {
 func (c *InitCommand) promptGlobalSettings(global *globalConfig) error {
 	c.Logger.Noticef("=== Global Settings ===")
 
-	// Enable web UI
 	prompt := promptui.Prompt{
 		Label:     "Enable web UI",
 		IsConfirm: true,
@@ -164,28 +167,98 @@ func (c *InitCommand) promptGlobalSettings(global *globalConfig) error {
 	global.EnableWeb = err == nil
 
 	if global.EnableWeb {
-		// Web UI address
-		prompt := promptui.Prompt{
+		addrPrompt := promptui.Prompt{
 			Label:   "Web UI address",
 			Default: "127.0.0.1:8081",
 		}
-		global.WebAddr, err = prompt.Run()
+		global.WebAddr, err = addrPrompt.Run()
 		if err != nil {
 			return err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
 		}
+
+		authPrompt := promptui.Prompt{
+			Label:     "Enable web authentication (recommended for production)",
+			IsConfirm: true,
+			Default:   "n",
+		}
+		_, err = authPrompt.Run()
+		global.WebAuthEnabled = err == nil
+
+		if global.WebAuthEnabled {
+			if err := c.promptWebAuth(global); err != nil {
+				return err
+			}
+		}
 	}
 
-	// Log level
 	logLevelPrompt := promptui.Select{
 		Label:     "Log level",
 		Items:     []string{"panic", "fatal", "error", "warning", "info", "debug", "trace"},
-		CursorPos: 4, // Default to "info"
+		CursorPos: 4,
 	}
 	_, global.LogLevel, err = logLevelPrompt.Run()
 	if err != nil {
 		return err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
 	}
 
+	return nil
+}
+
+func (c *InitCommand) promptWebAuth(global *globalConfig) error {
+	usernamePrompt := promptui.Prompt{
+		Label:   "Username",
+		Default: "admin",
+		Validate: func(input string) error {
+			if input == "" {
+				return fmt.Errorf("username cannot be empty")
+			}
+			if len(input) < 3 {
+				return fmt.Errorf("username must be at least 3 characters")
+			}
+			return nil
+		},
+	}
+	username, err := usernamePrompt.Run()
+	if err != nil {
+		return err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
+	}
+	global.WebUsername = username
+
+	passwordPrompt := promptui.Prompt{
+		Label: "Password",
+		Mask:  '*',
+		Validate: func(input string) error {
+			if len(input) < 8 {
+				return fmt.Errorf("password must be at least 8 characters")
+			}
+			return nil
+		},
+	}
+	password, err := passwordPrompt.Run()
+	if err != nil {
+		return err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
+	}
+
+	confirmPrompt := promptui.Prompt{
+		Label: "Confirm password",
+		Mask:  '*',
+	}
+	confirm, err := confirmPrompt.Run()
+	if err != nil {
+		return err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
+	}
+
+	if password != confirm {
+		return fmt.Errorf("passwords do not match")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to generate password hash: %w", err)
+	}
+	global.WebPasswordHash = string(hash)
+
+	c.Logger.Noticef("✓ Web authentication configured")
 	return nil
 }
 
@@ -439,12 +512,16 @@ func (c *InitCommand) saveConfig(config *initConfig) error {
 	// Create INI file
 	cfg := ini.Empty()
 
-	// Write global section
 	global := cfg.Section("global")
 	if config.Global.EnableWeb {
 		global.Key("enable-web").SetValue("true")
 		if config.Global.WebAddr != "" {
 			global.Key("web-address").SetValue(config.Global.WebAddr)
+		}
+		if config.Global.WebAuthEnabled {
+			global.Key("web-auth-enabled").SetValue("true")
+			global.Key("web-username").SetValue(config.Global.WebUsername)
+			global.Key("web-password-hash").SetValue(config.Global.WebPasswordHash)
 		}
 	}
 	if config.Global.LogLevel != "" {
