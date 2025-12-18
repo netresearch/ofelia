@@ -381,18 +381,18 @@ For multi-tenant or cloud deployments, restrict webhooks to specific hosts:
 webhook-allowed-hosts = hooks.slack.com, discord.com, ntfy.sh, 192.168.1.20
 ```
 
-Only the listed hosts can receive webhooks. Supports wildcards:
+Only the listed hosts can receive webhooks. Supports domain wildcards:
 
 ```ini
 [global]
-webhook-allowed-hosts = *.slack.com, *.internal.example.com, 10.0.0.*
+webhook-allowed-hosts = *.slack.com, *.internal.example.com
 ```
 
 #### Configuration Reference
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `webhook-allowed-hosts` | string | `*` | Host whitelist. `*` = allow all, specific list = whitelist mode. Supports wildcards (`*.example.com`) |
+| `webhook-allowed-hosts` | string | `*` | Host whitelist. `*` = allow all, specific list = whitelist mode. Supports domain wildcards (`*.example.com`) |
 
 ### Best Practices
 

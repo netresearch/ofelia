@@ -65,7 +65,7 @@ type WebhookSecurityValidator struct {
 
 // NewWebhookSecurityValidator creates a new security validator
 func NewWebhookSecurityValidator(config *WebhookSecurityConfig) *WebhookSecurityValidator {
-	if config == nil {
+	if config == nil || len(config.AllowedHosts) == 0 {
 		config = DefaultWebhookSecurityConfig()
 	}
 	return &WebhookSecurityValidator{config: config}

@@ -281,6 +281,25 @@ func TestSecurityConfigFromGlobal_ExplicitStar(t *testing.T) {
 	}
 }
 
+func TestSecurityValidator_EmptyAllowedHostsDefaultsToAll(t *testing.T) {
+	// Empty slice should default to allow all (defensive handling)
+	config := &WebhookSecurityConfig{
+		AllowedHosts: []string{},
+	}
+	validator := NewWebhookSecurityValidator(config)
+
+	// Should allow all hosts since empty defaults to "*"
+	err := validator.Validate("http://any-host.example.com/webhook")
+	if err != nil {
+		t.Errorf("Expected empty AllowedHosts to default to allow-all, got error: %v", err)
+	}
+
+	err = validator.Validate("http://192.168.1.1/webhook")
+	if err != nil {
+		t.Errorf("Expected empty AllowedHosts to allow private IPs, got error: %v", err)
+	}
+}
+
 func TestSecurityConfigFromGlobal_SpecificHosts(t *testing.T) {
 	global := &WebhookGlobalConfig{
 		AllowedHosts: "192.168.1.20, ntfy.local, *.internal.example.com",
@@ -428,7 +447,7 @@ func TestSecurityValidator_WildcardMatchesSuffix(t *testing.T) {
 
 func TestSecurityValidator_IPAddressWhitelist(t *testing.T) {
 	config := &WebhookSecurityConfig{
-		AllowedHosts: []string{"192.168.1.20", "10.0.0.*"},
+		AllowedHosts: []string{"192.168.1.20", "10.0.0.1"},
 	}
 	validator := NewWebhookSecurityValidator(config)
 
@@ -436,6 +455,12 @@ func TestSecurityValidator_IPAddressWhitelist(t *testing.T) {
 	err := validator.Validate("http://192.168.1.20/webhook")
 	if err != nil {
 		t.Errorf("Expected exact IP match, got error: %v", err)
+	}
+
+	// Another exact IP match
+	err = validator.Validate("http://10.0.0.1/webhook")
+	if err != nil {
+		t.Errorf("Expected exact IP match for 10.0.0.1, got error: %v", err)
 	}
 
 	// Different IP blocked
