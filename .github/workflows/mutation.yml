@@ -55,7 +55,7 @@ jobs:
         run: go mod download
 
       - name: Install Gremlins
-        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@e6a179ea6d85b2b1c2cb11e6f5a0e8cb6d8e3e0e # v0.6.2
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
 
       - name: Run mutation tests (full)
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.diff_only != 'true')
