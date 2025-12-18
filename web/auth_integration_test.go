@@ -477,3 +477,133 @@ func TestCSRFTokenEndpoint(t *testing.T) {
 		}
 	})
 }
+
+func TestAuthConfigDefaults(t *testing.T) {
+	sched := core.NewScheduler(&stubLogger{})
+
+	t.Run("token_expiry_defaults_to_24_when_zero", func(t *testing.T) {
+		authCfg := &webpkg.SecureAuthConfig{
+			Enabled:      true,
+			Username:     "admin",
+			PasswordHash: generateTestHash("password"),
+			SecretKey:    "test-secret-key-32-bytes-long!!!",
+			TokenExpiry:  0,
+			MaxAttempts:  10,
+		}
+
+		srv := webpkg.NewServerWithAuth("", sched, nil, nil, authCfg)
+		if srv == nil {
+			t.Fatal("expected server to be created with default token expiry")
+		}
+
+		body := `{"username":"admin","password":"password"}`
+		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		w := httptest.NewRecorder()
+		srv.HTTPServer().Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("login should succeed with default token expiry, got %d", w.Code)
+		}
+	})
+
+	t.Run("token_expiry_uses_provided_value", func(t *testing.T) {
+		authCfg := &webpkg.SecureAuthConfig{
+			Enabled:      true,
+			Username:     "admin",
+			PasswordHash: generateTestHash("password"),
+			SecretKey:    "test-secret-key-32-bytes-long!!!",
+			TokenExpiry:  48,
+			MaxAttempts:  10,
+		}
+
+		srv := webpkg.NewServerWithAuth("", sched, nil, nil, authCfg)
+		if srv == nil {
+			t.Fatal("expected server to be created with custom token expiry")
+		}
+
+		body := `{"username":"admin","password":"password"}`
+		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		w := httptest.NewRecorder()
+		srv.HTTPServer().Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("login should succeed with custom token expiry, got %d", w.Code)
+		}
+	})
+
+	t.Run("max_attempts_defaults_to_5_when_zero", func(t *testing.T) {
+		authCfg := &webpkg.SecureAuthConfig{
+			Enabled:      true,
+			Username:     "admin",
+			PasswordHash: generateTestHash("password"),
+			SecretKey:    "test-secret-key-32-bytes-long!!!",
+			TokenExpiry:  24,
+			MaxAttempts:  0,
+		}
+
+		srv := webpkg.NewServerWithAuth("", sched, nil, nil, authCfg)
+		if srv == nil {
+			t.Fatal("expected server to be created with default max attempts")
+		}
+
+		for i := 0; i < 5; i++ {
+			body := `{"username":"admin","password":"wrong"}`
+			req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest")
+			w := httptest.NewRecorder()
+			srv.HTTPServer().Handler.ServeHTTP(w, req)
+		}
+
+		body := `{"username":"admin","password":"wrong"}`
+		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		w := httptest.NewRecorder()
+		srv.HTTPServer().Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusTooManyRequests {
+			t.Errorf("expected rate limit after 5 attempts, got %d", w.Code)
+		}
+	})
+
+	t.Run("max_attempts_uses_provided_value", func(t *testing.T) {
+		authCfg := &webpkg.SecureAuthConfig{
+			Enabled:      true,
+			Username:     "admin",
+			PasswordHash: generateTestHash("password"),
+			SecretKey:    "test-secret-key-32-bytes-long!!!",
+			TokenExpiry:  24,
+			MaxAttempts:  3,
+		}
+
+		srv := webpkg.NewServerWithAuth("", sched, nil, nil, authCfg)
+		if srv == nil {
+			t.Fatal("expected server to be created with custom max attempts")
+		}
+
+		for i := 0; i < 3; i++ {
+			body := `{"username":"admin","password":"wrong"}`
+			req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest")
+			w := httptest.NewRecorder()
+			srv.HTTPServer().Handler.ServeHTTP(w, req)
+		}
+
+		body := `{"username":"admin","password":"wrong"}`
+		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		w := httptest.NewRecorder()
+		srv.HTTPServer().Handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusTooManyRequests {
+			t.Errorf("expected rate limit after 3 attempts, got %d", w.Code)
+		}
+	})
+}
