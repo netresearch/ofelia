@@ -54,7 +54,8 @@ Ofelia includes presets for popular notification services:
 | `discord` | Discord Webhooks | `id`, `secret` |
 | `teams` | Microsoft Teams | `url` |
 | `matrix` | Matrix (via hookshot bridge) | `url` |
-| `ntfy` | ntfy.sh | `id` (topic) |
+| `ntfy` | ntfy.sh (public topics) | `id` (topic) |
+| `ntfy-token` | ntfy.sh (with Bearer auth) | `id` (topic), `secret` (access token) |
 | `pushover` | Pushover | `id` (user key), `secret` (API token) |
 | `pagerduty` | PagerDuty Events API v2 | `secret` (routing key) |
 | `gotify` | Gotify | `url`, `secret` (app token) |
@@ -154,6 +155,7 @@ The optional `link` and `link-text` fields add a clickable link to your notifica
 
 ### ntfy
 
+For public topics on ntfy.sh (no authentication):
 ```ini
 [webhook "ntfy-notify"]
 preset = ntfy
@@ -161,13 +163,27 @@ id = my-topic-name
 trigger = always
 ```
 
-For self-hosted ntfy:
+For private topics or self-hosted ntfy with access tokens:
 ```ini
-[webhook "ntfy-self-hosted"]
-preset = ntfy
-url = https://ntfy.example.com/my-topic
+[webhook "ntfy-private"]
+preset = ntfy-token
+id = my-private-topic
+secret = tk_AgQdq7mVBoFD37zQVN29RhuMzNIz2
 trigger = always
 ```
+
+For self-hosted ntfy with custom URL and authentication:
+```ini
+[webhook "ntfy-self-hosted"]
+preset = ntfy-token
+url = https://ntfy.example.com/my-topic
+secret = tk_AgQdq7mVBoFD37zQVN29RhuMzNIz2
+trigger = always
+```
+
+> **Note**: Use `ntfy` for public topics without authentication, and `ntfy-token` when
+> Bearer token authentication is required (self-hosted instances with access control
+> or private topics on ntfy.sh).
 
 ### Pushover
 
