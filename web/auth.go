@@ -15,6 +15,8 @@ import (
 const (
 	// Authorization constants
 	BearerPrefix = "Bearer"
+	// Protocol constants
+	httpsProto = "https"
 )
 
 // AuthConfig holds authentication configuration
@@ -216,7 +218,7 @@ func (h *LoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == httpsProto,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(h.tokenManager.tokenExpiry.Seconds()),
 	})
@@ -266,7 +268,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == httpsProto,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})

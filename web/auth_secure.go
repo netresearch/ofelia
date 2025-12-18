@@ -300,7 +300,7 @@ func (h *SecureLoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == httpsProto,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(h.tokenManager.tokenExpiry.Seconds()),
 	})
