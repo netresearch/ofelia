@@ -182,18 +182,19 @@ func (c *DaemonCommand) start() error {
 
 	if c.EnablePprof {
 		c.Logger.Noticef("Starting pprof server on %s...", c.PprofAddr)
+		pprofErrChan := make(chan error, 1)
 		go func() {
 			if err := c.pprofServer.ListenAndServe(); err != http.ErrServerClosed {
 				c.Logger.Errorf("Error starting HTTP server: %v", err)
+				pprofErrChan <- err
 				close(c.done)
 			}
 		}()
 
-		// Wait for server to be ready with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		if err := waitForServer(ctx, c.PprofAddr); err != nil {
+		if err := waitForServerWithErrChan(ctx, c.PprofAddr, pprofErrChan); err != nil {
 			c.Logger.Errorf("❌ pprof server failed to start: %v", err)
 			return fmt.Errorf("pprof server startup failed: %w", err)
 		}
@@ -204,18 +205,19 @@ func (c *DaemonCommand) start() error {
 
 	if c.EnableWeb {
 		c.Logger.Noticef("Starting web server on %s...", c.WebAddr)
+		webErrChan := make(chan error, 1)
 		go func() {
 			if err := c.webServer.Start(); err != nil {
 				c.Logger.Errorf("Error starting web server: %v", err)
+				webErrChan <- err
 				close(c.done)
 			}
 		}()
 
-		// Wait for server to be ready with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		if err := waitForServer(ctx, c.WebAddr); err != nil {
+		if err := waitForServerWithErrChan(ctx, c.WebAddr, webErrChan); err != nil {
 			c.Logger.Errorf("❌ web server failed to start: %v", err)
 			return fmt.Errorf("web server startup failed: %w", err)
 		}
@@ -350,6 +352,10 @@ func (c *DaemonCommand) applyServerDefaults(config *Config) {
 }
 
 func waitForServer(ctx context.Context, addr string) error {
+	return waitForServerWithErrChan(ctx, addr, nil)
+}
+
+func waitForServerWithErrChan(ctx context.Context, addr string, errChan <-chan error) error {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -357,10 +363,14 @@ func waitForServer(ctx context.Context, addr string) error {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for server: %w", ctx.Err())
+		case err := <-errChan:
+			if err != nil {
+				return fmt.Errorf("server failed to start: %w", err)
+			}
 		case <-ticker.C:
 			conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 			if err == nil {
-				_ = conn.Close() // Ignore close error, connection test successful
+				_ = conn.Close()
 				return nil
 			}
 		}

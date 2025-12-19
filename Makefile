@@ -144,10 +144,17 @@ test-watch:
 		exit 1; \
 	fi
 
+.PHONY: test-fast
+test-fast:
+	@echo "⚡ Running fast unit tests (pre-commit)..."
+	@go test -short -timeout=30s ./config/... ./logging/... ./metrics/...
+	@echo "✅ Fast tests passed"
+
 .PHONY: test-smoke
 test-smoke:
 	@echo "🚀 Running smoke tests (fast feedback on core packages)..."
-	@go test -race -timeout=30s ./core/... ./config/... ./logging/...
+	@go test -short -race -timeout=60s ./core/... ./cli/... ./middlewares/...
+	@echo "✅ Smoke tests passed"
 
 .PHONY: test-integration
 test-integration:

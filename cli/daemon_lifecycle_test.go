@@ -337,7 +337,7 @@ func TestWebServerStartup(t *testing.T) {
 }
 
 func TestPortBindingConflict(t *testing.T) {
-	hook, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(logrus.InfoLevel)
 
 	addr := getAvailableAddress()
 	listener, err := net.Listen("tcp", addr)
@@ -359,18 +359,8 @@ func TestPortBindingConflict(t *testing.T) {
 	}
 
 	err = cmd.start()
-	require.NoError(t, err)
-
-	time.Sleep(200 * time.Millisecond)
-
-	found := false
-	for _, entry := range hook.AllEntries() {
-		if entry.Level == logrus.ErrorLevel && strings.Contains(entry.Message, "Error starting HTTP server") {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pprof server startup failed")
 }
 
 func TestGracefulShutdownWithRunningJobs(t *testing.T) {

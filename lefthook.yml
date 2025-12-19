@@ -143,49 +143,47 @@ commit-msg:
         echo "✅ Commit message format validated"
 
 pre-push:
+  parallel: true
   commands:
-    # Run full test suite before pushing
-    tests:
+    # Run smoke tests before pushing (faster than full suite)
+    smoke-tests:
       run: |
-        echo "🧪 Running full test suite before push..."
-        echo "This ensures no broken code reaches the remote repository"
+        echo "🧪 Running smoke tests before push..."
         echo ""
 
-        # Temporarily enable CGO for race detection
-        export CGO_ENABLED=1
-
-        # Run tests with race detection (short mode for speed, full suite in CI)
-        if ! go test -short -race -timeout=2m ./...; then
+        # Run fast tests with short flag (full suite runs in CI)
+        if ! go test -short -timeout=60s ./core/... ./cli/... ./middlewares/...; then
           echo ""
-          echo "❌ Tests failed! Push cancelled."
+          echo "❌ Smoke tests failed! Push cancelled."
           echo "Fix the failing tests before pushing."
           exit 1
         fi
 
         echo ""
-        echo "✅ All tests passed!"
+        echo "✅ Smoke tests passed!"
 
-
-    # Run quick linting check
-    lint-check:
+    # Race detection on critical packages only (faster)
+    race-check:
       run: |
-        echo "🔍 Running quick lint check..."
+        echo "🏎️ Running race detection on critical packages..."
+        export CGO_ENABLED=1
 
-        # Only run on Go files that changed
-        changed_files=$(git diff --name-only HEAD @{u} 2>/dev/null | grep '\.go$' || true)
-
-        if [ -z "$changed_files" ]; then
-          echo "✅ No Go files changed, skipping lint"
-          exit 0
+        if ! go test -short -race -timeout=60s ./core/...; then
+          echo "❌ Race condition detected! Fix before pushing."
+          exit 1
         fi
 
-        # Run quick vet check
+        echo "✅ No race conditions detected"
+
+    # Quick vet check
+    vet-check:
+      run: |
+        echo "🔍 Running go vet..."
         if ! go vet ./...; then
           echo "❌ go vet failed! Fix issues before pushing."
           exit 1
         fi
-
-        echo "✅ Quick lint check passed"
+        echo "✅ go vet passed"
 
 post-checkout:
   commands:
