@@ -351,10 +351,6 @@ func (c *DaemonCommand) applyServerDefaults(config *Config) {
 	}
 }
 
-func waitForServer(ctx context.Context, addr string) error {
-	return waitForServerWithErrChan(ctx, addr, nil)
-}
-
 func waitForServerWithErrChan(ctx context.Context, addr string, errChan <-chan error) error {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()

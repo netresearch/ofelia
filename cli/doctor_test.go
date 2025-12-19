@@ -454,6 +454,199 @@ func TestFindConfigFile(t *testing.T) {
 	})
 }
 
+// TestGetCategoryIcon tests the category icon helper function
+func TestGetCategoryIcon(t *testing.T) {
+	tests := []struct {
+		category string
+		expected string
+	}{
+		{"Configuration", "📋"},
+		{"Docker", "🐳"},
+		{"Job Schedules", "📅"},
+		{"Docker Images", "🖼️"},
+		{"Unknown", "📌"},
+		{"", "📌"},
+		{"SomeOtherCategory", "📌"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.category, func(t *testing.T) {
+			got := getCategoryIcon(tt.category)
+			if got != tt.expected {
+				t.Errorf("getCategoryIcon(%q) = %q, want %q", tt.category, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGetStatusIcon tests the status icon helper function
+func TestGetStatusIcon(t *testing.T) {
+	tests := []struct {
+		status   string
+		expected string
+	}{
+		{"pass", "✅"},
+		{"fail", "❌"},
+		{"skip", "⚠️"},
+		{"unknown", "❓"},
+		{"", "❓"},
+		{"other", "❓"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.status, func(t *testing.T) {
+			got := getStatusIcon(tt.status)
+			if got != tt.expected {
+				t.Errorf("getStatusIcon(%q) = %q, want %q", tt.status, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestDoctorCommand_HumanOutput tests human-readable output format
+func TestDoctorCommand_HumanOutput(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.ini")
+	configContent := `[global]
+[job-local "test"]
+schedule = @daily
+command = echo test`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to create test config: %v", err)
+	}
+
+	logger := test.NewTestLogger()
+	cmd := &DoctorCommand{
+		ConfigFile: configPath,
+		Logger:     logger,
+		JSON:       false, // Human output
+	}
+
+	// Execute - should succeed for valid config
+	if err := cmd.Execute(nil); err != nil {
+		t.Errorf("Expected no error for valid config, got: %v", err)
+	}
+
+	// Verify human-readable output was generated
+	messages := logger.GetMessages()
+	if len(messages) == 0 {
+		t.Error("Expected log messages for human output, got none")
+	}
+
+	// Check for expected output elements
+	if !logger.HasMessage("Ofelia Health Check") {
+		t.Error("Expected 'Ofelia Health Check' in output")
+	}
+	if !logger.HasMessage("Summary") {
+		t.Error("Expected 'Summary' in output")
+	}
+}
+
+// TestDoctorCommand_HumanOutputWithFailures tests human output with failing checks
+func TestDoctorCommand_HumanOutputWithFailures(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.ini")
+	configContent := `[global]
+[job-local "bad"]
+schedule = invalid-schedule
+command = echo test`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to create test config: %v", err)
+	}
+
+	logger := test.NewTestLogger()
+	cmd := &DoctorCommand{
+		ConfigFile: configPath,
+		Logger:     logger,
+		JSON:       false, // Human output
+	}
+
+	// Execute - should fail for invalid schedule
+	err := cmd.Execute(nil)
+	if err == nil {
+		t.Error("Expected error for invalid schedule, got none")
+	}
+
+	// Verify failure message was logged
+	if !logger.HasMessage("issue(s) found") {
+		t.Error("Expected failure summary in output")
+	}
+}
+
+// TestDoctorCommand_HumanOutputWithSkips tests human output with skipped checks
+func TestDoctorCommand_HumanOutputWithSkips(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.ini")
+	// Create config that will result in skipped Docker checks (no Docker available in test)
+	configContent := `[global]
+[job-local "test"]
+schedule = @daily
+command = echo test`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to create test config: %v", err)
+	}
+
+	logger := test.NewTestLogger()
+	cmd := &DoctorCommand{
+		ConfigFile: configPath,
+		Logger:     logger,
+		JSON:       false, // Human output
+	}
+
+	// Execute
+	_ = cmd.Execute(nil)
+
+	// Verify output contains category icons
+	messages := logger.GetMessages()
+	hasCategory := false
+	for _, msg := range messages {
+		if strings.Contains(msg.Message, "📋") || strings.Contains(msg.Message, "📅") {
+			hasCategory = true
+			break
+		}
+	}
+	if !hasCategory {
+		t.Error("Expected category icons in human output")
+	}
+}
+
+// TestDoctorCommand_OutputHumanWithHints tests hints are displayed in human output
+func TestDoctorCommand_OutputHumanWithHints(t *testing.T) {
+	logger := test.NewTestLogger()
+	cmd := &DoctorCommand{
+		Logger: logger,
+		JSON:   false,
+	}
+
+	// Create a report with hints
+	report := &DoctorReport{
+		Healthy: false,
+		Checks: []CheckResult{
+			{
+				Category: "Configuration",
+				Name:     "Test Check",
+				Status:   "fail",
+				Message:  "Test failure",
+				Hints:    []string{"Try doing X", "Check Y"},
+			},
+		},
+	}
+
+	// Call outputHuman directly
+	_ = cmd.outputHuman(report)
+
+	// Verify hints are displayed
+	if !logger.HasMessage("Try doing X") {
+		t.Error("Expected hint 'Try doing X' in output")
+	}
+	if !logger.HasMessage("Check Y") {
+		t.Error("Expected hint 'Check Y' in output")
+	}
+}
+
 // TestDoctorCommand_AutoDetection tests the auto-detection flow in Execute
 func TestDoctorCommand_AutoDetection(t *testing.T) {
 	// Save original working directory

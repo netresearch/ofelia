@@ -429,3 +429,223 @@ func TestValidator2Methods(t *testing.T) {
 	errValid := validatorValid.Validate()
 	_ = errValid // Exercise the validation logic
 }
+
+func TestValidator2AddressFieldValidation(t *testing.T) {
+	t.Parallel()
+
+	type SingleAddressConfig struct {
+		WebAddress string `mapstructure:"web-address"`
+	}
+
+	tests := []struct {
+		name      string
+		config    SingleAddressConfig
+		wantError bool
+	}{
+		{"valid_port_only", SingleAddressConfig{WebAddress: ":8080"}, false},
+		{"valid_localhost", SingleAddressConfig{WebAddress: "localhost:8080"}, false},
+		{"valid_ip_address", SingleAddressConfig{WebAddress: "127.0.0.1:8080"}, false},
+		{"valid_any_interface", SingleAddressConfig{WebAddress: "0.0.0.0:6060"}, false},
+		{"invalid_no_port", SingleAddressConfig{WebAddress: "localhost"}, true},
+		{"invalid_no_colon", SingleAddressConfig{WebAddress: "noport"}, true},
+		{"invalid_port_not_numeric", SingleAddressConfig{WebAddress: ":abc"}, true},
+		{"invalid_multiple_colons", SingleAddressConfig{WebAddress: "host:port:extra"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cv := NewConfigValidator(tt.config)
+			err := cv.Validate()
+			hasError := err != nil
+			if hasError != tt.wantError {
+				t.Errorf("Validate() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestValidator2LogLevelFieldValidation(t *testing.T) {
+	t.Parallel()
+
+	type LogLevelConfig struct {
+		LogLevel string `mapstructure:"log-level"`
+	}
+
+	tests := []struct {
+		name      string
+		config    LogLevelConfig
+		wantError bool
+	}{
+		{"valid_debug", LogLevelConfig{LogLevel: "debug"}, false},
+		{"valid_info", LogLevelConfig{LogLevel: "info"}, false},
+		{"valid_notice", LogLevelConfig{LogLevel: "notice"}, false},
+		{"valid_warning", LogLevelConfig{LogLevel: "warning"}, false},
+		{"valid_error", LogLevelConfig{LogLevel: "error"}, false},
+		{"valid_critical", LogLevelConfig{LogLevel: "critical"}, false},
+		{"valid_uppercase", LogLevelConfig{LogLevel: "DEBUG"}, false},
+		{"valid_mixed_case", LogLevelConfig{LogLevel: "Info"}, false},
+		{"invalid_level", LogLevelConfig{LogLevel: "trace"}, true},
+		{"invalid_random", LogLevelConfig{LogLevel: "invalid"}, true},
+		{"empty_level", LogLevelConfig{LogLevel: ""}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cv := NewConfigValidator(tt.config)
+			err := cv.Validate()
+			hasError := err != nil
+			if hasError != tt.wantError {
+				t.Errorf("Validate() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestValidator2CommandFieldValidation(t *testing.T) {
+	t.Parallel()
+
+	type CommandConfig struct {
+		Command string `mapstructure:"command"`
+		Cmd     string `mapstructure:"cmd"`
+	}
+
+	tests := []struct {
+		name   string
+		config CommandConfig
+	}{
+		{"simple_command", CommandConfig{Command: "echo hello"}},
+		{"complex_command", CommandConfig{Command: "ls -la /var/log"}},
+		{"cmd_field", CommandConfig{Cmd: "date +%Y-%m-%d"}},
+		{"empty_command", CommandConfig{Command: ""}},
+		{"both_fields", CommandConfig{Command: "cmd1", Cmd: "cmd2"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cv := NewConfigValidator(tt.config)
+			err := cv.Validate()
+			t.Logf("Command validation for %q: error = %v", tt.name, err)
+		})
+	}
+}
+
+func TestValidator2PathFieldValidation(t *testing.T) {
+	t.Parallel()
+
+	type PathConfig struct {
+		SaveFolder string `mapstructure:"save-folder"`
+		WorkingDir string `mapstructure:"working_dir"`
+	}
+
+	tests := []struct {
+		name   string
+		config PathConfig
+	}{
+		{"valid_save_folder", PathConfig{SaveFolder: "/var/log/ofelia"}},
+		{"valid_working_dir", PathConfig{WorkingDir: "/app"}},
+		{"relative_path", PathConfig{SaveFolder: "./logs"}},
+		{"empty_paths", PathConfig{SaveFolder: "", WorkingDir: ""}},
+		{"both_paths", PathConfig{SaveFolder: "/logs", WorkingDir: "/home/app"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cv := NewConfigValidator(tt.config)
+			err := cv.Validate()
+			t.Logf("Path validation for %q: error = %v", tt.name, err)
+		})
+	}
+}
+
+func TestValidator2ImageFieldValidation(t *testing.T) {
+	t.Parallel()
+
+	type ImageConfig struct {
+		Image string `mapstructure:"image"`
+	}
+
+	tests := []struct {
+		name   string
+		config ImageConfig
+	}{
+		{"valid_simple_image", ImageConfig{Image: "nginx"}},
+		{"valid_with_tag", ImageConfig{Image: "nginx:latest"}},
+		{"valid_with_registry", ImageConfig{Image: "docker.io/library/nginx:1.21"}},
+		{"valid_private_registry", ImageConfig{Image: "gcr.io/project/image:v1"}},
+		{"empty_image", ImageConfig{Image: ""}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cv := NewConfigValidator(tt.config)
+			err := cv.Validate()
+			t.Logf("Image validation for %q: error = %v", tt.name, err)
+		})
+	}
+}
+
+func TestValidator2IsValidAddressMethod(t *testing.T) {
+	t.Parallel()
+
+	cv := NewConfigValidator(struct{}{})
+
+	tests := []struct {
+		addr     string
+		expected bool
+	}{
+		{":8080", true},
+		{"localhost:8080", true},
+		{"127.0.0.1:3000", true},
+		{"0.0.0.0:80", true},
+		{"", false},
+		{"noport", false},
+		{"host:notanumber", false},
+		{"host:port:extra", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.addr, func(t *testing.T) {
+			result := cv.isValidAddress(tt.addr)
+			if result != tt.expected {
+				t.Errorf("isValidAddress(%q) = %v, want %v", tt.addr, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestValidator2IsValidLogLevelMethod(t *testing.T) {
+	t.Parallel()
+
+	cv := NewConfigValidator(struct{}{})
+
+	tests := []struct {
+		level    string
+		expected bool
+	}{
+		{"debug", true},
+		{"info", true},
+		{"notice", true},
+		{"warning", true},
+		{"error", true},
+		{"critical", true},
+		{"DEBUG", true},
+		{"INFO", true},
+		{"NOTICE", true},
+		{"WARNING", true},
+		{"ERROR", true},
+		{"CRITICAL", true},
+		{"trace", false},
+		{"fatal", false},
+		{"invalid", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.level, func(t *testing.T) {
+			result := cv.isValidLogLevel(tt.level)
+			if result != tt.expected {
+				t.Errorf("isValidLogLevel(%q) = %v, want %v", tt.level, result, tt.expected)
+			}
+		})
+	}
+}
