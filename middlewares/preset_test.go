@@ -4,110 +4,124 @@ import (
 	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-type SuitePreset struct {
-	BaseSuite
-}
+func TestPresetLoader_Creation(t *testing.T) {
+	t.Parallel()
 
-var _ = Suite(&SuitePreset{})
-
-func (s *SuitePreset) TestPresetLoader_Creation(c *C) {
 	loader := NewPresetLoader(nil)
-	c.Assert(loader, NotNil)
+	assert.NotNil(t, loader)
 }
 
-func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_Slack(c *C) {
+func TestPresetLoader_LoadBundledPreset_Slack(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("slack")
 
-	c.Assert(err, IsNil)
-	c.Assert(preset, NotNil)
-	c.Assert(preset.Name, Equals, "slack")
-	c.Assert(preset.Method, Equals, "POST")
-	c.Assert(preset.URLScheme, Not(Equals), "")
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "slack", preset.Name)
+	assert.Equal(t, "POST", preset.Method)
+	assert.NotEmpty(t, preset.URLScheme)
 }
 
-func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_Discord(c *C) {
+func TestPresetLoader_LoadBundledPreset_Discord(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("discord")
 
-	c.Assert(err, IsNil)
-	c.Assert(preset, NotNil)
-	c.Assert(preset.Name, Equals, "discord")
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "discord", preset.Name)
 }
 
-func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_Teams(c *C) {
+func TestPresetLoader_LoadBundledPreset_Teams(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("teams")
 
-	c.Assert(err, IsNil)
-	c.Assert(preset, NotNil)
-	c.Assert(preset.Name, Equals, "teams")
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "teams", preset.Name)
 }
 
-func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_Ntfy(c *C) {
+func TestPresetLoader_LoadBundledPreset_Ntfy(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("ntfy")
 
-	c.Assert(err, IsNil)
-	c.Assert(preset, NotNil)
-	c.Assert(preset.Name, Equals, "ntfy")
-	// ntfy preset is for public topics - should NOT have Authorization header
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "ntfy", preset.Name)
 	_, hasAuth := preset.Headers["Authorization"]
-	c.Assert(hasAuth, Equals, false)
+	assert.False(t, hasAuth)
 }
 
-func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_NtfyToken(c *C) {
+func TestPresetLoader_LoadBundledPreset_NtfyToken(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("ntfy-token")
 
-	c.Assert(err, IsNil)
-	c.Assert(preset, NotNil)
-	c.Assert(preset.Name, Equals, "ntfy-token")
-	// ntfy-token preset should have Bearer Authorization header
-	c.Assert(preset.Headers["Authorization"], Equals, "Bearer {secret}")
-	// Secret should be required
-	c.Assert(preset.Variables["secret"].Required, Equals, true)
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "ntfy-token", preset.Name)
+	assert.Equal(t, "Bearer {secret}", preset.Headers["Authorization"])
+	assert.True(t, preset.Variables["secret"].Required)
 }
 
-func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_Pushover(c *C) {
+func TestPresetLoader_LoadBundledPreset_Pushover(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("pushover")
 
-	c.Assert(err, IsNil)
-	c.Assert(preset, NotNil)
-	c.Assert(preset.Name, Equals, "pushover")
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "pushover", preset.Name)
 }
 
-func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_PagerDuty(c *C) {
+func TestPresetLoader_LoadBundledPreset_PagerDuty(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("pagerduty")
 
-	c.Assert(err, IsNil)
-	c.Assert(preset, NotNil)
-	c.Assert(preset.Name, Equals, "pagerduty")
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "pagerduty", preset.Name)
 }
 
-func (s *SuitePreset) TestPresetLoader_LoadBundledPreset_Gotify(c *C) {
+func TestPresetLoader_LoadBundledPreset_Gotify(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("gotify")
 
-	c.Assert(err, IsNil)
-	c.Assert(preset, NotNil)
-	c.Assert(preset.Name, Equals, "gotify")
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "gotify", preset.Name)
 }
 
-func (s *SuitePreset) TestPresetLoader_LoadNonExistent(c *C) {
+func TestPresetLoader_LoadNonExistent(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("nonexistent")
 
-	c.Assert(err, NotNil)
-	c.Assert(preset, IsNil)
+	assert.Error(t, err)
+	assert.Nil(t, preset)
 }
 
-func (s *SuitePreset) TestPreset_BuildURL_WithIDAndSecret(c *C) {
+func TestPreset_BuildURL_WithIDAndSecret(t *testing.T) {
+	t.Parallel()
+
 	preset := &Preset{
 		Name:      "test",
 		URLScheme: "https://hooks.example.com/{id}/{secret}",
@@ -119,11 +133,13 @@ func (s *SuitePreset) TestPreset_BuildURL_WithIDAndSecret(c *C) {
 	}
 
 	url, err := preset.BuildURL(config)
-	c.Assert(err, IsNil)
-	c.Assert(url, Equals, "https://hooks.example.com/test-id/test-secret")
+	require.NoError(t, err)
+	assert.Equal(t, "https://hooks.example.com/test-id/test-secret", url)
 }
 
-func (s *SuitePreset) TestPreset_BuildURL_WithCustomURL(c *C) {
+func TestPreset_BuildURL_WithCustomURL(t *testing.T) {
+	t.Parallel()
+
 	preset := &Preset{
 		Name:      "test",
 		URLScheme: "https://default.example.com",
@@ -134,11 +150,13 @@ func (s *SuitePreset) TestPreset_BuildURL_WithCustomURL(c *C) {
 	}
 
 	url, err := preset.BuildURL(config)
-	c.Assert(err, IsNil)
-	c.Assert(url, Equals, "https://custom.example.com/webhook")
+	require.NoError(t, err)
+	assert.Equal(t, "https://custom.example.com/webhook", url)
 }
 
-func (s *SuitePreset) TestPreset_RenderBody_Simple(c *C) {
+func TestPreset_RenderBody_Simple(t *testing.T) {
+	t.Parallel()
+
 	preset := &Preset{
 		Name: "test",
 		Body: `{"message": "Job {{.Job.Name}} finished"}`,
@@ -151,11 +169,13 @@ func (s *SuitePreset) TestPreset_RenderBody_Simple(c *C) {
 	}
 
 	body, err := preset.RenderBody(data)
-	c.Assert(err, IsNil)
-	c.Assert(body, Equals, `{"message": "Job test-job finished"}`)
+	require.NoError(t, err)
+	assert.Equal(t, `{"message": "Job test-job finished"}`, body)
 }
 
-func (s *SuitePreset) TestPreset_RenderBody_WithStatus(c *C) {
+func TestPreset_RenderBody_WithStatus(t *testing.T) {
+	t.Parallel()
+
 	preset := &Preset{
 		Name: "test",
 		Body: `{"status": "{{.Execution.Status}}"}`,
@@ -168,11 +188,13 @@ func (s *SuitePreset) TestPreset_RenderBody_WithStatus(c *C) {
 	}
 
 	body, err := preset.RenderBody(data)
-	c.Assert(err, IsNil)
-	c.Assert(body, Equals, `{"status": "success"}`)
+	require.NoError(t, err)
+	assert.Equal(t, `{"status": "success"}`, body)
 }
 
-func (s *SuitePreset) TestPreset_RenderBody_WithDuration(c *C) {
+func TestPreset_RenderBody_WithDuration(t *testing.T) {
+	t.Parallel()
+
 	preset := &Preset{
 		Name: "test",
 		Body: `Duration: {{.Execution.Duration}}`,
@@ -185,11 +207,13 @@ func (s *SuitePreset) TestPreset_RenderBody_WithDuration(c *C) {
 	}
 
 	body, err := preset.RenderBody(data)
-	c.Assert(err, IsNil)
-	c.Assert(body, Equals, `Duration: 5.23s`)
+	require.NoError(t, err)
+	assert.Equal(t, `Duration: 5.23s`, body)
 }
 
-func (s *SuitePreset) TestPreset_RenderBody_EmptyTemplate(c *C) {
+func TestPreset_RenderBody_EmptyTemplate(t *testing.T) {
+	t.Parallel()
+
 	preset := &Preset{
 		Name: "test",
 		Body: "",
@@ -198,17 +222,18 @@ func (s *SuitePreset) TestPreset_RenderBody_EmptyTemplate(c *C) {
 	data := &WebhookData{}
 
 	body, err := preset.RenderBody(data)
-	c.Assert(err, IsNil)
-	c.Assert(body, Equals, "")
+	require.NoError(t, err)
+	assert.Empty(t, body)
 }
 
-func (s *SuitePreset) TestListBundledPresets(c *C) {
+func TestListBundledPresets(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	presets := loader.ListBundledPresets()
 
-	c.Assert(len(presets) >= 9, Equals, true)
+	assert.GreaterOrEqual(t, len(presets), 9)
 
-	// Check that expected presets are present
 	hasSlack := false
 	hasDiscord := false
 	for _, p := range presets {
@@ -219,50 +244,35 @@ func (s *SuitePreset) TestListBundledPresets(c *C) {
 			hasDiscord = true
 		}
 	}
-	c.Assert(hasSlack, Equals, true)
-	c.Assert(hasDiscord, Equals, true)
+	assert.True(t, hasSlack)
+	assert.True(t, hasDiscord)
 }
 
-// Standard Go testing for better IDE integration
 func TestPresetLoader_AllBundledPresets(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	presets := loader.ListBundledPresets()
 
 	for _, name := range presets {
 		preset, err := loader.Load(name)
-		if err != nil {
-			t.Errorf("Failed to load bundled preset %s: %v", name, err)
-			continue
-		}
-
-		if preset.Name == "" {
-			t.Errorf("Preset %s has empty name", name)
-		}
-
-		if preset.Method == "" {
-			t.Errorf("Preset %s has empty method", name)
-		}
-
-		if preset.Body == "" {
-			t.Errorf("Preset %s has empty body template", name)
-		}
+		require.NoError(t, err, "Failed to load bundled preset %s", name)
+		assert.NotEmpty(t, preset.Name, "Preset %s has empty name", name)
+		assert.NotEmpty(t, preset.Method, "Preset %s has empty method", name)
+		assert.NotEmpty(t, preset.Body, "Preset %s has empty body template", name)
 	}
 }
 
 func TestPresetLoader_TemplateRendering(t *testing.T) {
-	loader := NewPresetLoader(nil)
+	t.Parallel()
 
-	// Test that all presets can render without errors
+	loader := NewPresetLoader(nil)
 	presets := loader.ListBundledPresets()
+
 	for _, name := range presets {
 		preset, err := loader.Load(name)
-		if err != nil {
-			t.Errorf("Failed to load preset %s: %v", name, err)
-			continue
-		}
+		require.NoError(t, err, "Failed to load preset %s", name)
 
-		// Use RenderBodyWithPreset with map data that includes Preset field
-		// This is how the actual webhook.go send() method calls it
 		data := map[string]interface{}{
 			"Job": WebhookJobData{
 				Name:    "test-job",
@@ -289,13 +299,7 @@ func TestPresetLoader_TemplateRendering(t *testing.T) {
 		}
 
 		body, err := preset.RenderBodyWithPreset(data)
-		if err != nil {
-			t.Errorf("Failed to render body for preset %s: %v", name, err)
-			continue
-		}
-
-		if body == "" {
-			t.Errorf("Preset %s rendered empty body", name)
-		}
+		require.NoError(t, err, "Failed to render body for preset %s", name)
+		assert.NotEmpty(t, body, "Preset %s rendered empty body", name)
 	}
 }

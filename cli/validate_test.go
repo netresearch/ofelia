@@ -6,22 +6,15 @@ import (
 	"os"
 	"testing"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// Hook up gocheck into the "go test" runner.
-func TestValidate(t *testing.T) { TestingT(t) }
+func TestValidateExecuteValidFile(t *testing.T) {
+	t.Parallel()
 
-// ValidateSuite is the test suite for ValidateCommand.
-type ValidateSuite struct{}
-
-var _ = Suite(&ValidateSuite{})
-
-// TestExecuteValidFile verifies that Execute returns no error for a valid config file.
-func (s *ValidateSuite) TestExecuteValidFile(c *C) {
-	// Create a temporary INI file with a valid job entry.
 	file, err := os.CreateTemp("", "ofelia_valid_*.ini")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	defer os.Remove(file.Name())
 
 	content := `
@@ -30,7 +23,7 @@ schedule = @every 10s
 command = echo "foo"
 `
 	_, err = file.WriteString(content)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	file.Close()
 
 	r, w, _ := os.Pipe()
@@ -40,39 +33,39 @@ command = echo "foo"
 
 	cmd := ValidateCommand{ConfigFile: file.Name(), Logger: &TestLogger{}}
 	err = cmd.Execute(nil)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	w.Close()
 	out, _ := io.ReadAll(r)
 
 	var conf Config
 	err = json.Unmarshal(out, &conf)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	job, ok := conf.ExecJobs["foo"]
-	c.Assert(ok, Equals, true)
-	c.Assert(job.HistoryLimit, Equals, 10)
+	assert.True(t, ok)
+	assert.Equal(t, 10, job.HistoryLimit)
 }
 
-// TestExecuteInvalidFile verifies that Execute returns an error for malformed config file.
-func (s *ValidateSuite) TestExecuteInvalidFile(c *C) {
-	// Create a temporary INI file with invalid syntax.
+func TestValidateExecuteInvalidFile(t *testing.T) {
+	t.Parallel()
+
 	file, err := os.CreateTemp("", "ofelia_invalid_*.ini")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	defer os.Remove(file.Name())
 
-	// Missing closing bracket in section header
 	_, err = file.WriteString("[job-exec \"foo\"\nschedule = @every 10s\n")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	file.Close()
 
 	cmd := ValidateCommand{ConfigFile: file.Name(), Logger: &TestLogger{}}
 	err = cmd.Execute(nil)
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-// TestExecuteMissingFile verifies that Execute returns an error when file does not exist.
-func (s *ValidateSuite) TestExecuteMissingFile(c *C) {
+func TestValidateExecuteMissingFile(t *testing.T) {
+	t.Parallel()
+
 	cmd := ValidateCommand{ConfigFile: "/nonexistent/ofelia/config.ini", Logger: &TestLogger{}}
 	err := cmd.Execute(nil)
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }

@@ -7,23 +7,19 @@ import (
 	"testing"
 
 	defaults "github.com/creasty/defaults"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
 	"github.com/netresearch/ofelia/test"
-	. "gopkg.in/check.v1"
 )
 
-// Hook up gocheck into the "go test" runner.
-func TestConfig(t *testing.T) { TestingT(t) }
-
-type SuiteConfig struct{}
-
-var _ = Suite(&SuiteConfig{})
-
-// Use shared TestLogger from test package
 type TestLogger = test.Logger
 
-func (s *SuiteConfig) TestBuildFromString(c *C) {
+func TestBuildFromString(t *testing.T) {
+	t.Parallel()
+
 	mockLogger := TestLogger{}
 	_, err := BuildFromString(`
 		[job-exec "foo"]
@@ -44,41 +40,51 @@ func (s *SuiteConfig) TestBuildFromString(c *C) {
 		image = nginx
   `, &mockLogger)
 
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 }
 
-func (s *SuiteConfig) TestJobDefaultsSet(c *C) {
+func TestJobDefaultsSet(t *testing.T) {
+	t.Parallel()
+
 	j := &RunJobConfig{}
 	j.Pull = "false"
 
 	_ = defaults.Set(j)
 
-	c.Assert(j.Pull, Equals, "false")
+	assert.Equal(t, "false", j.Pull)
 }
 
-func (s *SuiteConfig) TestJobDefaultsNotSet(c *C) {
+func TestJobDefaultsNotSet(t *testing.T) {
+	t.Parallel()
+
 	j := &RunJobConfig{}
 
 	_ = defaults.Set(j)
 
-	c.Assert(j.Pull, Equals, "true")
+	assert.Equal(t, "true", j.Pull)
 }
 
-func (s *SuiteConfig) TestExecJobBuildEmpty(c *C) {
+func TestExecJobBuildEmpty(t *testing.T) {
+	t.Parallel()
+
 	j := &ExecJobConfig{}
 
-	c.Assert(j.Middlewares(), HasLen, 0)
+	assert.Len(t, j.Middlewares(), 0)
 }
 
-func (s *SuiteConfig) TestExecJobBuild(c *C) {
+func TestExecJobBuild(t *testing.T) {
+	t.Parallel()
+
 	j := &ExecJobConfig{}
 	j.OverlapConfig.NoOverlap = true
 	j.buildMiddlewares(nil)
 
-	c.Assert(j.Middlewares(), HasLen, 1)
+	assert.Len(t, j.Middlewares(), 1)
 }
 
-func (s *SuiteConfig) TestConfigIni(c *C) {
+func TestConfigIni(t *testing.T) {
+	t.Parallel()
+
 	testcases := []struct {
 		Ini            string
 		ExpectedConfig Config
@@ -164,38 +170,37 @@ func (s *SuiteConfig) TestConfigIni(c *C) {
 		},
 	}
 
-	for _, t := range testcases {
-		conf, err := BuildFromString(t.Ini, &TestLogger{})
-		c.Assert(err, IsNil)
+	for _, tc := range testcases {
+		t.Run(tc.Comment, func(t *testing.T) {
+			conf, err := BuildFromString(tc.Ini, &TestLogger{})
+			require.NoError(t, err)
 
-		// Apply defaults to expected config to match the parsed config structure
-		expectedWithDefaults := NewConfig(&TestLogger{})
-		// Clear both loggers for comparison
-		expectedWithDefaults.logger = nil
-		conf.logger = nil
+			expectedWithDefaults := NewConfig(&TestLogger{})
+			expectedWithDefaults.logger = nil
+			conf.logger = nil
 
-		// Copy the expected job maps
-		for name, job := range t.ExpectedConfig.ExecJobs {
-			expectedWithDefaults.ExecJobs[name] = job
-		}
-		for name, job := range t.ExpectedConfig.RunJobs {
-			expectedWithDefaults.RunJobs[name] = job
-		}
-		for name, job := range t.ExpectedConfig.ServiceJobs {
-			expectedWithDefaults.ServiceJobs[name] = job
-		}
-		for name, job := range t.ExpectedConfig.LocalJobs {
-			expectedWithDefaults.LocalJobs[name] = job
-		}
-		setJobSource(expectedWithDefaults, JobSourceINI)
+			for name, job := range tc.ExpectedConfig.ExecJobs {
+				expectedWithDefaults.ExecJobs[name] = job
+			}
+			for name, job := range tc.ExpectedConfig.RunJobs {
+				expectedWithDefaults.RunJobs[name] = job
+			}
+			for name, job := range tc.ExpectedConfig.ServiceJobs {
+				expectedWithDefaults.ServiceJobs[name] = job
+			}
+			for name, job := range tc.ExpectedConfig.LocalJobs {
+				expectedWithDefaults.LocalJobs[name] = job
+			}
+			setJobSource(expectedWithDefaults, JobSourceINI)
 
-		if !c.Check(conf, DeepEquals, expectedWithDefaults) {
-			c.Errorf("Test %q\nExpected %s, but got %s", t.Comment, toJSON(expectedWithDefaults), toJSON(conf))
-		}
+			assert.Equal(t, expectedWithDefaults, conf, "Test %q failed", tc.Comment)
+		})
 	}
 }
 
-func (s *SuiteConfig) TestLabelsConfig(c *C) {
+func TestLabelsConfig(t *testing.T) {
+	t.Parallel()
+
 	testcases := []struct {
 		Labels         map[string]map[string]string
 		ExpectedConfig Config
@@ -485,29 +490,22 @@ func (s *SuiteConfig) TestLabelsConfig(c *C) {
 		},
 	}
 
-	for _, t := range testcases {
-		conf := Config{}
-		conf.logger = test.NewTestLogger()         // Initialize logger for tests
-		conf.Global.AllowHostJobsFromLabels = true // Enable local jobs from labels for testing
-		err := conf.buildFromDockerLabels(t.Labels)
-		c.Assert(err, IsNil)
-		setJobSource(&conf, JobSourceLabel)
-		setJobSource(&t.ExpectedConfig, JobSourceLabel)
+	for _, tc := range testcases {
+		t.Run(tc.Comment, func(t *testing.T) {
+			conf := Config{}
+			conf.logger = test.NewTestLogger()
+			conf.Global.AllowHostJobsFromLabels = true
+			err := conf.buildFromDockerLabels(tc.Labels)
+			require.NoError(t, err)
+			setJobSource(&conf, JobSourceLabel)
+			setJobSource(&tc.ExpectedConfig, JobSourceLabel)
 
-		// Clear logger for comparison to avoid message count mismatches
-		actualLogger := conf.logger
-		conf.logger = nil
-		t.ExpectedConfig.logger = nil
+			conf.logger = nil
+			tc.ExpectedConfig.logger = nil
+			tc.ExpectedConfig.Global.AllowHostJobsFromLabels = true
 
-		// Set the same security flag on expected config
-		t.ExpectedConfig.Global.AllowHostJobsFromLabels = true
-
-		if !c.Check(conf, DeepEquals, t.ExpectedConfig) {
-			c.Errorf("Test %q\nExpected %s, but got %s", t.Comment, toJSON(t.ExpectedConfig), toJSON(conf))
-		}
-
-		// Restore logger
-		conf.logger = actualLogger
+			assert.Equal(t, tc.ExpectedConfig, conf, "Test %q failed", tc.Comment)
+		})
 	}
 }
 
@@ -516,17 +514,18 @@ func toJSON(val interface{}) string {
 	return string(b)
 }
 
-// Test for BuildFromString error path
-func (s *SuiteConfig) TestBuildFromStringError(c *C) {
+func TestBuildFromStringError(t *testing.T) {
+	t.Parallel()
+
 	_, err := BuildFromString("[invalid", &TestLogger{})
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-// Test for BuildFromFile success path
-func (s *SuiteConfig) TestBuildFromFile(c *C) {
-	// Create temporary config file
+func TestBuildFromFile(t *testing.T) {
+	t.Parallel()
+
 	tmpFile, err := os.CreateTemp("", "ofelia_test_*.ini")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
 	content := `
@@ -537,57 +536,59 @@ command = echo test123
 `
 	_, _ = tmpFile.WriteString(content)
 	err = tmpFile.Close()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	conf, err := BuildFromFile(tmpFile.Name(), &TestLogger{})
-	c.Assert(err, IsNil)
-	// Verify parsed values
-	c.Assert(conf.RunJobs, HasLen, 1)
+	require.NoError(t, err)
+	assert.Len(t, conf.RunJobs, 1)
 	job, ok := conf.RunJobs["foo"]
-	c.Assert(ok, Equals, true)
-	c.Assert(job.Schedule, Equals, "@every 5s")
-	c.Assert(job.Command, Equals, "echo test123")
+	assert.True(t, ok)
+	assert.Equal(t, "@every 5s", job.Schedule)
+	assert.Equal(t, "echo test123", job.Command)
 }
 
-func (s *SuiteConfig) TestBuildFromFileGlob(c *C) {
+func TestBuildFromFileGlob(t *testing.T) {
+	t.Parallel()
+
 	dir, err := os.MkdirTemp("", "ofelia_glob")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
 	file1 := filepath.Join(dir, "a.ini")
 	err = os.WriteFile(file1, []byte("[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"), 0o644)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	file2 := filepath.Join(dir, "b.ini")
 	err = os.WriteFile(file2, []byte("[job-exec \"bar\"]\nschedule = @every 10s\ncommand = echo bar\n"), 0o644)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	conf, err := BuildFromFile(filepath.Join(dir, "*.ini"), &TestLogger{})
-	c.Assert(err, IsNil)
-	c.Assert(conf.RunJobs, HasLen, 1)
+	require.NoError(t, err)
+	assert.Len(t, conf.RunJobs, 1)
 	_, ok := conf.RunJobs["foo"]
-	c.Assert(ok, Equals, true)
-	c.Assert(conf.ExecJobs, HasLen, 1)
+	assert.True(t, ok)
+	assert.Len(t, conf.ExecJobs, 1)
 	_, ok = conf.ExecJobs["bar"]
-	c.Assert(ok, Equals, true)
+	assert.True(t, ok)
 }
 
-// Test NewConfig initializes empty maps and applies defaults
-func (s *SuiteConfig) TestNewConfig(c *C) {
+func TestNewConfig(t *testing.T) {
+	t.Parallel()
+
 	cfg := NewConfig(&TestLogger{})
-	c.Assert(cfg.ExecJobs, NotNil)
-	c.Assert(cfg.RunJobs, NotNil)
-	c.Assert(cfg.ServiceJobs, NotNil)
-	c.Assert(cfg.LocalJobs, NotNil)
-	c.Assert(len(cfg.ExecJobs), Equals, 0)
-	c.Assert(len(cfg.RunJobs), Equals, 0)
-	c.Assert(len(cfg.ServiceJobs), Equals, 0)
-	c.Assert(len(cfg.LocalJobs), Equals, 0)
+	assert.NotNil(t, cfg.ExecJobs)
+	assert.NotNil(t, cfg.RunJobs)
+	assert.NotNil(t, cfg.ServiceJobs)
+	assert.NotNil(t, cfg.LocalJobs)
+	assert.Len(t, cfg.ExecJobs, 0)
+	assert.Len(t, cfg.RunJobs, 0)
+	assert.Len(t, cfg.ServiceJobs, 0)
+	assert.Len(t, cfg.LocalJobs, 0)
 }
 
-// Test buildSchedulerMiddlewares adds only non-empty middlewares
-func (s *SuiteConfig) TestBuildSchedulerMiddlewares(c *C) {
-	// Prepare config with non-empty global middleware settings
+func TestBuildSchedulerMiddlewares(t *testing.T) {
+	t.Parallel()
+
 	cfg := Config{}
 	cfg.Global.SlackConfig.SlackWebhook = "http://example.com/webhook"
 	cfg.Global.SaveConfig.SaveFolder = "/tmp"
@@ -597,31 +598,29 @@ func (s *SuiteConfig) TestBuildSchedulerMiddlewares(c *C) {
 	sh := core.NewScheduler(&TestLogger{})
 	cfg.buildSchedulerMiddlewares(sh)
 	ms := sh.Middlewares()
-	c.Assert(ms, HasLen, 3)
-	// Assert types of middlewares
+	assert.Len(t, ms, 3)
 	_, ok := ms[0].(*middlewares.Slack)
-	c.Assert(ok, Equals, true)
+	assert.True(t, ok)
 	_, ok = ms[1].(*middlewares.Save)
-	c.Assert(ok, Equals, true)
+	assert.True(t, ok)
 	_, ok = ms[2].(*middlewares.Mail)
-	c.Assert(ok, Equals, true)
+	assert.True(t, ok)
 }
 
-// Test DefaultUser global configuration
-func (s *SuiteConfig) TestDefaultUserGlobalConfig(c *C) {
+func TestDefaultUserGlobalConfig(t *testing.T) {
+	t.Parallel()
+
 	mockLogger := TestLogger{}
 
-	// Test 1: Default value should be "nobody"
 	cfg, err := BuildFromString(`
 		[job-exec "test"]
 		schedule = @every 10s
 		container = test-container
 		command = echo test
 	`, &mockLogger)
-	c.Assert(err, IsNil)
-	c.Assert(cfg.Global.DefaultUser, Equals, "nobody")
+	require.NoError(t, err)
+	assert.Equal(t, "nobody", cfg.Global.DefaultUser)
 
-	// Test 2: Global default-user can be changed
 	cfg, err = BuildFromString(`
 		[global]
 		default-user = root
@@ -631,10 +630,9 @@ func (s *SuiteConfig) TestDefaultUserGlobalConfig(c *C) {
 		container = test-container
 		command = echo test
 	`, &mockLogger)
-	c.Assert(err, IsNil)
-	c.Assert(cfg.Global.DefaultUser, Equals, "root")
+	require.NoError(t, err)
+	assert.Equal(t, "root", cfg.Global.DefaultUser)
 
-	// Test 3: Empty string global default-user (use container's default)
 	cfg, err = BuildFromString(`
 		[global]
 		default-user =
@@ -644,45 +642,39 @@ func (s *SuiteConfig) TestDefaultUserGlobalConfig(c *C) {
 		container = test-container
 		command = echo test
 	`, &mockLogger)
-	c.Assert(err, IsNil)
-	c.Assert(cfg.Global.DefaultUser, Equals, "")
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.Global.DefaultUser)
 }
 
-// Test applyDefaultUser function
-func (s *SuiteConfig) TestApplyDefaultUser(c *C) {
+func TestApplyDefaultUser(t *testing.T) {
+	t.Parallel()
+
 	cfg := NewConfig(&TestLogger{})
 	cfg.Global.DefaultUser = "testuser"
 
-	// Test 1: Empty user gets global default
 	user := ""
 	cfg.applyDefaultUser(&user)
-	c.Assert(user, Equals, "testuser")
+	assert.Equal(t, "testuser", user)
 
-	// Test 2: Explicit user is preserved
 	user = "specificuser"
 	cfg.applyDefaultUser(&user)
-	c.Assert(user, Equals, "specificuser")
+	assert.Equal(t, "specificuser", user)
 
-	// Test 3: When global default is empty, user stays empty
 	cfg.Global.DefaultUser = ""
 	user = ""
 	cfg.applyDefaultUser(&user)
-	c.Assert(user, Equals, "")
+	assert.Equal(t, "", user)
 
-	// Test 4: Sentinel value "default" overrides global to use container's default
 	cfg.Global.DefaultUser = "nobody"
 	user = UserContainerDefault
 	cfg.applyDefaultUser(&user)
-	c.Assert(user, Equals, "") // Should be empty (container's default)
+	assert.Equal(t, "", user)
 }
 
-// TestMergeMailDefaults tests that job-level mail configs inherit global SMTP settings
-// This tests the fix for issue #330 (upstream #124) where partial mail config overrides
-// would lose SMTP connection details.
-func (s *SuiteConfig) TestMergeMailDefaults(c *C) {
-	cfg := NewConfig(&TestLogger{})
+func TestMergeMailDefaults(t *testing.T) {
+	t.Parallel()
 
-	// Set global mail configuration
+	cfg := NewConfig(&TestLogger{})
 	cfg.Global.MailConfig.SMTPHost = "smtp.example.com"
 	cfg.Global.MailConfig.SMTPPort = 587
 	cfg.Global.MailConfig.SMTPUser = "globaluser"
@@ -692,22 +684,20 @@ func (s *SuiteConfig) TestMergeMailDefaults(c *C) {
 	cfg.Global.MailConfig.EmailFrom = "sender@example.com"
 	cfg.Global.MailConfig.MailOnlyOnError = false
 
-	// Test 1: Job with only mail-only-on-error inherits all SMTP settings
 	jobMail := middlewares.MailConfig{
-		MailOnlyOnError: true, // Only this is set by user
+		MailOnlyOnError: true,
 	}
 	cfg.mergeMailDefaults(&jobMail)
 
-	c.Assert(jobMail.SMTPHost, Equals, "smtp.example.com")
-	c.Assert(jobMail.SMTPPort, Equals, 587)
-	c.Assert(jobMail.SMTPUser, Equals, "globaluser")
-	c.Assert(jobMail.SMTPPassword, Equals, "globalpwd")
-	c.Assert(jobMail.SMTPTLSSkipVerify, Equals, true)
-	c.Assert(jobMail.EmailTo, Equals, "global@example.com")
-	c.Assert(jobMail.EmailFrom, Equals, "sender@example.com")
-	c.Assert(jobMail.MailOnlyOnError, Equals, true) // Preserved from job
+	assert.Equal(t, "smtp.example.com", jobMail.SMTPHost)
+	assert.Equal(t, 587, jobMail.SMTPPort)
+	assert.Equal(t, "globaluser", jobMail.SMTPUser)
+	assert.Equal(t, "globalpwd", jobMail.SMTPPassword)
+	assert.True(t, jobMail.SMTPTLSSkipVerify)
+	assert.Equal(t, "global@example.com", jobMail.EmailTo)
+	assert.Equal(t, "sender@example.com", jobMail.EmailFrom)
+	assert.True(t, jobMail.MailOnlyOnError)
 
-	// Test 2: Job with explicit values are preserved (no override)
 	jobMail2 := middlewares.MailConfig{
 		SMTPHost:        "job-smtp.example.com",
 		SMTPPort:        465,
@@ -716,14 +706,13 @@ func (s *SuiteConfig) TestMergeMailDefaults(c *C) {
 	}
 	cfg.mergeMailDefaults(&jobMail2)
 
-	c.Assert(jobMail2.SMTPHost, Equals, "job-smtp.example.com") // Job value preserved
-	c.Assert(jobMail2.SMTPPort, Equals, 465)                    // Job value preserved
-	c.Assert(jobMail2.SMTPUser, Equals, "globaluser")           // Inherited from global
-	c.Assert(jobMail2.SMTPPassword, Equals, "globalpwd")        // Inherited from global
-	c.Assert(jobMail2.EmailTo, Equals, "job@example.com")       // Job value preserved
-	c.Assert(jobMail2.EmailFrom, Equals, "sender@example.com")  // Inherited from global
+	assert.Equal(t, "job-smtp.example.com", jobMail2.SMTPHost)
+	assert.Equal(t, 465, jobMail2.SMTPPort)
+	assert.Equal(t, "globaluser", jobMail2.SMTPUser)
+	assert.Equal(t, "globalpwd", jobMail2.SMTPPassword)
+	assert.Equal(t, "job@example.com", jobMail2.EmailTo)
+	assert.Equal(t, "sender@example.com", jobMail2.EmailFrom)
 
-	// Test 3: Empty global config doesn't cause issues
 	cfgEmpty := NewConfig(&TestLogger{})
 	jobMail3 := middlewares.MailConfig{
 		SMTPHost: "job-only.example.com",
@@ -731,70 +720,58 @@ func (s *SuiteConfig) TestMergeMailDefaults(c *C) {
 	}
 	cfgEmpty.mergeMailDefaults(&jobMail3)
 
-	c.Assert(jobMail3.SMTPHost, Equals, "job-only.example.com") // Job value preserved
-	c.Assert(jobMail3.SMTPPort, Equals, 25)                     // Job value preserved
-	c.Assert(jobMail3.SMTPUser, Equals, "")                     // No global to inherit
+	assert.Equal(t, "job-only.example.com", jobMail3.SMTPHost)
+	assert.Equal(t, 25, jobMail3.SMTPPort)
+	assert.Equal(t, "", jobMail3.SMTPUser)
 }
 
-// TestMergeSlackDefaults tests that job-level slack configs inherit global webhook
-func (s *SuiteConfig) TestMergeSlackDefaults(c *C) {
+func TestMergeSlackDefaults(t *testing.T) {
+	t.Parallel()
+
 	cfg := NewConfig(&TestLogger{})
 	cfg.Global.SlackConfig.SlackWebhook = "https://hooks.slack.com/services/global"
 	cfg.Global.SlackConfig.SlackOnlyOnError = false
 
-	// Test 1: Job with only slack-only-on-error inherits webhook
 	jobSlack := middlewares.SlackConfig{
 		SlackOnlyOnError: true,
 	}
 	cfg.mergeSlackDefaults(&jobSlack)
 
-	c.Assert(jobSlack.SlackWebhook, Equals, "https://hooks.slack.com/services/global")
-	c.Assert(jobSlack.SlackOnlyOnError, Equals, true) // Job value preserved
+	assert.Equal(t, "https://hooks.slack.com/services/global", jobSlack.SlackWebhook)
+	assert.True(t, jobSlack.SlackOnlyOnError)
 
-	// Test 2: Job with explicit webhook preserves it
 	jobSlack2 := middlewares.SlackConfig{
 		SlackWebhook: "https://hooks.slack.com/services/job-specific",
 	}
 	cfg.mergeSlackDefaults(&jobSlack2)
 
-	c.Assert(jobSlack2.SlackWebhook, Equals, "https://hooks.slack.com/services/job-specific")
+	assert.Equal(t, "https://hooks.slack.com/services/job-specific", jobSlack2.SlackWebhook)
 }
 
-// TestMergeMailDefaults_BoolFieldLimitation documents the Go bool field inheritance limitation.
-// Since we cannot distinguish "not set" from "explicitly false", the behavior is asymmetric:
-// - Global=true, Job=false → Job inherits true (insecure setting propagates)
-// - Global=false, Job=true → Job keeps true (secure global CANNOT force secure on job)
-// This is acceptable since per-job security settings should be explicit.
-func (s *SuiteConfig) TestMergeMailDefaults_BoolFieldLimitation(c *C) {
-	// Case 1: Global smtp-tls-skip-verify=true propagates to job with default (false)
+func TestMergeMailDefaultsBoolFieldLimitation(t *testing.T) {
+	t.Parallel()
+
 	cfg1 := NewConfig(&TestLogger{})
 	cfg1.Global.MailConfig.SMTPTLSSkipVerify = true
 	jobMail1 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
 	cfg1.mergeMailDefaults(&jobMail1)
-	c.Assert(jobMail1.SMTPTLSSkipVerify, Equals, true,
-		Commentf("Global skip-verify=true should propagate to job"))
+	assert.True(t, jobMail1.SMTPTLSSkipVerify, "Global skip-verify=true should propagate to job")
 
-	// Case 2: Global smtp-tls-skip-verify=false does NOT override job with true
-	// This is the documented limitation - we cannot force TLS verification
 	cfg2 := NewConfig(&TestLogger{})
 	cfg2.Global.MailConfig.SMTPTLSSkipVerify = false
 	jobMail2 := middlewares.MailConfig{
 		SMTPHost:          "mail.example.com",
-		SMTPTLSSkipVerify: true, // Job explicitly skips verification
+		SMTPTLSSkipVerify: true,
 	}
 	cfg2.mergeMailDefaults(&jobMail2)
-	c.Assert(jobMail2.SMTPTLSSkipVerify, Equals, true,
-		Commentf("Job skip-verify=true should NOT be overridden by global false (Go bool limitation)"))
+	assert.True(t, jobMail2.SMTPTLSSkipVerify, "Job skip-verify=true should NOT be overridden by global false")
 
-	// Case 3: Both false - secure default maintained
 	cfg3 := NewConfig(&TestLogger{})
 	cfg3.Global.MailConfig.SMTPTLSSkipVerify = false
 	jobMail3 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
 	cfg3.mergeMailDefaults(&jobMail3)
-	c.Assert(jobMail3.SMTPTLSSkipVerify, Equals, false,
-		Commentf("Both false - secure default should be maintained"))
+	assert.False(t, jobMail3.SMTPTLSSkipVerify, "Both false - secure default should be maintained")
 
-	// Case 4: Both true - insecure settings preserved
 	cfg4 := NewConfig(&TestLogger{})
 	cfg4.Global.MailConfig.SMTPTLSSkipVerify = true
 	jobMail4 := middlewares.MailConfig{
@@ -802,6 +779,5 @@ func (s *SuiteConfig) TestMergeMailDefaults_BoolFieldLimitation(c *C) {
 		SMTPTLSSkipVerify: true,
 	}
 	cfg4.mergeMailDefaults(&jobMail4)
-	c.Assert(jobMail4.SMTPTLSSkipVerify, Equals, true,
-		Commentf("Both true - insecure setting should be preserved"))
+	assert.True(t, jobMail4.SMTPTLSSkipVerify, "Both true - insecure setting should be preserved")
 }

@@ -154,8 +154,8 @@ pre-push:
         # Temporarily enable CGO for race detection
         export CGO_ENABLED=1
 
-        # Run tests with race detection
-        if ! go test -race -timeout=5m ./...; then
+        # Run tests with race detection (short mode for speed, full suite in CI)
+        if ! go test -short -race -timeout=2m ./...; then
           echo ""
           echo "❌ Tests failed! Push cancelled."
           echo "Fix the failing tests before pushing."

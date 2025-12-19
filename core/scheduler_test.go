@@ -1,35 +1,37 @@
 package core
 
 import (
+	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-type SuiteScheduler struct{}
+func TestSchedulerAddJob(t *testing.T) {
+	t.Parallel()
 
-var _ = Suite(&SuiteScheduler{})
-
-func (s *SuiteScheduler) TestAddJob(c *C) {
 	job := &TestJob{}
 	job.Schedule = "@hourly"
 
 	sc := NewScheduler(&TestLogger{})
 	err := sc.AddJob(job)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	e := sc.cron.Entries()
-	c.Assert(e, HasLen, 1)
-	c.Assert(e[0].Job.(*jobWrapper).j, DeepEquals, job)
+	assert.Len(t, e, 1)
+	assert.Equal(t, job, e[0].Job.(*jobWrapper).j)
 }
 
-func (s *SuiteScheduler) TestStartStop(c *C) {
+func TestSchedulerStartStop(t *testing.T) {
+	t.Parallel()
+
 	job := &TestJob{}
 	job.Schedule = "@every 1s"
 
 	sc := NewScheduler(&TestLogger{})
 	err := sc.AddJob(job)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	jobCompleted := make(chan struct{}, 1)
 	sc.SetOnJobComplete(func(_ string, _ bool) {
@@ -40,19 +42,21 @@ func (s *SuiteScheduler) TestStartStop(c *C) {
 	})
 
 	_ = sc.Start()
-	c.Assert(sc.IsRunning(), Equals, true)
+	assert.True(t, sc.IsRunning())
 
 	select {
 	case <-jobCompleted:
 	case <-time.After(2 * time.Second):
-		c.Fatal("Timeout waiting for job to complete")
+		t.Fatal("Timeout waiting for job to complete")
 	}
 
 	_ = sc.Stop()
-	c.Assert(sc.IsRunning(), Equals, false)
+	assert.False(t, sc.IsRunning())
 }
 
-func (s *SuiteScheduler) TestMergeMiddlewaresSame(c *C) {
+func TestSchedulerMergeMiddlewaresSame(t *testing.T) {
+	t.Parallel()
+
 	mA, mB, mC := &TestMiddleware{}, &TestMiddleware{}, &TestMiddleware{}
 
 	job := &TestJob{}
@@ -64,17 +68,19 @@ func (s *SuiteScheduler) TestMergeMiddlewaresSame(c *C) {
 	_ = sc.AddJob(job)
 
 	m := job.Middlewares()
-	c.Assert(m, HasLen, 1)
-	c.Assert(m[0], Equals, mB)
+	assert.Len(t, m, 1)
+	assert.Equal(t, mB, m[0])
 }
 
-func (s *SuiteScheduler) TestLastRunRecorded(c *C) {
+func TestSchedulerLastRunRecorded(t *testing.T) {
+	t.Parallel()
+
 	job := &TestJob{}
 	job.Schedule = "@every 1s"
 
 	sc := NewScheduler(&TestLogger{})
 	err := sc.AddJob(job)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	jobCompleted := make(chan struct{}, 1)
 	sc.SetOnJobComplete(func(_ string, _ bool) {
@@ -89,22 +95,24 @@ func (s *SuiteScheduler) TestLastRunRecorded(c *C) {
 	select {
 	case <-jobCompleted:
 	case <-time.After(2 * time.Second):
-		c.Fatal("Timeout waiting for job to complete")
+		t.Fatal("Timeout waiting for job to complete")
 	}
 
 	_ = sc.Stop()
 
 	lr := job.GetLastRun()
-	c.Assert(lr, NotNil)
-	c.Assert(lr.Duration > 0, Equals, true)
+	assert.NotNil(t, lr)
+	assert.Greater(t, lr.Duration, time.Duration(0))
 }
 
-func (s *SuiteScheduler) TestWorkflowOrchestratorInit(c *C) {
+func TestSchedulerWorkflowOrchestratorInit(t *testing.T) {
+	t.Parallel()
+
 	sc := NewScheduler(&TestLogger{})
 
 	sc.workflowOrchestrator = NewWorkflowOrchestrator(sc, &TestLogger{})
-	c.Assert(sc.workflowOrchestrator, NotNil)
-	c.Assert(sc.workflowOrchestrator.executions, NotNil)
+	assert.NotNil(t, sc.workflowOrchestrator)
+	assert.NotNil(t, sc.workflowOrchestrator.executions)
 
 	exec := &WorkflowExecution{
 		ID:            "test-exec",
@@ -115,27 +123,33 @@ func (s *SuiteScheduler) TestWorkflowOrchestratorInit(c *C) {
 	}
 
 	sc.workflowOrchestrator.executions["test-exec"] = exec
-	c.Assert(sc.workflowOrchestrator.executions["test-exec"], Equals, exec)
+	assert.Equal(t, exec, sc.workflowOrchestrator.executions["test-exec"])
 }
 
-func (s *SuiteScheduler) TestSchedulerCleanupTicker(c *C) {
+func TestSchedulerCleanupTicker(t *testing.T) {
+	t.Parallel()
+
 	fakeClock := NewFakeClock(time.Now())
 	sc := NewScheduler(&TestLogger{})
 	sc.SetClock(fakeClock)
 
-	c.Assert(sc.clock, Equals, fakeClock)
-	c.Assert(sc.cleanupStop, NotNil)
+	assert.Equal(t, fakeClock, sc.clock)
+	assert.NotNil(t, sc.cleanupStop)
 }
 
-func (s *SuiteScheduler) TestSetClock(c *C) {
+func TestSchedulerSetClock(t *testing.T) {
+	t.Parallel()
+
 	sc := NewScheduler(&TestLogger{})
 	fakeClock := NewFakeClock(time.Now())
 
 	sc.SetClock(fakeClock)
-	c.Assert(sc.clock, Equals, fakeClock)
+	assert.Equal(t, fakeClock, sc.clock)
 }
 
-func (s *SuiteScheduler) TestSetOnJobComplete(c *C) {
+func TestSchedulerSetOnJobComplete(t *testing.T) {
+	t.Parallel()
+
 	sc := NewScheduler(&TestLogger{})
 	called := false
 
@@ -143,7 +157,7 @@ func (s *SuiteScheduler) TestSetOnJobComplete(c *C) {
 		called = true
 	})
 
-	c.Assert(sc.onJobComplete, NotNil)
+	assert.NotNil(t, sc.onJobComplete)
 	sc.onJobComplete("test", true)
-	c.Assert(called, Equals, true)
+	assert.True(t, called)
 }

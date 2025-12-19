@@ -5,132 +5,136 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"testing"
 	"time"
 
-	"github.com/netresearch/ofelia/core"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-	. "gopkg.in/check.v1"
+	"github.com/netresearch/ofelia/core"
 )
 
-type SuiteSlack struct {
-	BaseSuite
+func TestNewSlackEmpty(t *testing.T) {
+	t.Parallel()
+	assert.Nil(t, NewSlack(&SlackConfig{}))
 }
 
-var _ = Suite(&SuiteSlack{})
+func TestSlackRunSuccess(t *testing.T) {
+	t.Parallel()
+	ctx, _ := setupTestContext(t)
 
-func (s *SuiteSlack) TestNewSlackEmpty(c *C) {
-	c.Assert(NewSlack(&SlackConfig{}), IsNil)
-}
-
-func (s *SuiteSlack) TestRunSuccess(c *C) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var m slackMessage
 		_ = json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
-		c.Assert(m.Attachments[0].Title, Equals, "Execution successful")
+		assert.Equal(t, "Execution successful", m.Attachments[0].Title)
 	}))
-
 	defer ts.Close()
 
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+	ctx.Start()
+	ctx.Stop(nil)
 
 	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL})
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 }
 
-func (s *SuiteSlack) TestRunSuccessFailed(c *C) {
+func TestSlackRunSuccessFailed(t *testing.T) {
+	t.Parallel()
+	ctx, _ := setupTestContext(t)
+
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var m slackMessage
 		_ = json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
-		c.Assert(m.Attachments[0].Title, Equals, "Execution failed")
+		assert.Equal(t, "Execution failed", m.Attachments[0].Title)
 	}))
-
 	defer ts.Close()
 
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("foo"))
+	ctx.Start()
+	ctx.Stop(errors.New("foo"))
 
 	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL})
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 }
 
-func (s *SuiteSlack) TestRunSuccessOnError(c *C) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c.Assert(true, Equals, false)
-	}))
+func TestSlackRunSuccessOnError(t *testing.T) {
+	t.Parallel()
+	ctx, _ := setupTestContext(t)
 
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("should not be called")
+	}))
 	defer ts.Close()
 
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+	ctx.Start()
+	ctx.Stop(nil)
 
 	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL, SlackOnlyOnError: true})
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 }
 
-func (s *SuiteSlack) TestCustomHTTPClient(c *C) {
+func TestSlackCustomHTTPClient(t *testing.T) {
+	t.Parallel()
+	ctx, _ := setupTestContext(t)
+
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var m slackMessage
 		_ = json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &m)
-		c.Assert(m.Attachments[0].Title, Equals, "Execution successful")
+		assert.Equal(t, "Execution successful", m.Attachments[0].Title)
 	}))
-
 	defer ts.Close()
 
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+	ctx.Start()
+	ctx.Stop(nil)
 
 	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL}).(*Slack)
 	custom := ts.Client()
 	custom.Timeout = 2 * time.Second
 	m.Client = custom
 
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 }
 
-func (s *SuiteSlack) TestDedupSuppressesDuplicateErrors(c *C) {
+func TestSlackDedupSuppressesDuplicateErrors(t *testing.T) {
+	t.Parallel()
+
 	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 	}))
 	defer ts.Close()
 
-	// Create dedup with 1 hour cooldown
 	dedup := NewNotificationDedup(time.Hour)
 
-	// Create fresh context for this test
 	job := &TestJob{}
 	sh := core.NewScheduler(&TestLogger{})
 	e, err := core.NewExecution()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
 
-	// First error - should send notification
 	ctx.Start()
 	ctx.Stop(errors.New("test error"))
 
 	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL, Dedup: dedup}).(*Slack)
-	c.Assert(m.Run(ctx), IsNil)
-	c.Assert(callCount, Equals, 1)
+	require.NoError(t, m.Run(ctx))
+	assert.Equal(t, 1, callCount)
 
-	// Create new execution for second run
 	e2, _ := core.NewExecution()
 	ctx2 := core.NewContext(sh, job, e2)
 	ctx2.Start()
 	ctx2.Stop(errors.New("test error"))
-	c.Assert(m.Run(ctx2), IsNil)
-	c.Assert(callCount, Equals, 1) // Still 1, not 2 (suppressed)
+	require.NoError(t, m.Run(ctx2))
+	assert.Equal(t, 1, callCount) // Still 1, not 2 (suppressed)
 
-	// Different error - should send notification
 	e3, _ := core.NewExecution()
 	ctx3 := core.NewContext(sh, job, e3)
 	ctx3.Start()
 	ctx3.Stop(errors.New("different error"))
-	c.Assert(m.Run(ctx3), IsNil)
-	c.Assert(callCount, Equals, 2) // Now 2
+	require.NoError(t, m.Run(ctx3))
+	assert.Equal(t, 2, callCount) // Now 2
 }
 
-func (s *SuiteSlack) TestDedupAllowsSuccessNotifications(c *C) {
+func TestSlackDedupAllowsSuccessNotifications(t *testing.T) {
+	t.Parallel()
+
 	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
@@ -139,56 +143,51 @@ func (s *SuiteSlack) TestDedupAllowsSuccessNotifications(c *C) {
 
 	dedup := NewNotificationDedup(time.Hour)
 
-	// Create fresh context
 	job := &TestJob{}
 	sh := core.NewScheduler(&TestLogger{})
 	e, _ := core.NewExecution()
 	ctx := core.NewContext(sh, job, e)
 
-	// Success - should always send (dedup only applies to errors)
 	ctx.Start()
 	ctx.Stop(nil)
 
 	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL, Dedup: dedup}).(*Slack)
-	c.Assert(m.Run(ctx), IsNil)
-	c.Assert(callCount, Equals, 1)
+	require.NoError(t, m.Run(ctx))
+	assert.Equal(t, 1, callCount)
 
-	// Another success - should also send
 	e2, _ := core.NewExecution()
 	ctx2 := core.NewContext(sh, job, e2)
 	ctx2.Start()
 	ctx2.Stop(nil)
-	c.Assert(m.Run(ctx2), IsNil)
-	c.Assert(callCount, Equals, 2)
+	require.NoError(t, m.Run(ctx2))
+	assert.Equal(t, 2, callCount)
 }
 
-func (s *SuiteSlack) TestNoDedupWhenNotConfigured(c *C) {
+func TestSlackNoDedupWhenNotConfigured(t *testing.T) {
+	t.Parallel()
+
 	callCount := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 	}))
 	defer ts.Close()
 
-	// Create fresh context
 	job := &TestJob{}
 	sh := core.NewScheduler(&TestLogger{})
 	e, _ := core.NewExecution()
 	ctx := core.NewContext(sh, job, e)
 
-	// No dedup configured
 	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL}).(*Slack)
 
-	// First error
 	ctx.Start()
 	ctx.Stop(errors.New("test error"))
-	c.Assert(m.Run(ctx), IsNil)
-	c.Assert(callCount, Equals, 1)
+	require.NoError(t, m.Run(ctx))
+	assert.Equal(t, 1, callCount)
 
-	// Same error again - should still send (no dedup)
 	e2, _ := core.NewExecution()
 	ctx2 := core.NewContext(sh, job, e2)
 	ctx2.Start()
 	ctx2.Stop(errors.New("test error"))
-	c.Assert(m.Run(ctx2), IsNil)
-	c.Assert(callCount, Equals, 2)
+	require.NoError(t, m.Run(ctx2))
+	assert.Equal(t, 2, callCount)
 }

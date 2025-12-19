@@ -5,193 +5,220 @@ import (
 	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
 )
 
-type SuiteDedup struct {
-	BaseSuite
-}
+func TestNewNotificationDedup(t *testing.T) {
+	t.Parallel()
 
-var _ = Suite(&SuiteDedup{})
-
-func (s *SuiteDedup) TestNewNotificationDedup(c *C) {
 	dedup := NewNotificationDedup(time.Hour)
-	c.Assert(dedup, NotNil)
-	c.Assert(dedup.cooldown, Equals, time.Hour)
-	c.Assert(dedup.entries, NotNil)
+	assert.NotNil(t, dedup)
+	assert.Equal(t, time.Hour, dedup.cooldown)
+	assert.NotNil(t, dedup.entries)
 }
 
-func (s *SuiteDedup) TestGenerateKey(c *C) {
+func TestDedupGenerateKey(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupTestContext(t)
+
 	dedup := NewNotificationDedup(time.Hour)
 
 	// Set up job with name and command
-	s.job.Name = "test-job"
-	s.job.Command = "echo hello"
+	job.Name = "test-job"
+	job.Command = "echo hello"
 
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("connection refused"))
+	ctx.Start()
+	ctx.Stop(errors.New("connection refused"))
 
-	key := dedup.generateKey(s.ctx)
-	c.Assert(key, Not(Equals), "")
+	key := dedup.generateKey(ctx)
+	assert.NotEmpty(t, key)
 
 	// Same error should produce same key
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("connection refused"))
-	key2 := dedup.generateKey(s.ctx)
-	c.Assert(key, Equals, key2)
+	ctx.Start()
+	ctx.Stop(errors.New("connection refused"))
+	key2 := dedup.generateKey(ctx)
+	assert.Equal(t, key, key2)
 
 	// Different error should produce different key
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("timeout"))
-	key3 := dedup.generateKey(s.ctx)
-	c.Assert(key, Not(Equals), key3)
+	ctx.Start()
+	ctx.Stop(errors.New("timeout"))
+	key3 := dedup.generateKey(ctx)
+	assert.NotEqual(t, key, key3)
 }
 
-func (s *SuiteDedup) TestShouldNotify_FirstError(c *C) {
+func TestShouldNotify_FirstError(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupTestContext(t)
+
 	dedup := NewNotificationDedup(time.Hour)
 
-	s.job.Name = "test-job"
-	s.job.Command = "echo hello"
+	job.Name = "test-job"
+	job.Command = "echo hello"
 
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("first error"))
+	ctx.Start()
+	ctx.Stop(errors.New("first error"))
 
 	// First occurrence should always notify
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	assert.True(t, dedup.ShouldNotify(ctx))
 }
 
-func (s *SuiteDedup) TestShouldNotify_DuplicateWithinCooldown(c *C) {
+func TestShouldNotify_DuplicateWithinCooldown(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupTestContext(t)
+
 	dedup := NewNotificationDedup(time.Hour)
 
-	s.job.Name = "test-job"
-	s.job.Command = "echo hello"
+	job.Name = "test-job"
+	job.Command = "echo hello"
 
 	// First error - should notify
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("same error"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	ctx.Start()
+	ctx.Stop(errors.New("same error"))
+	assert.True(t, dedup.ShouldNotify(ctx))
 
 	// Same error again immediately - should NOT notify (within cooldown)
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("same error"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, false)
+	ctx.Start()
+	ctx.Stop(errors.New("same error"))
+	assert.False(t, dedup.ShouldNotify(ctx))
 }
 
-func (s *SuiteDedup) TestShouldNotify_DifferentErrors(c *C) {
+func TestShouldNotify_DifferentErrors(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupTestContext(t)
+
 	dedup := NewNotificationDedup(time.Hour)
 
-	s.job.Name = "test-job"
-	s.job.Command = "echo hello"
+	job.Name = "test-job"
+	job.Command = "echo hello"
 
 	// First error
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("error A"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	ctx.Start()
+	ctx.Stop(errors.New("error A"))
+	assert.True(t, dedup.ShouldNotify(ctx))
 
 	// Different error - should notify
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("error B"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	ctx.Start()
+	ctx.Stop(errors.New("error B"))
+	assert.True(t, dedup.ShouldNotify(ctx))
 }
 
-func (s *SuiteDedup) TestShouldNotify_AfterCooldownExpires(c *C) {
+func TestShouldNotify_AfterCooldownExpires(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupTestContext(t)
+
 	// Use very short cooldown for testing
 	dedup := NewNotificationDedup(10 * time.Millisecond)
 
-	s.job.Name = "test-job"
-	s.job.Command = "echo hello"
+	job.Name = "test-job"
+	job.Command = "echo hello"
 
 	// First error - should notify
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("same error"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	ctx.Start()
+	ctx.Stop(errors.New("same error"))
+	assert.True(t, dedup.ShouldNotify(ctx))
 
 	// Same error immediately - should NOT notify
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("same error"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, false)
+	ctx.Start()
+	ctx.Stop(errors.New("same error"))
+	assert.False(t, dedup.ShouldNotify(ctx))
 
 	// Wait for cooldown to expire
 	time.Sleep(15 * time.Millisecond)
 
 	// Same error after cooldown - should notify again
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("same error"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	ctx.Start()
+	ctx.Stop(errors.New("same error"))
+	assert.True(t, dedup.ShouldNotify(ctx))
 }
 
-func (s *SuiteDedup) TestShouldNotify_SuccessAlwaysNotifies(c *C) {
+func TestShouldNotify_SuccessAlwaysNotifies(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupTestContext(t)
+
 	dedup := NewNotificationDedup(time.Hour)
 
-	s.job.Name = "test-job"
-	s.job.Command = "echo hello"
+	job.Name = "test-job"
+	job.Command = "echo hello"
 
 	// Success - should always notify (no dedup for success)
-	s.ctx.Start()
-	s.ctx.Stop(nil)
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	ctx.Start()
+	ctx.Stop(nil)
+	assert.True(t, dedup.ShouldNotify(ctx))
 
 	// Another success - should also notify
-	s.ctx.Start()
-	s.ctx.Stop(nil)
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	ctx.Start()
+	ctx.Stop(nil)
+	assert.True(t, dedup.ShouldNotify(ctx))
 }
 
-func (s *SuiteDedup) TestShouldNotify_DifferentJobs(c *C) {
+func TestShouldNotify_DifferentJobs(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupTestContext(t)
+
 	dedup := NewNotificationDedup(time.Hour)
 
 	// Job 1 fails
-	s.job.Name = "job-1"
-	s.job.Command = "echo hello"
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("same error"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	job.Name = "job-1"
+	job.Command = "echo hello"
+	ctx.Start()
+	ctx.Stop(errors.New("same error"))
+	assert.True(t, dedup.ShouldNotify(ctx))
 
 	// Job 2 fails with same error - should still notify (different job)
-	s.job.Name = "job-2"
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("same error"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	job.Name = "job-2"
+	ctx.Start()
+	ctx.Stop(errors.New("same error"))
+	assert.True(t, dedup.ShouldNotify(ctx))
 }
 
-func (s *SuiteDedup) TestCleanup_RemovesExpiredEntries(c *C) {
+func TestCleanup_RemovesExpiredEntries(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupTestContext(t)
+
 	dedup := NewNotificationDedup(10 * time.Millisecond)
 
-	s.job.Name = "test-job"
-	s.job.Command = "echo hello"
+	job.Name = "test-job"
+	job.Command = "echo hello"
 
 	// Add some entries
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("error 1"))
-	dedup.ShouldNotify(s.ctx)
+	ctx.Start()
+	ctx.Stop(errors.New("error 1"))
+	dedup.ShouldNotify(ctx)
 
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("error 2"))
-	dedup.ShouldNotify(s.ctx)
+	ctx.Start()
+	ctx.Stop(errors.New("error 2"))
+	dedup.ShouldNotify(ctx)
 
-	c.Assert(len(dedup.entries), Equals, 2)
+	assert.Len(t, dedup.entries, 2)
 
 	// Wait for cooldown to expire
 	time.Sleep(15 * time.Millisecond)
 
 	// Cleanup should remove expired entries
 	dedup.Cleanup()
-	c.Assert(len(dedup.entries), Equals, 0)
+	assert.Len(t, dedup.entries, 0)
 }
 
-func (s *SuiteDedup) TestConcurrentAccess(c *C) {
+func TestConcurrentAccess(t *testing.T) {
+	t.Parallel()
+	_, job := setupTestContext(t)
+
 	dedup := NewNotificationDedup(time.Hour)
 
-	s.job.Name = "test-job"
-	s.job.Command = "echo hello"
+	job.Name = "test-job"
+	job.Command = "echo hello"
 
 	// Simulate concurrent access
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func(errNum int) {
-			ctx := s.createContext(c)
+			sh := core.NewScheduler(&TestLogger{})
+			e, err := core.NewExecution()
+			require.NoError(t, err)
+			ctx := core.NewContext(sh, job, e)
 			ctx.Start()
 			ctx.Stop(errors.New("error"))
 			dedup.ShouldNotify(ctx)
@@ -205,35 +232,33 @@ func (s *SuiteDedup) TestConcurrentAccess(c *C) {
 	}
 
 	// Should not panic and should have reasonable state
-	c.Assert(len(dedup.entries) >= 1, Equals, true)
-}
-
-func (s *SuiteDedup) createContext(c *C) *core.Context {
-	sh := core.NewScheduler(&TestLogger{})
-	e, err := core.NewExecution()
-	c.Assert(err, IsNil)
-	return core.NewContext(sh, s.job, e)
+	assert.GreaterOrEqual(t, len(dedup.entries), 1)
 }
 
 // Test disabled dedup (zero cooldown)
-func (s *SuiteDedup) TestZeroCooldown_AlwaysNotifies(c *C) {
+func TestZeroCooldown_AlwaysNotifies(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupTestContext(t)
+
 	dedup := NewNotificationDedup(0)
 
-	s.job.Name = "test-job"
-	s.job.Command = "echo hello"
+	job.Name = "test-job"
+	job.Command = "echo hello"
 
 	// With zero cooldown, should always notify
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("same error"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	ctx.Start()
+	ctx.Stop(errors.New("same error"))
+	assert.True(t, dedup.ShouldNotify(ctx))
 
-	s.ctx.Start()
-	s.ctx.Stop(errors.New("same error"))
-	c.Assert(dedup.ShouldNotify(s.ctx), Equals, true)
+	ctx.Start()
+	ctx.Stop(errors.New("same error"))
+	assert.True(t, dedup.ShouldNotify(ctx))
 }
 
 // Integration test with standard Go testing for better IDE support
 func TestNotificationDedup_Integration(t *testing.T) {
+	t.Parallel()
+
 	dedup := NewNotificationDedup(100 * time.Millisecond)
 
 	// Create a mock context
@@ -243,9 +268,7 @@ func TestNotificationDedup_Integration(t *testing.T) {
 
 	sh := core.NewScheduler(&TestLogger{})
 	e, err := core.NewExecution()
-	if err != nil {
-		t.Fatalf("Failed to create execution: %v", err)
-	}
+	require.NoError(t, err)
 
 	ctx := core.NewContext(sh, job, e)
 
@@ -253,16 +276,12 @@ func TestNotificationDedup_Integration(t *testing.T) {
 	ctx.Start()
 	ctx.Stop(errors.New("test error"))
 
-	if !dedup.ShouldNotify(ctx) {
-		t.Error("Expected first notification to be allowed")
-	}
+	assert.True(t, dedup.ShouldNotify(ctx), "Expected first notification to be allowed")
 
 	ctx.Start()
 	ctx.Stop(errors.New("test error"))
 
-	if dedup.ShouldNotify(ctx) {
-		t.Error("Expected duplicate notification to be suppressed")
-	}
+	assert.False(t, dedup.ShouldNotify(ctx), "Expected duplicate notification to be suppressed")
 
 	// Wait for cooldown
 	time.Sleep(150 * time.Millisecond)
@@ -270,7 +289,5 @@ func TestNotificationDedup_Integration(t *testing.T) {
 	ctx.Start()
 	ctx.Stop(errors.New("test error"))
 
-	if !dedup.ShouldNotify(ctx) {
-		t.Error("Expected notification after cooldown to be allowed")
-	}
+	assert.True(t, dedup.ShouldNotify(ctx), "Expected notification after cooldown to be allowed")
 }

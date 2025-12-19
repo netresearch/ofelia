@@ -1,29 +1,35 @@
 package middlewares
 
-import . "gopkg.in/check.v1"
+import (
+	"testing"
 
-type SuiteOverlap struct {
-	BaseSuite
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestNewOverlapEmpty(t *testing.T) {
+	t.Parallel()
+	assert.Nil(t, NewOverlap(&OverlapConfig{}))
 }
 
-var _ = Suite(&SuiteOverlap{})
+func TestOverlapRun(t *testing.T) {
+	t.Parallel()
+	ctx, _ := setupTestContext(t)
 
-func (s *SuiteOverlap) TestNewOverlapEmpty(c *C) {
-	c.Assert(NewOverlap(&OverlapConfig{}), IsNil)
-}
-
-func (s *SuiteOverlap) TestRun(c *C) {
 	m := &Overlap{}
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 }
 
-func (s *SuiteOverlap) TestRunOverlap(c *C) {
-	s.ctx.Execution.Start()
-	s.ctx.Job.NotifyStart()
-	s.ctx.Job.NotifyStart()
+func TestOverlapRunOverlap(t *testing.T) {
+	t.Parallel()
+	ctx, _ := setupTestContext(t)
+
+	ctx.Execution.Start()
+	ctx.Job.NotifyStart()
+	ctx.Job.NotifyStart()
 
 	m := NewOverlap(&OverlapConfig{NoOverlap: true})
-	c.Assert(m.Run(s.ctx), IsNil)
-	c.Assert(s.ctx.Execution.IsRunning, Equals, false)
-	c.Assert(s.ctx.Execution.Skipped, Equals, true)
+	require.NoError(t, m.Run(ctx))
+	assert.False(t, ctx.Execution.IsRunning)
+	assert.True(t, ctx.Execution.Skipped)
 }

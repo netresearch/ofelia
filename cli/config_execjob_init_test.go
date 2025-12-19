@@ -1,20 +1,20 @@
 package cli
 
 import (
-	. "gopkg.in/check.v1"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/test"
 )
 
-// SuiteExecJobInit tests ExecJob initialization from config
-type SuiteExecJobInit struct{}
-
-var _ = Suite(&SuiteExecJobInit{})
-
 // TestExecJobInit_FromINIConfig verifies that ExecJobs loaded from INI config
 // have dockerOps properly initialized and can execute without panic
-func (s *SuiteExecJobInit) TestExecJobInit_FromINIConfig(c *C) {
+func TestExecJobInit_FromINIConfig(t *testing.T) {
+	t.Parallel()
+
 	mockLogger := &test.Logger{}
 
 	// Create config from INI string (simulates loading from file)
@@ -26,31 +26,33 @@ func (s *SuiteExecJobInit) TestExecJobInit_FromINIConfig(c *C) {
 		user = nobody
 	`, mockLogger)
 
-	c.Assert(err, IsNil)
-	c.Assert(cfg.ExecJobs, NotNil)
-	c.Assert(cfg.ExecJobs, HasLen, 1)
+	require.NoError(t, err)
+	assert.NotNil(t, cfg.ExecJobs)
+	assert.Len(t, cfg.ExecJobs, 1)
 
 	// Get the job
 	job, exists := cfg.ExecJobs["test-job"]
-	c.Assert(exists, Equals, true)
-	c.Assert(job, NotNil)
+	assert.True(t, exists)
+	assert.NotNil(t, job)
 
 	// Verify job fields are set from config
-	c.Assert(job.GetName(), Equals, "") // Name not set yet (set during registration)
-	c.Assert(job.GetSchedule(), Equals, "@every 1h")
-	c.Assert(job.GetCommand(), Equals, `echo "test"`)
-	c.Assert(job.Container, Equals, "test-container")
-	c.Assert(job.User, Equals, "nobody")
+	assert.Equal(t, "", job.GetName()) // Name not set yet (set during registration)
+	assert.Equal(t, "@every 1h", job.GetSchedule())
+	assert.Equal(t, `echo "test"`, job.GetCommand())
+	assert.Equal(t, "test-container", job.Container)
+	assert.Equal(t, "nobody", job.User)
 
 	// CRITICAL: This is the regression test for the nil pointer bug
 	// Before the fix, Provider would be nil here
 	// The job won't have Provider until InitializeApp() is called
-	c.Assert(job.ExecJob.Provider, IsNil) // Provider not set until InitializeApp
+	assert.Nil(t, job.ExecJob.Provider) // Provider not set until InitializeApp
 }
 
 // TestExecJobInit_AfterInitializeApp verifies that after InitializeApp(),
 // ExecJobs have dockerOps initialized and can be scheduled
-func (s *SuiteExecJobInit) TestExecJobInit_AfterInitializeApp(c *C) {
+func TestExecJobInit_AfterInitializeApp(t *testing.T) {
+	t.Parallel()
+
 	mockLogger := &test.Logger{}
 
 	// Create config from INI string
@@ -61,7 +63,7 @@ func (s *SuiteExecJobInit) TestExecJobInit_AfterInitializeApp(c *C) {
 		container = test-container
 	`, mockLogger)
 
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	// Initialize the app (this calls registerAllJobs which should call InitializeRuntimeFields)
 	// Note: This will fail without Docker, but we're testing the initialization path
@@ -73,9 +75,9 @@ func (s *SuiteExecJobInit) TestExecJobInit_AfterInitializeApp(c *C) {
 	if err == nil {
 		// If we somehow have Docker available, verify the job is properly initialized
 		job, exists := cfg.ExecJobs["initialized-job"]
-		c.Assert(exists, Equals, true)
-		c.Assert(job, NotNil)
-		c.Assert(job.GetName(), Equals, "initialized-job")
+		assert.True(t, exists)
+		assert.NotNil(t, job)
+		assert.Equal(t, "initialized-job", job.GetName())
 
 		// This is the critical check - dockerOps should be initialized
 		// We can't check it directly as it's private, but if Run() doesn't panic, it worked
@@ -84,7 +86,9 @@ func (s *SuiteExecJobInit) TestExecJobInit_AfterInitializeApp(c *C) {
 
 // TestExecJobConfig_dockerOpsInitialization is a unit test that verifies
 // the InitializeRuntimeFields method is called during config preparation
-func (s *SuiteExecJobInit) TestExecJobConfig_dockerOpsInitialization(c *C) {
+func TestExecJobConfig_dockerOpsInitialization(t *testing.T) {
+	t.Parallel()
+
 	// This test verifies the fix at the config layer
 	// Create an ExecJobConfig directly (as mapstructure would)
 	job := &ExecJobConfig{

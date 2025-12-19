@@ -3,42 +3,33 @@ package middlewares
 import (
 	"testing"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
 )
 
-func Test(t *testing.T) { TestingT(t) }
-
-type SuiteCommon struct {
-	BaseSuite
-}
-
-var _ = Suite(&SuiteCommon{})
-
-func (s *SuiteCommon) TestIsEmpty(c *C) {
-	config := &TestConfig{}
-	c.Assert(IsEmpty(config), Equals, true)
-
-	config = &TestConfig{Foo: "foo"}
-	c.Assert(IsEmpty(config), Equals, false)
-
-	config = &TestConfig{Qux: 42}
-	c.Assert(IsEmpty(config), Equals, false)
-}
-
-type BaseSuite struct {
-	ctx *core.Context
-	job *TestJob
-}
-
-func (s *BaseSuite) SetUpTest(c *C) {
-	s.job = &TestJob{}
+// setupTestContext creates a fresh test context for middleware tests
+func setupTestContext(t *testing.T) (*core.Context, *TestJob) {
+	t.Helper()
+	job := &TestJob{}
 	sh := core.NewScheduler(&TestLogger{})
 	e, err := core.NewExecution()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
+	return core.NewContext(sh, job, e), job
+}
 
-	s.ctx = core.NewContext(sh, s.job, e)
+func TestIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	config := &TestConfig{}
+	assert.True(t, IsEmpty(config))
+
+	config = &TestConfig{Foo: "foo"}
+	assert.False(t, IsEmpty(config))
+
+	config = &TestConfig{Qux: 42}
+	assert.False(t, IsEmpty(config))
 }
 
 type TestConfig struct {

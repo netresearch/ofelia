@@ -7,10 +7,12 @@ import (
 	"context"
 	"io"
 	"os"
+	"testing"
 	"time"
 
 	defaults "github.com/creasty/defaults"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/domain"
@@ -133,13 +135,6 @@ func (m *mockDockerProviderForHandler) Close() error {
 	return nil
 }
 
-// removed unused test helper
-
-// DockerHandlerSuite contains tests for DockerHandler methods
-type DockerHandlerSuite struct{}
-
-var _ = Suite(&DockerHandlerSuite{})
-
 // newBaseConfig creates a Config with logger, docker handler, and scheduler ready
 func newBaseConfig() *Config {
 	cfg := NewConfig(&TestLogger{})
@@ -166,26 +161,27 @@ func addExecJobsToScheduler(cfg *Config) {
 	}
 }
 
-func assertKeepsIniJobs(c *C, cfg *Config, jobsCount func() int) {
-	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+func assertKeepsIniJobs(t *testing.T, cfg *Config, jobsCount func() int) {
+	t.Helper()
+	assert.Equal(t, 1, len(cfg.sh.Entries()))
 	cfg.dockerLabelsUpdate(map[string]map[string]string{})
-	c.Assert(jobsCount(), Equals, 1)
-	c.Assert(len(cfg.sh.Entries()), Equals, 1)
+	assert.Equal(t, 1, jobsCount())
+	assert.Equal(t, 1, len(cfg.sh.Entries()))
 }
 
 // TestBuildSDKProviderError verifies that buildSDKProvider returns an error when DOCKER_HOST is invalid
-func (s *DockerHandlerSuite) TestBuildSDKProviderError(c *C) {
+func TestBuildSDKProviderError(t *testing.T) {
 	orig := os.Getenv("DOCKER_HOST")
 	defer os.Setenv("DOCKER_HOST", orig)
 	os.Setenv("DOCKER_HOST", "=")
 
 	h := &DockerHandler{ctx: context.Background(), logger: &TestLogger{}}
 	_, err := h.buildSDKProvider()
-	c.Assert(err, NotNil)
+	assert.NotNil(t, err)
 }
 
 // TestNewDockerHandlerErrorPing verifies that NewDockerHandler returns an error when Ping fails
-func (s *DockerHandlerSuite) TestNewDockerHandlerErrorPing(c *C) {
+func TestNewDockerHandlerErrorPing(t *testing.T) {
 	// Create a mock provider that fails Ping
 	mockProvider := &mockDockerProviderForHandler{
 		pingErr: ErrNoContainerWithOfeliaEnabled, // Use any error
@@ -193,31 +189,34 @@ func (s *DockerHandlerSuite) TestNewDockerHandlerErrorPing(c *C) {
 
 	notifier := &dummyNotifier{}
 	handler, err := NewDockerHandler(context.Background(), notifier, &TestLogger{}, &DockerConfig{}, mockProvider)
-	c.Assert(handler, IsNil)
-	c.Assert(err, NotNil)
+	assert.Nil(t, handler)
+	assert.NotNil(t, err)
 }
 
 // TestGetDockerLabelsInvalidFilter verifies that GetDockerLabels returns an error on invalid filter strings
-func (s *DockerHandlerSuite) TestGetDockerLabelsInvalidFilter(c *C) {
+func TestGetDockerLabelsInvalidFilter(t *testing.T) {
+	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{}
 	h := &DockerHandler{filters: []string{"invalidfilter"}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
 	_, err := h.GetDockerLabels()
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, `(?s)invalid docker filter "invalidfilter".*key=value format.*`)
+	require.NotNil(t, err)
+	assert.Regexp(t, `(?s)invalid docker filter "invalidfilter".*key=value format.*`, err.Error())
 }
 
 // TestGetDockerLabelsNoContainers verifies that GetDockerLabels returns ErrNoContainerWithOfeliaEnabled when no containers match
-func (s *DockerHandlerSuite) TestGetDockerLabelsNoContainers(c *C) {
+func TestGetDockerLabelsNoContainers(t *testing.T) {
+	t.Parallel()
 	// Mock provider returning empty container list
 	mockProvider := &mockDockerProviderForHandler{containers: []domain.Container{}}
 
 	h := &DockerHandler{filters: []string{}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
 	_, err := h.GetDockerLabels()
-	c.Assert(err, Equals, ErrNoContainerWithOfeliaEnabled)
+	assert.Equal(t, ErrNoContainerWithOfeliaEnabled, err)
 }
 
 // TestGetDockerLabelsValid verifies that GetDockerLabels filters and returns only ofelia-prefixed labels
-func (s *DockerHandlerSuite) TestGetDockerLabelsValid(c *C) {
+func TestGetDockerLabelsValid(t *testing.T) {
+	t.Parallel()
 	// Mock provider returning one container with mixed labels
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{
@@ -235,7 +234,7 @@ func (s *DockerHandlerSuite) TestGetDockerLabelsValid(c *C) {
 
 	h := &DockerHandler{filters: []string{}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
 	labels, err := h.GetDockerLabels()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	expected := map[string]map[string]string{
 		"cont1": {
@@ -244,12 +243,13 @@ func (s *DockerHandlerSuite) TestGetDockerLabelsValid(c *C) {
 			"ofelia.job-run.bar.schedule":  "@every 2s",
 		},
 	}
-	c.Assert(labels, DeepEquals, expected)
+	assert.Equal(t, expected, labels)
 }
 
 // TestWatchConfigInvalidInterval verifies that watchConfig exits immediately when
 // configPollInterval is zero or negative.
-func (s *DockerHandlerSuite) TestWatchConfigInvalidInterval(c *C) {
+func TestWatchConfigInvalidInterval(t *testing.T) {
+	t.Parallel()
 	h := &DockerHandler{configPollInterval: 0, notifier: &dummyNotifier{}, logger: &TestLogger{}, ctx: context.Background(), cancel: func() {}}
 	done := make(chan struct{})
 	go func() {
@@ -261,7 +261,7 @@ func (s *DockerHandlerSuite) TestWatchConfigInvalidInterval(c *C) {
 	case <-done:
 		// ok
 	case <-time.After(time.Millisecond * 50):
-		c.Error("watchConfig did not return for zero interval")
+		t.Error("watchConfig did not return for zero interval")
 	}
 
 	h = &DockerHandler{configPollInterval: -time.Second, notifier: &dummyNotifier{}, logger: &TestLogger{}, ctx: context.Background(), cancel: func() {}}
@@ -275,36 +275,37 @@ func (s *DockerHandlerSuite) TestWatchConfigInvalidInterval(c *C) {
 	case <-done:
 		// ok
 	case <-time.After(time.Millisecond * 50):
-		c.Error("watchConfig did not return for negative interval")
+		t.Error("watchConfig did not return for negative interval")
 	}
 }
 
 // TestDockerLabelsUpdateKeepsIniRunJobs verifies that RunJobs defined via INI
 // remain when dockerLabelsUpdate receives no labeled containers.
-func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniRunJobs(c *C) {
+func TestDockerLabelsUpdateKeepsIniRunJobs(t *testing.T) {
 	cfg := newBaseConfig()
 
 	cfg.RunJobs["ini-job"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}
 
 	addRunJobsToScheduler(cfg)
 
-	assertKeepsIniJobs(c, cfg, func() int { return len(cfg.RunJobs) })
+	assertKeepsIniJobs(t, cfg, func() int { return len(cfg.RunJobs) })
 }
 
 // TestDockerLabelsUpdateKeepsIniExecJobs verifies that ExecJobs defined via INI
 // remain when dockerLabelsUpdate receives no labeled containers.
-func (s *DockerHandlerSuite) TestDockerLabelsUpdateKeepsIniExecJobs(c *C) {
+func TestDockerLabelsUpdateKeepsIniExecJobs(t *testing.T) {
 	cfg := newBaseConfig()
 
 	cfg.ExecJobs["ini-exec"] = &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}
 
 	addExecJobsToScheduler(cfg)
 
-	assertKeepsIniJobs(c, cfg, func() int { return len(cfg.ExecJobs) })
+	assertKeepsIniJobs(t, cfg, func() int { return len(cfg.ExecJobs) })
 }
 
 // TestResolveConfigDefaults verifies that resolveConfig returns correct defaults
-func (s *DockerHandlerSuite) TestResolveConfigDefaults(c *C) {
+func TestResolveConfigDefaults(t *testing.T) {
+	t.Parallel()
 	logger := &TestLogger{}
 	cfg := &DockerConfig{
 		ConfigPollInterval: 10 * time.Second,
@@ -315,14 +316,15 @@ func (s *DockerHandlerSuite) TestResolveConfigDefaults(c *C) {
 
 	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
 
-	c.Assert(configPoll, Equals, 10*time.Second)
-	c.Assert(dockerPoll, Equals, time.Duration(0))
-	c.Assert(fallback, Equals, 10*time.Second)
-	c.Assert(useEvents, Equals, true)
+	assert.Equal(t, 10*time.Second, configPoll)
+	assert.Equal(t, time.Duration(0), dockerPoll)
+	assert.Equal(t, 10*time.Second, fallback)
+	assert.True(t, useEvents)
 }
 
 // TestResolveConfigDeprecatedPollInterval verifies backward compatibility migration
-func (s *DockerHandlerSuite) TestResolveConfigDeprecatedPollInterval(c *C) {
+func TestResolveConfigDeprecatedPollInterval(t *testing.T) {
+	t.Parallel()
 	logger := &TestLogger{}
 	cfg := &DockerConfig{
 		PollInterval:       30 * time.Second, // deprecated, explicitly set
@@ -335,14 +337,15 @@ func (s *DockerHandlerSuite) TestResolveConfigDeprecatedPollInterval(c *C) {
 	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
 
 	// With deprecated poll-interval and default values, should migrate
-	c.Assert(configPoll, Equals, 30*time.Second) // migrated from poll-interval
-	c.Assert(dockerPoll, Equals, 30*time.Second) // migrated when events disabled
-	c.Assert(fallback, Equals, 30*time.Second)   // migrated from poll-interval
-	c.Assert(useEvents, Equals, false)
+	assert.Equal(t, 30*time.Second, configPoll) // migrated from poll-interval
+	assert.Equal(t, 30*time.Second, dockerPoll) // migrated when events disabled
+	assert.Equal(t, 30*time.Second, fallback)   // migrated from poll-interval
+	assert.False(t, useEvents)
 }
 
 // TestResolveConfigDeprecatedPollIntervalExplicitOverride verifies explicit options override deprecated
-func (s *DockerHandlerSuite) TestResolveConfigDeprecatedPollIntervalExplicitOverride(c *C) {
+func TestResolveConfigDeprecatedPollIntervalExplicitOverride(t *testing.T) {
+	t.Parallel()
 	logger := &TestLogger{}
 	cfg := &DockerConfig{
 		PollInterval:       30 * time.Second, // deprecated
@@ -355,14 +358,15 @@ func (s *DockerHandlerSuite) TestResolveConfigDeprecatedPollIntervalExplicitOver
 	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
 
 	// Explicit values should take precedence
-	c.Assert(configPoll, Equals, 20*time.Second) // kept explicit value
-	c.Assert(dockerPoll, Equals, 15*time.Second) // kept explicit value
-	c.Assert(fallback, Equals, 5*time.Second)    // kept explicit value
-	c.Assert(useEvents, Equals, true)
+	assert.Equal(t, 20*time.Second, configPoll) // kept explicit value
+	assert.Equal(t, 15*time.Second, dockerPoll) // kept explicit value
+	assert.Equal(t, 5*time.Second, fallback)    // kept explicit value
+	assert.True(t, useEvents)
 }
 
 // TestResolveConfigDeprecatedDisablePolling verifies no-poll migration
-func (s *DockerHandlerSuite) TestResolveConfigDeprecatedDisablePolling(c *C) {
+func TestResolveConfigDeprecatedDisablePolling(t *testing.T) {
+	t.Parallel()
 	logger := &TestLogger{}
 	cfg := &DockerConfig{
 		DisablePolling:     true, // deprecated no-poll
@@ -374,15 +378,16 @@ func (s *DockerHandlerSuite) TestResolveConfigDeprecatedDisablePolling(c *C) {
 
 	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
 
-	c.Assert(configPoll, Equals, 10*time.Second)
-	c.Assert(dockerPoll, Equals, time.Duration(0)) // disabled by no-poll
-	c.Assert(fallback, Equals, time.Duration(0))   // also disabled
-	c.Assert(useEvents, Equals, true)
+	assert.Equal(t, 10*time.Second, configPoll)
+	assert.Equal(t, time.Duration(0), dockerPoll) // disabled by no-poll
+	assert.Equal(t, time.Duration(0), fallback)   // also disabled
+	assert.True(t, useEvents)
 }
 
 // TestWatchContainerPollingInvalidInterval verifies watchContainerPolling exits immediately
 // when dockerPollInterval is zero or negative.
-func (s *DockerHandlerSuite) TestWatchContainerPollingInvalidInterval(c *C) {
+func TestWatchContainerPollingInvalidInterval(t *testing.T) {
+	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{}
 	h := &DockerHandler{
 		dockerPollInterval: 0,
@@ -401,7 +406,7 @@ func (s *DockerHandlerSuite) TestWatchContainerPollingInvalidInterval(c *C) {
 	case <-done:
 		// ok - should return immediately for zero interval
 	case <-time.After(time.Millisecond * 50):
-		c.Error("watchContainerPolling did not return for zero interval")
+		t.Error("watchContainerPolling did not return for zero interval")
 	}
 
 	// Test negative interval
@@ -422,12 +427,13 @@ func (s *DockerHandlerSuite) TestWatchContainerPollingInvalidInterval(c *C) {
 	case <-done:
 		// ok
 	case <-time.After(time.Millisecond * 50):
-		c.Error("watchContainerPolling did not return for negative interval")
+		t.Error("watchContainerPolling did not return for negative interval")
 	}
 }
 
 // TestWatchContainerPollingContextCancellation verifies watchContainerPolling exits on context cancellation
-func (s *DockerHandlerSuite) TestWatchContainerPollingContextCancellation(c *C) {
+func TestWatchContainerPollingContextCancellation(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{},
@@ -454,12 +460,13 @@ func (s *DockerHandlerSuite) TestWatchContainerPollingContextCancellation(c *C) 
 	case <-done:
 		// ok - should exit on context cancellation
 	case <-time.After(time.Millisecond * 200):
-		c.Error("watchContainerPolling did not exit on context cancellation")
+		t.Error("watchContainerPolling did not exit on context cancellation")
 	}
 }
 
 // TestStartFallbackPollingAlreadyActive verifies startFallbackPolling returns early if already active
-func (s *DockerHandlerSuite) TestStartFallbackPollingAlreadyActive(c *C) {
+func TestStartFallbackPollingAlreadyActive(t *testing.T) {
+	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{},
 	}
@@ -486,12 +493,13 @@ func (s *DockerHandlerSuite) TestStartFallbackPollingAlreadyActive(c *C) {
 	case <-done:
 		// ok - returned early
 	case <-time.After(time.Millisecond * 50):
-		c.Error("startFallbackPolling did not return early when already active")
+		t.Error("startFallbackPolling did not return early when already active")
 	}
 }
 
 // TestStartFallbackPollingCancellation verifies fallback polling stops when cancelled
-func (s *DockerHandlerSuite) TestStartFallbackPollingCancellation(c *C) {
+func TestStartFallbackPollingCancellation(t *testing.T) {
+	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{},
 	}
@@ -517,8 +525,8 @@ func (s *DockerHandlerSuite) TestStartFallbackPollingCancellation(c *C) {
 
 	// Verify fallbackCancel was set
 	h.mu.Lock()
-	c.Assert(h.fallbackPollingActive, Equals, true)
-	c.Assert(h.fallbackCancel, NotNil)
+	assert.True(t, h.fallbackPollingActive)
+	assert.NotNil(t, h.fallbackCancel)
 	fallbackCancel := h.fallbackCancel
 	h.mu.Unlock()
 
@@ -529,18 +537,19 @@ func (s *DockerHandlerSuite) TestStartFallbackPollingCancellation(c *C) {
 	case <-done:
 		// ok - should exit on cancellation
 	case <-time.After(time.Millisecond * 200):
-		c.Error("startFallbackPolling did not exit on cancellation")
+		t.Error("startFallbackPolling did not exit on cancellation")
 	}
 
 	// Verify state was reset
 	h.mu.Lock()
-	c.Assert(h.fallbackPollingActive, Equals, false)
-	c.Assert(h.fallbackCancel, IsNil)
+	assert.False(t, h.fallbackPollingActive)
+	assert.Nil(t, h.fallbackCancel)
 	h.mu.Unlock()
 }
 
 // TestClearEventStreamErrorStopsFallback verifies that clearing event error stops fallback polling
-func (s *DockerHandlerSuite) TestClearEventStreamErrorStopsFallback(c *C) {
+func TestClearEventStreamErrorStopsFallback(t *testing.T) {
+	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{},
 	}
@@ -566,7 +575,7 @@ func (s *DockerHandlerSuite) TestClearEventStreamErrorStopsFallback(c *C) {
 	time.Sleep(20 * time.Millisecond)
 
 	h.mu.Lock()
-	c.Assert(h.fallbackPollingActive, Equals, true)
+	assert.True(t, h.fallbackPollingActive)
 	h.mu.Unlock()
 
 	// Simulate events recovering - this should stop fallback polling
@@ -576,12 +585,12 @@ func (s *DockerHandlerSuite) TestClearEventStreamErrorStopsFallback(c *C) {
 	case <-done:
 		// ok - fallback polling should have stopped
 	case <-time.After(time.Millisecond * 200):
-		c.Error("clearEventStreamError did not stop fallback polling")
+		t.Error("clearEventStreamError did not stop fallback polling")
 	}
 
 	// Verify state
 	h.mu.Lock()
-	c.Assert(h.eventsFailed, Equals, false)
-	c.Assert(h.fallbackPollingActive, Equals, false)
+	assert.False(t, h.eventsFailed)
+	assert.False(t, h.fallbackPollingActive)
 	h.mu.Unlock()
 }

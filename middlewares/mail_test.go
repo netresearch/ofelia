@@ -6,189 +6,194 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	smtp "github.com/emersion/go-smtp"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/netresearch/ofelia/core"
 )
 
-type MailSuite struct {
-	BaseSuite
-
+type mailTestFixture struct {
+	ctx       *core.Context
+	job       *TestJob
 	l         net.Listener
 	server    *smtp.Server
 	smtpdHost string
 	smtpdPort int
 	fromCh    chan string
-	dataCh    chan string // Channel to receive email body data for attachment verification
+	dataCh    chan string
 }
 
-var _ = Suite(&MailSuite{})
+func setupMailTest(t *testing.T) *mailTestFixture {
+	t.Helper()
 
-func (s *MailSuite) SetUpTest(c *C) {
-	s.BaseSuite.SetUpTest(c)
+	ctx, job := setupTestContext(t)
 
-	s.fromCh = make(chan string, 1)
-	s.dataCh = make(chan string, 1)
+	fromCh := make(chan string, 1)
+	dataCh := make(chan string, 1)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	s.l = ln
-	// Initialize server outside of the goroutine to avoid racy field writes
-	fromCh := s.fromCh
-	dataCh := s.dataCh
 	srv := smtp.NewServer(&testBackend{fromCh: fromCh, dataCh: dataCh})
 	srv.AllowInsecureAuth = true
-	s.server = srv
+
 	go func(srv *smtp.Server, ln net.Listener) {
-		// Serve on the pre-bound listener
 		err := srv.Serve(ln)
-		// Only assert if it's not the expected listener close during teardown
 		if err != nil && !strings.Contains(err.Error(), "use of closed network connection") {
-			c.Assert(err, IsNil)
+			t.Logf("SMTP server error: %v", err)
 		}
 	}(srv, ln)
 
-	p := strings.Split(s.l.Addr().String(), ":")
-	s.smtpdHost = p[0]
-	s.smtpdPort, _ = strconv.Atoi(p[1])
+	p := strings.Split(ln.Addr().String(), ":")
+	port, _ := strconv.Atoi(p[1])
+
+	t.Cleanup(func() {
+		ln.Close()
+	})
+
+	return &mailTestFixture{
+		ctx:       ctx,
+		job:       job,
+		l:         ln,
+		server:    srv,
+		smtpdHost: p[0],
+		smtpdPort: port,
+		fromCh:    fromCh,
+		dataCh:    dataCh,
+	}
 }
 
-func (s *MailSuite) TearDownTest(c *C) {
-	s.l.Close()
+func TestNewMailEmpty(t *testing.T) {
+	t.Parallel()
+	assert.Nil(t, NewMail(&MailConfig{}))
 }
 
-func (s *MailSuite) TestNewSlackEmpty(c *C) {
-	c.Assert(NewMail(&MailConfig{}), IsNil)
-}
+func TestMailRunSuccess(t *testing.T) {
+	t.Parallel()
+	f := setupMailTest(t)
 
-func (s *MailSuite) TestRunSuccess(c *C) {
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+	f.ctx.Start()
+	f.ctx.Stop(nil)
 
 	m := NewMail(&MailConfig{
-		SMTPHost:  s.smtpdHost,
-		SMTPPort:  s.smtpdPort,
+		SMTPHost:  f.smtpdHost,
+		SMTPPort:  f.smtpdPort,
 		EmailTo:   "foo@foo.com",
 		EmailFrom: "qux@qux.com",
 	})
 
 	done := make(chan struct{})
 	go func() {
-		c.Assert(m.Run(s.ctx), IsNil)
+		require.NoError(t, m.Run(f.ctx))
 		close(done)
 	}()
 
 	select {
-	case from := <-s.fromCh:
-		c.Assert(from, Equals, "qux@qux.com")
+	case from := <-f.fromCh:
+		assert.Equal(t, "qux@qux.com", from)
 	case <-time.After(3 * time.Second):
-		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+		t.Error("timeout waiting for SMTP server to receive MAIL FROM")
 	}
 
 	<-done
 }
 
-// TestRunWithEmptyStreams verifies that zero-sized attachments are not sent
-// when stdout/stderr streams are empty (fixes issue #326 - SMTP servers like
-// Postmark reject zero-sized attachments).
-func (s *MailSuite) TestRunWithEmptyStreams(c *C) {
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+func TestMailRunWithEmptyStreams(t *testing.T) {
+	t.Parallel()
+	f := setupMailTest(t)
 
-	// Ensure streams are empty (they should be by default)
-	c.Assert(s.ctx.Execution.OutputStream.TotalWritten(), Equals, int64(0))
-	c.Assert(s.ctx.Execution.ErrorStream.TotalWritten(), Equals, int64(0))
+	f.ctx.Start()
+	f.ctx.Stop(nil)
+
+	assert.Equal(t, int64(0), f.ctx.Execution.OutputStream.TotalWritten())
+	assert.Equal(t, int64(0), f.ctx.Execution.ErrorStream.TotalWritten())
 
 	m := NewMail(&MailConfig{
-		SMTPHost:  s.smtpdHost,
-		SMTPPort:  s.smtpdPort,
+		SMTPHost:  f.smtpdHost,
+		SMTPPort:  f.smtpdPort,
 		EmailTo:   "foo@foo.com",
 		EmailFrom: "qux@qux.com",
 	})
 
 	done := make(chan struct{})
 	go func() {
-		c.Assert(m.Run(s.ctx), IsNil)
+		require.NoError(t, m.Run(f.ctx))
 		close(done)
 	}()
 
 	select {
-	case from := <-s.fromCh:
-		c.Assert(from, Equals, "qux@qux.com")
+	case from := <-f.fromCh:
+		assert.Equal(t, "qux@qux.com", from)
 	case <-time.After(3 * time.Second):
-		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+		t.Error("timeout waiting for SMTP server to receive MAIL FROM")
 	}
 
-	// Verify that stdout/stderr attachments are NOT included when streams are empty
 	select {
-	case emailData := <-s.dataCh:
-		// Email should NOT contain stdout.log or stderr.log attachments
-		c.Assert(strings.Contains(emailData, "stdout.log"), Equals, false,
-			Commentf("stdout.log attachment should not be included for empty streams"))
-		c.Assert(strings.Contains(emailData, "stderr.log"), Equals, false,
-			Commentf("stderr.log attachment should not be included for empty streams"))
-		// But should still contain the JSON attachment with job metadata
-		c.Assert(strings.Contains(emailData, ".json"), Equals, true,
-			Commentf("JSON attachment with job metadata should always be included"))
+	case emailData := <-f.dataCh:
+		assert.False(t, strings.Contains(emailData, "stdout.log"),
+			"stdout.log attachment should not be included for empty streams")
+		assert.False(t, strings.Contains(emailData, "stderr.log"),
+			"stderr.log attachment should not be included for empty streams")
+		assert.True(t, strings.Contains(emailData, ".json"),
+			"JSON attachment with job metadata should always be included")
 	case <-time.After(3 * time.Second):
-		c.Errorf("timeout waiting for email data")
+		t.Error("timeout waiting for email data")
 	}
 
 	<-done
 }
 
-// TestRunWithNonEmptyStreams verifies that attachments are sent when streams have content.
-func (s *MailSuite) TestRunWithNonEmptyStreams(c *C) {
-	s.ctx.Start()
-	// Write some output to streams
-	_, _ = s.ctx.Execution.OutputStream.Write([]byte("stdout content"))
-	_, _ = s.ctx.Execution.ErrorStream.Write([]byte("stderr content"))
-	s.ctx.Stop(nil)
+func TestMailRunWithNonEmptyStreams(t *testing.T) {
+	t.Parallel()
+	f := setupMailTest(t)
 
-	c.Assert(s.ctx.Execution.OutputStream.TotalWritten() > 0, Equals, true)
-	c.Assert(s.ctx.Execution.ErrorStream.TotalWritten() > 0, Equals, true)
+	f.ctx.Start()
+	_, _ = f.ctx.Execution.OutputStream.Write([]byte("stdout content"))
+	_, _ = f.ctx.Execution.ErrorStream.Write([]byte("stderr content"))
+	f.ctx.Stop(nil)
+
+	assert.Greater(t, f.ctx.Execution.OutputStream.TotalWritten(), int64(0))
+	assert.Greater(t, f.ctx.Execution.ErrorStream.TotalWritten(), int64(0))
 
 	m := NewMail(&MailConfig{
-		SMTPHost:  s.smtpdHost,
-		SMTPPort:  s.smtpdPort,
+		SMTPHost:  f.smtpdHost,
+		SMTPPort:  f.smtpdPort,
 		EmailTo:   "foo@foo.com",
 		EmailFrom: "qux@qux.com",
 	})
 
 	done := make(chan struct{})
 	go func() {
-		c.Assert(m.Run(s.ctx), IsNil)
+		require.NoError(t, m.Run(f.ctx))
 		close(done)
 	}()
 
 	select {
-	case from := <-s.fromCh:
-		c.Assert(from, Equals, "qux@qux.com")
+	case from := <-f.fromCh:
+		assert.Equal(t, "qux@qux.com", from)
 	case <-time.After(3 * time.Second):
-		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+		t.Error("timeout waiting for SMTP server to receive MAIL FROM")
 	}
 
-	// Verify that stdout/stderr attachments ARE included when streams have content
 	select {
-	case emailData := <-s.dataCh:
-		// Email should contain stdout.log and stderr.log attachments
-		c.Assert(strings.Contains(emailData, "stdout.log"), Equals, true,
-			Commentf("stdout.log attachment should be included for non-empty streams"))
-		c.Assert(strings.Contains(emailData, "stderr.log"), Equals, true,
-			Commentf("stderr.log attachment should be included for non-empty streams"))
-		// Should also contain the JSON attachment with job metadata
-		c.Assert(strings.Contains(emailData, ".json"), Equals, true,
-			Commentf("JSON attachment with job metadata should always be included"))
+	case emailData := <-f.dataCh:
+		assert.True(t, strings.Contains(emailData, "stdout.log"),
+			"stdout.log attachment should be included for non-empty streams")
+		assert.True(t, strings.Contains(emailData, "stderr.log"),
+			"stderr.log attachment should be included for non-empty streams")
+		assert.True(t, strings.Contains(emailData, ".json"),
+			"JSON attachment with job metadata should always be included")
 	case <-time.After(3 * time.Second):
-		c.Errorf("timeout waiting for email data")
+		t.Error("timeout waiting for email data")
 	}
 
 	<-done
 }
 
-// test SMTP backend using github.com/emersion/go-smtp
 type testBackend struct {
 	fromCh chan string
 	dataCh chan string
@@ -211,7 +216,6 @@ func (s *testSession) Mail(from string, _ *smtp.MailOptions) error {
 func (s *testSession) Rcpt(_ string, _ *smtp.RcptOptions) error { return nil }
 
 func (s *testSession) Data(r io.Reader) error {
-	// Capture email body for attachment verification
 	var buf bytes.Buffer
 	_, _ = io.Copy(&buf, r)
 	if s.dataCh != nil {
@@ -223,14 +227,16 @@ func (s *testSession) Data(r io.Reader) error {
 func (s *testSession) Reset()        {}
 func (s *testSession) Logout() error { return nil }
 
-// TestCustomEmailSubject verifies that custom email subject template is used when configured.
-func (s *MailSuite) TestCustomEmailSubject(c *C) {
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+func TestMailCustomEmailSubject(t *testing.T) {
+	t.Parallel()
+	f := setupMailTest(t)
+
+	f.ctx.Start()
+	f.ctx.Stop(nil)
 
 	m := NewMail(&MailConfig{
-		SMTPHost:     s.smtpdHost,
-		SMTPPort:     s.smtpdPort,
+		SMTPHost:     f.smtpdHost,
+		SMTPPort:     f.smtpdPort,
 		EmailTo:      "foo@foo.com",
 		EmailFrom:    "qux@qux.com",
 		EmailSubject: "[CUSTOM] Job {{.Job.GetName}} - {{status .Execution}}",
@@ -238,67 +244,63 @@ func (s *MailSuite) TestCustomEmailSubject(c *C) {
 
 	done := make(chan struct{})
 	go func() {
-		c.Assert(m.Run(s.ctx), IsNil)
+		require.NoError(t, m.Run(f.ctx))
 		close(done)
 	}()
 
 	select {
-	case <-s.fromCh:
-		// Got MAIL FROM
+	case <-f.fromCh:
 	case <-time.After(3 * time.Second):
-		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+		t.Error("timeout waiting for SMTP server to receive MAIL FROM")
 	}
 
-	// Verify custom subject is used
 	select {
-	case emailData := <-s.dataCh:
-		c.Assert(strings.Contains(emailData, "Subject: [CUSTOM]"), Equals, true,
-			Commentf("Custom subject prefix should be present"))
-		c.Assert(strings.Contains(emailData, s.ctx.Job.GetName()), Equals, true,
-			Commentf("Job name should be in subject"))
+	case emailData := <-f.dataCh:
+		assert.True(t, strings.Contains(emailData, "Subject: [CUSTOM]"),
+			"Custom subject prefix should be present")
+		assert.True(t, strings.Contains(emailData, f.ctx.Job.GetName()),
+			"Job name should be in subject")
 	case <-time.After(3 * time.Second):
-		c.Errorf("timeout waiting for email data")
+		t.Error("timeout waiting for email data")
 	}
 
 	<-done
 }
 
-// TestDefaultEmailSubject verifies that default subject is used when EmailSubject is not set.
-func (s *MailSuite) TestDefaultEmailSubject(c *C) {
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+func TestMailDefaultEmailSubject(t *testing.T) {
+	t.Parallel()
+	f := setupMailTest(t)
+
+	f.ctx.Start()
+	f.ctx.Stop(nil)
 
 	m := NewMail(&MailConfig{
-		SMTPHost:  s.smtpdHost,
-		SMTPPort:  s.smtpdPort,
+		SMTPHost:  f.smtpdHost,
+		SMTPPort:  f.smtpdPort,
 		EmailTo:   "foo@foo.com",
 		EmailFrom: "qux@qux.com",
-		// EmailSubject not set - should use default
 	})
 
 	done := make(chan struct{})
 	go func() {
-		c.Assert(m.Run(s.ctx), IsNil)
+		require.NoError(t, m.Run(f.ctx))
 		close(done)
 	}()
 
 	select {
-	case <-s.fromCh:
-		// Got MAIL FROM
+	case <-f.fromCh:
 	case <-time.After(3 * time.Second):
-		c.Errorf("timeout waiting for SMTP server to receive MAIL FROM")
+		t.Error("timeout waiting for SMTP server to receive MAIL FROM")
 	}
 
-	// Verify default subject is used (contains "Execution" and job name)
 	select {
-	case emailData := <-s.dataCh:
-		// Subject may be MIME-encoded, so check for key parts
-		c.Assert(strings.Contains(emailData, "Execution"), Equals, true,
-			Commentf("Default subject should contain 'Execution'"))
-		c.Assert(strings.Contains(emailData, s.ctx.Job.GetName()), Equals, true,
-			Commentf("Default subject should contain job name"))
+	case emailData := <-f.dataCh:
+		assert.True(t, strings.Contains(emailData, "Execution"),
+			"Default subject should contain 'Execution'")
+		assert.True(t, strings.Contains(emailData, f.ctx.Job.GetName()),
+			"Default subject should contain job name")
 	case <-time.After(3 * time.Second):
-		c.Errorf("timeout waiting for email data")
+		t.Error("timeout waiting for email data")
 	}
 
 	<-done

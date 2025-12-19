@@ -144,6 +144,11 @@ test-watch:
 		exit 1; \
 	fi
 
+.PHONY: test-smoke
+test-smoke:
+	@echo "🚀 Running smoke tests (fast feedback on core packages)..."
+	@go test -race -timeout=30s ./core/... ./config/... ./logging/...
+
 .PHONY: test-integration
 test-integration:
 	@echo "🐳 Running integration tests (requires Docker daemon)..."
@@ -245,6 +250,7 @@ help:
 	@echo ""
 	@echo "🧪 Testing:"
 	@echo "  test               - Run unit tests"
+	@echo "  test-smoke         - Run smoke tests (fast feedback on core packages)"
 	@echo "  test-integration   - Run integration tests (requires Docker)"
 	@echo "  test-race          - Run tests with race detector"
 	@echo "  test-benchmark     - Run benchmark tests"
