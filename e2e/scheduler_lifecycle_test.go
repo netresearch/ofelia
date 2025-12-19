@@ -185,9 +185,10 @@ func TestScheduler_BasicLifecycle(t *testing.T) {
 		t.Fatalf("Failed to start container: %v", err)
 	}
 
-	// Create scheduler with logger
+	// Create scheduler with CronClock for instant time control
 	logger := &core.LogrusAdapter{Logger: logrus.New()}
-	scheduler := core.NewScheduler(logger)
+	cronClock := core.NewCronClock(time.Now())
+	scheduler := core.NewSchedulerWithClock(logger, cronClock)
 
 	// Create mock exec service
 	exec := mockClient.Exec().(*mock.ExecService)
@@ -199,7 +200,7 @@ func TestScheduler_BasicLifecycle(t *testing.T) {
 	job := &core.ExecJob{
 		BareJob: core.BareJob{
 			Name:     "test-exec-job",
-			Schedule: "@every 2s",
+			Schedule: "@every 1h", // Use longer interval since we control time
 			Command:  "echo E2E test executed",
 		},
 		Container: containerID,
@@ -217,8 +218,14 @@ func TestScheduler_BasicLifecycle(t *testing.T) {
 		errChan <- scheduler.Start()
 	}()
 
-	// Give scheduler time to start and execute job at least once
-	time.Sleep(5 * time.Second)
+	// Let scheduler initialize and set up timers
+	time.Sleep(50 * time.Millisecond)
+
+	// Advance time by 1 hour to trigger job execution
+	cronClock.Advance(1 * time.Hour)
+
+	// Allow job to execute
+	time.Sleep(50 * time.Millisecond)
 
 	// Stop scheduler
 	scheduler.Stop()
@@ -229,7 +236,7 @@ func TestScheduler_BasicLifecycle(t *testing.T) {
 		if err != nil {
 			t.Errorf("Scheduler returned error: %v", err)
 		}
-	case <-time.After(30 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Error("Scheduler did not stop within timeout")
 	}
 
@@ -258,7 +265,6 @@ func TestScheduler_BasicLifecycle(t *testing.T) {
 func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 	e2eProvider := newMockDockerProviderForE2E()
 
-	// Create test container
 	containerID, err := e2eProvider.CreateContainer(context.Background(), &domain.ContainerConfig{
 		Image: "alpine:latest",
 		Cmd:   []string{"sleep", "300"},
@@ -273,15 +279,15 @@ func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 		t.Fatalf("Failed to start container: %v", err)
 	}
 
-	// Create scheduler with logger
 	logger := &core.LogrusAdapter{Logger: logrus.New()}
-	scheduler := core.NewScheduler(logger)
+	cronClock := core.NewCronClock(time.Now())
+	scheduler := core.NewSchedulerWithClock(logger, cronClock)
 
 	jobs := []*core.ExecJob{
 		{
 			BareJob: core.BareJob{
 				Name:          "job-1",
-				Schedule:      "@every 1s",
+				Schedule:      "@every 1h",
 				Command:       "echo job1",
 				AllowParallel: true,
 			},
@@ -290,7 +296,7 @@ func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 		{
 			BareJob: core.BareJob{
 				Name:          "job-2",
-				Schedule:      "@every 1s",
+				Schedule:      "@every 1h",
 				Command:       "echo job2",
 				AllowParallel: true,
 			},
@@ -299,7 +305,7 @@ func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 		{
 			BareJob: core.BareJob{
 				Name:          "job-3",
-				Schedule:      "@every 1s",
+				Schedule:      "@every 1h",
 				Command:       "echo job3",
 				AllowParallel: true,
 			},
@@ -315,16 +321,15 @@ func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 		}
 	}
 
-	// Start scheduler
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- scheduler.Start()
 	}()
 
-	// Let jobs run
-	time.Sleep(5 * time.Second)
+	time.Sleep(50 * time.Millisecond)
+	cronClock.Advance(1 * time.Hour)
+	time.Sleep(50 * time.Millisecond)
 
-	// Stop scheduler
 	scheduler.Stop()
 
 	select {
@@ -332,11 +337,10 @@ func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 		if err != nil {
 			t.Errorf("Scheduler returned error: %v", err)
 		}
-	case <-time.After(15 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Error("Scheduler did not stop within timeout")
 	}
 
-	// Verify all jobs executed
 	schedulerJobs := scheduler.Jobs
 	if len(schedulerJobs) != 3 {
 		t.Fatalf("Expected 3 jobs, got %d", len(schedulerJobs))
@@ -370,18 +374,17 @@ func TestScheduler_JobFailureHandling(t *testing.T) {
 		t.Fatalf("Failed to start container: %v", err)
 	}
 
-	// Create scheduler with logger
 	logger := &core.LogrusAdapter{Logger: logrus.New()}
-	scheduler := core.NewScheduler(logger)
+	cronClock := core.NewCronClock(time.Now())
+	scheduler := core.NewSchedulerWithClock(logger, cronClock)
 
-	// Create a failing provider that returns errors
 	failingProvider := &failingDockerProvider{mockDockerProviderForE2E: e2eProvider}
 
 	failingJob := &core.ExecJob{
 		BareJob: core.BareJob{
 			Name:     "failing-job",
-			Schedule: "@every 2s",
-			Command:  "false", // Would fail
+			Schedule: "@every 1h",
+			Command:  "false",
 		},
 		Container: containerID,
 	}
@@ -392,26 +395,24 @@ func TestScheduler_JobFailureHandling(t *testing.T) {
 		t.Fatalf("Failed to add job: %v", err)
 	}
 
-	// Start scheduler
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- scheduler.Start()
 	}()
 
-	// Let job fail a few times
-	time.Sleep(5 * time.Second)
+	time.Sleep(50 * time.Millisecond)
+	cronClock.Advance(1 * time.Hour)
+	time.Sleep(50 * time.Millisecond)
 
-	// Stop scheduler
 	scheduler.Stop()
 
 	select {
 	case <-errChan:
 		// Scheduler should not crash even with failing jobs
-	case <-time.After(10 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Error("Scheduler did not stop within timeout")
 	}
 
-	// Verify job executed but failed
 	schedulerJobs := scheduler.Jobs
 	if len(schedulerJobs) == 0 {
 		t.Fatal("No jobs found in scheduler")

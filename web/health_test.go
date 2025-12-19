@@ -6,17 +6,18 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/netresearch/ofelia/test/testutil"
 )
 
 func TestHealthChecker(t *testing.T) {
-	// Create health checker
 	hc := NewHealthChecker(nil, "1.0.0")
 
-	// Wait a moment for initial checks
-	time.Sleep(100 * time.Millisecond)
-
-	// Get health status
-	health := hc.GetHealth()
+	var health HealthResponse
+	testutil.Eventually(t, func() bool {
+		health = hc.GetHealth()
+		return len(health.Checks) > 0
+	}, testutil.WithTimeout(2*time.Second), testutil.WithMessage("health checks did not initialize"))
 
 	// Check basic fields
 	if health.Version != "1.0.0" {
@@ -71,8 +72,9 @@ func TestLivenessHandler(t *testing.T) {
 func TestReadinessHandler(t *testing.T) {
 	hc := NewHealthChecker(nil, "1.0.0")
 
-	// Wait for initial checks
-	time.Sleep(100 * time.Millisecond)
+	testutil.Eventually(t, func() bool {
+		return len(hc.GetHealth().Checks) > 0
+	}, testutil.WithTimeout(2*time.Second), testutil.WithMessage("health checks did not initialize"))
 
 	handler := hc.ReadinessHandler()
 
@@ -107,8 +109,9 @@ func TestReadinessHandler(t *testing.T) {
 func TestHealthHandler(t *testing.T) {
 	hc := NewHealthChecker(nil, "1.0.0")
 
-	// Wait for initial checks
-	time.Sleep(100 * time.Millisecond)
+	testutil.Eventually(t, func() bool {
+		return len(hc.GetHealth().Checks) > 0
+	}, testutil.WithTimeout(2*time.Second), testutil.WithMessage("health checks did not initialize"))
 
 	handler := hc.HealthHandler()
 
