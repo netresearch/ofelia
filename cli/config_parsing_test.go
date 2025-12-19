@@ -13,6 +13,7 @@ import (
 
 // TestBuildFromString_AllJobTypes tests BuildFromString with all job types
 func TestBuildFromString_AllJobTypes(t *testing.T) {
+	t.Parallel()
 	configStr := `
 [global]
 log-level = debug
@@ -72,6 +73,7 @@ command = up -d
 
 // TestBuildFromFile_WithGlobPattern tests BuildFromFile with glob patterns
 func TestBuildFromFile_WithGlobPattern(t *testing.T) {
+	t.Parallel()
 	// Create temporary directory
 	dir, err := os.MkdirTemp("", "ofelia_glob_test")
 	if err != nil {
@@ -137,6 +139,7 @@ command = echo job3
 
 // TestBuildFromFile_InvalidGlobPattern tests error handling for invalid glob patterns
 func TestBuildFromFile_InvalidGlobPattern(t *testing.T) {
+	t.Parallel()
 	// Invalid glob pattern (malformed bracket expression)
 	invalidPattern := "/invalid/[z-a]/*.ini"
 
@@ -150,6 +153,7 @@ func TestBuildFromFile_InvalidGlobPattern(t *testing.T) {
 
 // TestBuildFromFile_NonExistentFile tests handling of non-existent files
 func TestBuildFromFile_NonExistentFile(t *testing.T) {
+	t.Parallel()
 	logger := test.NewTestLogger()
 	_, err := BuildFromFile("/nonexistent/ofelia.ini", logger)
 
@@ -160,6 +164,7 @@ func TestBuildFromFile_NonExistentFile(t *testing.T) {
 
 // TestIniConfigUpdate_WithChangedFiles tests iniConfigUpdate detects file changes
 func TestIniConfigUpdate_WithChangedFiles(t *testing.T) {
+	t.Parallel()
 	// This test verifies the file change detection logic
 	dir, err := os.MkdirTemp("", "ofelia_update_test")
 	if err != nil {
@@ -221,6 +226,7 @@ command = echo updated
 
 // TestBuildFromString_JobValidation tests job configuration validation
 func TestBuildFromString_JobValidation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		config    string
@@ -279,6 +285,7 @@ command = echo hello
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			logger := test.NewTestLogger()
 			_, err := BuildFromString(tt.config, logger)
 
@@ -301,6 +308,7 @@ command = echo hello
 
 // TestResolveConfigFiles tests the resolveConfigFiles function
 func TestResolveConfigFiles(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		setup   func() (string, func())
@@ -342,6 +350,7 @@ func TestResolveConfigFiles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			pattern, cleanup := tt.setup()
 			defer cleanup()
 
