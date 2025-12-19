@@ -11,7 +11,8 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core/adapters/mock"
 	"github.com/netresearch/ofelia/core/domain"
@@ -19,33 +20,33 @@ import (
 
 const ServiceImageFixture = "test-image"
 
-type SuiteRunServiceJob struct {
+type runServiceJobTestHelper struct {
 	mockClient *mock.DockerClient
 	provider   *SDKDockerProvider
+	logger     Logger
 }
 
-var _ = Suite(&SuiteRunServiceJob{})
+func setupRunServiceJobTest(t *testing.T) *runServiceJobTestHelper {
+	t.Helper()
 
-const logFormat = "%{color}%{shortfile} ▶ %{level}%{color:reset} %{message}"
-
-var logger Logger
-
-func (s *SuiteRunServiceJob) SetUpTest(c *C) {
 	l := logrus.New()
 	l.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
-	logger = &LogrusAdapter{Logger: l}
 
-	s.mockClient = mock.NewDockerClient()
-	s.provider = &SDKDockerProvider{
-		client: s.mockClient,
+	helper := &runServiceJobTestHelper{
+		mockClient: mock.NewDockerClient(),
+		logger:     &LogrusAdapter{Logger: l},
+	}
+	helper.provider = &SDKDockerProvider{
+		client: helper.mockClient,
 	}
 
-	s.setupMockBehaviors()
+	setupRunServiceMockBehaviors(helper.mockClient)
+	return helper
 }
 
-func (s *SuiteRunServiceJob) setupMockBehaviors() {
-	services := s.mockClient.Services().(*mock.SwarmService)
-	images := s.mockClient.Images().(*mock.ImageService)
+func setupRunServiceMockBehaviors(mockClient *mock.DockerClient) {
+	services := mockClient.Services().(*mock.SwarmService)
+	images := mockClient.Images().(*mock.ImageService)
 
 	// Track created services
 	createdServices := make(map[string]*domain.Service)
@@ -105,7 +106,9 @@ func (s *SuiteRunServiceJob) setupMockBehaviors() {
 	}
 }
 
-func (s *SuiteRunServiceJob) TestRun(c *C) {
+func TestRunServiceJob_Run(t *testing.T) {
+	h := setupRunServiceJobTest(t)
+
 	job := &RunServiceJob{
 		BareJob: BareJob{
 			Name:    "test-service",
@@ -117,37 +120,33 @@ func (s *SuiteRunServiceJob) TestRun(c *C) {
 		Delete:  "true",
 		Network: "foo",
 	}
-	job.Provider = s.provider
+	job.Provider = h.provider
 
 	e, err := NewExecution()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	err = job.Run(&Context{Execution: e, Logger: logger})
-	c.Assert(err, IsNil)
+	err = job.Run(&Context{Execution: e, Logger: h.logger})
+	require.NoError(t, err)
 
 	// Verify service was created
-	services := s.mockClient.Services().(*mock.SwarmService)
-	c.Assert(len(services.CreateCalls) > 0, Equals, true)
+	services := h.mockClient.Services().(*mock.SwarmService)
+	assert.True(t, len(services.CreateCalls) > 0, "expected service to be created")
 }
 
-// TestParseRepositoryTag tests the domain.ParseRepositoryTag function
-func (s *SuiteRunServiceJob) TestParseRepositoryTagBareImage(c *C) {
+func TestRunServiceJob_ParseRepositoryTagBareImage(t *testing.T) {
 	ref := domain.ParseRepositoryTag("foo")
-	c.Assert(ref.Repository, Equals, "foo")
-	c.Assert(ref.Tag, Equals, "latest")
+	assert.Equal(t, "foo", ref.Repository)
+	assert.Equal(t, "latest", ref.Tag)
 }
 
-func (s *SuiteRunServiceJob) TestParseRepositoryTagVersion(c *C) {
+func TestRunServiceJob_ParseRepositoryTagVersion(t *testing.T) {
 	ref := domain.ParseRepositoryTag("foo:qux")
-	c.Assert(ref.Repository, Equals, "foo")
-	c.Assert(ref.Tag, Equals, "qux")
+	assert.Equal(t, "foo", ref.Repository)
+	assert.Equal(t, "qux", ref.Tag)
 }
 
-func (s *SuiteRunServiceJob) TestParseRepositoryTagRegistry(c *C) {
+func TestRunServiceJob_ParseRepositoryTagRegistry(t *testing.T) {
 	ref := domain.ParseRepositoryTag("quay.io/srcd/rest:qux")
-	c.Assert(ref.Repository, Equals, "quay.io/srcd/rest")
-	c.Assert(ref.Tag, Equals, "qux")
+	assert.Equal(t, "quay.io/srcd/rest", ref.Repository)
+	assert.Equal(t, "qux", ref.Tag)
 }
-
-// Hook up gocheck into the "go test" runner
-func TestRunServiceJobIntegration(t *testing.T) { TestingT(t) }

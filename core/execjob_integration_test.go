@@ -10,7 +10,8 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core/adapters/mock"
 	"github.com/netresearch/ofelia/core/domain"
@@ -18,25 +19,28 @@ import (
 
 const ContainerFixture = "test-container"
 
-type SuiteExecJob struct {
+type execJobTestHelper struct {
 	mockClient *mock.DockerClient
 	provider   *SDKDockerProvider
 }
 
-var _ = Suite(&SuiteExecJob{})
+func setupExecJobTest(t *testing.T) *execJobTestHelper {
+	t.Helper()
 
-func (s *SuiteExecJob) SetUpTest(c *C) {
-	s.mockClient = mock.NewDockerClient()
-	s.provider = &SDKDockerProvider{
-		client: s.mockClient,
+	helper := &execJobTestHelper{
+		mockClient: mock.NewDockerClient(),
+	}
+	helper.provider = &SDKDockerProvider{
+		client: helper.mockClient,
 	}
 
-	s.setupMockBehaviors()
+	setupExecJobMockBehaviors(helper.mockClient)
+	return helper
 }
 
-func (s *SuiteExecJob) setupMockBehaviors() {
-	containers := s.mockClient.Containers().(*mock.ContainerService)
-	exec := s.mockClient.Exec().(*mock.ExecService)
+func setupExecJobMockBehaviors(mockClient *mock.DockerClient) {
+	containers := mockClient.Containers().(*mock.ContainerService)
+	exec := mockClient.Exec().(*mock.ExecService)
 
 	// Track created execs
 	createdExecs := make(map[string]*domain.ExecInspect)
@@ -93,13 +97,15 @@ func (s *SuiteExecJob) setupMockBehaviors() {
 		// Create exec
 		execID, _ := exec.OnCreate(ctx, containerID, config)
 		// Start exec
-		exec.OnStart(ctx, execID, domain.ExecStartOptions{})
+		_, _ = exec.OnStart(ctx, execID, domain.ExecStartOptions{})
 		// Return success
 		return 0, nil
 	}
 }
 
-func (s *SuiteExecJob) TestRun(c *C) {
+func TestExecJob_Run(t *testing.T) {
+	h := setupExecJobTest(t)
+
 	job := &ExecJob{
 		BareJob: BareJob{
 			Name:    "test-exec",
@@ -110,25 +116,27 @@ func (s *SuiteExecJob) TestRun(c *C) {
 		TTY:         true,
 		Environment: []string{"test_Key1=value1", "test_Key2=value2"},
 	}
-	job.Provider = s.provider
+	job.Provider = h.provider
 
 	e, err := NewExecution()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 
 	err = job.Run(&Context{Execution: e, Logger: &LogrusAdapter{Logger: logger}})
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	// Verify exec was run
-	exec := s.mockClient.Exec().(*mock.ExecService)
-	c.Assert(len(exec.RunCalls) > 0, Equals, true)
+	exec := h.mockClient.Exec().(*mock.ExecService)
+	assert.True(t, len(exec.RunCalls) > 0, "expected exec to be run")
 }
 
-func (s *SuiteExecJob) TestRunStartExecError(c *C) {
+func TestExecJob_RunStartExecError(t *testing.T) {
+	h := setupExecJobTest(t)
+
 	// Set up mock to return error on start
-	exec := s.mockClient.Exec().(*mock.ExecService)
+	exec := h.mockClient.Exec().(*mock.ExecService)
 	exec.OnStart = func(ctx context.Context, execID string, opts domain.ExecStartOptions) (*domain.HijackedResponse, error) {
 		return nil, errors.New("exec start failed")
 	}
@@ -143,10 +151,10 @@ func (s *SuiteExecJob) TestRunStartExecError(c *C) {
 		},
 		Container: ContainerFixture,
 	}
-	job.Provider = s.provider
+	job.Provider = h.provider
 
 	e, err := NewExecution()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
@@ -157,9 +165,6 @@ func (s *SuiteExecJob) TestRunStartExecError(c *C) {
 	err = job.Run(ctx)
 	ctx.Stop(err)
 
-	c.Assert(err, NotNil)
-	c.Assert(e.Failed, Equals, true)
+	assert.Error(t, err)
+	assert.True(t, e.Failed)
 }
-
-// Hook up gocheck into the "go test" runner
-func TestExecJobIntegration(t *testing.T) { TestingT(t) }
