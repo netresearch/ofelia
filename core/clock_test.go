@@ -172,3 +172,97 @@ func TestDefaultClock(t *testing.T) {
 		t.Error("SetDefaultClock did not work")
 	}
 }
+
+func TestFakeClock_Timer(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	clock := NewFakeClock(start)
+
+	timer := clock.NewTimer(100 * time.Millisecond)
+
+	clock.Advance(50 * time.Millisecond)
+	select {
+	case <-timer.C():
+		t.Fatal("Timer fired too early")
+	default:
+	}
+
+	clock.Advance(50 * time.Millisecond)
+	select {
+	case <-timer.C():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Timer did not fire")
+	}
+}
+
+func TestFakeClock_TimerStop(t *testing.T) {
+	t.Parallel()
+
+	clock := NewFakeClock(time.Now())
+	timer := clock.NewTimer(100 * time.Millisecond)
+
+	wasActive := timer.Stop()
+	if !wasActive {
+		t.Error("Stop should return true for active timer")
+	}
+
+	wasActive = timer.Stop()
+	if wasActive {
+		t.Error("Stop should return false for already stopped timer")
+	}
+
+	clock.Advance(200 * time.Millisecond)
+	select {
+	case <-timer.C():
+		t.Fatal("Stopped timer should not fire")
+	default:
+	}
+}
+
+func TestFakeClock_TimerReset(t *testing.T) {
+	t.Parallel()
+
+	clock := NewFakeClock(time.Now())
+	timer := clock.NewTimer(100 * time.Millisecond)
+
+	clock.Advance(50 * time.Millisecond)
+	wasActive := timer.Reset(100 * time.Millisecond)
+	if !wasActive {
+		t.Error("Reset should return true for active timer")
+	}
+
+	clock.Advance(50 * time.Millisecond)
+	select {
+	case <-timer.C():
+		t.Fatal("Timer should not fire yet after reset")
+	default:
+	}
+
+	clock.Advance(50 * time.Millisecond)
+	select {
+	case <-timer.C():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Timer should fire after reset duration")
+	}
+}
+
+func TestCronClock_CompatibleWithGoCron(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	cronClock := NewCronClock(start)
+
+	if !cronClock.Now().Equal(start) {
+		t.Errorf("Expected %v, got %v", start, cronClock.Now())
+	}
+
+	timer := cronClock.NewTimer(100 * time.Millisecond)
+
+	cronClock.Advance(100 * time.Millisecond)
+	select {
+	case <-timer.C():
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("CronClock timer did not fire")
+	}
+}

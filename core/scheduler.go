@@ -61,6 +61,16 @@ func NewSchedulerWithMetrics(l Logger, metricsRecorder MetricsRecorder) *Schedul
 // NewSchedulerWithOptions creates a scheduler with configurable minimum interval.
 // minEveryInterval of 0 uses the library default (1s). Use negative value to allow sub-second.
 func NewSchedulerWithOptions(l Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration) *Scheduler {
+	return newSchedulerInternal(l, metricsRecorder, minEveryInterval, nil)
+}
+
+// NewSchedulerWithClock creates a scheduler with a fake clock for testing.
+// This allows tests to control time advancement without real waits.
+func NewSchedulerWithClock(l Logger, cronClock *CronClock) *Scheduler {
+	return newSchedulerInternal(l, nil, -time.Nanosecond, cronClock)
+}
+
+func newSchedulerInternal(l Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration, cronClock *CronClock) *Scheduler {
 	cronUtils := NewCronUtils(l)
 
 	parser := cron.MustNewParser(
@@ -75,6 +85,10 @@ func NewSchedulerWithOptions(l Logger, metricsRecorder MetricsRecorder, minEvery
 		cron.WithParser(parser),
 		cron.WithLogger(cronUtils),
 		cron.WithChain(cron.Recover(cronUtils)),
+	}
+
+	if cronClock != nil {
+		cronOpts = append(cronOpts, cron.WithClock(cronClock))
 	}
 
 	if metricsRecorder != nil {
@@ -97,6 +111,11 @@ func NewSchedulerWithOptions(l Logger, metricsRecorder MetricsRecorder, minEvery
 	// Default to 10 concurrent jobs, can be configured
 	maxConcurrent := 10
 
+	var clock Clock = GetDefaultClock()
+	if cronClock != nil {
+		clock = cronClock.FakeClock
+	}
+
 	s := &Scheduler{
 		Logger:            l,
 		cron:              cronInstance,
@@ -105,7 +124,7 @@ func NewSchedulerWithOptions(l Logger, metricsRecorder MetricsRecorder, minEvery
 		retryExecutor:     NewRetryExecutor(l),
 		jobsByName:        make(map[string]Job),
 		metricsRecorder:   metricsRecorder,
-		clock:             GetDefaultClock(),
+		clock:             clock,
 	}
 
 	// Also set metrics on retry executor

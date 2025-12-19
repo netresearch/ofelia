@@ -112,6 +112,7 @@ func TestEnhancedBufferPoolGetSized(t *testing.T) {
 
 // TestEnhancedBufferPoolMetrics verifies metrics are being tracked
 func TestEnhancedBufferPoolMetrics(t *testing.T) {
+	t.Parallel()
 	// Create a new pool with metrics enabled for testing
 	config := DefaultEnhancedBufferPoolConfig()
 	config.EnableMetrics = true
@@ -201,6 +202,7 @@ func TestEnhancedBufferPoolConcurrent(t *testing.T) {
 
 // TestEnhancedBufferPoolPrewarming verifies pool pre-warming
 func TestEnhancedBufferPoolPrewarming(t *testing.T) {
+	t.Parallel()
 	// Create a new pool with pre-warming enabled
 	config := DefaultEnhancedBufferPoolConfig()
 	config.EnablePrewarming = true
@@ -236,6 +238,7 @@ func TestEnhancedBufferPoolPrewarming(t *testing.T) {
 
 // TestEnhancedBufferPoolShutdown verifies graceful shutdown
 func TestEnhancedBufferPoolShutdown(t *testing.T) {
+	t.Parallel()
 	config := DefaultEnhancedBufferPoolConfig()
 	config.ShrinkInterval = 100 * time.Millisecond
 

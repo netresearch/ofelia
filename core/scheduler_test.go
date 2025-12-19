@@ -161,3 +161,40 @@ func TestSchedulerSetOnJobComplete(t *testing.T) {
 	sc.onJobComplete("test", true)
 	assert.True(t, called)
 }
+
+func TestSchedulerWithCronClock(t *testing.T) {
+	t.Parallel()
+
+	cronClock := NewCronClock(time.Now())
+	sc := NewSchedulerWithClock(&TestLogger{}, cronClock)
+
+	job := &TestJob{}
+	job.Schedule = "@every 1h"
+
+	err := sc.AddJob(job)
+	require.NoError(t, err)
+
+	jobCompleted := make(chan struct{}, 1)
+	sc.SetOnJobComplete(func(_ string, _ bool) {
+		select {
+		case jobCompleted <- struct{}{}:
+		default:
+		}
+	})
+
+	_ = sc.Start()
+	assert.True(t, sc.IsRunning())
+
+	time.Sleep(10 * time.Millisecond)
+
+	cronClock.Advance(1 * time.Hour)
+
+	select {
+	case <-jobCompleted:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Job should have fired after advancing clock by 1 hour")
+	}
+
+	_ = sc.Stop()
+	assert.False(t, sc.IsRunning())
+}

@@ -3,13 +3,24 @@ package core
 import (
 	"sync"
 	"time"
+
+	cron "github.com/netresearch/go-cron"
 )
 
 type Clock interface {
 	Now() time.Time
 	NewTicker(d time.Duration) Ticker
+	NewTimer(d time.Duration) Timer
 	After(d time.Duration) <-chan time.Time
 	Sleep(d time.Duration)
+}
+
+// Timer represents a single event timer, compatible with go-cron's Timer interface.
+// It provides the same operations as time.Timer.
+type Timer interface {
+	C() <-chan time.Time
+	Stop() bool
+	Reset(d time.Duration) bool
 }
 
 type Ticker interface {
@@ -39,6 +50,26 @@ func (c *realClock) Sleep(d time.Duration) {
 	time.Sleep(d)
 }
 
+func (c *realClock) NewTimer(d time.Duration) Timer {
+	return &realTimer{timer: time.NewTimer(d)}
+}
+
+type realTimer struct {
+	timer *time.Timer
+}
+
+func (t *realTimer) C() <-chan time.Time {
+	return t.timer.C
+}
+
+func (t *realTimer) Stop() bool {
+	return t.timer.Stop()
+}
+
+func (t *realTimer) Reset(d time.Duration) bool {
+	return t.timer.Reset(d)
+}
+
 type realTicker struct {
 	ticker *time.Ticker
 }
@@ -65,6 +96,7 @@ type FakeClock struct {
 	mu       sync.RWMutex
 	now      time.Time
 	tickers  []*fakeTicker
+	timers   []*fakeTimer
 	waiters  []waiter
 	advanced chan struct{}
 }
@@ -98,6 +130,19 @@ func (c *FakeClock) NewTicker(d time.Duration) Ticker {
 		nextTick: c.now.Add(d),
 	}
 	c.tickers = append(c.tickers, ft)
+	return ft
+}
+
+func (c *FakeClock) NewTimer(d time.Duration) Timer {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	ft := &fakeTimer{
+		clock:    c,
+		ch:       make(chan time.Time, 1),
+		deadline: c.now.Add(d),
+	}
+	c.timers = append(c.timers, ft)
 	return ft
 }
 
@@ -150,6 +195,7 @@ func (c *FakeClock) advanceTo(target time.Time) {
 
 		c.now = *earliest
 		c.fireTickers()
+		c.fireTimers()
 		c.fireWaiters()
 	}
 
@@ -169,6 +215,16 @@ func (c *FakeClock) findEarliestEvent() *time.Time {
 		if earliest == nil || t.nextTick.Before(*earliest) {
 			tick := t.nextTick
 			earliest = &tick
+		}
+	}
+
+	for _, t := range c.timers {
+		if t.stopped || t.fired {
+			continue
+		}
+		if earliest == nil || t.deadline.Before(*earliest) {
+			d := t.deadline
+			earliest = &d
 		}
 	}
 
@@ -210,6 +266,19 @@ func (c *FakeClock) fireWaiters() {
 	c.waiters = remaining
 }
 
+func (c *FakeClock) fireTimers() {
+	for _, t := range c.timers {
+		if t.stopped || t.fired || t.deadline.After(c.now) {
+			continue
+		}
+		select {
+		case t.ch <- c.now:
+		default:
+		}
+		t.fired = true
+	}
+}
+
 func (c *FakeClock) WaitForAdvance() {
 	<-c.advanced
 }
@@ -242,4 +311,46 @@ func (t *fakeTicker) Stop() {
 	t.clock.mu.Lock()
 	defer t.clock.mu.Unlock()
 	t.stopped = true
+}
+
+type fakeTimer struct {
+	clock    *FakeClock
+	ch       chan time.Time
+	deadline time.Time
+	stopped  bool
+	fired    bool
+}
+
+func (t *fakeTimer) C() <-chan time.Time {
+	return t.ch
+}
+
+func (t *fakeTimer) Stop() bool {
+	t.clock.mu.Lock()
+	defer t.clock.mu.Unlock()
+	wasActive := !t.stopped && !t.fired
+	t.stopped = true
+	return wasActive
+}
+
+func (t *fakeTimer) Reset(d time.Duration) bool {
+	t.clock.mu.Lock()
+	defer t.clock.mu.Unlock()
+	wasActive := !t.stopped && !t.fired
+	t.stopped = false
+	t.fired = false
+	t.deadline = t.clock.now.Add(d)
+	return wasActive
+}
+
+type CronClock struct {
+	*FakeClock
+}
+
+func NewCronClock(start time.Time) *CronClock {
+	return &CronClock{FakeClock: NewFakeClock(start)}
+}
+
+func (c *CronClock) NewTimer(d time.Duration) cron.Timer {
+	return c.FakeClock.NewTimer(d)
 }

@@ -10,6 +10,7 @@ import (
 
 // TestJobWebhookConfig_EmbeddedInExecJobConfig verifies JobWebhookConfig is embedded
 func TestJobWebhookConfig_EmbeddedInExecJobConfig(t *testing.T) {
+	t.Parallel()
 	config := &ExecJobConfig{}
 	// This will fail to compile if JobWebhookConfig is not embedded
 	config.Webhooks = "slack-alerts, discord-notify"
@@ -25,6 +26,7 @@ func TestJobWebhookConfig_EmbeddedInExecJobConfig(t *testing.T) {
 
 // TestJobWebhookConfig_EmbeddedInRunJobConfig verifies JobWebhookConfig is embedded
 func TestJobWebhookConfig_EmbeddedInRunJobConfig(t *testing.T) {
+	t.Parallel()
 	config := &RunJobConfig{}
 	config.Webhooks = "teams"
 
@@ -36,6 +38,7 @@ func TestJobWebhookConfig_EmbeddedInRunJobConfig(t *testing.T) {
 
 // TestJobWebhookConfig_EmbeddedInLocalJobConfig verifies JobWebhookConfig is embedded
 func TestJobWebhookConfig_EmbeddedInLocalJobConfig(t *testing.T) {
+	t.Parallel()
 	config := &LocalJobConfig{}
 	config.Webhooks = "ntfy, pushover"
 
@@ -47,6 +50,7 @@ func TestJobWebhookConfig_EmbeddedInLocalJobConfig(t *testing.T) {
 
 // TestJobWebhookConfig_EmbeddedInRunServiceConfig verifies JobWebhookConfig is embedded
 func TestJobWebhookConfig_EmbeddedInRunServiceConfig(t *testing.T) {
+	t.Parallel()
 	config := &RunServiceConfig{}
 	config.Webhooks = "pagerduty"
 
@@ -58,6 +62,7 @@ func TestJobWebhookConfig_EmbeddedInRunServiceConfig(t *testing.T) {
 
 // TestJobWebhookConfig_EmbeddedInComposeJobConfig verifies JobWebhookConfig is embedded
 func TestJobWebhookConfig_EmbeddedInComposeJobConfig(t *testing.T) {
+	t.Parallel()
 	config := &ComposeJobConfig{}
 	config.Webhooks = "gotify"
 
@@ -69,6 +74,7 @@ func TestJobWebhookConfig_EmbeddedInComposeJobConfig(t *testing.T) {
 
 // TestWebhookConfig_ParsedFromINI verifies webhooks field is parsed from INI
 func TestWebhookConfig_ParsedFromINI(t *testing.T) {
+	t.Parallel()
 	iniContent := `
 [global]
 webhooks = global-slack
@@ -131,6 +137,7 @@ webhooks = slack-alerts, discord-notify
 
 // TestGlobalWebhooks_ParsedFromINI verifies global webhooks are parsed
 func TestGlobalWebhooks_ParsedFromINI(t *testing.T) {
+	t.Parallel()
 	iniContent := `
 [global]
 webhooks = slack-alerts
@@ -152,6 +159,7 @@ secret = xoxb-secret
 
 // TestWebhookManager_InitializedOnStartup verifies manager is initialized
 func TestWebhookManager_InitializedOnStartup(t *testing.T) {
+	t.Parallel()
 	iniContent := `
 [webhook "test-webhook"]
 preset = slack
@@ -190,6 +198,7 @@ secret = xoxb-secret
 
 // TestBuildMiddlewares_IncludesWebhooks verifies webhook middleware is attached
 func TestBuildMiddlewares_IncludesWebhooks(t *testing.T) {
+	t.Parallel()
 	// Create a webhook manager with a test webhook
 	globalConfig := middlewares.DefaultWebhookGlobalConfig()
 	manager := middlewares.NewWebhookManager(globalConfig)
@@ -225,6 +234,7 @@ func TestBuildMiddlewares_IncludesWebhooks(t *testing.T) {
 
 // TestGlobalWebhooks_AttachedToScheduler verifies global webhooks are attached
 func TestGlobalWebhooks_AttachedToScheduler(t *testing.T) {
+	t.Parallel()
 	iniContent := `
 [global]
 webhooks = global-slack
@@ -259,6 +269,7 @@ trigger = error
 
 // TestWebhookLinkFields_ParsedCorrectly verifies link and link-text are parsed
 func TestWebhookLinkFields_ParsedCorrectly(t *testing.T) {
+	t.Parallel()
 	iniContent := `
 [webhook "matrix-alerts"]
 preset = matrix
