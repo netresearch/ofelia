@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/netresearch/ofelia/test/testutil"
 )
 
 // ErrorJob is a job that can simulate various error conditions
@@ -81,6 +83,7 @@ func (j *ErrorJob) GetRunCount() int {
 
 // TestSchedulerErrorHandling tests scheduler's handling of job errors and panics
 func TestSchedulerErrorHandling(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 	scheduler.SetMaxConcurrentJobs(3)
 
@@ -122,28 +125,18 @@ func TestSchedulerErrorHandling(t *testing.T) {
 		t.Errorf("RunJob for normal job should not error: %v", err)
 	}
 
-	// Give jobs time to complete
-	time.Sleep(100 * time.Millisecond)
+	testutil.Eventually(t, func() bool {
+		return panicJob.GetRunCount() > 0 && errorJob.GetRunCount() > 0 && normalJob.GetRunCount() > 0
+	}, testutil.WithTimeout(500*time.Millisecond), testutil.WithMessage("jobs should have run"))
 
-	// Verify scheduler is still running and responsive
 	if !scheduler.IsRunning() {
 		t.Error("Scheduler should still be running after job errors/panics")
-	}
-
-	// Verify all jobs ran (even the ones that failed)
-	if panicJob.GetRunCount() == 0 {
-		t.Error("Panic job should have run at least once")
-	}
-	if errorJob.GetRunCount() == 0 {
-		t.Error("Error job should have run at least once")
-	}
-	if normalJob.GetRunCount() == 0 {
-		t.Error("Normal job should have run at least once")
 	}
 }
 
 // TestSchedulerInvalidJobOperations tests scheduler's handling of invalid operations
 func TestSchedulerInvalidJobOperations(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
 	// Test operations on non-existent jobs
@@ -174,6 +167,7 @@ func TestSchedulerInvalidJobOperations(t *testing.T) {
 
 // TestSchedulerConcurrentOperations tests concurrent scheduler operations for race conditions
 func TestSchedulerConcurrentOperations(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 	scheduler.SetMaxConcurrentJobs(5)
 
@@ -250,16 +244,17 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 
 // TestSchedulerStopDuringJobExecution tests stopping scheduler while jobs are executing
 func TestSchedulerStopDuringJobExecution(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 	scheduler.SetMaxConcurrentJobs(3)
 
-	// Create long-running jobs
+	// Create jobs with moderate duration (enough to test graceful shutdown)
 	longJob1 := NewErrorJob("long-job-1", "@daily")
-	longJob1.SetRunDuration(time.Second * 2)
+	longJob1.SetRunDuration(300 * time.Millisecond)
 	longJob2 := NewErrorJob("long-job-2", "@daily")
-	longJob2.SetRunDuration(time.Second * 2)
+	longJob2.SetRunDuration(300 * time.Millisecond)
 	longJob3 := NewErrorJob("long-job-3", "@daily")
-	longJob3.SetRunDuration(time.Second * 2)
+	longJob3.SetRunDuration(300 * time.Millisecond)
 
 	scheduler.AddJob(longJob1)
 	scheduler.AddJob(longJob2)
@@ -269,15 +264,14 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 		t.Fatalf("Failed to start scheduler: %v", err)
 	}
 
-	// Start long-running jobs
 	go scheduler.RunJob("long-job-1")
 	go scheduler.RunJob("long-job-2")
 	go scheduler.RunJob("long-job-3")
 
-	// Give jobs time to start
-	time.Sleep(100 * time.Millisecond)
+	testutil.Eventually(t, func() bool {
+		return longJob1.GetRunCount() > 0 || longJob2.GetRunCount() > 0 || longJob3.GetRunCount() > 0
+	}, testutil.WithTimeout(200*time.Millisecond), testutil.WithMessage("at least one job should start"))
 
-	// Stop scheduler while jobs are running
 	stopStart := time.Now()
 	stopErr := scheduler.Stop()
 	stopDuration := time.Since(stopStart)
@@ -286,8 +280,7 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 		t.Errorf("Stop() should not return error: %v", stopErr)
 	}
 
-	// Stop should have waited for jobs to complete
-	if stopDuration < time.Second {
+	if stopDuration < 150*time.Millisecond {
 		t.Errorf("Stop() completed too quickly (%v), should wait for running jobs", stopDuration)
 	}
 
@@ -295,7 +288,6 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 		t.Error("Scheduler should not be running after Stop()")
 	}
 
-	// Verify all jobs completed
 	if longJob1.GetRunCount() != 1 {
 		t.Errorf("Long job 1 should have run once, got %d", longJob1.GetRunCount())
 	}
@@ -309,20 +301,17 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 
 // TestSchedulerMaxConcurrentJobsEdgeCases tests edge cases for concurrent job limits
 func TestSchedulerMaxConcurrentJobsEdgeCases(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
-	// Test setting concurrency to 0 (should normalize to 1)
 	scheduler.SetMaxConcurrentJobs(0)
-
-	// Test setting negative concurrency (should normalize to 1)
 	scheduler.SetMaxConcurrentJobs(-5)
 
-	// Add more jobs than the limit allows
 	const numJobs = 5
 	jobs := make([]*ErrorJob, numJobs)
 	for i := 0; i < numJobs; i++ {
 		jobs[i] = NewErrorJob(fmt.Sprintf("limit-job-%d", i), "@daily")
-		jobs[i].SetRunDuration(time.Millisecond * 200)
+		jobs[i].SetRunDuration(30 * time.Millisecond)
 		scheduler.AddJob(jobs[i])
 	}
 
@@ -331,33 +320,23 @@ func TestSchedulerMaxConcurrentJobsEdgeCases(t *testing.T) {
 	}
 	defer scheduler.Stop()
 
-	// Trigger all jobs simultaneously
 	for i := 0; i < numJobs; i++ {
 		go scheduler.RunJob(fmt.Sprintf("limit-job-%d", i))
 	}
 
-	// Give a short time for job scheduling
-	time.Sleep(50 * time.Millisecond)
-
-	// Count running jobs (should be limited to 1 due to normalization)
-	runningCount := 0
-	for _, job := range jobs {
-		if job.GetRunCount() > 0 {
-			runningCount++
+	testutil.Eventually(t, func() bool {
+		for _, job := range jobs {
+			if job.GetRunCount() > 0 {
+				return true
+			}
 		}
-	}
-
-	// Due to the concurrency limit of 1 and job duration, we should see controlled execution
-	if runningCount > 1 {
-		t.Logf("Running count: %d (may be acceptable due to timing)", runningCount)
-	}
-
-	// Wait for jobs to complete
-	time.Sleep(time.Second)
+		return false
+	}, testutil.WithTimeout(100*time.Millisecond), testutil.WithMessage("at least one job should start"))
 }
 
 // TestSchedulerJobStateConsistency tests consistency of job states during operations
 func TestSchedulerJobStateConsistency(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
 	job := NewErrorJob("state-test-job", "@daily")
@@ -438,6 +417,7 @@ func TestSchedulerJobStateConsistency(t *testing.T) {
 
 // TestSchedulerWorkflowCleanup tests the workflow cleanup functionality
 func TestSchedulerWorkflowCleanup(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
 	// Create a job to trigger workflow orchestrator initialization
@@ -473,6 +453,7 @@ func TestSchedulerWorkflowCleanup(t *testing.T) {
 
 // TestSchedulerEmptyStart tests starting scheduler with no jobs
 func TestSchedulerEmptyStart(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
 	// Starting empty scheduler should succeed (no longer returns ErrEmptyScheduler)

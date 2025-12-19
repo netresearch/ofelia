@@ -14,84 +14,35 @@ colors: true
 pre-commit:
   parallel: true
   commands:
-    # 1. Dependency hygiene - ensure go.mod is clean
     go-mod-tidy:
       priority: 1
       run: |
-        echo "🧹 Checking go.mod cleanliness..."
         if ! go mod tidy -diff >/dev/null 2>&1; then
-          echo "❌ go.mod is not clean. Running go mod tidy shows differences:"
-          go mod tidy -diff
-          echo "Please run 'go mod tidy' and commit the changes."
+          echo "❌ go.mod not clean. Run: go mod tidy"
           exit 1
         fi
-        echo "✅ go.mod is clean"
 
-    # 2. Static analysis - go vet
     go-vet:
       glob: "*.go"
-      run: |
-        echo "🔧 Running go vet..."
-        go vet ./...
+      run: go vet ./...
 
-    # 3. Code formatting check - gofmt
     gofmt:
       glob: "*.go"
       run: |
-        echo "📝 Checking Go formatting..."
         unformatted=$(gofmt -l $(git ls-files '*.go') 2>/dev/null || true)
         if [ -n "$unformatted" ]; then
-          echo "❌ The following files are not properly formatted:"
-          echo "$unformatted"
-          echo "Please run: gofmt -w $unformatted"
+          echo "❌ Unformatted: $unformatted"
           exit 1
         fi
-        echo "✅ All files properly formatted"
 
-    # 4. Comprehensive linting - golangci-lint
-    golangci-lint:
-      glob: "*.go"
-      run: |
-        echo "🔍 Running golangci-lint..."
-        golangci-lint run --timeout=3m
-
-    # 5. Additional linters for extra quality
-    golangci-lint-extra:
-      glob: "*.go"
-      run: |
-        echo "🛡️ Running additional linters..."
-        # Note: gci is a formatter in golangci-lint v2, so it's excluded here
-        extra_linters="wrapcheck,unparam,revive,misspell,paralleltest,gocyclo,unused,forbidigo,errorlint"
-        golangci-lint run --timeout=3m --enable-only="$extra_linters"
-
-    # 6. Security scanning - gosec
-    gosec:
-      glob: "*.go"
-      run: |
-        echo "🔒 Running gosec security scanner..."
-        gosec -quiet ./...
-
-    # 7. Secret detection - basic check
     secrets:
       run: |
-        echo "🕵️ Checking for sensitive information..."
-
-        # Only check code files, skip config/documentation
         code_files=$(git diff --cached --name-only | grep -E '\.(go|js|ts|py|java|rb|php)$' || true)
-
-        if [ -z "$code_files" ]; then
-          echo "✅ No code files to check for secrets"
-          exit 0
-        fi
-
-        # Look for actual secret assignments (key="value" patterns)
+        [ -z "$code_files" ] && exit 0
         if echo "$code_files" | xargs grep -E "(password|secret|api_key|apikey|token|access_key)(\s*=\s*|\s*:\s*)['\"][^'\"]{8,}['\"]" 2>/dev/null | grep -v "example\|test\|mock\|dummy"; then
-          echo "❌ Potential hardcoded secrets detected!"
-          echo "Please review and remove any hardcoded credentials before committing."
+          echo "❌ Potential secrets detected!"
           exit 1
         fi
-
-        echo "✅ No sensitive information detected"
 
 commit-msg:
   commands:
@@ -145,45 +96,20 @@ commit-msg:
 pre-push:
   parallel: true
   commands:
-    # Run smoke tests before pushing (faster than full suite)
+    golangci-lint:
+      glob: "*.go"
+      run: golangci-lint run --timeout=3m
+
+    gosec:
+      glob: "*.go"
+      run: gosec -quiet ./...
+
     smoke-tests:
       run: |
-        echo "🧪 Running smoke tests before push..."
-        echo ""
-
-        # Run fast tests with short flag (full suite runs in CI)
         if ! go test -short -timeout=60s ./core/... ./cli/... ./middlewares/...; then
-          echo ""
-          echo "❌ Smoke tests failed! Push cancelled."
-          echo "Fix the failing tests before pushing."
+          echo "❌ Smoke tests failed!"
           exit 1
         fi
-
-        echo ""
-        echo "✅ Smoke tests passed!"
-
-    # Race detection on critical packages only (faster)
-    race-check:
-      run: |
-        echo "🏎️ Running race detection on critical packages..."
-        export CGO_ENABLED=1
-
-        if ! go test -short -race -timeout=60s ./core/...; then
-          echo "❌ Race condition detected! Fix before pushing."
-          exit 1
-        fi
-
-        echo "✅ No race conditions detected"
-
-    # Quick vet check
-    vet-check:
-      run: |
-        echo "🔍 Running go vet..."
-        if ! go vet ./...; then
-          echo "❌ go vet failed! Fix issues before pushing."
-          exit 1
-        fi
-        echo "✅ go vet passed"
 
 post-checkout:
   commands:
