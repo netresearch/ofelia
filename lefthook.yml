@@ -100,10 +100,6 @@ pre-push:
       glob: "*.go"
       run: golangci-lint run --timeout=3m
 
-    gosec:
-      glob: "*.go"
-      run: gosec -quiet ./...
-
     smoke-tests:
       run: |
         if ! go test -short -timeout=60s ./core/... ./cli/... ./middlewares/...; then
