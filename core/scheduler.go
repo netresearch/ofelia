@@ -50,28 +50,33 @@ type Scheduler struct {
 }
 
 func NewScheduler(l Logger) *Scheduler {
-	return NewSchedulerWithMetrics(l, nil)
+	return NewSchedulerWithOptions(l, nil, 0)
 }
 
-// NewSchedulerWithMetrics creates a new scheduler with optional metrics recording.
-// If metricsRecorder is non-nil, it will be used to record job scheduling metrics
-// via go-cron's ObservabilityHooks.
+// NewSchedulerWithMetrics creates a scheduler with metrics (deprecated: use NewSchedulerWithOptions)
 func NewSchedulerWithMetrics(l Logger, metricsRecorder MetricsRecorder) *Scheduler {
+	return NewSchedulerWithOptions(l, metricsRecorder, 0)
+}
+
+// NewSchedulerWithOptions creates a scheduler with configurable minimum interval.
+// minEveryInterval of 0 uses the library default (1s). Use negative value to allow sub-second.
+func NewSchedulerWithOptions(l Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration) *Scheduler {
 	cronUtils := NewCronUtils(l)
 
-	// Build cron options
+	parser := cron.MustNewParser(
+		cron.SecondOptional | cron.Minute | cron.Hour |
+			cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+	)
+	if minEveryInterval != 0 {
+		parser = parser.WithMinEveryInterval(minEveryInterval)
+	}
+
 	cronOpts := []cron.Option{
-		cron.WithParser(
-			cron.MustNewParser(
-				cron.SecondOptional | cron.Minute | cron.Hour |
-					cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
-			),
-		),
+		cron.WithParser(parser),
 		cron.WithLogger(cronUtils),
 		cron.WithChain(cron.Recover(cronUtils)),
 	}
 
-	// Add observability hooks if metrics recorder is provided
 	if metricsRecorder != nil {
 		hooks := cron.ObservabilityHooks{
 			OnJobStart: func(_ cron.EntryID, name string, _ time.Time) {

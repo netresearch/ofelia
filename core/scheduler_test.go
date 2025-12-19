@@ -27,9 +27,9 @@ func TestSchedulerStartStop(t *testing.T) {
 	t.Parallel()
 
 	job := &TestJob{}
-	job.Schedule = "@every 1s"
+	job.Schedule = "@every 50ms"
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
 	err := sc.AddJob(job)
 	require.NoError(t, err)
 
@@ -46,7 +46,7 @@ func TestSchedulerStartStop(t *testing.T) {
 
 	select {
 	case <-jobCompleted:
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 		t.Fatal("Timeout waiting for job to complete")
 	}
 
@@ -76,9 +76,9 @@ func TestSchedulerLastRunRecorded(t *testing.T) {
 	t.Parallel()
 
 	job := &TestJob{}
-	job.Schedule = "@every 1s"
+	job.Schedule = "@every 50ms"
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
 	err := sc.AddJob(job)
 	require.NoError(t, err)
 
@@ -94,7 +94,7 @@ func TestSchedulerLastRunRecorded(t *testing.T) {
 
 	select {
 	case <-jobCompleted:
-	case <-time.After(2 * time.Second):
+	case <-time.After(200 * time.Millisecond):
 		t.Fatal("Timeout waiting for job to complete")
 	}
 
