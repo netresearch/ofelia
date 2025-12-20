@@ -132,7 +132,7 @@ func TestPresetCache_Cleanup(t *testing.T) {
 	tempDir := t.TempDir()
 	cache := NewPresetCache(tempDir, 10*time.Millisecond)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		preset := &Preset{
 			Name:   "test-preset",
 			Method: "POST",
@@ -210,8 +210,8 @@ func TestPresetCache_ConcurrentAccess(t *testing.T) {
 	cache := NewPresetCache(tempDir, time.Hour)
 
 	done := make(chan bool, 10)
-	for i := 0; i < 10; i++ {
-		go func(n int) {
+	for range 10 {
+		go func() {
 			preset := &Preset{
 				Name:   "concurrent-preset",
 				Method: "POST",
@@ -220,10 +220,10 @@ func TestPresetCache_ConcurrentAccess(t *testing.T) {
 			_ = cache.Put(url, preset)
 			_, _ = cache.Get(url)
 			done <- true
-		}(i)
+		}()
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

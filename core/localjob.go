@@ -36,7 +36,7 @@ func (j *LocalJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 	// API-created jobs are validated in web/server.go before reaching here
 	cmdArgs := args.GetArgs(j.Command)
 	if len(cmdArgs) == 0 {
-		return nil, fmt.Errorf("command cannot be empty")
+		return nil, ErrEmptyCommand
 	}
 
 	bin, err := exec.LookPath(cmdArgs[0])

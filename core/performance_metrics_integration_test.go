@@ -430,9 +430,9 @@ func TestPerformanceMetricsConcurrency(t *testing.T) {
 
 	done := make(chan bool, goroutines)
 
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		go func(id int) {
-			for j := 0; j < operations; j++ {
+			for range operations {
 				pm.RecordDockerOperation("test")
 				pm.RecordDockerLatency("test", time.Millisecond)
 				pm.RecordJobExecution("test_job", time.Millisecond, true)
@@ -444,7 +444,7 @@ func TestPerformanceMetricsConcurrency(t *testing.T) {
 
 	// Wait for all goroutines
 	timeout := time.After(10 * time.Second)
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		select {
 		case <-done:
 			// Success

@@ -7,9 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/netresearch/ofelia/core"
 	webpkg "github.com/netresearch/ofelia/web"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func generateTestHash(password string) string {
@@ -36,7 +37,7 @@ func TestServerWithAuthEnabled(t *testing.T) {
 	httpSrv := srv.HTTPServer()
 
 	t.Run("api_requires_auth", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/jobs", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -46,7 +47,7 @@ func TestServerWithAuthEnabled(t *testing.T) {
 	})
 
 	t.Run("auth_status_without_auth", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/auth/status", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -73,7 +74,7 @@ func TestServerWithAuthEnabled(t *testing.T) {
 		srv.RegisterHealthEndpoints(hc)
 
 		for _, ep := range endpoints {
-			req := httptest.NewRequest("GET", ep, nil)
+			req := httptest.NewRequest(http.MethodGet, ep, nil)
 			w := httptest.NewRecorder()
 			httpSrv.Handler.ServeHTTP(w, req)
 
@@ -84,7 +85,7 @@ func TestServerWithAuthEnabled(t *testing.T) {
 	})
 
 	t.Run("static_files_bypass_auth", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -110,7 +111,7 @@ func TestLoginFlow(t *testing.T) {
 
 	t.Run("login_with_valid_credentials", func(t *testing.T) {
 		body := `{"username":"testuser","password":"correctpassword"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		w := httptest.NewRecorder()
@@ -144,7 +145,7 @@ func TestLoginFlow(t *testing.T) {
 
 	t.Run("login_with_invalid_password", func(t *testing.T) {
 		body := `{"username":"testuser","password":"wrongpassword"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		w := httptest.NewRecorder()
@@ -157,7 +158,7 @@ func TestLoginFlow(t *testing.T) {
 
 	t.Run("login_with_invalid_username", func(t *testing.T) {
 		body := `{"username":"wronguser","password":"correctpassword"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		w := httptest.NewRecorder()
@@ -169,7 +170,7 @@ func TestLoginFlow(t *testing.T) {
 	})
 
 	t.Run("login_method_not_allowed", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/login", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/login", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -200,7 +201,7 @@ func TestAuthenticatedAccess(t *testing.T) {
 	httpSrv := srv.HTTPServer()
 
 	body := `{"username":"admin","password":"password123"}`
-	loginReq := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 	loginReq.Header.Set("Content-Type", "application/json")
 	loginReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	loginW := httptest.NewRecorder()
@@ -215,7 +216,7 @@ func TestAuthenticatedAccess(t *testing.T) {
 	token := loginResp["token"].(string)
 
 	t.Run("access_with_bearer_token", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/jobs", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -226,7 +227,7 @@ func TestAuthenticatedAccess(t *testing.T) {
 	})
 
 	t.Run("access_with_cookie", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/jobs", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 		req.AddCookie(&http.Cookie{Name: "auth_token", Value: token})
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -237,7 +238,7 @@ func TestAuthenticatedAccess(t *testing.T) {
 	})
 
 	t.Run("access_with_invalid_token", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/jobs", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 		req.Header.Set("Authorization", "Bearer invalid-token")
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -248,7 +249,7 @@ func TestAuthenticatedAccess(t *testing.T) {
 	})
 
 	t.Run("auth_status_when_authenticated", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/auth/status", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -284,7 +285,7 @@ func TestLogoutFlow(t *testing.T) {
 	httpSrv := srv.HTTPServer()
 
 	body := `{"username":"admin","password":"password"}`
-	loginReq := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 	loginReq.Header.Set("Content-Type", "application/json")
 	loginReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	loginW := httptest.NewRecorder()
@@ -295,7 +296,7 @@ func TestLogoutFlow(t *testing.T) {
 	token := loginResp["token"].(string)
 
 	t.Run("logout_revokes_token", func(t *testing.T) {
-		logoutReq := httptest.NewRequest("POST", "/api/logout", nil)
+		logoutReq := httptest.NewRequest(http.MethodPost, "/api/logout", nil)
 		logoutReq.Header.Set("Authorization", "Bearer "+token)
 		logoutW := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(logoutW, logoutReq)
@@ -316,7 +317,7 @@ func TestLogoutFlow(t *testing.T) {
 			t.Error("expected auth_token cookie to be cleared")
 		}
 
-		jobsReq := httptest.NewRequest("GET", "/api/jobs", nil)
+		jobsReq := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 		jobsReq.Header.Set("Authorization", "Bearer "+token)
 		jobsW := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(jobsW, jobsReq)
@@ -328,7 +329,7 @@ func TestLogoutFlow(t *testing.T) {
 
 	t.Run("logout_method_not_allowed", func(t *testing.T) {
 		body := `{"username":"admin","password":"password"}`
-		newLoginReq := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		newLoginReq := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		newLoginReq.Header.Set("Content-Type", "application/json")
 		newLoginReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 		newLoginW := httptest.NewRecorder()
@@ -338,7 +339,7 @@ func TestLogoutFlow(t *testing.T) {
 		_ = json.NewDecoder(newLoginW.Body).Decode(&newLoginResp)
 		newToken := newLoginResp["token"].(string)
 
-		req := httptest.NewRequest("GET", "/api/logout", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/logout", nil)
 		req.Header.Set("Authorization", "Bearer "+newToken)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
@@ -361,7 +362,7 @@ func TestServerWithoutAuth(t *testing.T) {
 	httpSrv := srv.HTTPServer()
 
 	t.Run("api_accessible_without_auth", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/jobs", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -371,7 +372,7 @@ func TestServerWithoutAuth(t *testing.T) {
 	})
 
 	t.Run("auth_status_shows_disabled", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/auth/status", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 
@@ -401,7 +402,7 @@ func TestCSRFTokenEndpoint(t *testing.T) {
 	httpSrv := srv.HTTPServer()
 
 	t.Run("get_csrf_token", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/csrf-token", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/csrf-token", nil)
 		w := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(w, req)
 

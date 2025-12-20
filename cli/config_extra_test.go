@@ -31,7 +31,7 @@ const (
 func TestBuildFromStringInvalidIni(t *testing.T) {
 	t.Parallel()
 	_, err := BuildFromString("this is not ini", test.NewTestLogger())
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 }
 
 // Test error path of BuildFromFile for non-existent or invalid file
@@ -39,7 +39,7 @@ func TestBuildFromFileError(t *testing.T) {
 	t.Parallel()
 	// Non-existent file
 	_, err := BuildFromFile("nonexistent_file.ini", test.NewTestLogger())
-	assert.NotNil(t, err)
+	require.Error(t, err)
 
 	// Invalid content
 	tmpFile, err := os.CreateTemp("", "config_test")
@@ -50,7 +50,7 @@ func TestBuildFromFileError(t *testing.T) {
 	tmpFile.Close()
 
 	_, err = BuildFromFile(tmpFile.Name(), test.NewTestLogger())
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 }
 
 // Test InitializeApp returns error when Docker handler factory fails
@@ -65,7 +65,7 @@ func TestInitializeAppErrorDockerHandler(t *testing.T) {
 
 	cfg := NewConfig(test.NewTestLogger())
 	err := cfg.InitializeApp()
-	require.NotNil(t, err)
+	require.Error(t, err)
 	assert.Equal(t, "factory error", err.Error())
 }
 
@@ -88,7 +88,7 @@ func TestDockerLabelsUpdateExecJobs(t *testing.T) {
 		},
 	}
 	cfg.dockerLabelsUpdate(labelsAdd)
-	assert.Equal(t, 1, len(cfg.ExecJobs))
+	assert.Len(t, cfg.ExecJobs, 1)
 	j := cfg.ExecJobs["container1.foo"]
 	assert.Equal(t, JobSourceLabel, j.JobSource)
 	// Verify schedule and command set
@@ -97,7 +97,7 @@ func TestDockerLabelsUpdateExecJobs(t *testing.T) {
 
 	// Inspect cron entries count
 	entries := cfg.sh.Entries()
-	assert.Equal(t, 1, len(entries))
+	assert.Len(t, entries, 1)
 
 	// 2) Change schedule (should restart job)
 	labelsChange := map[string]map[string]string{
@@ -107,17 +107,17 @@ func TestDockerLabelsUpdateExecJobs(t *testing.T) {
 		},
 	}
 	cfg.dockerLabelsUpdate(labelsChange)
-	assert.Equal(t, 1, len(cfg.ExecJobs))
+	assert.Len(t, cfg.ExecJobs, 1)
 	j2 := cfg.ExecJobs["container1.foo"]
 	assert.Equal(t, "@every 10s", j2.GetSchedule())
 	entries = cfg.sh.Entries()
-	assert.Equal(t, 1, len(entries))
+	assert.Len(t, entries, 1)
 
 	// 3) Removal of job
 	cfg.dockerLabelsUpdate(map[string]map[string]string{})
-	assert.Equal(t, 0, len(cfg.ExecJobs))
+	assert.Empty(t, cfg.ExecJobs)
 	entries = cfg.sh.Entries()
-	assert.Equal(t, 0, len(entries))
+	assert.Empty(t, entries)
 }
 
 // Test dockerLabelsUpdate blocks host jobs when security policy is disabled.
@@ -147,8 +147,8 @@ func TestDockerLabelsSecurityPolicyViolation(t *testing.T) {
 	cfg.dockerLabelsUpdate(labels)
 
 	// Verify security policy blocked the jobs
-	assert.Len(t, cfg.LocalJobs, 0, "Local jobs should be blocked by security policy")
-	assert.Len(t, cfg.ComposeJobs, 0, "Compose jobs should be blocked by security policy")
+	assert.Empty(t, cfg.LocalJobs, "Local jobs should be blocked by security policy")
+	assert.Empty(t, cfg.ComposeJobs, "Compose jobs should be blocked by security policy")
 
 	// Verify error logs were generated
 	assert.Equal(t, 2, logger.ErrorCount(), "Expected 2 error logs (1 for local, 1 for compose)")
@@ -190,8 +190,8 @@ func TestDockerLabelsUpdateStaleJobs(t *testing.T) {
 	assert.Len(t, cfg.ServiceJobs, 1)
 
 	cfg.dockerLabelsUpdate(map[string]map[string]string{})
-	assert.Len(t, cfg.LocalJobs, 0)
-	assert.Len(t, cfg.ServiceJobs, 0)
+	assert.Empty(t, cfg.LocalJobs)
+	assert.Empty(t, cfg.ServiceJobs)
 }
 
 // Test iniConfigUpdate reloads jobs from the INI file
@@ -221,7 +221,7 @@ func TestIniConfigUpdate(t *testing.T) {
 		_ = cfg.sh.AddJob(j)
 	}
 
-	assert.Equal(t, 1, len(cfg.RunJobs))
+	assert.Len(t, cfg.RunJobs, 1)
 	assert.Equal(t, "@every 5s", cfg.RunJobs["foo"].GetSchedule())
 
 	// modify ini: change schedule and add new job
@@ -233,7 +233,7 @@ func TestIniConfigUpdate(t *testing.T) {
 
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(cfg.RunJobs))
+	assert.Len(t, cfg.RunJobs, 2)
 	assert.Equal(t, "@every 10s", cfg.RunJobs["foo"].GetSchedule())
 
 	// modify ini: remove foo
@@ -245,7 +245,7 @@ func TestIniConfigUpdate(t *testing.T) {
 
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(cfg.RunJobs))
+	assert.Len(t, cfg.RunJobs, 1)
 	_, ok := cfg.RunJobs["foo"]
 	assert.False(t, ok)
 }
@@ -323,7 +323,7 @@ func TestIniConfigUpdateNoReload(t *testing.T) {
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)
 	assert.Equal(t, oldTime, cfg.configModTime)
-	assert.Equal(t, 1, len(cfg.RunJobs))
+	assert.Len(t, cfg.RunJobs, 1)
 }
 
 // TestIniConfigUpdateLabelConflict verifies INI jobs override label jobs on reload.
@@ -399,7 +399,7 @@ func TestIniConfigUpdateGlob(t *testing.T) {
 		_ = cfg.sh.AddJob(j)
 	}
 
-	assert.Equal(t, 2, len(cfg.RunJobs))
+	assert.Len(t, cfg.RunJobs, 2)
 	assert.Equal(t, "@every 5s", cfg.RunJobs["foo"].GetSchedule())
 
 	oldTime := cfg.configModTime
@@ -409,7 +409,7 @@ func TestIniConfigUpdateGlob(t *testing.T) {
 
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(cfg.RunJobs))
+	assert.Len(t, cfg.RunJobs, 2)
 	assert.Equal(t, "@every 10s", cfg.RunJobs["foo"].GetSchedule())
 }
 

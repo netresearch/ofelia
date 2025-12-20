@@ -2053,17 +2053,17 @@ func TestContainerServiceConcurrentAccess(t *testing.T) {
 
 	// Run concurrent operations
 	done := make(chan bool)
-	for i := 0; i < 10; i++ {
-		go func(id int) {
+	for range 10 {
+		go func() {
 			containers.Start(ctx, "container-id")
 			containers.Stop(ctx, "container-id", nil)
 			containers.Inspect(ctx, "container-id")
 			done <- true
-		}(i)
+		}()
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

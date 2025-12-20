@@ -163,10 +163,10 @@ func addExecJobsToScheduler(cfg *Config) {
 
 func assertKeepsIniJobs(t *testing.T, cfg *Config, jobsCount func() int) {
 	t.Helper()
-	assert.Equal(t, 1, len(cfg.sh.Entries()))
+	assert.Len(t, cfg.sh.Entries(), 1)
 	cfg.dockerLabelsUpdate(map[string]map[string]string{})
 	assert.Equal(t, 1, jobsCount())
-	assert.Equal(t, 1, len(cfg.sh.Entries()))
+	assert.Len(t, cfg.sh.Entries(), 1)
 }
 
 // TestBuildSDKProviderError verifies that buildSDKProvider returns an error when DOCKER_HOST is invalid
@@ -177,7 +177,7 @@ func TestBuildSDKProviderError(t *testing.T) {
 
 	h := &DockerHandler{ctx: context.Background(), logger: &TestLogger{}}
 	_, err := h.buildSDKProvider()
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 }
 
 // TestNewDockerHandlerErrorPing verifies that NewDockerHandler returns an error when Ping fails
@@ -190,7 +190,7 @@ func TestNewDockerHandlerErrorPing(t *testing.T) {
 	notifier := &dummyNotifier{}
 	handler, err := NewDockerHandler(context.Background(), notifier, &TestLogger{}, &DockerConfig{}, mockProvider)
 	assert.Nil(t, handler)
-	assert.NotNil(t, err)
+	assert.Error(t, err)
 }
 
 // TestGetDockerLabelsInvalidFilter verifies that GetDockerLabels returns an error on invalid filter strings
@@ -199,7 +199,7 @@ func TestGetDockerLabelsInvalidFilter(t *testing.T) {
 	mockProvider := &mockDockerProviderForHandler{}
 	h := &DockerHandler{filters: []string{"invalidfilter"}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
 	_, err := h.GetDockerLabels()
-	require.NotNil(t, err)
+	require.Error(t, err)
 	assert.Regexp(t, `(?s)invalid docker filter "invalidfilter".*key=value format.*`, err.Error())
 }
 
@@ -497,7 +497,7 @@ func TestStartFallbackPollingAlreadyActive(t *testing.T) {
 	}
 }
 
-// TestStartFallbackPollingCancellation verifies fallback polling stops when cancelled
+// TestStartFallbackPollingCancellation verifies fallback polling stops when canceled
 func TestStartFallbackPollingCancellation(t *testing.T) {
 	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{

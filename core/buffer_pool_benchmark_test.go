@@ -19,7 +19,7 @@ func BenchmarkExecutionMemoryWithPool(b *testing.B) {
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		e, err := NewExecution()
 		if err != nil {
 			b.Fatal(err)
@@ -55,7 +55,7 @@ func BenchmarkExecutionMemoryWithoutPool(b *testing.B) {
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		// Simulate old way - direct allocation
 		bufOut, _ := circbuf.NewBuffer(maxStreamSize)
 		bufErr, _ := circbuf.NewBuffer(maxStreamSize)
@@ -91,7 +91,7 @@ func TestMemoryUsageComparison(t *testing.T) {
 	// Keep references to prevent GC
 	oldBuffers := make([]*circbuf.Buffer, 0, iterations*2)
 
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		bufOut, _ := circbuf.NewBuffer(maxStreamSize) // 10MB
 		bufErr, _ := circbuf.NewBuffer(maxStreamSize) // 10MB
 		_, _ = bufOut.Write([]byte("test"))
@@ -109,7 +109,7 @@ func TestMemoryUsageComparison(t *testing.T) {
 	var memNewBefore runtime.MemStats
 	runtime.ReadMemStats(&memNewBefore)
 
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		e, _ := NewExecution()
 		_, _ = e.OutputStream.Write([]byte("test"))
 		_, _ = e.ErrorStream.Write([]byte("test"))
@@ -152,10 +152,10 @@ func TestBufferPoolConcurrency(t *testing.T) {
 	var memBefore runtime.MemStats
 	runtime.ReadMemStats(&memBefore)
 
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+			for range iterations {
 				e, err := NewExecution()
 				if err != nil {
 					t.Error(err)

@@ -295,7 +295,7 @@ func (ebp *EnhancedBufferPool) prewarmPools() {
 	for size, pool := range ebp.pools {
 		// Pre-allocate buffers for this pool
 		successfulBuffers := 0
-		for i := 0; i < ebp.config.PoolSize; i++ {
+		for i := range ebp.config.PoolSize {
 			buf, err := circbuf.NewBuffer(size)
 			if err != nil {
 				// Log error but continue with remaining buffers (graceful degradation)

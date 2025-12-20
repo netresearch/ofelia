@@ -75,9 +75,9 @@ func TestDockerHandler_Shutdown(t *testing.T) {
 				t.Errorf("Shutdown() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			// Verify context was cancelled
+			// Verify context was canceled
 			if handler.cancel != nil && handler.ctx.Err() == nil {
-				t.Error("Expected context to be cancelled after shutdown")
+				t.Error("Expected context to be canceled after shutdown")
 			}
 
 			// Verify provider is nil after shutdown
@@ -241,7 +241,7 @@ func (m *mockEventProvider) SubscribeEvents(ctx context.Context, filter domain.E
 	errCh := make(chan error, 1)
 
 	if m.blockForever {
-		// Return channels that block forever until context is cancelled
+		// Return channels that block forever until context is canceled
 		go func() {
 			<-ctx.Done()
 			close(eventCh)

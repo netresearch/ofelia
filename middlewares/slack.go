@@ -126,7 +126,7 @@ func (m *Slack) pushMessage(ctx *core.Context) {
 		ctx.Logger.Errorf("Slack error calling %q error: %q", m.SlackWebhook, err)
 	} else {
 		defer r.Body.Close()
-		if r.StatusCode != 200 {
+		if r.StatusCode != http.StatusOK {
 			ctx.Logger.Errorf("Slack error non-200 status code calling %q", m.SlackWebhook)
 		}
 	}

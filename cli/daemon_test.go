@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -44,7 +45,7 @@ func TestWaitForServerWithErrChan_Timeout(t *testing.T) {
 		t.Error("Expected timeout error, got nil")
 	}
 
-	if ctx.Err() != context.DeadlineExceeded {
+	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		t.Errorf("Expected context deadline exceeded, got: %v", ctx.Err())
 	}
 }
@@ -91,7 +92,7 @@ func TestWaitForServerWithErrChan_CancelContext(t *testing.T) {
 		t.Error("Expected cancellation error, got nil")
 	}
 
-	if ctx.Err() != context.Canceled {
+	if !errors.Is(ctx.Err(), context.Canceled) {
 		t.Errorf("Expected context canceled, got: %v", ctx.Err())
 	}
 }

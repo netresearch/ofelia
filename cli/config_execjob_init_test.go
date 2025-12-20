@@ -36,7 +36,7 @@ func TestExecJobInit_FromINIConfig(t *testing.T) {
 	assert.NotNil(t, job)
 
 	// Verify job fields are set from config
-	assert.Equal(t, "", job.GetName()) // Name not set yet (set during registration)
+	assert.Empty(t, job.GetName()) // Name not set yet (set during registration)
 	assert.Equal(t, "@every 1h", job.GetSchedule())
 	assert.Equal(t, `echo "test"`, job.GetCommand())
 	assert.Equal(t, "test-container", job.Container)

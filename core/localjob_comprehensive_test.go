@@ -389,10 +389,8 @@ func TestLocalJob_BuildCommand_ErrorHandling(t *testing.T) {
 				if tc.errorCheck != nil && !tc.errorCheck(err) {
 					t.Errorf("Error check failed for error: %v", err)
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("Expected no error but got: %v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("Expected no error but got: %v", err)
 			}
 		})
 	}
@@ -419,7 +417,7 @@ func TestLocalJob_EdgeCases(t *testing.T) {
 			setup: func(job *LocalJob) {
 				job.Command = "echo test"
 				env := make([]string, 100)
-				for i := 0; i < 100; i++ {
+				for i := range 100 {
 					env[i] = fmt.Sprintf("VAR%d=value%d", i, i)
 				}
 				job.Environment = env

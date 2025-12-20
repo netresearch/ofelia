@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,7 +68,7 @@ func TestExecJobBuildEmpty(t *testing.T) {
 
 	j := &ExecJobConfig{}
 
-	assert.Len(t, j.Middlewares(), 0)
+	assert.Empty(t, j.Middlewares())
 }
 
 func TestExecJobBuild(t *testing.T) {
@@ -509,11 +508,6 @@ func TestLabelsConfig(t *testing.T) {
 	}
 }
 
-func toJSON(val interface{}) string {
-	b, _ := json.MarshalIndent(val, "", "  ")
-	return string(b)
-}
-
 func TestBuildFromStringError(t *testing.T) {
 	t.Parallel()
 
@@ -580,10 +574,10 @@ func TestNewConfig(t *testing.T) {
 	assert.NotNil(t, cfg.RunJobs)
 	assert.NotNil(t, cfg.ServiceJobs)
 	assert.NotNil(t, cfg.LocalJobs)
-	assert.Len(t, cfg.ExecJobs, 0)
-	assert.Len(t, cfg.RunJobs, 0)
-	assert.Len(t, cfg.ServiceJobs, 0)
-	assert.Len(t, cfg.LocalJobs, 0)
+	assert.Empty(t, cfg.ExecJobs)
+	assert.Empty(t, cfg.RunJobs)
+	assert.Empty(t, cfg.ServiceJobs)
+	assert.Empty(t, cfg.LocalJobs)
 }
 
 func TestBuildSchedulerMiddlewares(t *testing.T) {
@@ -643,7 +637,7 @@ func TestDefaultUserGlobalConfig(t *testing.T) {
 		command = echo test
 	`, &mockLogger)
 	require.NoError(t, err)
-	assert.Equal(t, "", cfg.Global.DefaultUser)
+	assert.Empty(t, cfg.Global.DefaultUser)
 }
 
 func TestApplyDefaultUser(t *testing.T) {
@@ -663,12 +657,12 @@ func TestApplyDefaultUser(t *testing.T) {
 	cfg.Global.DefaultUser = ""
 	user = ""
 	cfg.applyDefaultUser(&user)
-	assert.Equal(t, "", user)
+	assert.Empty(t, user)
 
 	cfg.Global.DefaultUser = "nobody"
 	user = UserContainerDefault
 	cfg.applyDefaultUser(&user)
-	assert.Equal(t, "", user)
+	assert.Empty(t, user)
 }
 
 func TestMergeMailDefaults(t *testing.T) {
@@ -722,7 +716,7 @@ func TestMergeMailDefaults(t *testing.T) {
 
 	assert.Equal(t, "job-only.example.com", jobMail3.SMTPHost)
 	assert.Equal(t, 25, jobMail3.SMTPPort)
-	assert.Equal(t, "", jobMail3.SMTPUser)
+	assert.Empty(t, jobMail3.SMTPUser)
 }
 
 func TestMergeSlackDefaults(t *testing.T) {

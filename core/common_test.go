@@ -42,7 +42,7 @@ func TestExecutionStopFlagsAndDuration(t *testing.T) {
 	e.Start()
 	e.Stop(assertError{})
 
-	assert.NotNil(t, e.Error)
+	require.Error(t, e.Error)
 	assert.True(t, e.Failed)
 }
 

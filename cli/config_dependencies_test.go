@@ -268,13 +268,13 @@ command = echo standalone
 	}
 
 	// All dependency-related fields should be nil or empty
-	if job.Dependencies != nil && len(job.Dependencies) != 0 {
+	if len(job.Dependencies) != 0 {
 		t.Errorf("Expected no dependencies, got %v", job.Dependencies)
 	}
-	if job.OnSuccess != nil && len(job.OnSuccess) != 0 {
+	if len(job.OnSuccess) != 0 {
 		t.Errorf("Expected no on-success triggers, got %v", job.OnSuccess)
 	}
-	if job.OnFailure != nil && len(job.OnFailure) != 0 {
+	if len(job.OnFailure) != 0 {
 		t.Errorf("Expected no on-failure triggers, got %v", job.OnFailure)
 	}
 }

@@ -6,6 +6,7 @@ import (
 )
 
 func TestNewCommandValidator(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 	if v == nil {
 		t.Fatal("NewCommandValidator returned nil")
@@ -22,6 +23,7 @@ func TestNewCommandValidator(t *testing.T) {
 }
 
 func TestValidateServiceName(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 
 	tests := []struct {
@@ -54,6 +56,7 @@ func TestValidateServiceName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := v.ValidateServiceName(tt.service)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateServiceName(%q) error = %v, wantError %v", tt.service, err, tt.wantError)
@@ -66,6 +69,7 @@ func TestValidateServiceName(t *testing.T) {
 }
 
 func TestValidateFilePath(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 
 	tests := []struct {
@@ -100,6 +104,7 @@ func TestValidateFilePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := v.ValidateFilePath(tt.path)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateFilePath(%q) error = %v, wantError %v", tt.path, err, tt.wantError)
@@ -112,6 +117,7 @@ func TestValidateFilePath(t *testing.T) {
 }
 
 func TestValidateCommandArgs(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 
 	tests := []struct {
@@ -141,6 +147,7 @@ func TestValidateCommandArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := v.ValidateCommandArgs(tt.args)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateCommandArgs(%v) error = %v, wantError %v", tt.args, err, tt.wantError)
@@ -153,6 +160,7 @@ func TestValidateCommandArgs(t *testing.T) {
 }
 
 func TestSanitizeCommand(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 
 	tests := []struct {
@@ -168,6 +176,7 @@ func TestSanitizeCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := v.SanitizeCommand(tt.input)
 			if result != tt.expected {
 				t.Errorf("SanitizeCommand(%q) = %q, want %q", tt.input, result, tt.expected)
@@ -177,6 +186,7 @@ func TestSanitizeCommand(t *testing.T) {
 }
 
 func TestValidatorSecurityPatterns(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 
 	// Test that all dangerous patterns are properly detected
@@ -199,6 +209,7 @@ func TestValidatorSecurityPatterns(t *testing.T) {
 
 	for _, tt := range dangerousInputs {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Test in service name
 			err := v.ValidateServiceName(tt.input)
 			if err == nil {
@@ -227,7 +238,7 @@ func BenchmarkValidateServiceName(b *testing.B) {
 	service := "web-server_123.service"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = v.ValidateServiceName(service)
 	}
 }
@@ -237,7 +248,7 @@ func BenchmarkValidateFilePath(b *testing.B) {
 	path := "configs/docker-compose.yml"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = v.ValidateFilePath(path)
 	}
 }
@@ -247,7 +258,7 @@ func BenchmarkValidateCommandArgs(b *testing.B) {
 	args := []string{"echo", "hello", "world", "--verbose"}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = v.ValidateCommandArgs(args)
 	}
 }

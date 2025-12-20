@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -175,18 +174,18 @@ func (cb *CircuitBreaker) beforeCall() error {
 			cb.transitionToHalfOpen()
 			return nil
 		}
-		return fmt.Errorf("circuit breaker '%s' is open", cb.name)
+		return fmt.Errorf("%w: %s", ErrCircuitBreakerOpen, cb.name)
 
 	case StateHalfOpen:
 		// Allow limited calls in half-open state
 		if cb.halfOpenCalls >= cb.halfOpenMaxCalls {
-			return fmt.Errorf("circuit breaker '%s' is half-open but max calls reached", cb.name)
+			return fmt.Errorf("%w: %s", ErrCircuitBreakerHalfOpen, cb.name)
 		}
 		cb.halfOpenCalls++
 		return nil
 
 	default:
-		return fmt.Errorf("circuit breaker '%s' is in unknown state", cb.name)
+		return fmt.Errorf("%w: %s", ErrCircuitBreakerUnknown, cb.name)
 	}
 }
 
@@ -358,7 +357,7 @@ func (rl *RateLimiter) Wait(ctx context.Context) error {
 // WaitN blocks until n requests are allowed
 func (rl *RateLimiter) WaitN(ctx context.Context, n int) error {
 	if n > rl.capacity {
-		return errors.New("requested tokens exceed capacity")
+		return ErrTokensExceedCapacity
 	}
 
 	for {
@@ -420,7 +419,7 @@ func (b *Bulkhead) Execute(ctx context.Context, fn func() error) error {
 
 	default:
 		atomic.AddUint64(&b.rejected, 1)
-		return fmt.Errorf("bulkhead '%s' is full (%d/%d)", b.name, b.maxConcurrent, b.maxConcurrent)
+		return fmt.Errorf("%w: %s (%d/%d)", ErrBulkheadFull, b.name, b.maxConcurrent, b.maxConcurrent)
 	}
 }
 

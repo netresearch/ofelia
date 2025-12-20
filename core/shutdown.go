@@ -79,7 +79,7 @@ func (sm *ShutdownManager) Shutdown() error {
 	sm.mu.Lock()
 	if sm.isShuttingDown {
 		sm.mu.Unlock()
-		return fmt.Errorf("shutdown already in progress")
+		return ErrShutdownInProgress
 	}
 	sm.isShuttingDown = true
 	sm.mu.Unlock()
@@ -125,18 +125,18 @@ func (sm *ShutdownManager) Shutdown() error {
 		sm.logger.Noticef("Graceful shutdown completed successfully")
 	case <-ctx.Done():
 		sm.logger.Errorf("Graceful shutdown timed out after %v", sm.timeout)
-		return fmt.Errorf("shutdown timed out")
+		return ErrShutdownTimeout
 	}
 
 	// Check for errors
 	close(errChan)
-	errors := make([]error, 0, 5) // Pre-allocate with reasonable capacity
+	shutdownErrors := make([]error, 0, 5) // Pre-allocate with reasonable capacity
 	for err := range errChan {
-		errors = append(errors, err)
+		shutdownErrors = append(shutdownErrors, err)
 	}
 
-	if len(errors) > 0 {
-		return fmt.Errorf("shutdown completed with %d errors", len(errors))
+	if len(shutdownErrors) > 0 {
+		return fmt.Errorf("%w: %d errors occurred", ErrShutdownTimeout, len(shutdownErrors))
 	}
 
 	return nil
@@ -182,7 +182,7 @@ func NewGracefulScheduler(scheduler *Scheduler, shutdownManager *ShutdownManager
 func (gs *GracefulScheduler) RunJobWithTracking(job Job, ctx *Context) error {
 	// Check if shutting down
 	if gs.shutdownManager.IsShuttingDown() {
-		return fmt.Errorf("cannot start job during shutdown")
+		return ErrCannotStartJob
 	}
 
 	gs.activeJobs.Add(1)
@@ -209,7 +209,7 @@ func (gs *GracefulScheduler) RunJobWithTracking(job Job, ctx *Context) error {
 		return err
 	case <-jobCtx.Done():
 		gs.Scheduler.Logger.Warningf("Job %s canceled due to shutdown", job.GetName())
-		return fmt.Errorf("job canceled: shutdown in progress")
+		return ErrJobCanceled
 	}
 }
 
@@ -234,7 +234,7 @@ func (gs *GracefulScheduler) gracefulStop(ctx context.Context) error {
 	case <-ctx.Done():
 		// Count remaining jobs
 		gs.Scheduler.Logger.Warningf("Forcing shutdown with active jobs")
-		return fmt.Errorf("timeout waiting for jobs to complete")
+		return ErrWaitTimeout
 	}
 }
 

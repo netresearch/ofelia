@@ -33,10 +33,10 @@ func TestDefaultWebhookGlobalConfig(t *testing.T) {
 func TestTriggerType_Constants(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, TriggerType("always"), TriggerAlways)
-	assert.Equal(t, TriggerType("success"), TriggerSuccess)
-	assert.Equal(t, TriggerType("error"), TriggerError)
-	assert.Equal(t, TriggerType("skipped"), TriggerSkipped)
+	assert.Equal(t, TriggerAlways, TriggerType("always"))
+	assert.Equal(t, TriggerSuccess, TriggerType("success"))
+	assert.Equal(t, TriggerError, TriggerType("error"))
+	assert.Equal(t, TriggerSkipped, TriggerType("skipped"))
 }
 
 func TestParseWebhookNames_Empty(t *testing.T) {

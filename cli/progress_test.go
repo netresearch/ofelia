@@ -145,7 +145,7 @@ func TestProgressIndicator_Concurrency(t *testing.T) {
 
 	// Concurrent updates
 	done := make(chan bool)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(n int) {
 			progress.Update(fmt.Sprintf("Update %d", n))
 			done <- true
@@ -153,7 +153,7 @@ func TestProgressIndicator_Concurrency(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

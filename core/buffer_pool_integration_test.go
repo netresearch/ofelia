@@ -165,9 +165,9 @@ func TestEnhancedBufferPoolConcurrent(t *testing.T) {
 
 	done := make(chan bool, goroutines)
 
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
-			for j := 0; j < iterations; j++ {
+			for range iterations {
 				buf, err := DefaultBufferPool.Get()
 				if err != nil {
 					t.Errorf("Get() error: %v", err)
@@ -182,7 +182,7 @@ func TestEnhancedBufferPoolConcurrent(t *testing.T) {
 
 	// Wait for all goroutines with timeout
 	timeout := time.After(10 * time.Second)
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		select {
 		case <-done:
 			// Success

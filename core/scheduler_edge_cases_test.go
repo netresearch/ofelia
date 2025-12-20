@@ -176,8 +176,8 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 	const jobsPerWorker = 3
 
 	// Pre-add jobs before starting the scheduler
-	for worker := 0; worker < numWorkers; worker++ {
-		for jobIdx := 0; jobIdx < jobsPerWorker; jobIdx++ {
+	for worker := range numWorkers {
+		for jobIdx := range jobsPerWorker {
 			jobName := fmt.Sprintf("worker%d-job%d", worker, jobIdx)
 			job := NewErrorJob(jobName, "@daily")
 			if err := scheduler.AddJob(job); err != nil {
@@ -197,14 +197,14 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 
 	// Launch concurrent workers with staggered start
 	// Only test operations that are safe on a running scheduler
-	for worker := 0; worker < numWorkers; worker++ {
+	for worker := range numWorkers {
 		go func(workerID int) {
 			defer wg.Done()
 
 			// Stagger worker start to reduce initial contention
 			time.Sleep(time.Duration(workerID) * time.Millisecond)
 
-			for jobIdx := 0; jobIdx < jobsPerWorker; jobIdx++ {
+			for jobIdx := range jobsPerWorker {
 				jobName := fmt.Sprintf("worker%d-job%d", workerID, jobIdx)
 
 				// Cycle through safe operations on existing jobs
@@ -309,7 +309,7 @@ func TestSchedulerMaxConcurrentJobsEdgeCases(t *testing.T) {
 
 	const numJobs = 5
 	jobs := make([]*ErrorJob, numJobs)
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		jobs[i] = NewErrorJob(fmt.Sprintf("limit-job-%d", i), "@daily")
 		jobs[i].SetRunDuration(30 * time.Millisecond)
 		scheduler.AddJob(jobs[i])
@@ -320,7 +320,7 @@ func TestSchedulerMaxConcurrentJobsEdgeCases(t *testing.T) {
 	}
 	defer scheduler.Stop()
 
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		go scheduler.RunJob(fmt.Sprintf("limit-job-%d", i))
 	}
 

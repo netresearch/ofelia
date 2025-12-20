@@ -67,7 +67,7 @@ func (j *RunJob) InitializeRuntimeFields() {
 // For job-run, either Image or Container must be specified.
 func (j *RunJob) Validate() error {
 	if j.Image == "" && j.Container == "" {
-		return errors.New("job-run requires either 'image' (to create a new container) or 'container' (to start an existing container)")
+		return ErrImageOrContainer
 	}
 	return nil
 }

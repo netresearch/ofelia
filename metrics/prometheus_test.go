@@ -140,8 +140,8 @@ func TestHTTPMetricsMiddleware(t *testing.T) {
 	handler := HTTPMetrics(mc)(testHandler)
 
 	// Make test requests
-	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest("GET", "/test", nil)
+	for range 5 {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 	}
@@ -170,7 +170,7 @@ func TestMetricsHandler(t *testing.T) {
 	mc.SetGauge("ofelia_jobs_running", 3)
 
 	// Create request to metrics endpoint
-	req := httptest.NewRequest("GET", "/metrics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	w := httptest.NewRecorder()
 
 	handler := mc.Handler()
@@ -480,7 +480,7 @@ func TestConcurrentMetricsAccess(t *testing.T) {
 	done := make(chan bool, 30)
 
 	// Concurrent increments
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			mc.IncrementCounter("concurrent_counter", 1)
 			done <- true
@@ -488,7 +488,7 @@ func TestConcurrentMetricsAccess(t *testing.T) {
 	}
 
 	// Concurrent gauge sets
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(val float64) {
 			mc.SetGauge("concurrent_gauge", val)
 			done <- true
@@ -496,7 +496,7 @@ func TestConcurrentMetricsAccess(t *testing.T) {
 	}
 
 	// Concurrent histogram observations
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(val float64) {
 			mc.ObserveHistogram("concurrent_hist", val)
 			done <- true
@@ -506,7 +506,7 @@ func TestConcurrentMetricsAccess(t *testing.T) {
 	// Wait for all goroutines with timeout
 	const testTimeout = 10 * time.Second // Timeout for mutation testing
 	timeout := time.After(testTimeout)
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		select {
 		case <-done:
 			// goroutine completed
