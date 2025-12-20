@@ -34,7 +34,7 @@ func TestLocalBuildCommandMissingBinary(t *testing.T) {
 	}
 	// ensure error originates from LookPath
 	execErr := &exec.Error{}
-	if errors.As(err, &execErr) {
+	if !errors.As(err, &execErr) {
 		// not all platforms return *exec.Error, so allow any error
 		_ = err
 	}

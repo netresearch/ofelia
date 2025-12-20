@@ -64,7 +64,7 @@ type mockCanceledError struct {
 }
 
 func (e mockCanceledError) Error() string        { return e.msg }
-func (e mockCanceledError) Canceled() bool       { return true }
+func (e mockCanceledError) Cancelled() bool      { return true } //nolint:misspell // Docker SDK uses British spelling
 func (e mockCanceledError) Is(target error) bool { return errdefs.IsCancelled(target) }
 
 // mockUnavailableError implements errdefs.ErrUnavailable
