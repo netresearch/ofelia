@@ -248,13 +248,12 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 	scheduler := NewScheduler(&TestLogger{})
 	scheduler.SetMaxConcurrentJobs(3)
 
-	// Create jobs with moderate duration (enough to test graceful shutdown)
 	longJob1 := NewErrorJob("long-job-1", "@daily")
-	longJob1.SetRunDuration(300 * time.Millisecond)
+	longJob1.SetRunDuration(50 * time.Millisecond)
 	longJob2 := NewErrorJob("long-job-2", "@daily")
-	longJob2.SetRunDuration(300 * time.Millisecond)
+	longJob2.SetRunDuration(50 * time.Millisecond)
 	longJob3 := NewErrorJob("long-job-3", "@daily")
-	longJob3.SetRunDuration(300 * time.Millisecond)
+	longJob3.SetRunDuration(50 * time.Millisecond)
 
 	scheduler.AddJob(longJob1)
 	scheduler.AddJob(longJob2)
@@ -270,7 +269,8 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 
 	testutil.Eventually(t, func() bool {
 		return longJob1.GetRunCount() > 0 || longJob2.GetRunCount() > 0 || longJob3.GetRunCount() > 0
-	}, testutil.WithTimeout(200*time.Millisecond), testutil.WithMessage("at least one job should start"))
+	}, testutil.WithTimeout(100*time.Millisecond), testutil.WithInterval(5*time.Millisecond),
+		testutil.WithMessage("at least one job should start"))
 
 	stopStart := time.Now()
 	stopErr := scheduler.Stop()
@@ -280,7 +280,7 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 		t.Errorf("Stop() should not return error: %v", stopErr)
 	}
 
-	if stopDuration < 150*time.Millisecond {
+	if stopDuration < 25*time.Millisecond {
 		t.Errorf("Stop() completed too quickly (%v), should wait for running jobs", stopDuration)
 	}
 

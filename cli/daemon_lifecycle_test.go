@@ -18,6 +18,7 @@ import (
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/domain"
+	"github.com/netresearch/ofelia/test/testutil"
 )
 
 type mockDockerProvider struct{}
@@ -263,22 +264,18 @@ func TestPprofServerStartup(t *testing.T) {
 	err := cmd.start()
 	require.NoError(t, err)
 
-	time.Sleep(100 * time.Millisecond)
-
-	found := false
-	for _, entry := range hook.AllEntries() {
-		if strings.Contains(entry.Message, "Starting pprof server") {
-			found = true
-			break
+	// Poll for log message instead of fixed sleep
+	testutil.Eventually(t, func() bool {
+		for _, entry := range hook.AllEntries() {
+			if strings.Contains(entry.Message, "Starting pprof server") {
+				return true
+			}
 		}
-	}
-	assert.True(t, found)
+		return false
+	}, testutil.WithTimeout(500*time.Millisecond), testutil.WithInterval(10*time.Millisecond))
 
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		_ = cmd.shutdownManager.Shutdown()
-	}()
-
+	// Trigger shutdown asynchronously
+	go func() { _ = cmd.shutdownManager.Shutdown() }()
 	_ = cmd.shutdown()
 }
 
@@ -502,26 +499,21 @@ func TestConcurrentServerStartup(t *testing.T) {
 	err = cmd.start()
 	require.NoError(t, err)
 
-	time.Sleep(200 * time.Millisecond)
-
-	pprofFound := false
-	webFound := false
-	for _, entry := range hook.AllEntries() {
-		if strings.Contains(entry.Message, "Starting pprof server") {
-			pprofFound = true
+	testutil.Eventually(t, func() bool {
+		pprofFound := false
+		webFound := false
+		for _, entry := range hook.AllEntries() {
+			if strings.Contains(entry.Message, "Starting pprof server") {
+				pprofFound = true
+			}
+			if strings.Contains(entry.Message, "Starting web server") {
+				webFound = true
+			}
 		}
-		if strings.Contains(entry.Message, "Starting web server") {
-			webFound = true
-		}
-	}
-	assert.True(t, pprofFound)
-	assert.True(t, webFound)
+		return pprofFound && webFound
+	}, testutil.WithTimeout(500*time.Millisecond), testutil.WithInterval(10*time.Millisecond))
 
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		_ = cmd.shutdownManager.Shutdown()
-	}()
-
+	go func() { _ = cmd.shutdownManager.Shutdown() }()
 	_ = cmd.shutdown()
 }
 

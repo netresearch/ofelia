@@ -4,6 +4,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/netresearch/ofelia/test/testutil"
 )
 
 // TestEnhancedBufferPoolIntegration verifies the enhanced buffer pool is properly integrated
@@ -236,29 +238,18 @@ func TestEnhancedBufferPoolPrewarming(t *testing.T) {
 	ebp.Shutdown()
 }
 
-// TestEnhancedBufferPoolShutdown verifies graceful shutdown
 func TestEnhancedBufferPoolShutdown(t *testing.T) {
 	t.Parallel()
 	config := DefaultEnhancedBufferPoolConfig()
-	config.ShrinkInterval = 100 * time.Millisecond
+	config.ShrinkInterval = 10 * time.Millisecond
 
 	ebp := NewEnhancedBufferPool(config, nil)
-
-	// Let it run briefly
-	time.Sleep(50 * time.Millisecond)
-
-	// Shutdown
 	ebp.Shutdown()
 
-	// Give it time to clean up
-	time.Sleep(50 * time.Millisecond)
-
-	// Verify pools are cleared
-	stats := ebp.GetStats()
-	poolCount := stats["pool_count"].(int)
-	if poolCount != 0 {
-		t.Errorf("Expected pool_count=0 after shutdown, got %d", poolCount)
-	}
+	testutil.Eventually(t, func() bool {
+		stats := ebp.GetStats()
+		return stats["pool_count"].(int) == 0
+	}, testutil.WithTimeout(200*time.Millisecond), testutil.WithInterval(5*time.Millisecond))
 }
 
 // BenchmarkEnhancedBufferPoolVsSimple compares enhanced vs simple pool performance
