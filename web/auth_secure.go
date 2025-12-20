@@ -15,6 +15,13 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	// BearerPrefix is the prefix for Bearer tokens in Authorization header
+	BearerPrefix = "Bearer"
+	// httpsProto is used to check X-Forwarded-Proto header for HTTPS
+	httpsProto = "https"
+)
+
 type TokenData struct {
 	Username  string    `json:"username"`
 	ExpiresAt time.Time `json:"expiresAt"`
