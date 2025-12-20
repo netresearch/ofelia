@@ -312,12 +312,8 @@ func TestSecurityConfigFromGlobal_SpecificHosts(t *testing.T) {
 }
 
 func TestSetGlobalSecurityConfig_SetsValidator(t *testing.T) {
-	originalValidator := ValidateWebhookURL
-	originalTransport := TransportFactory
-	defer func() {
-		ValidateWebhookURL = originalValidator
-		TransportFactory = originalTransport
-	}()
+	// Note: Not parallel - modifies global security config
+	defer SetGlobalSecurityConfig(nil) // Reset to defaults
 
 	config := &WebhookSecurityConfig{
 		AllowedHosts: []string{"hooks.slack.com"},
@@ -333,12 +329,8 @@ func TestSetGlobalSecurityConfig_SetsValidator(t *testing.T) {
 }
 
 func TestSetGlobalSecurityConfig_NilResetsToDefault(t *testing.T) {
-	originalValidator := ValidateWebhookURL
-	originalTransport := TransportFactory
-	defer func() {
-		ValidateWebhookURL = originalValidator
-		TransportFactory = originalTransport
-	}()
+	// Note: Not parallel - modifies global security config
+	defer SetGlobalSecurityConfig(nil) // Reset to defaults
 
 	SetGlobalSecurityConfig(&WebhookSecurityConfig{AllowedHosts: []string{"hooks.slack.com"}})
 	SetGlobalSecurityConfig(nil)

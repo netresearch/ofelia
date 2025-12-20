@@ -24,7 +24,7 @@ func newMemoryLogger(level logrus.Level) (*logtest.Hook, core.Logger) {
 }
 
 func TestBootLogsConfigError(t *testing.T) {
-	t.Parallel()
+	// Note: Not parallel - modifies global newDockerHandler
 
 	tmpFile, err := os.CreateTemp("", "ofelia_bad_*.ini")
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestBootLogsConfigError(t *testing.T) {
 }
 
 func TestBootLogsConfigErrorSuppressed(t *testing.T) {
-	t.Parallel()
+	// Note: Not parallel - modifies global newDockerHandler
 
 	tmpFile, err := os.CreateTemp("", "ofelia_bad_*.ini")
 	require.NoError(t, err)
@@ -86,7 +86,7 @@ func TestBootLogsConfigErrorSuppressed(t *testing.T) {
 }
 
 func TestBootLogsMissingConfig(t *testing.T) {
-	t.Parallel()
+	// Note: Not parallel - modifies global newDockerHandler
 
 	tmpFile, err := os.CreateTemp("", "ofelia_missing_*.ini")
 	require.NoError(t, err)
@@ -115,7 +115,7 @@ func TestBootLogsMissingConfig(t *testing.T) {
 }
 
 func TestBootLogsMissingConfigIncludesFilename(t *testing.T) {
-	t.Parallel()
+	// Note: Not parallel - modifies global newDockerHandler
 
 	tmpFile, err := os.CreateTemp("", "ofelia_missing_*.ini")
 	require.NoError(t, err)
@@ -146,7 +146,7 @@ func TestBootLogsMissingConfigIncludesFilename(t *testing.T) {
 }
 
 func TestBootWebWithoutDocker(t *testing.T) {
-	t.Parallel()
+	// Note: Not parallel - modifies global newDockerHandler
 
 	_, logger := newMemoryLogger(logrus.InfoLevel)
 	cmd := &DaemonCommand{Logger: logger, EnableWeb: true}

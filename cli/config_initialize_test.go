@@ -124,8 +124,7 @@ func (m *mockDockerProviderForInit) Close() error {
 }
 
 func TestInitializeAppSuccess(t *testing.T) {
-	t.Parallel()
-
+	// Note: Not parallel - modifies global newDockerHandler
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
@@ -151,8 +150,7 @@ func TestInitializeAppSuccess(t *testing.T) {
 }
 
 func TestInitializeAppLabelConflict(t *testing.T) {
-	t.Parallel()
-
+	// Note: Not parallel - modifies global newDockerHandler
 	const iniStr = "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo ini\n"
 	cfg, err := BuildFromString(iniStr, &TestLogger{})
 	require.NoError(t, err)
@@ -195,8 +193,7 @@ func TestInitializeAppLabelConflict(t *testing.T) {
 }
 
 func TestInitializeAppComposeConflict(t *testing.T) {
-	t.Parallel()
-
+	// Note: Not parallel - modifies global newDockerHandler
 	iniStr := "[job-compose \"foo\"]\nschedule = @daily\nfile = docker-compose.yml\n"
 	cfg, err := BuildFromString(iniStr, &TestLogger{})
 	require.NoError(t, err)

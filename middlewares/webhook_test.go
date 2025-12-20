@@ -155,15 +155,12 @@ func TestWebhookConfig_ShouldNotify(t *testing.T) {
 }
 
 func TestWebhook_SendsRequest(t *testing.T) {
-	t.Parallel()
+	// Note: Not parallel - modifies global security config
+	SetValidateWebhookURLForTest(func(rawURL string) error { return nil })
+	defer SetValidateWebhookURLForTest(ValidateWebhookURLImpl)
 
-	originalValidator := ValidateWebhookURL
-	ValidateWebhookURL = func(rawURL string) error { return nil }
-	defer func() { ValidateWebhookURL = originalValidator }()
-
-	originalTransport := TransportFactory
-	TransportFactory = func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() }
-	defer func() { TransportFactory = originalTransport }()
+	SetTransportFactoryForTest(func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() })
+	defer SetTransportFactoryForTest(NewSafeTransport)
 
 	var receivedBody string
 	var receivedHeaders http.Header
@@ -214,15 +211,12 @@ func TestWebhook_SendsRequest(t *testing.T) {
 }
 
 func TestWebhook_Retry(t *testing.T) {
-	t.Parallel()
+	// Note: Not parallel - modifies global security config
+	SetValidateWebhookURLForTest(func(rawURL string) error { return nil })
+	defer SetValidateWebhookURLForTest(ValidateWebhookURLImpl)
 
-	originalValidator := ValidateWebhookURL
-	ValidateWebhookURL = func(rawURL string) error { return nil }
-	defer func() { ValidateWebhookURL = originalValidator }()
-
-	originalTransport := TransportFactory
-	TransportFactory = func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() }
-	defer func() { TransportFactory = originalTransport }()
+	SetTransportFactoryForTest(func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() })
+	defer SetTransportFactoryForTest(NewSafeTransport)
 
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

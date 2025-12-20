@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"text/template"
@@ -411,28 +410,7 @@ func (w *WebhookMiddleware) Run(ctx *core.Context) error {
 	return err
 }
 
-// ValidateWebhookURL validates a URL is safe for webhook requests (SSRF protection)
-// This is a forward declaration - implementation in webhook_security.go
-var ValidateWebhookURL func(rawURL string) error
-
-func init() {
-	// Default implementation if security module not loaded
-	if ValidateWebhookURL == nil {
-		ValidateWebhookURL = func(rawURL string) error {
-			u, err := url.Parse(rawURL)
-			if err != nil {
-				return fmt.Errorf("invalid URL: %w", err)
-			}
-			if u.Scheme != "http" && u.Scheme != "https" {
-				return fmt.Errorf("URL scheme must be http or https")
-			}
-			if u.Host == "" {
-				return fmt.Errorf("URL must have a host")
-			}
-			return nil
-		}
-	}
-}
+// ValidateWebhookURL is defined in webhook_security.go with thread-safe access
 
 // PresetDataForTemplate provides preset config to templates that need it
 type PresetDataForTemplate struct {
