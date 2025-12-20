@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/netresearch/ofelia/middlewares"
@@ -295,14 +294,4 @@ trigger = error
 	if webhook.LinkText != "View Logs" {
 		t.Errorf("Expected link-text 'View Logs', got %q", webhook.LinkText)
 	}
-}
-
-// Helper to check if a string contains another
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if strings.TrimSpace(item) == s {
-			return true
-		}
-	}
-	return false
 }

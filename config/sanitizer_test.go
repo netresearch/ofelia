@@ -6,6 +6,7 @@ import (
 )
 
 func TestNewSanitizer(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 	if sanitizer == nil {
 		t.Fatal("NewSanitizer returned nil")
@@ -25,6 +26,7 @@ func TestNewSanitizer(t *testing.T) {
 }
 
 func TestSanitizeString(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -87,6 +89,7 @@ func TestSanitizeString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := sanitizer.SanitizeString(tt.input, tt.maxLength)
 			if (err != nil) != tt.wantError {
 				t.Errorf("SanitizeString() error = %v, wantError %v", err, tt.wantError)
@@ -100,6 +103,7 @@ func TestSanitizeString(t *testing.T) {
 }
 
 func TestValidateCommand(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -161,6 +165,7 @@ func TestValidateCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := sanitizer.ValidateCommand(tt.command)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateCommand() error = %v, wantError %v", err, tt.wantError)
@@ -170,6 +175,7 @@ func TestValidateCommand(t *testing.T) {
 }
 
 func TestValidatePath(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -230,6 +236,7 @@ func TestValidatePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := sanitizer.ValidatePath(tt.path, tt.allowedBasePath)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidatePath() error = %v, wantError %v", err, tt.wantError)
@@ -239,6 +246,7 @@ func TestValidatePath(t *testing.T) {
 }
 
 func TestValidateEnvironmentVar(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -299,6 +307,7 @@ func TestValidateEnvironmentVar(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := sanitizer.ValidateEnvironmentVar(tt.varName, tt.varValue)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateEnvironmentVar() error = %v, wantError %v", err, tt.wantError)
@@ -308,6 +317,7 @@ func TestValidateEnvironmentVar(t *testing.T) {
 }
 
 func TestSanitizerValidateURL(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -364,6 +374,7 @@ func TestSanitizerValidateURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := sanitizer.ValidateURL(tt.url)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateURL() error = %v, wantError %v", err, tt.wantError)
@@ -373,6 +384,7 @@ func TestSanitizerValidateURL(t *testing.T) {
 }
 
 func TestValidateDockerImage(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -429,6 +441,7 @@ func TestValidateDockerImage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := sanitizer.ValidateDockerImage(tt.image)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateDockerImage() error = %v, wantError %v", err, tt.wantError)
@@ -438,6 +451,7 @@ func TestValidateDockerImage(t *testing.T) {
 }
 
 func TestSanitizerValidateCronExpression(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -539,6 +553,7 @@ func TestSanitizerValidateCronExpression(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := sanitizer.ValidateCronExpression(tt.expr)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateCronExpression() error = %v, wantError %v", err, tt.wantError)
@@ -548,6 +563,7 @@ func TestSanitizerValidateCronExpression(t *testing.T) {
 }
 
 func TestSanitizeHTML(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -579,6 +595,7 @@ func TestSanitizeHTML(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := sanitizer.SanitizeHTML(tt.input)
 			if result != tt.expected {
 				t.Errorf("SanitizeHTML() = %v, want %v", result, tt.expected)
@@ -588,6 +605,7 @@ func TestSanitizeHTML(t *testing.T) {
 }
 
 func TestValidateJobName(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -634,6 +652,7 @@ func TestValidateJobName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := sanitizer.ValidateJobName(tt.jobName)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateJobName() error = %v, wantError %v", err, tt.wantError)
@@ -643,6 +662,7 @@ func TestValidateJobName(t *testing.T) {
 }
 
 func TestValidateEmailList(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	tests := []struct {
@@ -694,6 +714,7 @@ func TestValidateEmailList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := sanitizer.ValidateEmailList(tt.emails)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateEmailList() error = %v, wantError %v", err, tt.wantError)
@@ -705,6 +726,7 @@ func TestValidateEmailList(t *testing.T) {
 // Test private helper functions through public methods
 
 func TestValidateCronFieldThroughExpression(t *testing.T) {
+	t.Parallel()
 	sanitizer := NewSanitizer()
 
 	// Test through ValidateCronExpression which calls validateCronField
@@ -747,6 +769,7 @@ func TestValidateCronFieldThroughExpression(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := sanitizer.ValidateCronExpression(tt.expr)
 			if (err != nil) != tt.wantError {
 				t.Errorf("ValidateCronExpression() error = %v, wantError %v", err, tt.wantError)

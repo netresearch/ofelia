@@ -8,6 +8,7 @@ import (
 // Tests targeting surviving CONDITIONALS_BOUNDARY mutations in command_validator.go
 
 func TestValidateServiceName_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 
 	testCases := []struct {
@@ -52,6 +53,7 @@ func TestValidateServiceName_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := v.ValidateServiceName(tc.serviceName)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -61,6 +63,7 @@ func TestValidateServiceName_BoundaryConditions(t *testing.T) {
 }
 
 func TestValidateFilePath_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 
 	testCases := []struct {
@@ -105,6 +108,7 @@ func TestValidateFilePath_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := v.ValidateFilePath(tc.path)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -114,6 +118,7 @@ func TestValidateFilePath_BoundaryConditions(t *testing.T) {
 }
 
 func TestValidateCommandArgs_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 
 	testCases := []struct {
@@ -171,6 +176,7 @@ func TestValidateCommandArgs_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := v.ValidateCommandArgs(tc.args)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -180,6 +186,7 @@ func TestValidateCommandArgs_BoundaryConditions(t *testing.T) {
 }
 
 func TestSanitizeCommand_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	v := NewCommandValidator()
 
 	testCases := []struct {
@@ -230,6 +237,7 @@ func TestSanitizeCommand_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			result := v.SanitizeCommand(tc.input)
 			if len(result) != tc.wantLength {
 				t.Errorf("%s: got length %d, want %d", tc.desc, len(result), tc.wantLength)

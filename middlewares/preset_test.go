@@ -115,7 +115,7 @@ func TestPresetLoader_LoadNonExistent(t *testing.T) {
 	loader := NewPresetLoader(nil)
 	preset, err := loader.Load("nonexistent")
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, preset)
 }
 
@@ -170,7 +170,7 @@ func TestPreset_RenderBody_Simple(t *testing.T) {
 
 	body, err := preset.RenderBody(data)
 	require.NoError(t, err)
-	assert.Equal(t, `{"message": "Job test-job finished"}`, body)
+	assert.JSONEq(t, `{"message": "Job test-job finished"}`, body)
 }
 
 func TestPreset_RenderBody_WithStatus(t *testing.T) {
@@ -189,7 +189,7 @@ func TestPreset_RenderBody_WithStatus(t *testing.T) {
 
 	body, err := preset.RenderBody(data)
 	require.NoError(t, err)
-	assert.Equal(t, `{"status": "success"}`, body)
+	assert.JSONEq(t, `{"status": "success"}`, body)
 }
 
 func TestPreset_RenderBody_WithDuration(t *testing.T) {

@@ -199,7 +199,7 @@ func TestCleanup_RemovesExpiredEntries(t *testing.T) {
 
 	// Cleanup should remove expired entries
 	dedup.Cleanup()
-	assert.Len(t, dedup.entries, 0)
+	assert.Empty(t, dedup.entries)
 }
 
 func TestConcurrentAccess(t *testing.T) {
@@ -213,21 +213,21 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Simulate concurrent access
 	done := make(chan bool, 10)
-	for i := 0; i < 10; i++ {
-		go func(errNum int) {
+	for range 10 {
+		go func() {
 			sh := core.NewScheduler(&TestLogger{})
 			e, err := core.NewExecution()
-			require.NoError(t, err)
+			assert.NoError(t, err) // use assert in goroutines, not require
 			ctx := core.NewContext(sh, job, e)
 			ctx.Start()
 			ctx.Stop(errors.New("error"))
 			dedup.ShouldNotify(ctx)
 			done <- true
-		}(i)
+		}()
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

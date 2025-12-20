@@ -36,6 +36,33 @@ var (
 	ErrCircularDependency = errors.New("circular dependency detected")
 	ErrDependencyNotMet   = errors.New("job dependencies not met")
 	ErrWorkflowInvalid    = errors.New("invalid workflow configuration")
+
+	// Validation errors
+	ErrEmptyCommand         = errors.New("command cannot be empty")
+	ErrUnsupportedFieldType = errors.New("unsupported field type")
+	ErrImageOrContainer     = errors.New("job-run requires either 'image' or 'container'")
+	ErrImageRequired        = errors.New("job-service-run requires 'image' to create a new swarm service")
+
+	// Scheduler errors
+	ErrSchedulerTimeout = errors.New("scheduler stop timed out")
+
+	// Shutdown errors
+	ErrShutdownInProgress = errors.New("shutdown already in progress")
+	ErrShutdownTimeout    = errors.New("shutdown timed out")
+	ErrJobCanceled        = errors.New("job canceled: shutdown in progress")
+	ErrCannotStartJob     = errors.New("cannot start job during shutdown")
+	ErrWaitTimeout        = errors.New("timeout waiting for jobs to complete")
+
+	// Resilience errors
+	ErrCircuitBreakerOpen     = errors.New("circuit breaker is open")
+	ErrCircuitBreakerHalfOpen = errors.New("circuit breaker is half-open but max calls reached")
+	ErrCircuitBreakerUnknown  = errors.New("circuit breaker is in unknown state")
+	ErrRateLimitExceeded      = errors.New("rate limit exceeded")
+	ErrTokensExceedCapacity   = errors.New("requested tokens exceed capacity")
+	ErrBulkheadFull           = errors.New("bulkhead is full")
+
+	// Docker SDK errors
+	ErrResponseChannelClosed = errors.New("response channel closed unexpectedly")
 )
 
 // WrapContainerError wraps a container-related error with context
@@ -127,7 +154,7 @@ func containsIgnoreCase(s, substr string) bool {
 	// Simple case-insensitive contains
 	for i := 0; i <= len(s)-len(substr); i++ {
 		match := true
-		for j := 0; j < len(substr); j++ {
+		for j := range len(substr) {
 			if toLower(s[i+j]) != toLower(substr[j]) {
 				match = false
 				break

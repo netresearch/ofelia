@@ -57,7 +57,7 @@ func BenchmarkSchedulerConcurrency(b *testing.B) {
 
 			// Create jobs
 			jobs := make([]*SimpleControlledJob, tc.numJobs)
-			for i := 0; i < tc.numJobs; i++ {
+			for i := range tc.numJobs {
 				jobs[i] = NewSimpleControlledJob(fmt.Sprintf("bench-job-%d", i), "@daily", tc.duration)
 				if err := scheduler.AddJob(jobs[i]); err != nil {
 					b.Fatalf("Failed to add job %d: %v", i, err)
@@ -72,12 +72,12 @@ func BenchmarkSchedulerConcurrency(b *testing.B) {
 			b.ResetTimer()
 
 			// Benchmark the scheduler's ability to handle concurrent job executions
-			for n := 0; n < b.N; n++ {
+			for range b.N {
 				var wg sync.WaitGroup
 				wg.Add(tc.numJobs)
 
 				// Trigger all jobs concurrently
-				for i := 0; i < tc.numJobs; i++ {
+				for i := range tc.numJobs {
 					go func(jobIndex int) {
 						defer wg.Done()
 						scheduler.RunJob(fmt.Sprintf("bench-job-%d", jobIndex))
@@ -109,7 +109,7 @@ func BenchmarkSchedulerMemoryUsage(b *testing.B) {
 
 	// Create a reasonable number of jobs for memory testing
 	const numJobs = 100
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		job := NewSimpleControlledJob(fmt.Sprintf("mem-job-%d", i), "@daily", time.Microsecond*100)
 		if err := scheduler.AddJob(job); err != nil {
 			b.Fatalf("Failed to add job %d: %v", i, err)
@@ -123,9 +123,9 @@ func BenchmarkSchedulerMemoryUsage(b *testing.B) {
 
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for range b.N {
 		// Trigger rapid job executions to stress memory allocation
-		for i := 0; i < numJobs; i++ {
+		for i := range numJobs {
 			go scheduler.RunJob(fmt.Sprintf("mem-job-%d", i))
 		}
 		// Allow some jobs to complete before next iteration
@@ -150,7 +150,7 @@ func BenchmarkSchedulerJobManagement(b *testing.B) {
 
 			switch op {
 			case "add":
-				for n := 0; n < b.N; n++ {
+				for n := range b.N {
 					job := NewSimpleControlledJob(fmt.Sprintf("add-job-%d", n), "@daily", 0)
 					if err := scheduler.AddJob(job); err != nil {
 						b.Fatalf("AddJob failed: %v", err)
@@ -160,13 +160,13 @@ func BenchmarkSchedulerJobManagement(b *testing.B) {
 			case "remove":
 				// Pre-populate jobs for removal
 				jobs := make([]*SimpleControlledJob, b.N)
-				for i := 0; i < b.N; i++ {
+				for i := range b.N {
 					jobs[i] = NewSimpleControlledJob(fmt.Sprintf("remove-job-%d", i), "@daily", 0)
 					scheduler.AddJob(jobs[i])
 				}
 				b.ResetTimer()
 
-				for n := 0; n < b.N; n++ {
+				for n := range b.N {
 					if err := scheduler.RemoveJob(jobs[n]); err != nil {
 						b.Fatalf("RemoveJob failed: %v", err)
 					}
@@ -174,13 +174,13 @@ func BenchmarkSchedulerJobManagement(b *testing.B) {
 
 			case "disable":
 				// Pre-populate jobs for disabling
-				for i := 0; i < b.N; i++ {
+				for i := range b.N {
 					job := NewSimpleControlledJob(fmt.Sprintf("disable-job-%d", i), "@daily", 0)
 					scheduler.AddJob(job)
 				}
 				b.ResetTimer()
 
-				for n := 0; n < b.N; n++ {
+				for n := range b.N {
 					if err := scheduler.DisableJob(fmt.Sprintf("disable-job-%d", n)); err != nil {
 						b.Fatalf("DisableJob failed: %v", err)
 					}
@@ -188,14 +188,14 @@ func BenchmarkSchedulerJobManagement(b *testing.B) {
 
 			case "enable":
 				// Pre-populate and disable jobs for enabling
-				for i := 0; i < b.N; i++ {
+				for i := range b.N {
 					job := NewSimpleControlledJob(fmt.Sprintf("enable-job-%d", i), "@daily", 0)
 					scheduler.AddJob(job)
 					scheduler.DisableJob(fmt.Sprintf("enable-job-%d", i))
 				}
 				b.ResetTimer()
 
-				for n := 0; n < b.N; n++ {
+				for n := range b.N {
 					if err := scheduler.EnableJob(fmt.Sprintf("enable-job-%d", n)); err != nil {
 						b.Fatalf("EnableJob failed: %v", err)
 					}
@@ -216,7 +216,7 @@ func BenchmarkSchedulerSemaphoreContention(b *testing.B) {
 
 			// Create jobs that will compete for semaphore slots
 			const numCompetingJobs = 100
-			for i := 0; i < numCompetingJobs; i++ {
+			for i := range numCompetingJobs {
 				job := NewSimpleControlledJob(fmt.Sprintf("compete-job-%d", i), "@daily", time.Millisecond*10)
 				scheduler.AddJob(job)
 			}
@@ -228,12 +228,12 @@ func BenchmarkSchedulerSemaphoreContention(b *testing.B) {
 
 			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			for range b.N {
 				// Create high contention by triggering many jobs simultaneously
 				var wg sync.WaitGroup
 				wg.Add(numCompetingJobs)
 
-				for i := 0; i < numCompetingJobs; i++ {
+				for i := range numCompetingJobs {
 					go func(jobIndex int) {
 						defer wg.Done()
 						scheduler.RunJob(fmt.Sprintf("compete-job-%d", jobIndex))
@@ -258,13 +258,13 @@ func BenchmarkSchedulerLookupOperations(b *testing.B) {
 			scheduler := NewScheduler(&TestLogger{})
 
 			// Populate jobs
-			for i := 0; i < count; i++ {
+			for i := range count {
 				job := NewSimpleControlledJob(fmt.Sprintf("lookup-job-%d", i), "@daily", 0)
 				scheduler.AddJob(job)
 			}
 
 			// Also create some disabled jobs
-			for i := 0; i < count/4; i++ {
+			for i := range count / 4 {
 				job := NewSimpleControlledJob(fmt.Sprintf("disabled-job-%d", i), "@daily", 0)
 				scheduler.AddJob(job)
 				scheduler.DisableJob(fmt.Sprintf("disabled-job-%d", i))
@@ -277,7 +277,7 @@ func BenchmarkSchedulerLookupOperations(b *testing.B) {
 
 			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			for n := range b.N {
 				// Benchmark active job lookups
 				jobIndex := n % count
 				job := scheduler.GetJob(fmt.Sprintf("lookup-job-%d", jobIndex))

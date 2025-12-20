@@ -8,6 +8,7 @@ import (
 // Tests targeting surviving CONDITIONALS_BOUNDARY mutations in sanitizer.go
 
 func TestSanitizeString_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	s := NewSanitizer()
 
 	testCases := []struct {
@@ -76,6 +77,7 @@ func TestSanitizeString_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := s.SanitizeString(tc.input, tc.maxLength)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -85,6 +87,7 @@ func TestSanitizeString_BoundaryConditions(t *testing.T) {
 }
 
 func TestValidateEnvironmentVar_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	s := NewSanitizer()
 
 	testCases := []struct {
@@ -120,6 +123,7 @@ func TestValidateEnvironmentVar_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := s.ValidateEnvironmentVar(tc.varName, tc.value)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -129,6 +133,7 @@ func TestValidateEnvironmentVar_BoundaryConditions(t *testing.T) {
 }
 
 func TestValidateDockerImage_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	s := NewSanitizer()
 
 	testCases := []struct {
@@ -173,6 +178,7 @@ func TestValidateDockerImage_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := s.ValidateDockerImage(tc.image)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -182,6 +188,7 @@ func TestValidateDockerImage_BoundaryConditions(t *testing.T) {
 }
 
 func TestValidateCronExpression_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	s := NewSanitizer()
 
 	testCases := []struct {
@@ -220,6 +227,7 @@ func TestValidateCronExpression_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := s.ValidateCronExpression(tc.expr)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -229,6 +237,7 @@ func TestValidateCronExpression_BoundaryConditions(t *testing.T) {
 }
 
 func TestValidateCronRange_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	s := NewSanitizer()
 
 	testCases := []struct {
@@ -286,6 +295,7 @@ func TestValidateCronRange_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := s.ValidateCronExpression(tc.expr)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -295,6 +305,7 @@ func TestValidateCronRange_BoundaryConditions(t *testing.T) {
 }
 
 func TestValidateCronList_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	s := NewSanitizer()
 
 	testCases := []struct {
@@ -345,6 +356,7 @@ func TestValidateCronList_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := s.ValidateCronExpression(tc.expr)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -356,6 +368,7 @@ func TestValidateCronList_BoundaryConditions(t *testing.T) {
 // TestValidateCronStep_BoundaryConditions tests step expression boundary conditions
 // Targets line 349: if err != nil || baseVal < minVal || baseVal > maxVal
 func TestValidateCronStep_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	s := NewSanitizer()
 
 	testCases := []struct {
@@ -501,6 +514,7 @@ func TestValidateCronStep_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := s.ValidateCronExpression(tc.expr)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)
@@ -510,6 +524,7 @@ func TestValidateCronStep_BoundaryConditions(t *testing.T) {
 }
 
 func TestValidateJobName_BoundaryConditions(t *testing.T) {
+	t.Parallel()
 	s := NewSanitizer()
 
 	testCases := []struct {
@@ -553,6 +568,7 @@ func TestValidateJobName_BoundaryConditions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := s.ValidateJobName(tc.jobName)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("%s: got error %v, wantErr %v", tc.desc, err, tc.wantErr)

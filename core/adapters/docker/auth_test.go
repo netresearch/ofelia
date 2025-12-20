@@ -120,7 +120,7 @@ func TestConfigAuthProvider_GetAuthConfig_ValidConfig(t *testing.T) {
 			}
 		}
 	}`
-	if err := os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(configJSON), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(configJSON), 0o600); err != nil {
 		t.Fatalf("Failed to write config.json: %v", err)
 	}
 
@@ -178,7 +178,7 @@ func TestConfigAuthProvider_GetEncodedAuth_ValidConfig(t *testing.T) {
 			}
 		}
 	}`
-	if err := os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(configJSON), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(configJSON), 0o600); err != nil {
 		t.Fatalf("Failed to write config.json: %v", err)
 	}
 
@@ -227,7 +227,7 @@ func TestConfigAuthProvider_Logging(t *testing.T) {
 			}
 		}
 	}`
-	if err := os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(configJSON), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(configJSON), 0o600); err != nil {
 		t.Fatalf("Failed to write config.json: %v", err)
 	}
 

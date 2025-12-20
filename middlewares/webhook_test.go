@@ -49,7 +49,7 @@ func TestNewWebhook_InvalidPreset(t *testing.T) {
 	loader := NewPresetLoader(nil)
 
 	middleware, err := NewWebhook(config, loader)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, middleware)
 }
 

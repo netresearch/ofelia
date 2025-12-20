@@ -391,10 +391,8 @@ func TestSimpleMetricsRecorder(t *testing.T) {
 	jobMetric, ok := metrics["job.test-job.last_execution"].(map[string]interface{})
 	if !ok {
 		t.Error("Expected job execution metric to be recorded")
-	} else {
-		if jobMetric["success"] != true {
-			t.Errorf("Expected job success=true, got %v", jobMetric["success"])
-		}
+	} else if jobMetric["success"] != true {
+		t.Errorf("Expected job success=true, got %v", jobMetric["success"])
 	}
 }
 

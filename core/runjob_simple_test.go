@@ -349,9 +349,9 @@ func TestRunJob_ContainerIDConcurrency(t *testing.T) {
 	// Test concurrent access to container ID
 	done := make(chan bool, numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(id int) {
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				containerID := fmt.Sprintf("container-%d-%d", id, j)
 				job.setContainerID(containerID)
 
@@ -367,7 +367,7 @@ func TestRunJob_ContainerIDConcurrency(t *testing.T) {
 
 	// Wait for all goroutines to complete with timeout
 	timeout := time.After(testTimeout)
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		select {
 		case <-done:
 			// goroutine completed
@@ -520,7 +520,7 @@ func TestRunJob_Validate(t *testing.T) {
 			image:       "",
 			container:   "",
 			expectError: true,
-			errorMsg:    "job-run requires either 'image' (to create a new container) or 'container' (to start an existing container)",
+			errorMsg:    "job-run requires either 'image' or 'container'",
 		},
 	}
 

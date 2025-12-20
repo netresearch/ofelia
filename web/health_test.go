@@ -53,7 +53,7 @@ func TestLivenessHandler(t *testing.T) {
 	hc := NewHealthChecker(nil, "1.0.0")
 	handler := hc.LivenessHandler()
 
-	req := httptest.NewRequest("GET", "/live", nil)
+	req := httptest.NewRequest(http.MethodGet, "/live", nil)
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -78,7 +78,7 @@ func TestReadinessHandler(t *testing.T) {
 
 	handler := hc.ReadinessHandler()
 
-	req := httptest.NewRequest("GET", "/ready", nil)
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -115,7 +115,7 @@ func TestHealthHandler(t *testing.T) {
 
 	handler := hc.HealthHandler()
 
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 
 	handler(w, req)

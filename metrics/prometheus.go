@@ -350,7 +350,7 @@ func (jm *JobMetrics) JobCompleted(jobID string, success bool) {
 
 // Helper method to get gauge value
 //
-//nolint:unparam // name is parameterized for future gauge types
+
 func (mc *Collector) getGaugeValue(name string) float64 {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()

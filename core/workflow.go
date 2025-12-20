@@ -78,7 +78,7 @@ func (wo *WorkflowOrchestrator) BuildDependencyGraph(jobs []Job) error {
 		for _, dep := range node.Dependencies {
 			depNode, exists := wo.dependencies[dep]
 			if !exists {
-				return fmt.Errorf("job %s depends on non-existent job %s", jobName, dep)
+				return fmt.Errorf("%w: job %s depends on %s", ErrJobNotFound, jobName, dep)
 			}
 			depNode.Dependents = append(depNode.Dependents, jobName)
 		}
@@ -86,7 +86,7 @@ func (wo *WorkflowOrchestrator) BuildDependencyGraph(jobs []Job) error {
 
 	// Validate for circular dependencies
 	if err := wo.validateDAG(); err != nil {
-		return fmt.Errorf("dependency validation failed: %w", err)
+		return fmt.Errorf("%w: %w", ErrWorkflowInvalid, err)
 	}
 
 	return nil
@@ -100,7 +100,7 @@ func (wo *WorkflowOrchestrator) validateDAG() error {
 	for jobName := range wo.dependencies {
 		if !visited[jobName] {
 			if wo.hasCycle(jobName, visited, recStack) {
-				return fmt.Errorf("circular dependency detected involving job %s", jobName)
+				return fmt.Errorf("%w: involving job %s", ErrCircularDependency, jobName)
 			}
 		}
 	}

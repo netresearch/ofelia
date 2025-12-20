@@ -309,7 +309,7 @@ func randomID() (string, error) {
 const HashmeTagName = "hash"
 
 func GetHash(t reflect.Type, v reflect.Value, hash *string) error {
-	for i := 0; i < t.NumField(); i++ {
+	for i := range t.NumField() {
 		field := t.Field(i)
 		fieldv := v.Field(i)
 		kind := field.Type.Kind()
@@ -336,7 +336,7 @@ func GetHash(t reflect.Type, v reflect.Value, hash *string) error {
 			*hash += strconv.FormatBool(fieldv.Bool())
 		case reflect.Slice:
 			if field.Type.Elem().Kind() != reflect.String {
-				return fmt.Errorf("unsupported field type")
+				return ErrUnsupportedFieldType
 			}
 			strs := fieldv.Interface().([]string)
 			for _, str := range strs {
@@ -352,12 +352,12 @@ func GetHash(t reflect.Type, v reflect.Value, hash *string) error {
 				*hash += elem.String()
 				continue
 			}
-			return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
+			return fmt.Errorf("%w: field '%s' of type '%s'", ErrUnsupportedFieldType, field.Name, field.Type)
 		// Other kinds are intentionally not part of the job hash. They are either
 		// not used in our job structs today or would require a more elaborate
 		// stable string representation that is out of scope here.
 		default:
-			return fmt.Errorf("unsupported field type: field '%s' of type '%s'", field.Name, field.Type)
+			return fmt.Errorf("%w: field '%s' of type '%s'", ErrUnsupportedFieldType, field.Name, field.Type)
 		}
 	}
 

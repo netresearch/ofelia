@@ -87,8 +87,9 @@ func TestMailRunSuccess(t *testing.T) {
 	})
 
 	done := make(chan struct{})
+	var runErr error
 	go func() {
-		require.NoError(t, m.Run(f.ctx))
+		runErr = m.Run(f.ctx)
 		close(done)
 	}()
 
@@ -100,6 +101,7 @@ func TestMailRunSuccess(t *testing.T) {
 	}
 
 	<-done
+	require.NoError(t, runErr)
 }
 
 func TestMailRunWithEmptyStreams(t *testing.T) {
@@ -120,8 +122,9 @@ func TestMailRunWithEmptyStreams(t *testing.T) {
 	})
 
 	done := make(chan struct{})
+	var runErr error
 	go func() {
-		require.NoError(t, m.Run(f.ctx))
+		runErr = m.Run(f.ctx)
 		close(done)
 	}()
 
@@ -134,17 +137,18 @@ func TestMailRunWithEmptyStreams(t *testing.T) {
 
 	select {
 	case emailData := <-f.dataCh:
-		assert.False(t, strings.Contains(emailData, "stdout.log"),
+		assert.NotContains(t, emailData, "stdout.log",
 			"stdout.log attachment should not be included for empty streams")
-		assert.False(t, strings.Contains(emailData, "stderr.log"),
+		assert.NotContains(t, emailData, "stderr.log",
 			"stderr.log attachment should not be included for empty streams")
-		assert.True(t, strings.Contains(emailData, ".json"),
+		assert.Contains(t, emailData, ".json",
 			"JSON attachment with job metadata should always be included")
 	case <-time.After(3 * time.Second):
 		t.Error("timeout waiting for email data")
 	}
 
 	<-done
+	require.NoError(t, runErr)
 }
 
 func TestMailRunWithNonEmptyStreams(t *testing.T) {
@@ -156,8 +160,8 @@ func TestMailRunWithNonEmptyStreams(t *testing.T) {
 	_, _ = f.ctx.Execution.ErrorStream.Write([]byte("stderr content"))
 	f.ctx.Stop(nil)
 
-	assert.Greater(t, f.ctx.Execution.OutputStream.TotalWritten(), int64(0))
-	assert.Greater(t, f.ctx.Execution.ErrorStream.TotalWritten(), int64(0))
+	assert.Positive(t, f.ctx.Execution.OutputStream.TotalWritten())
+	assert.Positive(t, f.ctx.Execution.ErrorStream.TotalWritten())
 
 	m := NewMail(&MailConfig{
 		SMTPHost:  f.smtpdHost,
@@ -167,8 +171,9 @@ func TestMailRunWithNonEmptyStreams(t *testing.T) {
 	})
 
 	done := make(chan struct{})
+	var runErr error
 	go func() {
-		require.NoError(t, m.Run(f.ctx))
+		runErr = m.Run(f.ctx)
 		close(done)
 	}()
 
@@ -181,17 +186,18 @@ func TestMailRunWithNonEmptyStreams(t *testing.T) {
 
 	select {
 	case emailData := <-f.dataCh:
-		assert.True(t, strings.Contains(emailData, "stdout.log"),
+		assert.Contains(t, emailData, "stdout.log",
 			"stdout.log attachment should be included for non-empty streams")
-		assert.True(t, strings.Contains(emailData, "stderr.log"),
+		assert.Contains(t, emailData, "stderr.log",
 			"stderr.log attachment should be included for non-empty streams")
-		assert.True(t, strings.Contains(emailData, ".json"),
+		assert.Contains(t, emailData, ".json",
 			"JSON attachment with job metadata should always be included")
 	case <-time.After(3 * time.Second):
 		t.Error("timeout waiting for email data")
 	}
 
 	<-done
+	require.NoError(t, runErr)
 }
 
 type testBackend struct {
@@ -243,8 +249,9 @@ func TestMailCustomEmailSubject(t *testing.T) {
 	})
 
 	done := make(chan struct{})
+	var runErr error
 	go func() {
-		require.NoError(t, m.Run(f.ctx))
+		runErr = m.Run(f.ctx)
 		close(done)
 	}()
 
@@ -256,15 +263,16 @@ func TestMailCustomEmailSubject(t *testing.T) {
 
 	select {
 	case emailData := <-f.dataCh:
-		assert.True(t, strings.Contains(emailData, "Subject: [CUSTOM]"),
+		assert.Contains(t, emailData, "Subject: [CUSTOM]",
 			"Custom subject prefix should be present")
-		assert.True(t, strings.Contains(emailData, f.ctx.Job.GetName()),
+		assert.Contains(t, emailData, f.ctx.Job.GetName(),
 			"Job name should be in subject")
 	case <-time.After(3 * time.Second):
 		t.Error("timeout waiting for email data")
 	}
 
 	<-done
+	require.NoError(t, runErr)
 }
 
 func TestMailDefaultEmailSubject(t *testing.T) {
@@ -282,8 +290,9 @@ func TestMailDefaultEmailSubject(t *testing.T) {
 	})
 
 	done := make(chan struct{})
+	var runErr2 error
 	go func() {
-		require.NoError(t, m.Run(f.ctx))
+		runErr2 = m.Run(f.ctx)
 		close(done)
 	}()
 
@@ -295,13 +304,14 @@ func TestMailDefaultEmailSubject(t *testing.T) {
 
 	select {
 	case emailData := <-f.dataCh:
-		assert.True(t, strings.Contains(emailData, "Execution"),
+		assert.Contains(t, emailData, "Execution",
 			"Default subject should contain 'Execution'")
-		assert.True(t, strings.Contains(emailData, f.ctx.Job.GetName()),
+		assert.Contains(t, emailData, f.ctx.Job.GetName(),
 			"Default subject should contain job name")
 	case <-time.After(3 * time.Second):
 		t.Error("timeout waiting for email data")
 	}
 
 	<-done
+	require.NoError(t, runErr2)
 }

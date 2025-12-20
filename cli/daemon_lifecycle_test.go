@@ -531,7 +531,7 @@ func TestResourceCleanupOnFailure(t *testing.T) {
 	}
 
 	err := cmd.boot()
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	assert.NotNil(t, cmd.done)
 	assert.NotNil(t, cmd.shutdownManager)

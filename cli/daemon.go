@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -184,7 +185,7 @@ func (c *DaemonCommand) start() error {
 		c.Logger.Noticef("Starting pprof server on %s...", c.PprofAddr)
 		pprofErrChan := make(chan error, 1)
 		go func() {
-			if err := c.pprofServer.ListenAndServe(); err != http.ErrServerClosed {
+			if err := c.pprofServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 				c.Logger.Errorf("Error starting HTTP server: %v", err)
 				pprofErrChan <- err
 				close(c.done)

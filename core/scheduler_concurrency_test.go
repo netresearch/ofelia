@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -217,7 +218,7 @@ func XTestSchedulerJobSemaphoreLimiting(t *testing.T) {
 	// Create more jobs than the concurrency limit
 	numJobs := 6
 	jobs := make([]*MockControlledJob, numJobs)
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		jobs[i] = NewMockControlledJob(fmt.Sprintf("job%d", i), "@every 1s")
 		if err := scheduler.AddJob(jobs[i]); err != nil {
 			t.Fatalf("Failed to add job%d: %v", i, err)
@@ -230,7 +231,7 @@ func XTestSchedulerJobSemaphoreLimiting(t *testing.T) {
 	defer scheduler.Stop()
 
 	// Trigger all jobs simultaneously
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		go scheduler.RunJob(fmt.Sprintf("job%d", i))
 	}
 
@@ -423,7 +424,7 @@ func TestSchedulerRaceConditions(t *testing.T) {
 	// Create jobs for concurrent operations
 	const numJobs = 10
 	jobs := make([]*LocalJob, numJobs)
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		job := NewLocalJob()
 		job.Name = fmt.Sprintf("race-job%d", i)
 		job.Schedule = "@daily"
@@ -435,7 +436,7 @@ func TestSchedulerRaceConditions(t *testing.T) {
 
 	// Concurrently add jobs
 	wg.Add(numJobs)
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		go func(idx int) {
 			defer wg.Done()
 			if err := scheduler.AddJob(jobs[idx]); err != nil {
@@ -455,7 +456,7 @@ func TestSchedulerRaceConditions(t *testing.T) {
 	// go-cron uses channels and mutexes internally that can deadlock under extreme
 	// concurrent pressure. Real-world usage has natural delays between operations.
 	wg.Add(numJobs)
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		go func(idx int) {
 			defer wg.Done()
 			// Stagger start to avoid all goroutines hitting cron simultaneously
@@ -498,7 +499,7 @@ func TestSchedulerRaceConditions(t *testing.T) {
 	disabledJobs := len(scheduler.GetDisabledJobs())
 	removedJobs := len(scheduler.GetRemovedJobs())
 
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		if scheduler.GetJob(fmt.Sprintf("race-job%d", i)) != nil {
 			activeJobs++
 		}
@@ -543,7 +544,7 @@ func XTestSchedulerMaxConcurrentJobsConfiguration(t *testing.T) {
 			scheduler.Start()
 
 			// Try to run all jobs
-			for i := 0; i < len(jobs); i++ {
+			for i := range jobs {
 				go scheduler.RunJob(fmt.Sprintf("limit-job%d", i))
 			}
 
@@ -639,7 +640,7 @@ func TestSchedulerEmptyScheduleError(t *testing.T) {
 	if err == nil {
 		t.Error("AddJob should fail for job with empty schedule")
 	}
-	if err != ErrEmptySchedule {
+	if !errors.Is(err, ErrEmptySchedule) {
 		t.Errorf("Expected ErrEmptySchedule, got: %v", err)
 	}
 

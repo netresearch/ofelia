@@ -17,7 +17,7 @@ func TestMemoryRegressionPrevention(t *testing.T) {
 	runtime.ReadMemStats(&memBefore)
 
 	// Create and cleanup executions
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		e, err := NewExecution()
 		if err != nil {
 			t.Fatal(err)

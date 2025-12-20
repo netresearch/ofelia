@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"os/exec"
 	"testing"
 )
@@ -32,7 +33,8 @@ func TestLocalBuildCommandMissingBinary(t *testing.T) {
 		t.Fatalf("expected error for missing binary")
 	}
 	// ensure error originates from LookPath
-	if _, ok := err.(*exec.Error); !ok {
+	execErr := &exec.Error{}
+	if !errors.As(err, &execErr) {
 		// not all platforms return *exec.Error, so allow any error
 		_ = err
 	}

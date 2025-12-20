@@ -706,7 +706,7 @@ func TestConcurrentLogging(t *testing.T) {
 	// Test concurrent writes don't cause races in logger
 	const testTimeout = 10 * time.Second // Timeout for mutation testing
 	done := make(chan bool, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(id int) {
 			logger.Infof("concurrent message %d", id)
 			done <- true
@@ -715,7 +715,7 @@ func TestConcurrentLogging(t *testing.T) {
 
 	// Wait for all goroutines with timeout
 	timeout := time.After(testTimeout)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		select {
 		case <-done:
 			// goroutine completed

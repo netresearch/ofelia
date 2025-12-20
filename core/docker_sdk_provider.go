@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -187,11 +186,11 @@ func (p *SDKDockerProvider) WaitContainer(ctx context.Context, containerID strin
 		case resp, ok := <-respCh:
 			if !ok {
 				// respCh closed without response, unexpected
-				return -1, WrapContainerError("wait", containerID, errors.New("response channel closed unexpectedly"))
+				return -1, WrapContainerError("wait", containerID, ErrResponseChannelClosed)
 			}
 			if resp.Error != nil && resp.Error.Message != "" {
 				p.recordError("wait_container")
-				return resp.StatusCode, WrapContainerError("wait", containerID, errors.New(resp.Error.Message))
+				return resp.StatusCode, WrapContainerError("wait", containerID, fmt.Errorf("%w: %s", ErrUnexpected, resp.Error.Message))
 			}
 			return resp.StatusCode, nil
 		}

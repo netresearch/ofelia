@@ -18,7 +18,7 @@ func TestRandomIDLength(t *testing.T) {
 // TestRandomIDUniqueness verifies that multiple randomID calls produce unique values.
 func TestRandomIDUniqueness(t *testing.T) {
 	ids := make(map[string]bool)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id, err := randomID()
 		if err != nil {
 			t.Fatalf("randomID error: %v", err)

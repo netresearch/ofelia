@@ -239,7 +239,7 @@ func (cv *Validator2) validateStruct(v *Validator, obj interface{}, path string)
 	}
 
 	typ := val.Type()
-	for i := 0; i < val.NumField(); i++ {
+	for i := range val.NumField() {
 		field := val.Field(i)
 		fieldType := typ.Field(i)
 		fieldName := fieldType.Name

@@ -64,7 +64,7 @@ type mockCanceledError struct {
 }
 
 func (e mockCanceledError) Error() string        { return e.msg }
-func (e mockCanceledError) Cancelled() bool      { return true }
+func (e mockCanceledError) Cancelled() bool      { return true } //nolint:misspell // Docker SDK uses British spelling
 func (e mockCanceledError) Is(target error) bool { return errdefs.IsCancelled(target) }
 
 // mockUnavailableError implements errdefs.ErrUnavailable
@@ -161,7 +161,7 @@ func TestConvertError(t *testing.T) {
 					t.Errorf("convertError() type = %T, want *domain.ContainerNotFoundError", result)
 				}
 			case error:
-				if result != expected {
+				if !errors.Is(result, expected) {
 					t.Errorf("convertError() = %v, want %v", result, expected)
 				}
 			}

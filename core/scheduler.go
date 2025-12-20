@@ -353,7 +353,7 @@ func (s *Scheduler) StopWithTimeout(timeout time.Duration) error {
 
 	if !completed {
 		s.Logger.Warningf("Scheduler stop timed out after %v - some jobs may still be running", timeout)
-		return fmt.Errorf("scheduler stop timed out after %v", timeout)
+		return fmt.Errorf("%w after %v", ErrSchedulerTimeout, timeout)
 	}
 	s.Logger.Debugf("Scheduler stopped gracefully")
 	return nil
@@ -423,12 +423,12 @@ func (s *Scheduler) RunJob(jobName string) error {
 	s.mu.RUnlock()
 
 	if !exists {
-		return fmt.Errorf("job %s not found", jobName)
+		return fmt.Errorf("%w: %s", ErrJobNotFound, jobName)
 	}
 
 	executionID := fmt.Sprintf("manual-%d", s.clock.Now().Unix())
 	if !s.workflowOrchestrator.CanExecute(jobName, executionID) {
-		return fmt.Errorf("job %s cannot run: dependencies not satisfied", jobName)
+		return fmt.Errorf("%w: %s", ErrDependencyNotMet, jobName)
 	}
 
 	// Run the job
@@ -489,7 +489,7 @@ func (s *Scheduler) DisableJob(name string) error {
 	j, _ := getJob(s.Jobs, name)
 	if j == nil {
 		s.mu.RUnlock()
-		return fmt.Errorf("job %q not found", name)
+		return fmt.Errorf("%w: %q", ErrJobNotFound, name)
 	}
 	s.mu.RUnlock()
 
@@ -518,13 +518,13 @@ func (s *Scheduler) EnableJob(name string) error {
 	j, idx := getJob(s.Disabled, name)
 	if j == nil {
 		s.mu.Unlock()
-		return fmt.Errorf("job %q not found", name)
+		return fmt.Errorf("%w: %q", ErrJobNotFound, name)
 	}
 	s.Disabled = append(s.Disabled[:idx], s.Disabled[idx+1:]...)
 	s.mu.Unlock()
 
 	backoff := time.Millisecond
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		entry := s.cron.EntryByName(name)
 		if !entry.Valid() {
 			break

@@ -158,7 +158,6 @@ func TestEventuallyWithT_CollectsErrors(t *testing.T) {
 type mockTB struct {
 	testing.TB
 	failed bool
-	errors []string
 }
 
 func (m *mockTB) Helper() {}

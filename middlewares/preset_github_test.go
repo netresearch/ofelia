@@ -193,8 +193,8 @@ func TestValidateGitHubShorthand(t *testing.T) {
 
 	require.NoError(t, ValidateGitHubShorthand("gh:org/repo/path.yaml"))
 	require.NoError(t, ValidateGitHubShorthand("gh:org/repo/path.yaml@v1.0.0"))
-	assert.Error(t, ValidateGitHubShorthand("slack"))
-	assert.Error(t, ValidateGitHubShorthand("https://example.com"))
+	require.Error(t, ValidateGitHubShorthand("slack"))
+	require.Error(t, ValidateGitHubShorthand("https://example.com"))
 }
 
 func TestGitHubShorthand_RoundTrip(t *testing.T) {

@@ -1,6 +1,6 @@
 version: "2"
 run:
-  tests: false
+  tests: true
 linters:
   default: none
   enable:
@@ -11,17 +11,21 @@ linters:
     - copyloopvar
     - depguard
     - dupl
+    - dupword
     - durationcheck
+    - err113
     - errcheck
     - errname
     - errorlint
     - exhaustive
+    - fatcontext
     - forbidigo
     - goconst
     - gocritic
     - gocyclo
     - govet
     - ineffassign
+    - intrange
     - misspell
     - nilerr
     - nilnil
@@ -34,10 +38,12 @@ linters:
     - revive
     - staticcheck
     - tagliatelle
+    - testifylint
     - tparallel
     - unconvert
     - unparam
     - unused
+    - usestdlibvars
     - wrapcheck
   settings:
     depguard:
@@ -49,6 +55,8 @@ linters:
     forbidigo:
       forbid:
         - pattern: ^fmt\.Print.*$
+    goconst:
+      min-occurrences: 6
     gocyclo:
       min-complexity: 15
     misspell:
@@ -81,11 +89,40 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      # Test files have relaxed linting for practical reasons
       - linters:
           - gocyclo
           - revive
           - wrapcheck
+          - goconst
+          - nilnil
+          - err113
+          - errcheck
+          - dupl
+          - errorlint
+          - gocritic
+          - predeclared
+          - staticcheck
+          - unparam
         path: _test\.go
+      # User-facing validation errors need dynamic context for helpful messages
+      - linters:
+          - err113
+        path: cli/(init|hashpw|daemon|doctor|config_webhook|docker_config_handler)\.go
+      - linters:
+          - err113
+        path: middlewares/(preset|webhook|sanitize).*\.go
+      - linters:
+          - err113
+        path: config/(command_validator|sanitizer)\.go
+      - linters:
+          - err113
+        path: web/server\.go
+      # Empty branches in test code - often used for pattern matching
+      - linters:
+          - staticcheck
+        path: _test\.go
+        text: "SA9003"
       - linters:
           - govet
         path: "_test"
@@ -106,9 +143,87 @@ linters:
       - linters:
           - staticcheck
         text: "ST1018:"
+      # Docker SDK deprecated types - will update when SDK breaks
+      - linters:
+          - staticcheck
+        path: core/adapters/docker/convert_test\.go
+        text: "SA1019:"
       - linters:
           - noctx
         path: cli/daemon\.go
+      # Test files don't need context propagation
+      - linters:
+          - noctx
+        path: _test\.go
+      # Non-parallel tests - intentionally modify global state
+      - linters:
+          - paralleltest
+          - tparallel
+        path: cli/daemon_boot_test\.go
+      - linters:
+          - paralleltest
+          - tparallel
+        path: cli/config_initialize_test\.go
+      - linters:
+          - paralleltest
+          - tparallel
+        path: middlewares/webhook_test\.go
+        text: "TestWebhook_SendsRequest|TestWebhook_Retry"
+      - linters:
+          - paralleltest
+          - tparallel
+        path: middlewares/webhook_security_test\.go
+        text: "TestSetGlobalSecurityConfig"
+      # Benchmark tests don't need t.Parallel()
+      - linters:
+          - paralleltest
+          - tparallel
+        path: _benchmark_test\.go
+      # Integration tests often share state
+      - linters:
+          - paralleltest
+          - tparallel
+        path: _integration_test\.go
+      # Mutation tests - generated structure, TODO: add t.Parallel() later
+      - linters:
+          - paralleltest
+          - tparallel
+        path: _mutation_test\.go
+      # Core tests - TODO: add t.Parallel() incrementally
+      - linters:
+          - paralleltest
+          - tparallel
+        path: core/.*_test\.go
+      # CLI tests - many are lifecycle/integration tests
+      - linters:
+          - paralleltest
+          - tparallel
+        path: cli/.*_test\.go
+      # Config tests - TODO: add t.Parallel() incrementally
+      - linters:
+          - paralleltest
+          - tparallel
+        path: config/.*_test\.go
+      # Logging tests - TODO: add t.Parallel() incrementally
+      - linters:
+          - paralleltest
+          - tparallel
+        path: logging/.*_test\.go
+      # Web tests - TODO: add t.Parallel() incrementally
+      - linters:
+          - paralleltest
+          - tparallel
+        path: web/.*_test\.go
+      # Metrics tests - TODO: add t.Parallel() incrementally
+      - linters:
+          - paralleltest
+          - tparallel
+        path: metrics/.*_test\.go
+      # Middlewares tests - TODO: add t.Parallel() incrementally
+      - linters:
+          - paralleltest
+          - tparallel
+        path: middlewares/.*_test\.go
     paths:
       - third_party$
       - builtin$

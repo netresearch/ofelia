@@ -229,7 +229,7 @@ func TestCircuitBreakerExecuteFailure(t *testing.T) {
 	err1 := cb.Execute(func() error {
 		return testErr
 	})
-	if err1 != testErr {
+	if !errors.Is(err1, testErr) {
 		t.Errorf("Expected test error, got %v", err1)
 	}
 	if cb.GetState() != StateClosed {
@@ -240,7 +240,7 @@ func TestCircuitBreakerExecuteFailure(t *testing.T) {
 	err2 := cb.Execute(func() error {
 		return testErr
 	})
-	if err2 != testErr {
+	if !errors.Is(err2, testErr) {
 		t.Errorf("Expected test error, got %v", err2)
 	}
 	if cb.GetState() != StateOpen {
@@ -493,7 +493,7 @@ func TestBulkheadExecuteConcurrencyLimit(t *testing.T) {
 	results := make([]error, 2)
 
 	// Start two concurrent operations
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
@@ -557,7 +557,7 @@ func TestBulkheadGetMetrics(t *testing.T) {
 
 	// Execute some operations
 	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

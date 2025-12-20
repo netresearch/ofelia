@@ -26,12 +26,12 @@ func TestRateLimiter(t *testing.T) {
 	var wg sync.WaitGroup
 	var rateLimitedCount int32
 
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			req := httptest.NewRequest("GET", "/test", nil)
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			req.RemoteAddr = "127.0.0.1:1234" // Same IP for all requests
 			w := httptest.NewRecorder()
 
@@ -75,8 +75,8 @@ func TestRateLimiterWindow(t *testing.T) {
 	}))
 
 	// First batch: send 5 requests (should all succeed)
-	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest("GET", "/test", nil)
+	for i := range 5 {
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		req.RemoteAddr = "127.0.0.1:1234"
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
@@ -87,7 +87,7 @@ func TestRateLimiterWindow(t *testing.T) {
 	}
 
 	// 6th request should be rate limited
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -100,7 +100,7 @@ func TestRateLimiterWindow(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Should be able to send requests again
-	req = httptest.NewRequest("GET", "/test", nil)
+	req = httptest.NewRequest(http.MethodGet, "/test", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -126,8 +126,8 @@ func TestRateLimiterPerIP(t *testing.T) {
 	ips := []string{"192.168.1.1:1234", "192.168.1.2:1234"}
 
 	for _, ip := range ips {
-		for i := 0; i < 3; i++ {
-			req := httptest.NewRequest("GET", "/test", nil)
+		for i := range 3 {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			req.RemoteAddr = ip
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
@@ -138,7 +138,7 @@ func TestRateLimiterPerIP(t *testing.T) {
 		}
 
 		// 4th request from same IP should be rate limited
-		req := httptest.NewRequest("GET", "/test", nil)
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		req.RemoteAddr = ip
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
@@ -163,7 +163,7 @@ func TestSecurityHeaders(t *testing.T) {
 	}))
 
 	// Test HTTP request (no TLS)
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -189,7 +189,7 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 
 	// Test HTTPS request (with TLS)
-	req = httptest.NewRequest("GET", "https://example.com/test", nil)
+	req = httptest.NewRequest(http.MethodGet, "https://example.com/test", nil)
 	req.TLS = &tls.ConnectionState{} // Simulate TLS
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -215,7 +215,7 @@ func BenchmarkRateLimiter(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			req := httptest.NewRequest("GET", "/test", nil)
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			req.RemoteAddr = "127.0.0.1:1234"
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
