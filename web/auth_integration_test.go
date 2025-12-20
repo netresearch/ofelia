@@ -351,7 +351,7 @@ func TestLogoutFlow(t *testing.T) {
 
 	t.Run("logout_cookie_secure_flag_without_https", func(t *testing.T) {
 		body := `{"username":"admin","password":"password"}`
-		loginReq := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		loginReq := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		loginReq.Header.Set("Content-Type", "application/json")
 		loginReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 		loginW := httptest.NewRecorder()
@@ -361,7 +361,7 @@ func TestLogoutFlow(t *testing.T) {
 		_ = json.NewDecoder(loginW.Body).Decode(&resp)
 		tkn := resp["token"].(string)
 
-		logoutReq := httptest.NewRequest("POST", "/api/logout", nil)
+		logoutReq := httptest.NewRequest(http.MethodPost, "/api/logout", nil)
 		logoutReq.Header.Set("Authorization", "Bearer "+tkn)
 		logoutW := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(logoutW, logoutReq)
@@ -379,7 +379,7 @@ func TestLogoutFlow(t *testing.T) {
 
 	t.Run("logout_cookie_secure_flag_with_forwarded_proto", func(t *testing.T) {
 		body := `{"username":"admin","password":"password"}`
-		loginReq := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		loginReq := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		loginReq.Header.Set("Content-Type", "application/json")
 		loginReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 		loginW := httptest.NewRecorder()
@@ -389,7 +389,7 @@ func TestLogoutFlow(t *testing.T) {
 		_ = json.NewDecoder(loginW.Body).Decode(&resp)
 		tkn := resp["token"].(string)
 
-		logoutReq := httptest.NewRequest("POST", "/api/logout", nil)
+		logoutReq := httptest.NewRequest(http.MethodPost, "/api/logout", nil)
 		logoutReq.Header.Set("Authorization", "Bearer "+tkn)
 		logoutReq.Header.Set("X-Forwarded-Proto", "https")
 		logoutW := httptest.NewRecorder()
@@ -497,7 +497,7 @@ func TestAuthConfigDefaults(t *testing.T) {
 		}
 
 		body := `{"username":"admin","password":"password"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		w := httptest.NewRecorder()
@@ -524,7 +524,7 @@ func TestAuthConfigDefaults(t *testing.T) {
 		}
 
 		body := `{"username":"admin","password":"password"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		w := httptest.NewRecorder()
@@ -550,9 +550,9 @@ func TestAuthConfigDefaults(t *testing.T) {
 			t.Fatal("expected server to be created with default max attempts")
 		}
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			body := `{"username":"admin","password":"wrong"}`
-			req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+			req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Requested-With", "XMLHttpRequest")
 			w := httptest.NewRecorder()
@@ -560,7 +560,7 @@ func TestAuthConfigDefaults(t *testing.T) {
 		}
 
 		body := `{"username":"admin","password":"wrong"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		w := httptest.NewRecorder()
@@ -586,9 +586,9 @@ func TestAuthConfigDefaults(t *testing.T) {
 			t.Fatal("expected server to be created with custom max attempts")
 		}
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			body := `{"username":"admin","password":"wrong"}`
-			req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+			req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Requested-With", "XMLHttpRequest")
 			w := httptest.NewRecorder()
@@ -596,7 +596,7 @@ func TestAuthConfigDefaults(t *testing.T) {
 		}
 
 		body := `{"username":"admin","password":"wrong"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		w := httptest.NewRecorder()

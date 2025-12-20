@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_ValidLevels(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -37,6 +38,7 @@ func TestBuildLogger_ValidLevels(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_InvalidLevel_DefaultsToInfo(t *testing.T) {
 	testCases := []struct {
 		name  string
@@ -57,6 +59,7 @@ func TestBuildLogger_InvalidLevel_DefaultsToInfo(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_ProducesWorkingLogger(t *testing.T) {
 	var buf bytes.Buffer
 	originalOutput := logrus.StandardLogger().Out
@@ -70,6 +73,7 @@ func TestBuildLogger_ProducesWorkingLogger(t *testing.T) {
 	assert.NotNil(t, logger)
 }
 
+//nolint:paralleltest // Tests modify global environment variables and logrus state
 func TestBuildLogger_EnvironmentVariablesAffectOutput(t *testing.T) {
 	testCases := []struct {
 		name    string
@@ -107,6 +111,7 @@ func TestBuildLogger_EnvironmentVariablesAffectOutput(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_IncludesCallerInformation(t *testing.T) {
 	var buf bytes.Buffer
 	originalOutput := logrus.StandardLogger().Out
@@ -120,11 +125,13 @@ func TestBuildLogger_IncludesCallerInformation(t *testing.T) {
 	assert.NotEmpty(t, buf.String())
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_EnablesReportCaller(t *testing.T) {
 	_ = buildLogger("info")
 	assert.True(t, logrus.StandardLogger().ReportCaller)
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_ConfiguresTextFormatterCorrectly(t *testing.T) {
 	_ = buildLogger("info")
 
@@ -135,6 +142,7 @@ func TestBuildLogger_ConfiguresTextFormatterCorrectly(t *testing.T) {
 	assert.Equal(t, "2006-01-02 15:04:05", formatter.TimestampFormat)
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_CallerPrettyfierFormatsCorrectly(t *testing.T) {
 	_ = buildLogger("info")
 
@@ -152,6 +160,7 @@ func TestBuildLogger_CallerPrettyfierFormatsCorrectly(t *testing.T) {
 	assert.Equal(t, "file.go:42", location)
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_CallerPrettyfierHandlesEdgeCases(t *testing.T) {
 	_ = buildLogger("info")
 
@@ -179,11 +188,13 @@ func TestBuildLogger_CallerPrettyfierHandlesEdgeCases(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_OutputGoesToStdout(t *testing.T) {
 	_ = buildLogger("info")
 	assert.Equal(t, os.Stdout, logrus.StandardLogger().Out)
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_LevelTransitions(t *testing.T) {
 	_ = buildLogger("debug")
 	assert.Equal(t, logrus.DebugLevel, logrus.GetLevel())
@@ -195,6 +206,7 @@ func TestBuildLogger_LevelTransitions(t *testing.T) {
 	assert.Equal(t, logrus.InfoLevel, logrus.GetLevel(), "should reset to info for invalid")
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_MixedCaseLevels(t *testing.T) {
 	testCases := []struct {
 		input    string
@@ -214,6 +226,7 @@ func TestBuildLogger_MixedCaseLevels(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // Tests modify global logrus state and cannot run in parallel
 func TestBuildLogger_ForceColorsDisabledInNonTerminal(t *testing.T) {
 	_ = buildLogger("info")
 

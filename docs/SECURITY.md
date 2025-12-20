@@ -30,7 +30,7 @@ Understanding what security controls belong where is critical for proper deploym
 │                   OFELIA RESPONSIBILITY                              │
 │  (Application-level controls)                                        │
 │                                                                      │
-│  • Authentication (JWT, passwords)                                   │
+│  • Authentication (tokens, passwords)                                │
 │  • Authorization (who can create/run jobs) - Note: No RBAC yet       │
 │  • Input format validation (cron syntax, image names)                │
 │  • Rate limiting for API endpoints                                   │
@@ -55,7 +55,7 @@ Understanding what security controls belong where is critical for proper deploym
 ┌─────────────────────────────────────────────────┐
 │         Authentication Layer                     │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│  │   JWT    │  │  Bcrypt  │  │   CSRF   │      │
+│  │  Token   │  │  Bcrypt  │  │   CSRF   │      │
 │  └──────────┘  └──────────┘  └──────────┘      │
 └─────────────────────────────────────────────────┘
                       ↓
@@ -233,7 +233,7 @@ overlap = false
 - ✅ **Configuration Validation** ([config/validator.go](../config/validator.go)):
   ```go
   validator := config.NewValidator()
-  validator.ValidateRequired("jwt-secret", config.JWTSecret)
+  validator.ValidateRequired("web-secret-key", config.WebSecretKey)
   validator.ValidateCronExpression("schedule", job.Schedule)
   validator.ValidateEmail("email-to", config.EmailTo)
   ```
@@ -763,17 +763,17 @@ location /api/ {
 **Secret Management**:
 ```bash
 # Use secret management (Docker Swarm)
-docker secret create jwt_secret jwt_secret.txt
+docker secret create web_secret_key web_secret_key.txt
 docker secret create smtp_password smtp_password.txt
 
 # Reference in compose file
 services:
   ofelia:
     secrets:
-      - jwt_secret
+      - web_secret_key
       - smtp_password
     environment:
-      - OFELIA_JWT_SECRET_FILE=/run/secrets/jwt_secret
+      - OFELIA_WEB_SECRET_KEY_FILE=/run/secrets/web_secret_key
       - OFELIA_SMTP_PASSWORD_FILE=/run/secrets/smtp_password
 ```
 
@@ -785,7 +785,7 @@ metadata:
   name: ofelia-secrets
 type: Opaque
 data:
-  jwt-secret: <base64-encoded>
+  web-secret-key: <base64-encoded>
   smtp-password: <base64-encoded>
 
 ---
@@ -797,11 +797,11 @@ spec:
       containers:
       - name: ofelia
         env:
-        - name: OFELIA_JWT_SECRET
+        - name: OFELIA_WEB_SECRET_KEY
           valueFrom:
             secretKeyRef:
               name: ofelia-secrets
-              key: jwt-secret
+              key: web-secret-key
 ```
 
 ### Least Privilege
@@ -856,7 +856,7 @@ gosec ./...
 
 ### 2. Access Control
 
-- ✅ **Enable JWT authentication in production**
+- ✅ **Enable web authentication in production**
 - ✅ **Use HTTPS/TLS for all external connections**
 - ✅ **Implement IP whitelisting for API access**
 - ✅ **Disable LocalJobs from Docker labels**
@@ -939,7 +939,7 @@ Recent security enhancements implemented:
 
 The web UI and API are **disabled by default**. If you enable them (`enable-web = true`), see [Web Package Security](./packages/web.md#security-considerations) for:
 
-- JWT authentication configuration
+- Token authentication configuration
 - Password hashing with bcrypt
 - Rate limiting and CSRF protection
 - Security headers
