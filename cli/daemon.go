@@ -121,10 +121,10 @@ func (c *DaemonCommand) boot() (err error) {
 		var authCfg *web.SecureAuthConfig
 		if c.WebAuthEnabled {
 			if c.WebUsername == "" {
-				return fmt.Errorf("web-auth-enabled requires web-username to be set")
+				return ErrWebAuthUsername
 			}
 			if c.WebPasswordHash == "" {
-				return fmt.Errorf("web-auth-enabled requires web-password-hash to be set (use 'ofelia hash-password' to generate one)")
+				return ErrWebAuthPassword
 			}
 
 			if c.WebSecretKey == "" {
@@ -143,6 +143,9 @@ func (c *DaemonCommand) boot() (err error) {
 			}
 		}
 		c.webServer = web.NewServerWithAuth(c.WebAddr, c.scheduler, c.config, provider, authCfg)
+		if c.webServer == nil {
+			return fmt.Errorf("failed to initialize web server (check logs for details)")
+		}
 
 		c.webServer.RegisterHealthEndpoints(c.healthChecker)
 

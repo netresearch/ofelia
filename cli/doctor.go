@@ -90,6 +90,7 @@ func (c *DoctorCommand) Execute(_ []string) error {
 		progress.Step(1, "Checking configuration...")
 	}
 	c.checkConfiguration(report)
+	c.checkWebAuth(report)
 
 	if progress != nil {
 		progress.Step(2, "Checking Docker connectivity...")
@@ -204,6 +205,69 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 		Status:   "pass",
 		Message:  fmt.Sprintf("%d job(s) configured", jobCount),
 	})
+}
+
+func (c *DoctorCommand) checkWebAuth(report *DoctorReport) {
+	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
+	if err != nil {
+		return
+	}
+
+	if !conf.Global.WebAuthEnabled {
+		return
+	}
+
+	if conf.Global.WebUsername == "" {
+		report.Healthy = false
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Configuration",
+			Name:     "Web Auth Username",
+			Status:   "fail",
+			Message:  "web-auth-enabled is true but web-username is not set",
+			Hints: []string{
+				"Run 'ofelia init' to configure web authentication interactively",
+				"Or set web-username in config: web-username = admin",
+				"Or via environment: OFELIA_WEB_USERNAME=admin",
+			},
+		})
+	}
+
+	if conf.Global.WebPasswordHash == "" {
+		report.Healthy = false
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Configuration",
+			Name:     "Web Auth Password",
+			Status:   "fail",
+			Message:  "web-auth-enabled is true but web-password-hash is not set",
+			Hints: []string{
+				"Run 'ofelia hash-password' to generate a bcrypt hash",
+				"Or run 'ofelia init' to configure web authentication interactively",
+				"Then set web-password-hash in config or OFELIA_WEB_PASSWORD_HASH env var",
+			},
+		})
+	}
+
+	if conf.Global.WebSecretKey == "" {
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Configuration",
+			Name:     "Web Auth Secret Key",
+			Status:   "skip",
+			Message:  "web-secret-key not set - tokens will not survive daemon restarts",
+			Hints: []string{
+				"Set OFELIA_WEB_SECRET_KEY for persistent sessions",
+				"Generate with: openssl rand -base64 32",
+			},
+		})
+	}
+
+	if conf.Global.WebUsername != "" && conf.Global.WebPasswordHash != "" {
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Configuration",
+			Name:     "Web Auth",
+			Status:   "pass",
+			Message:  fmt.Sprintf("Configured for user '%s'", conf.Global.WebUsername),
+		})
+	}
 }
 
 // checkDocker validates Docker connectivity
