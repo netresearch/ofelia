@@ -125,6 +125,15 @@ jobs:
           name: coverage-merged
           path: coverage.out
 
+  # Summary job for branch protection - required status check
+  unit-tests-summary:
+    name: unit tests
+    runs-on: ubuntu-latest
+    needs: [unit-full, unit-coverage]
+    steps:
+      - name: All unit tests passed
+        run: echo "All unit tests completed successfully"
+
   lint:
     name: golangci-lint (all linters)
     runs-on: ubuntu-latest
