@@ -9,6 +9,7 @@ import (
 )
 
 func TestDefaultRetryPolicy(t *testing.T) {
+	t.Parallel()
 	policy := DefaultRetryPolicy()
 
 	if policy.MaxAttempts != 3 {
@@ -37,6 +38,7 @@ func TestDefaultRetryPolicy(t *testing.T) {
 }
 
 func TestRetrySuccess(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	policy := DefaultRetryPolicy()
 
@@ -54,6 +56,7 @@ func TestRetrySuccess(t *testing.T) {
 }
 
 func TestRetryEventualSuccess(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	policy := DefaultRetryPolicy()
 	policy.InitialDelay = 1 * time.Millisecond // Speed up test
@@ -75,6 +78,7 @@ func TestRetryEventualSuccess(t *testing.T) {
 }
 
 func TestRetryMaxAttemptsExceeded(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	policy := DefaultRetryPolicy()
 	policy.InitialDelay = 1 * time.Millisecond // Speed up test
@@ -95,6 +99,7 @@ func TestRetryMaxAttemptsExceeded(t *testing.T) {
 }
 
 func TestRetryNonRetryableError(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	policy := DefaultRetryPolicy()
 	policy.RetryableErrors = func(err error) bool {
@@ -116,6 +121,7 @@ func TestRetryNonRetryableError(t *testing.T) {
 }
 
 func TestRetryContextCanceled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	policy := DefaultRetryPolicy()
 	policy.InitialDelay = 100 * time.Millisecond
@@ -140,6 +146,7 @@ func TestRetryContextCanceled(t *testing.T) {
 }
 
 func TestRetryNilPolicy(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	attempts := 0
@@ -156,6 +163,7 @@ func TestRetryNilPolicy(t *testing.T) {
 }
 
 func TestCircuitBreakerStateString(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		state    CircuitBreakerState
 		expected string
@@ -174,6 +182,7 @@ func TestCircuitBreakerStateString(t *testing.T) {
 }
 
 func TestNewCircuitBreaker(t *testing.T) {
+	t.Parallel()
 	cb := NewCircuitBreaker("test", 5, 10*time.Second)
 
 	if cb.name != "test" {
@@ -191,6 +200,7 @@ func TestNewCircuitBreaker(t *testing.T) {
 }
 
 func TestCircuitBreakerExecuteSuccess(t *testing.T) {
+	t.Parallel()
 	cb := NewCircuitBreaker("test", 3, 5*time.Second)
 
 	calls := 0
@@ -210,6 +220,7 @@ func TestCircuitBreakerExecuteSuccess(t *testing.T) {
 }
 
 func TestCircuitBreakerExecuteFailure(t *testing.T) {
+	t.Parallel()
 	cb := NewCircuitBreaker("test", 2, 5*time.Second)
 
 	testErr := errors.New("test failure")
@@ -238,6 +249,7 @@ func TestCircuitBreakerExecuteFailure(t *testing.T) {
 }
 
 func TestCircuitBreakerOpenState(t *testing.T) {
+	t.Parallel()
 	cb := NewCircuitBreaker("test", 1, 100*time.Millisecond)
 
 	// Cause failure to open circuit
@@ -265,6 +277,7 @@ func TestCircuitBreakerOpenState(t *testing.T) {
 }
 
 func TestCircuitBreakerHalfOpenState(t *testing.T) {
+	t.Parallel()
 	cb := NewCircuitBreaker("test", 1, 50*time.Millisecond)
 
 	// Cause failure to open circuit
@@ -293,6 +306,7 @@ func TestCircuitBreakerHalfOpenState(t *testing.T) {
 }
 
 func TestCircuitBreakerMetrics(t *testing.T) {
+	t.Parallel()
 	cb := NewCircuitBreaker("test-metrics", 1, 5*time.Second) // Lower threshold to ensure it opens
 
 	// Execute some operations
@@ -319,6 +333,7 @@ func TestCircuitBreakerMetrics(t *testing.T) {
 }
 
 func TestNewRateLimiter(t *testing.T) {
+	t.Parallel()
 	rl := NewRateLimiter(10.0, 100)
 
 	if rl.rate != 10.0 {
@@ -333,6 +348,7 @@ func TestNewRateLimiter(t *testing.T) {
 }
 
 func TestRateLimiterAllow(t *testing.T) {
+	t.Parallel()
 	rl := NewRateLimiter(1.0, 2)
 
 	// Should allow first request
@@ -352,6 +368,7 @@ func TestRateLimiterAllow(t *testing.T) {
 }
 
 func TestRateLimiterAllowN(t *testing.T) {
+	t.Parallel()
 	rl := NewRateLimiter(10.0, 5)
 
 	// Should allow 3 tokens
@@ -371,13 +388,13 @@ func TestRateLimiterAllowN(t *testing.T) {
 }
 
 func TestRateLimiterRefill(t *testing.T) {
-	rl := NewRateLimiter(10.0, 10) // 10 tokens per second
+	t.Parallel()
+	rl := NewRateLimiter(50.0, 10) // 50 tokens per second for faster test
 
 	// Use all tokens
 	rl.AllowN(10)
 
-	// Wait for refill
-	time.Sleep(200 * time.Millisecond) // Should add ~2 tokens
+	time.Sleep(50 * time.Millisecond) // Should add ~2.5 tokens at 50/s rate
 
 	// Should now allow some requests
 	if !rl.Allow() {
@@ -386,7 +403,8 @@ func TestRateLimiterRefill(t *testing.T) {
 }
 
 func TestRateLimiterWait(t *testing.T) {
-	rl := NewRateLimiter(100.0, 1) // High rate for quick test
+	t.Parallel()
+	rl := NewRateLimiter(100.0, 1)
 	ctx := context.Background()
 
 	// Use the token
@@ -400,7 +418,8 @@ func TestRateLimiterWait(t *testing.T) {
 }
 
 func TestRateLimiterWaitContextCanceled(t *testing.T) {
-	rl := NewRateLimiter(0.1, 1) // Very slow rate
+	t.Parallel()
+	rl := NewRateLimiter(0.1, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Use the token
@@ -419,6 +438,7 @@ func TestRateLimiterWaitContextCanceled(t *testing.T) {
 }
 
 func TestRateLimiterWaitExceedsCapacity(t *testing.T) {
+	t.Parallel()
 	rl := NewRateLimiter(10.0, 5)
 	ctx := context.Background()
 
@@ -429,6 +449,7 @@ func TestRateLimiterWaitExceedsCapacity(t *testing.T) {
 }
 
 func TestNewBulkhead(t *testing.T) {
+	t.Parallel()
 	b := NewBulkhead("test", 5)
 
 	if b.name != "test" {
@@ -446,6 +467,7 @@ func TestNewBulkhead(t *testing.T) {
 }
 
 func TestBulkheadExecuteSuccess(t *testing.T) {
+	t.Parallel()
 	b := NewBulkhead("test", 2)
 	ctx := context.Background()
 
@@ -463,6 +485,7 @@ func TestBulkheadExecuteSuccess(t *testing.T) {
 }
 
 func TestBulkheadExecuteConcurrencyLimit(t *testing.T) {
+	t.Parallel()
 	b := NewBulkhead("test", 1)
 	ctx := context.Background()
 
@@ -505,6 +528,7 @@ func TestBulkheadExecuteConcurrencyLimit(t *testing.T) {
 }
 
 func TestBulkheadExecuteContextCanceled(t *testing.T) {
+	t.Parallel()
 	b := NewBulkhead("test", 1)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -527,6 +551,7 @@ func TestBulkheadExecuteContextCanceled(t *testing.T) {
 }
 
 func TestBulkheadGetMetrics(t *testing.T) {
+	t.Parallel()
 	b := NewBulkhead("test-metrics", 3)
 	ctx := context.Background()
 

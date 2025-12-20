@@ -1,47 +1,62 @@
 package core
 
 import (
+	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-type SuiteScheduler struct{}
+func TestSchedulerAddJob(t *testing.T) {
+	t.Parallel()
 
-var _ = Suite(&SuiteScheduler{})
-
-func (s *SuiteScheduler) TestAddJob(c *C) {
 	job := &TestJob{}
 	job.Schedule = "@hourly"
 
 	sc := NewScheduler(&TestLogger{})
 	err := sc.AddJob(job)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	e := sc.cron.Entries()
-	c.Assert(e, HasLen, 1)
-	c.Assert(e[0].Job.(*jobWrapper).j, DeepEquals, job)
+	assert.Len(t, e, 1)
+	assert.Equal(t, job, e[0].Job.(*jobWrapper).j)
 }
 
-func (s *SuiteScheduler) TestStartStop(c *C) {
-	job := &TestJob{}
-	const every1s = "@every 1s"
-	job.Schedule = every1s
+func TestSchedulerStartStop(t *testing.T) {
+	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	job := &TestJob{}
+	job.Schedule = "@every 50ms"
+
+	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
 	err := sc.AddJob(job)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
+
+	jobCompleted := make(chan struct{}, 1)
+	sc.SetOnJobComplete(func(_ string, _ bool) {
+		select {
+		case jobCompleted <- struct{}{}:
+		default:
+		}
+	})
 
 	_ = sc.Start()
-	c.Assert(sc.IsRunning(), Equals, true)
+	assert.True(t, sc.IsRunning())
 
-	time.Sleep(time.Second * 2)
+	select {
+	case <-jobCompleted:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Timeout waiting for job to complete")
+	}
 
 	_ = sc.Stop()
-	c.Assert(sc.IsRunning(), Equals, false)
+	assert.False(t, sc.IsRunning())
 }
 
-func (s *SuiteScheduler) TestMergeMiddlewaresSame(c *C) {
+func TestSchedulerMergeMiddlewaresSame(t *testing.T) {
+	t.Parallel()
+
 	mA, mB, mC := &TestMiddleware{}, &TestMiddleware{}, &TestMiddleware{}
 
 	job := &TestJob{}
@@ -53,38 +68,52 @@ func (s *SuiteScheduler) TestMergeMiddlewaresSame(c *C) {
 	_ = sc.AddJob(job)
 
 	m := job.Middlewares()
-	c.Assert(m, HasLen, 1)
-	c.Assert(m[0], Equals, mB)
+	assert.Len(t, m, 1)
+	assert.Equal(t, mB, m[0])
 }
 
-func (s *SuiteScheduler) TestLastRunRecorded(c *C) {
-	job := &TestJob{}
-	job.Schedule = "@every 1s"
+func TestSchedulerLastRunRecorded(t *testing.T) {
+	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	job := &TestJob{}
+	job.Schedule = "@every 50ms"
+
+	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
 	err := sc.AddJob(job)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
+
+	jobCompleted := make(chan struct{}, 1)
+	sc.SetOnJobComplete(func(_ string, _ bool) {
+		select {
+		case jobCompleted <- struct{}{}:
+		default:
+		}
+	})
 
 	_ = sc.Start()
-	time.Sleep(time.Second * 2)
+
+	select {
+	case <-jobCompleted:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Timeout waiting for job to complete")
+	}
+
 	_ = sc.Stop()
 
 	lr := job.GetLastRun()
-	c.Assert(lr, NotNil)
-	c.Assert(lr.Duration > 0, Equals, true)
+	assert.NotNil(t, lr)
+	assert.Greater(t, lr.Duration, time.Duration(0))
 }
 
-func (s *SuiteScheduler) TestWorkflowOrchestratorInit(c *C) {
+func TestSchedulerWorkflowOrchestratorInit(t *testing.T) {
+	t.Parallel()
+
 	sc := NewScheduler(&TestLogger{})
 
-	// Initialize workflow orchestrator
 	sc.workflowOrchestrator = NewWorkflowOrchestrator(sc, &TestLogger{})
-	c.Assert(sc.workflowOrchestrator, NotNil)
+	assert.NotNil(t, sc.workflowOrchestrator)
+	assert.NotNil(t, sc.workflowOrchestrator.executions)
 
-	// Test that executions map is initialized
-	c.Assert(sc.workflowOrchestrator.executions, NotNil)
-
-	// Test creating a workflow execution
 	exec := &WorkflowExecution{
 		ID:            "test-exec",
 		StartTime:     time.Now(),
@@ -94,21 +123,78 @@ func (s *SuiteScheduler) TestWorkflowOrchestratorInit(c *C) {
 	}
 
 	sc.workflowOrchestrator.executions["test-exec"] = exec
-	c.Assert(sc.workflowOrchestrator.executions["test-exec"], Equals, exec)
+	assert.Equal(t, exec, sc.workflowOrchestrator.executions["test-exec"])
 }
 
-func (s *SuiteScheduler) TestSchedulerCleanupTicker(c *C) {
+func TestSchedulerCleanupTicker(t *testing.T) {
+	t.Parallel()
+
+	fakeClock := NewFakeClock(time.Now())
 	sc := NewScheduler(&TestLogger{})
+	sc.SetClock(fakeClock)
 
-	// Test that cleanup ticker can be initialized
-	sc.cleanupTicker = time.NewTicker(1 * time.Hour)
-	c.Assert(sc.cleanupTicker, NotNil)
+	assert.Equal(t, fakeClock, sc.clock)
+	assert.NotNil(t, sc.cleanupStop)
+}
 
-	// Test that cleanup stop channel can be initialized
-	sc.cleanupStop = make(chan struct{})
-	c.Assert(sc.cleanupStop, NotNil)
+func TestSchedulerSetClock(t *testing.T) {
+	t.Parallel()
 
-	// Clean up
-	sc.cleanupTicker.Stop()
-	close(sc.cleanupStop)
+	sc := NewScheduler(&TestLogger{})
+	fakeClock := NewFakeClock(time.Now())
+
+	sc.SetClock(fakeClock)
+	assert.Equal(t, fakeClock, sc.clock)
+}
+
+func TestSchedulerSetOnJobComplete(t *testing.T) {
+	t.Parallel()
+
+	sc := NewScheduler(&TestLogger{})
+	called := false
+
+	sc.SetOnJobComplete(func(_ string, _ bool) {
+		called = true
+	})
+
+	assert.NotNil(t, sc.onJobComplete)
+	sc.onJobComplete("test", true)
+	assert.True(t, called)
+}
+
+func TestSchedulerWithCronClock(t *testing.T) {
+	t.Parallel()
+
+	cronClock := NewCronClock(time.Now())
+	sc := NewSchedulerWithClock(&TestLogger{}, cronClock)
+
+	job := &TestJob{}
+	job.Schedule = "@every 1h"
+
+	err := sc.AddJob(job)
+	require.NoError(t, err)
+
+	jobCompleted := make(chan struct{}, 1)
+	sc.SetOnJobComplete(func(_ string, _ bool) {
+		select {
+		case jobCompleted <- struct{}{}:
+		default:
+		}
+	})
+
+	_ = sc.Start()
+	assert.True(t, sc.IsRunning())
+
+	time.Sleep(10 * time.Millisecond)
+
+	cronClock.Advance(1 * time.Hour)
+
+	select {
+	case <-jobCompleted:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Job should have fired after advancing clock by 1 hour")
+	}
+
+	_ = sc.Stop()
+	assert.False(t, sc.IsRunning())
 }

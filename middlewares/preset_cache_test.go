@@ -6,39 +6,36 @@ import (
 	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-type SuitePresetCache struct {
-	BaseSuite
-	tempDir string
+func TestNewPresetCache(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	cache := NewPresetCache(tempDir, time.Hour)
+
+	assert.NotNil(t, cache)
+	assert.Equal(t, time.Hour, cache.ttl)
+	assert.Equal(t, tempDir, cache.cacheDir)
+	assert.NotNil(t, cache.memory)
 }
 
-var _ = Suite(&SuitePresetCache{})
+func TestNewPresetCache_DefaultDir(t *testing.T) {
+	t.Parallel()
 
-func (s *SuitePresetCache) SetUpTest(c *C) {
-	s.BaseSuite.SetUpTest(c)
-	s.tempDir = c.MkDir()
-}
-
-func (s *SuitePresetCache) TestNewPresetCache(c *C) {
-	cache := NewPresetCache(s.tempDir, time.Hour)
-
-	c.Assert(cache, NotNil)
-	c.Assert(cache.ttl, Equals, time.Hour)
-	c.Assert(cache.cacheDir, Equals, s.tempDir)
-	c.Assert(cache.memory, NotNil)
-}
-
-func (s *SuitePresetCache) TestNewPresetCache_DefaultDir(c *C) {
 	cache := NewPresetCache("", time.Hour)
 
-	c.Assert(cache, NotNil)
-	c.Assert(cache.cacheDir, Not(Equals), "")
+	assert.NotNil(t, cache)
+	assert.NotEmpty(t, cache.cacheDir)
 }
 
-func (s *SuitePresetCache) TestPresetCache_PutGet_Memory(c *C) {
-	cache := NewPresetCache(s.tempDir, time.Hour)
+func TestPresetCache_PutGet_Memory(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	cache := NewPresetCache(tempDir, time.Hour)
 
 	preset := &Preset{
 		Name:   "test-preset",
@@ -48,24 +45,29 @@ func (s *SuitePresetCache) TestPresetCache_PutGet_Memory(c *C) {
 
 	testURL := "https://example.com/test.yaml"
 	err := cache.Put(testURL, preset)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Get from cache
 	retrieved, err := cache.Get(testURL)
-	c.Assert(err, IsNil)
-	c.Assert(retrieved, NotNil)
-	c.Assert(retrieved.Name, Equals, "test-preset")
+	require.NoError(t, err)
+	assert.NotNil(t, retrieved)
+	assert.Equal(t, "test-preset", retrieved.Name)
 }
 
-func (s *SuitePresetCache) TestPresetCache_Get_NotFound(c *C) {
-	cache := NewPresetCache(s.tempDir, time.Hour)
+func TestPresetCache_Get_NotFound(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	cache := NewPresetCache(tempDir, time.Hour)
 
 	_, err := cache.Get("https://nonexistent.com/preset.yaml")
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-func (s *SuitePresetCache) TestPresetCache_Expiration(c *C) {
-	cache := NewPresetCache(s.tempDir, 10*time.Millisecond)
+func TestPresetCache_Expiration(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	cache := NewPresetCache(tempDir, 10*time.Millisecond)
 
 	preset := &Preset{
 		Name:   "expiring-preset",
@@ -74,65 +76,62 @@ func (s *SuitePresetCache) TestPresetCache_Expiration(c *C) {
 
 	testURL := "https://example.com/expiring.yaml"
 	err := cache.Put(testURL, preset)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Should exist immediately
 	retrieved, err := cache.Get(testURL)
-	c.Assert(err, IsNil)
-	c.Assert(retrieved, NotNil)
+	require.NoError(t, err)
+	assert.NotNil(t, retrieved)
 
-	// Wait for expiration
 	time.Sleep(20 * time.Millisecond)
 
-	// Should be expired
 	_, err = cache.Get(testURL)
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-func (s *SuitePresetCache) TestPresetCache_DiskPersistence(c *C) {
+func TestPresetCache_DiskPersistence(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
 	testURL := "https://example.com/disk-test.yaml"
 
-	// First cache instance - save to disk
-	cache1 := NewPresetCache(s.tempDir, time.Hour)
+	cache1 := NewPresetCache(tempDir, time.Hour)
 	preset := &Preset{
 		Name:   "disk-preset",
 		Method: "POST",
 		Body:   "test body from disk",
 	}
 	err := cache1.Put(testURL, preset)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Second cache instance - should load from disk
-	cache2 := NewPresetCache(s.tempDir, time.Hour)
+	cache2 := NewPresetCache(tempDir, time.Hour)
 
-	// Memory cache is empty in new instance, but disk should have it
 	retrieved, err := cache2.Get(testURL)
-	c.Assert(err, IsNil)
-	c.Assert(retrieved, NotNil)
-	c.Assert(retrieved.Name, Equals, "disk-preset")
+	require.NoError(t, err)
+	assert.NotNil(t, retrieved)
+	assert.Equal(t, "disk-preset", retrieved.Name)
 }
 
-func (s *SuitePresetCache) TestPresetCache_CacheKey(c *C) {
-	cache := NewPresetCache(s.tempDir, time.Hour)
+func TestPresetCache_CacheKey(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	cache := NewPresetCache(tempDir, time.Hour)
 
 	key1 := cache.cacheKey("https://example.com/preset.yaml")
 	key2 := cache.cacheKey("https://example.com/preset.yaml")
 	key3 := cache.cacheKey("https://other.com/preset.yaml")
 
-	// Same URL should produce same key
-	c.Assert(key1, Equals, key2)
-
-	// Different URL should produce different key
-	c.Assert(key1, Not(Equals), key3)
-
-	// Key should be SHA256 hex (64 chars)
-	c.Assert(len(key1), Equals, 64)
+	assert.Equal(t, key1, key2)
+	assert.NotEqual(t, key1, key3)
+	assert.Len(t, key1, 64)
 }
 
-func (s *SuitePresetCache) TestPresetCache_Cleanup(c *C) {
-	cache := NewPresetCache(s.tempDir, 10*time.Millisecond)
+func TestPresetCache_Cleanup(t *testing.T) {
+	t.Parallel()
 
-	// Add multiple entries
+	tempDir := t.TempDir()
+	cache := NewPresetCache(tempDir, 10*time.Millisecond)
+
 	for i := 0; i < 5; i++ {
 		preset := &Preset{
 			Name:   "test-preset",
@@ -142,78 +141,74 @@ func (s *SuitePresetCache) TestPresetCache_Cleanup(c *C) {
 		_ = cache.Put(url, preset)
 	}
 
-	c.Assert(len(cache.memory), Equals, 5)
+	assert.Len(t, cache.memory, 5)
 
-	// Wait for expiration
 	time.Sleep(20 * time.Millisecond)
 
-	// Cleanup
 	err := cache.Cleanup()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	c.Assert(len(cache.memory), Equals, 0)
+	assert.Empty(t, cache.memory)
 }
 
-func (s *SuitePresetCache) TestPresetCache_Clear(c *C) {
-	cache := NewPresetCache(s.tempDir, time.Hour)
+func TestPresetCache_Clear(t *testing.T) {
+	t.Parallel()
 
-	// Add entries
+	tempDir := t.TempDir()
+	cache := NewPresetCache(tempDir, time.Hour)
+
 	preset := &Preset{Name: "test", Method: "POST"}
 	_ = cache.Put("https://example.com/test1.yaml", preset)
 	_ = cache.Put("https://example.com/test2.yaml", preset)
 
-	c.Assert(len(cache.memory), Equals, 2)
+	assert.Len(t, cache.memory, 2)
 
-	// Clear
 	err := cache.Clear()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	c.Assert(len(cache.memory), Equals, 0)
+	assert.Empty(t, cache.memory)
 }
 
-func (s *SuitePresetCache) TestPresetCache_Invalidate(c *C) {
-	cache := NewPresetCache(s.tempDir, time.Hour)
+func TestPresetCache_Invalidate(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	cache := NewPresetCache(tempDir, time.Hour)
 
 	testURL := "https://example.com/invalidate.yaml"
 	preset := &Preset{Name: "test", Method: "POST"}
 	_ = cache.Put(testURL, preset)
 
-	// Should exist
 	_, err := cache.Get(testURL)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Invalidate
 	cache.Invalidate(testURL)
 
-	// Should not exist
 	_, err = cache.Get(testURL)
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-func (s *SuitePresetCache) TestPresetCache_Stats(c *C) {
-	cache := NewPresetCache(s.tempDir, time.Hour)
+func TestPresetCache_Stats(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	cache := NewPresetCache(tempDir, time.Hour)
 
 	preset := &Preset{Name: "test", Method: "POST"}
 	_ = cache.Put("https://example.com/test1.yaml", preset)
 	_ = cache.Put("https://example.com/test2.yaml", preset)
 
 	stats := cache.Stats()
-	c.Assert(stats.MemoryEntries, Equals, 2)
-	c.Assert(stats.DiskEntries, Equals, 2)
+	assert.Equal(t, 2, stats.MemoryEntries)
+	assert.Equal(t, 2, stats.DiskEntries)
 }
 
-// Standard Go testing for concurrent access
-
 func TestPresetCache_ConcurrentAccess(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "preset-cache-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	t.Parallel()
 
+	tempDir := t.TempDir()
 	cache := NewPresetCache(tempDir, time.Hour)
 
-	// Concurrent writes
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func(n int) {
@@ -228,28 +223,20 @@ func TestPresetCache_ConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 
-	// Wait for all goroutines
 	for i := 0; i < 10; i++ {
 		<-done
 	}
 
-	// Should not panic and should have valid state
-	_, err = cache.Get("https://example.com/concurrent.yaml")
-	if err != nil {
-		t.Error("Expected key to exist after concurrent access")
-	}
+	_, err := cache.Get("https://example.com/concurrent.yaml")
+	require.NoError(t, err)
 }
 
 func TestPresetCache_DiskFilenames(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "preset-cache-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	t.Parallel()
 
+	tempDir := t.TempDir()
 	cache := NewPresetCache(tempDir, time.Hour)
 
-	// Test various URL patterns
 	urls := []string{
 		"https://example.com/preset.yaml",
 		"https://raw.githubusercontent.com/org/repo/main/file.yaml",
@@ -259,30 +246,19 @@ func TestPresetCache_DiskFilenames(t *testing.T) {
 
 	for _, url := range urls {
 		key := cache.cacheKey(url)
-
-		// Key should be safe for filesystem
 		filePath := filepath.Join(tempDir, key+".yaml")
 
-		// Should be able to create file with this name
 		f, err := os.Create(filePath)
-		if err != nil {
-			t.Errorf("Failed to create file for URL %s: %v", url, err)
-			continue
-		}
+		require.NoError(t, err, "Failed to create file for URL %s", url)
 		f.Close()
-
-		// Cleanup
 		os.Remove(filePath)
 	}
 }
 
 func TestPresetCache_DisabledWithZeroTTL(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "preset-cache-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	t.Parallel()
 
+	tempDir := t.TempDir()
 	cache := NewPresetCache(tempDir, 0)
 
 	preset := &Preset{
@@ -293,21 +269,14 @@ func TestPresetCache_DisabledWithZeroTTL(t *testing.T) {
 	url := "https://example.com/nocache.yaml"
 	_ = cache.Put(url, preset)
 
-	// With zero TTL, cache should effectively be disabled
-	// (entry expires immediately)
-	_, err = cache.Get(url)
-	if err == nil {
-		t.Error("Zero TTL cache should not return entries")
-	}
+	_, err := cache.Get(url)
+	assert.Error(t, err)
 }
 
 func TestPresetCache_FilePermissions(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "preset-cache-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	t.Parallel()
 
+	tempDir := t.TempDir()
 	cache := NewPresetCache(tempDir, time.Hour)
 
 	preset := &Preset{
@@ -317,33 +286,20 @@ func TestPresetCache_FilePermissions(t *testing.T) {
 	}
 
 	url := "https://example.com/permissions.yaml"
-	err = cache.Put(url, preset)
-	if err != nil {
-		t.Fatalf("Failed to put preset: %v", err)
-	}
+	err := cache.Put(url, preset)
+	require.NoError(t, err)
 
-	// Find the cached files
 	key := cache.cacheKey(url)
 	metaPath := filepath.Join(tempDir, key+".meta.yaml")
 	presetPath := filepath.Join(tempDir, key+".yaml")
 
-	// Check metadata file permissions
 	metaInfo, err := os.Stat(metaPath)
-	if err != nil {
-		t.Fatalf("Failed to stat metadata file: %v", err)
-	}
+	require.NoError(t, err)
 	metaPerm := metaInfo.Mode().Perm()
-	if metaPerm != 0o600 {
-		t.Errorf("Expected metadata file permissions 0600, got %04o", metaPerm)
-	}
+	assert.Equal(t, os.FileMode(0o600), metaPerm)
 
-	// Check preset file permissions
 	presetInfo, err := os.Stat(presetPath)
-	if err != nil {
-		t.Fatalf("Failed to stat preset file: %v", err)
-	}
+	require.NoError(t, err)
 	presetPerm := presetInfo.Mode().Perm()
-	if presetPerm != 0o600 {
-		t.Errorf("Expected preset file permissions 0600, got %04o", presetPerm)
-	}
+	assert.Equal(t, os.FileMode(0o600), presetPerm)
 }

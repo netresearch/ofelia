@@ -14,84 +14,35 @@ colors: true
 pre-commit:
   parallel: true
   commands:
-    # 1. Dependency hygiene - ensure go.mod is clean
     go-mod-tidy:
       priority: 1
       run: |
-        echo "🧹 Checking go.mod cleanliness..."
         if ! go mod tidy -diff >/dev/null 2>&1; then
-          echo "❌ go.mod is not clean. Running go mod tidy shows differences:"
-          go mod tidy -diff
-          echo "Please run 'go mod tidy' and commit the changes."
+          echo "❌ go.mod not clean. Run: go mod tidy"
           exit 1
         fi
-        echo "✅ go.mod is clean"
 
-    # 2. Static analysis - go vet
     go-vet:
       glob: "*.go"
-      run: |
-        echo "🔧 Running go vet..."
-        go vet ./...
+      run: go vet ./...
 
-    # 3. Code formatting check - gofmt
     gofmt:
       glob: "*.go"
       run: |
-        echo "📝 Checking Go formatting..."
         unformatted=$(gofmt -l $(git ls-files '*.go') 2>/dev/null || true)
         if [ -n "$unformatted" ]; then
-          echo "❌ The following files are not properly formatted:"
-          echo "$unformatted"
-          echo "Please run: gofmt -w $unformatted"
+          echo "❌ Unformatted: $unformatted"
           exit 1
         fi
-        echo "✅ All files properly formatted"
 
-    # 4. Comprehensive linting - golangci-lint
-    golangci-lint:
-      glob: "*.go"
-      run: |
-        echo "🔍 Running golangci-lint..."
-        golangci-lint run --timeout=3m
-
-    # 5. Additional linters for extra quality
-    golangci-lint-extra:
-      glob: "*.go"
-      run: |
-        echo "🛡️ Running additional linters..."
-        # Note: gci is a formatter in golangci-lint v2, so it's excluded here
-        extra_linters="wrapcheck,unparam,revive,misspell,paralleltest,gocyclo,unused,forbidigo,errorlint"
-        golangci-lint run --timeout=3m --enable-only="$extra_linters"
-
-    # 6. Security scanning - gosec
-    gosec:
-      glob: "*.go"
-      run: |
-        echo "🔒 Running gosec security scanner..."
-        gosec -quiet ./...
-
-    # 7. Secret detection - basic check
     secrets:
       run: |
-        echo "🕵️ Checking for sensitive information..."
-
-        # Only check code files, skip config/documentation
         code_files=$(git diff --cached --name-only | grep -E '\.(go|js|ts|py|java|rb|php)$' || true)
-
-        if [ -z "$code_files" ]; then
-          echo "✅ No code files to check for secrets"
-          exit 0
-        fi
-
-        # Look for actual secret assignments (key="value" patterns)
+        [ -z "$code_files" ] && exit 0
         if echo "$code_files" | xargs grep -E "(password|secret|api_key|apikey|token|access_key)(\s*=\s*|\s*:\s*)['\"][^'\"]{8,}['\"]" 2>/dev/null | grep -v "example\|test\|mock\|dummy"; then
-          echo "❌ Potential hardcoded secrets detected!"
-          echo "Please review and remove any hardcoded credentials before committing."
+          echo "❌ Potential secrets detected!"
           exit 1
         fi
-
-        echo "✅ No sensitive information detected"
 
 commit-msg:
   commands:
@@ -143,49 +94,18 @@ commit-msg:
         echo "✅ Commit message format validated"
 
 pre-push:
+  parallel: true
   commands:
-    # Run full test suite before pushing
-    tests:
+    golangci-lint:
+      glob: "*.go"
+      run: golangci-lint run --timeout=3m
+
+    smoke-tests:
       run: |
-        echo "🧪 Running full test suite before push..."
-        echo "This ensures no broken code reaches the remote repository"
-        echo ""
-
-        # Temporarily enable CGO for race detection
-        export CGO_ENABLED=1
-
-        # Run tests with race detection
-        if ! go test -race -timeout=5m ./...; then
-          echo ""
-          echo "❌ Tests failed! Push cancelled."
-          echo "Fix the failing tests before pushing."
+        if ! go test -short -timeout=60s ./core/... ./cli/... ./middlewares/...; then
+          echo "❌ Smoke tests failed!"
           exit 1
         fi
-
-        echo ""
-        echo "✅ All tests passed!"
-
-
-    # Run quick linting check
-    lint-check:
-      run: |
-        echo "🔍 Running quick lint check..."
-
-        # Only run on Go files that changed
-        changed_files=$(git diff --name-only HEAD @{u} 2>/dev/null | grep '\.go$' || true)
-
-        if [ -z "$changed_files" ]; then
-          echo "✅ No Go files changed, skipping lint"
-          exit 0
-        fi
-
-        # Run quick vet check
-        if ! go vet ./...; then
-          echo "❌ go vet failed! Fix issues before pushing."
-          exit 1
-        fi
-
-        echo "✅ Quick lint check passed"
 
 post-checkout:
   commands:

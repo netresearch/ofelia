@@ -283,6 +283,7 @@ func XTestSchedulerJobSemaphoreLimiting(t *testing.T) {
 
 // TestSchedulerJobManagementOperations tests AddJob, RemoveJob, EnableJob, DisableJob
 func TestSchedulerJobManagementOperations(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
 	job1 := NewMockControlledJob("job1", "@daily")
@@ -363,6 +364,7 @@ func TestSchedulerJobManagementOperations(t *testing.T) {
 
 // TestSchedulerGracefulShutdown tests that scheduler waits for running jobs during shutdown
 func TestSchedulerGracefulShutdown(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
 	longRunningJob := NewMockControlledJob("long-job", "@every 1s")
@@ -414,6 +416,7 @@ func TestSchedulerGracefulShutdown(t *testing.T) {
 
 // TestSchedulerRaceConditions tests for race conditions in job state management
 func TestSchedulerRaceConditions(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 	scheduler.SetMaxConcurrentJobs(5)
 
@@ -489,9 +492,6 @@ func TestSchedulerRaceConditions(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-
-	// Give some time for any started jobs to complete
-	time.Sleep(200 * time.Millisecond)
 
 	// Verify scheduler state consistency
 	activeJobs := 0
@@ -582,6 +582,7 @@ func XTestSchedulerMaxConcurrentJobsConfiguration(t *testing.T) {
 
 // TestSchedulerJobLookupOperations tests GetJob and GetDisabledJob
 func TestSchedulerJobLookupOperations(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
 	job1 := NewMockControlledJob("lookup-job1", "@daily")
@@ -629,6 +630,7 @@ func TestSchedulerJobLookupOperations(t *testing.T) {
 
 // TestSchedulerEmptyScheduleError tests error handling for jobs with empty schedules
 func TestSchedulerEmptyScheduleError(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
 	invalidJob := NewMockControlledJob("invalid-job", "")
@@ -649,6 +651,7 @@ func TestSchedulerEmptyScheduleError(t *testing.T) {
 
 // TestSchedulerWorkflowIntegration tests basic workflow orchestrator integration
 func TestSchedulerWorkflowIntegration(t *testing.T) {
+	t.Parallel()
 	scheduler := NewScheduler(&TestLogger{})
 
 	// Create jobs that could have dependencies (using BareJob for dependency support)

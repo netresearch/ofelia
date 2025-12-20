@@ -98,6 +98,12 @@ func main() {
 		"",
 		&cli.DoctorCommand{Logger: logger, LogLevel: pre.LogLevel},
 	)
+	_, _ = parser.AddCommand(
+		"hash-password",
+		"generate a bcrypt hash for web authentication",
+		"",
+		&cli.HashPasswordCommand{Logger: logger, LogLevel: pre.LogLevel},
+	)
 
 	if _, err := parser.ParseArgs(args); err != nil {
 		var flagErr *flags.Error

@@ -3,6 +3,53 @@
 Unit tests can be run without Docker. Integration tests require either a running
 Docker daemon or the Docker test server.
 
+## Test Architecture
+
+The test suite follows a 3-tier model:
+
+| Tier | Command | Build Tag | Characteristics |
+|------|---------|-----------|-----------------|
+| **Unit** | `go test ./...` | None | Fast, mocked, deterministic time |
+| **Integration** | `go test -tags=integration ./...` | `integration` | Real wiring, still mocked Docker |
+| **Docker/E2E** | `go test -tags=docker ./...` | `docker` | Requires Docker daemon |
+
+### Test Utilities
+
+Shared test utilities are available in `test/testutil/`:
+
+- **Eventually**: Poll a condition until it returns true or timeout
+- **Never**: Assert a condition never becomes true
+- **WaitForChan**: Wait for a channel with timeout
+- **WaitForClose**: Wait for a channel to close
+
+Example:
+```go
+import "github.com/netresearch/ofelia/test/testutil"
+
+func TestServerStartup(t *testing.T) {
+    srv := startServer()
+    testutil.Eventually(t, func() bool {
+        return srv.IsReady()
+    }, testutil.WithTimeout(2*time.Second))
+}
+```
+
+### Clock Interface
+
+For deterministic time-based tests, use the `Clock` interface from `core/`:
+
+```go
+import "github.com/netresearch/ofelia/core"
+
+func TestScheduler(t *testing.T) {
+    clock := core.NewFakeClock(time.Now())
+    // ... inject clock into scheduler
+    
+    clock.Advance(1 * time.Hour)  // Instant!
+    // ... assert job ran
+}
+```
+
 ## Unit tests
 
 ```sh

@@ -8,6 +8,7 @@ import (
 
 // TestComposeJobConfig_GetSetJobSource tests GetJobSource and SetJobSource for ComposeJobConfig
 func TestComposeJobConfig_GetSetJobSource(t *testing.T) {
+	t.Parallel()
 	job := &ComposeJobConfig{}
 
 	// Test initial value
@@ -33,6 +34,7 @@ func TestComposeJobConfig_GetSetJobSource(t *testing.T) {
 
 // TestExecJobConfig_GetSetJobSource tests GetJobSource and SetJobSource for ExecJobConfig
 func TestExecJobConfig_GetSetJobSource(t *testing.T) {
+	t.Parallel()
 	job := &ExecJobConfig{}
 
 	job.SetJobSource(JobSourceINI)
@@ -43,6 +45,7 @@ func TestExecJobConfig_GetSetJobSource(t *testing.T) {
 
 // TestRunJobConfig_GetSetJobSource tests GetJobSource and SetJobSource for RunJobConfig
 func TestRunJobConfig_GetSetJobSource(t *testing.T) {
+	t.Parallel()
 	job := &RunJobConfig{}
 
 	job.SetJobSource(JobSourceLabel)
@@ -53,6 +56,7 @@ func TestRunJobConfig_GetSetJobSource(t *testing.T) {
 
 // TestLocalJobConfig_GetSetJobSource tests GetJobSource and SetJobSource for LocalJobConfig
 func TestLocalJobConfig_GetSetJobSource(t *testing.T) {
+	t.Parallel()
 	job := &LocalJobConfig{}
 
 	job.SetJobSource(JobSourceINI)
@@ -63,6 +67,7 @@ func TestLocalJobConfig_GetSetJobSource(t *testing.T) {
 
 // TestRunServiceConfig_GetSetJobSource tests GetJobSource and SetJobSource for RunServiceConfig
 func TestRunServiceConfig_GetSetJobSource(t *testing.T) {
+	t.Parallel()
 	job := &RunServiceConfig{}
 
 	job.SetJobSource(JobSourceLabel)
@@ -73,6 +78,7 @@ func TestRunServiceConfig_GetSetJobSource(t *testing.T) {
 
 // TestJobSourceString tests JobSource as string type
 func TestJobSourceString(t *testing.T) {
+	t.Parallel()
 	var src JobSource = "test-source"
 	if string(src) != "test-source" {
 		t.Error("JobSource string conversion failed")
@@ -89,6 +95,7 @@ func TestJobSourceString(t *testing.T) {
 
 // TestRunJobConfig_Hash tests the Hash method for RunJobConfig
 func TestRunJobConfig_Hash(t *testing.T) {
+	t.Parallel()
 	job1 := &RunJobConfig{
 		RunJob: core.RunJob{
 			BareJob: core.BareJob{

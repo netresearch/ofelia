@@ -5,9 +5,11 @@ package cli
 
 import (
 	"context"
+	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/test"
@@ -25,7 +27,9 @@ func (n *chanNotifier) dockerLabelsUpdate(_ map[string]map[string]string) {
 	}
 }
 
-func (s *DockerHandlerSuite) TestPollingDisabled(c *C) {
+func TestPollingDisabled(t *testing.T) {
+	t.Parallel()
+
 	ch := make(chan struct{}, 1)
 	notifier := &chanNotifier{ch: ch}
 
@@ -41,11 +45,11 @@ func (s *DockerHandlerSuite) TestPollingDisabled(c *C) {
 
 	cfg := &DockerConfig{Filters: []string{}, PollInterval: time.Millisecond * 50, UseEvents: false, DisablePolling: true}
 	_, err := NewDockerHandler(context.Background(), notifier, &test.Logger{}, cfg, mockProvider)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	select {
 	case <-ch:
-		c.Error("unexpected update")
+		assert.Fail(t, "unexpected update")
 	case <-time.After(time.Millisecond * 150):
 	}
 }

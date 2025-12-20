@@ -8,6 +8,7 @@ import (
 
 // TestGlobalPerformanceMetrics verifies global metrics instance exists
 func TestGlobalPerformanceMetrics(t *testing.T) {
+	t.Parallel()
 	if GlobalPerformanceMetrics == nil {
 		t.Fatal("GlobalPerformanceMetrics is nil")
 	}
@@ -18,6 +19,7 @@ func TestGlobalPerformanceMetrics(t *testing.T) {
 
 // TestPerformanceMetricsDockerOperations verifies Docker operation tracking
 func TestPerformanceMetricsDockerOperations(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Record some Docker operations
@@ -81,6 +83,7 @@ func TestPerformanceMetricsDockerOperations(t *testing.T) {
 
 // TestPerformanceMetricsJobExecution verifies job execution tracking
 func TestPerformanceMetricsJobExecution(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Schedule some jobs
@@ -160,6 +163,7 @@ func TestPerformanceMetricsJobExecution(t *testing.T) {
 
 // TestPerformanceMetricsConcurrentJobs verifies concurrent job tracking
 func TestPerformanceMetricsConcurrentJobs(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Record concurrent jobs
@@ -188,6 +192,7 @@ func TestPerformanceMetricsConcurrentJobs(t *testing.T) {
 
 // TestPerformanceMetricsMemoryUsage verifies memory tracking
 func TestPerformanceMetricsMemoryUsage(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Record memory usage
@@ -214,6 +219,7 @@ func TestPerformanceMetricsMemoryUsage(t *testing.T) {
 
 // TestPerformanceMetricsBufferPoolStats verifies buffer pool stats recording
 func TestPerformanceMetricsBufferPoolStats(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Record buffer pool stats
@@ -246,6 +252,7 @@ func TestPerformanceMetricsBufferPoolStats(t *testing.T) {
 
 // TestPerformanceMetricsCustomMetrics verifies custom metrics
 func TestPerformanceMetricsCustomMetrics(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Record custom metrics
@@ -271,6 +278,7 @@ func TestPerformanceMetricsCustomMetrics(t *testing.T) {
 
 // TestPerformanceMetricsReset verifies metrics can be reset
 func TestPerformanceMetricsReset(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Record some metrics
@@ -307,6 +315,7 @@ func TestPerformanceMetricsReset(t *testing.T) {
 
 // TestPerformanceMetricsSummaryReport verifies summary report generation
 func TestPerformanceMetricsSummaryReport(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Record various metrics
@@ -339,6 +348,7 @@ func TestPerformanceMetricsSummaryReport(t *testing.T) {
 
 // TestPerformanceMetricsContainerEvents verifies container event tracking
 func TestPerformanceMetricsContainerEvents(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Record container events
@@ -365,6 +375,7 @@ func TestPerformanceMetricsContainerEvents(t *testing.T) {
 
 // TestPerformanceMetricsRetries verifies retry tracking
 func TestPerformanceMetricsRetries(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	// Record retry attempts
@@ -411,6 +422,7 @@ func containsString(s, substr string) bool {
 
 // TestPerformanceMetricsConcurrency verifies thread safety
 func TestPerformanceMetricsConcurrency(t *testing.T) {
+	t.Parallel()
 	pm := NewPerformanceMetrics()
 
 	const goroutines = 50

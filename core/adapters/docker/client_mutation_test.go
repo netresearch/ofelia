@@ -10,8 +10,7 @@ import (
 // These test both branches of config option conditionals
 
 func TestNewClientWithConfig_ConfigOptions(t *testing.T) {
-	// These tests verify that config options are properly applied
-	// by testing both empty and non-empty values for each option
+	t.Parallel()
 
 	testCases := []struct {
 		name   string
@@ -92,14 +91,9 @@ func TestNewClientWithConfig_ConfigOptions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Note: This test validates that the code paths execute without panic
-			// The actual Docker client creation may fail without Docker daemon
-			// but we're testing the config handling logic
+			t.Parallel()
 			_, err := NewClientWithConfig(tc.config)
-			// We expect errors when Docker is not available, but not panics
-			// The important thing is that the config options were processed
 			if err != nil {
-				// This is expected when Docker daemon is not running
 				t.Logf("%s: got expected error (no Docker): %v", tc.desc, err)
 			}
 		})

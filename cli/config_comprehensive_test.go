@@ -13,6 +13,7 @@ import (
 
 // TestMergeJobs tests the mergeJobs function
 func TestMergeJobs(t *testing.T) {
+	t.Parallel()
 	logger := test.NewTestLogger()
 
 	tests := []struct {
@@ -55,6 +56,7 @@ func TestMergeJobs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := NewConfig(logger)
 			cfg.ExecJobs = tt.existing
 
@@ -69,6 +71,7 @@ func TestMergeJobs(t *testing.T) {
 
 // TestRegisterAllJobs tests registerAllJobs with different job types
 func TestRegisterAllJobs(t *testing.T) {
+	// Cannot use t.Parallel() - modifies global newDockerHandler
 	logger := test.NewTestLogger()
 
 	orig := newDockerHandler
@@ -99,6 +102,7 @@ func TestRegisterAllJobs(t *testing.T) {
 
 // TestLatestChanged tests the latestChanged function
 func TestLatestChanged(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "ofelia_latest_")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -150,6 +154,7 @@ func TestLatestChanged(t *testing.T) {
 
 // TestSectionToMap tests sectionToMap with various key scenarios
 func TestSectionToMap(t *testing.T) {
+	t.Parallel()
 	// This is implicitly tested through BuildFromString, but we can test edge cases
 	configStr := `
 [test]
@@ -171,6 +176,7 @@ empty =
 
 // TestParseJobName tests the parseJobName function indirectly
 func TestParseJobName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		section  string
 		prefix   string
@@ -190,6 +196,7 @@ func TestParseJobName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.section, func(t *testing.T) {
+			t.Parallel()
 			result := parseJobName(tt.section, tt.prefix)
 			if result != tt.expected {
 				t.Errorf("Expected %q, got %q", tt.expected, result)
@@ -200,6 +207,7 @@ func TestParseJobName(t *testing.T) {
 
 // TestBuildFromString_ErrorRecovery tests error handling in BuildFromString
 func TestBuildFromString_ErrorRecovery(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		config  string
@@ -225,6 +233,7 @@ log-level = info
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := BuildFromString(tt.config, test.NewTestLogger())
 
 			if (err != nil) != tt.wantErr {
@@ -236,6 +245,7 @@ log-level = info
 
 // TestDockerLabelsUpdate_Integration tests dockerLabelsUpdate with real scheduler
 func TestDockerLabelsUpdate_Integration(t *testing.T) {
+	// Cannot use t.Parallel() - modifies global newDockerHandler
 	logger := test.NewTestLogger()
 
 	orig := newDockerHandler
@@ -270,6 +280,7 @@ func TestDockerLabelsUpdate_Integration(t *testing.T) {
 
 // TestDecodeJob_ErrorHandling tests decodeJob error scenarios
 func TestDecodeJob_ErrorHandling(t *testing.T) {
+	t.Parallel()
 	// Test via BuildFromString with various invalid job configs
 	configStr := `
 [job-exec "test"]

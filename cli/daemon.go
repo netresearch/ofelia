@@ -14,16 +14,22 @@ import (
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile         string         `long:"config" env:"OFELIA_CONFIG" default:"/etc/ofelia/config.ini"`
-	DockerFilters      []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER"`
-	DockerPollInterval *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL"`
-	DockerUseEvents    *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS"`
-	DockerNoPoll       *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL"`
-	LogLevel           string         `long:"log-level" env:"OFELIA_LOG_LEVEL"`
-	EnablePprof        bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF"`
-	PprofAddr          string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" default:"127.0.0.1:8080"`
-	EnableWeb          bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
-	WebAddr            string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
+	ConfigFile          string         `long:"config" env:"OFELIA_CONFIG" default:"/etc/ofelia/config.ini"`
+	DockerFilters       []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER"`
+	DockerPollInterval  *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL"`
+	DockerUseEvents     *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS"`
+	DockerNoPoll        *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL"`
+	LogLevel            string         `long:"log-level" env:"OFELIA_LOG_LEVEL"`
+	EnablePprof         bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF"`
+	PprofAddr           string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" default:"127.0.0.1:8080"`
+	EnableWeb           bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
+	WebAddr             string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
+	WebAuthEnabled      bool           `long:"web-auth-enabled" env:"OFELIA_WEB_AUTH_ENABLED"`
+	WebUsername         string         `long:"web-username" env:"OFELIA_WEB_USERNAME"`
+	WebPasswordHash     string         `long:"web-password-hash" env:"OFELIA_WEB_PASSWORD_HASH"`
+	WebSecretKey        string         `long:"web-secret-key" env:"OFELIA_WEB_SECRET_KEY"`
+	WebTokenExpiry      int            `long:"web-token-expiry" env:"OFELIA_WEB_TOKEN_EXPIRY" default:"24"`
+	WebMaxLoginAttempts int            `long:"web-max-login-attempts" env:"OFELIA_WEB_MAX_LOGIN_ATTEMPTS" default:"5"`
 
 	scheduler       *core.Scheduler
 	pprofServer     *http.Server
@@ -69,20 +75,7 @@ func (c *DaemonCommand) boot() (err error) {
 		config = NewConfig(c.Logger)
 	}
 	c.applyOptions(config)
-
-	// Apply global settings from config if flags were not provided
-	if !c.EnableWeb {
-		c.EnableWeb = config.Global.EnableWeb
-	}
-	if c.WebAddr == ":8081" && config.Global.WebAddr != "" {
-		c.WebAddr = config.Global.WebAddr
-	}
-	if !c.EnablePprof {
-		c.EnablePprof = config.Global.EnablePprof
-	}
-	if c.PprofAddr == "127.0.0.1:8080" && config.Global.PprofAddr != "" {
-		c.PprofAddr = config.Global.PprofAddr
-	}
+	c.applyConfigDefaults(config)
 
 	c.pprofServer = &http.Server{
 		Addr:              c.PprofAddr,
@@ -123,14 +116,37 @@ func (c *DaemonCommand) boot() (err error) {
 		if c.dockerHandler != nil {
 			provider = c.dockerHandler.GetDockerProvider()
 		}
-		c.webServer = web.NewServer(c.WebAddr, c.scheduler, c.config, provider)
 
-		// Register health endpoints
+		var authCfg *web.SecureAuthConfig
+		if c.WebAuthEnabled {
+			if c.WebUsername == "" {
+				return fmt.Errorf("web-auth-enabled requires web-username to be set")
+			}
+			if c.WebPasswordHash == "" {
+				return fmt.Errorf("web-auth-enabled requires web-password-hash to be set (use 'ofelia hash-password' to generate one)")
+			}
+
+			if c.WebSecretKey == "" {
+				c.Logger.Warningf("⚠️  No web-secret-key provided. " +
+					"Auth tokens will not survive daemon restarts. " +
+					"Set OFELIA_WEB_SECRET_KEY for persistent sessions.")
+			}
+
+			authCfg = &web.SecureAuthConfig{
+				Enabled:      true,
+				Username:     c.WebUsername,
+				PasswordHash: c.WebPasswordHash,
+				SecretKey:    c.WebSecretKey,
+				TokenExpiry:  c.WebTokenExpiry,
+				MaxAttempts:  c.WebMaxLoginAttempts,
+			}
+		}
+		c.webServer = web.NewServerWithAuth(c.WebAddr, c.scheduler, c.config, provider, authCfg)
+
 		c.webServer.RegisterHealthEndpoints(c.healthChecker)
 
-		// Create graceful server with shutdown support
 		gracefulServer := core.NewGracefulServer(c.webServer.GetHTTPServer(), c.shutdownManager, c.Logger)
-		_ = gracefulServer // The hooks are registered internally
+		_ = gracefulServer
 	}
 
 	return err
@@ -166,18 +182,19 @@ func (c *DaemonCommand) start() error {
 
 	if c.EnablePprof {
 		c.Logger.Noticef("Starting pprof server on %s...", c.PprofAddr)
+		pprofErrChan := make(chan error, 1)
 		go func() {
 			if err := c.pprofServer.ListenAndServe(); err != http.ErrServerClosed {
 				c.Logger.Errorf("Error starting HTTP server: %v", err)
+				pprofErrChan <- err
 				close(c.done)
 			}
 		}()
 
-		// Wait for server to be ready with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		if err := waitForServer(ctx, c.PprofAddr); err != nil {
+		if err := waitForServerWithErrChan(ctx, c.PprofAddr, pprofErrChan); err != nil {
 			c.Logger.Errorf("❌ pprof server failed to start: %v", err)
 			return fmt.Errorf("pprof server startup failed: %w", err)
 		}
@@ -188,18 +205,19 @@ func (c *DaemonCommand) start() error {
 
 	if c.EnableWeb {
 		c.Logger.Noticef("Starting web server on %s...", c.WebAddr)
+		webErrChan := make(chan error, 1)
 		go func() {
 			if err := c.webServer.Start(); err != nil {
 				c.Logger.Errorf("Error starting web server: %v", err)
+				webErrChan <- err
 				close(c.done)
 			}
 		}()
 
-		// Wait for server to be ready with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		if err := waitForServer(ctx, c.WebAddr); err != nil {
+		if err := waitForServerWithErrChan(ctx, c.WebAddr, webErrChan); err != nil {
 			c.Logger.Errorf("❌ web server failed to start: %v", err)
 			return fmt.Errorf("web server startup failed: %w", err)
 		}
@@ -236,12 +254,42 @@ func (c *DaemonCommand) applyOptions(config *Config) {
 		config.Docker.DisablePolling = *c.DockerNoPoll
 	}
 
+	c.applyWebOptions(config)
+	c.applyAuthOptions(config)
+	c.applyServerOptions(config)
+}
+
+func (c *DaemonCommand) applyWebOptions(config *Config) {
 	if c.EnableWeb {
 		config.Global.EnableWeb = true
 	}
 	if c.WebAddr != ":8081" {
 		config.Global.WebAddr = c.WebAddr
 	}
+}
+
+func (c *DaemonCommand) applyAuthOptions(config *Config) {
+	if c.WebAuthEnabled {
+		config.Global.WebAuthEnabled = true
+	}
+	if c.WebUsername != "" {
+		config.Global.WebUsername = c.WebUsername
+	}
+	if c.WebPasswordHash != "" {
+		config.Global.WebPasswordHash = c.WebPasswordHash
+	}
+	if c.WebSecretKey != "" {
+		config.Global.WebSecretKey = c.WebSecretKey
+	}
+	if c.WebTokenExpiry != 24 {
+		config.Global.WebTokenExpiry = c.WebTokenExpiry
+	}
+	if c.WebMaxLoginAttempts != 5 {
+		config.Global.WebMaxLoginAttempts = c.WebMaxLoginAttempts
+	}
+}
+
+func (c *DaemonCommand) applyServerOptions(config *Config) {
 	if c.EnablePprof {
 		config.Global.EnablePprof = true
 	}
@@ -258,8 +306,52 @@ func (c *DaemonCommand) Config() *Config {
 	return c.config
 }
 
-// waitForServer waits for a TCP server to start accepting connections
-func waitForServer(ctx context.Context, addr string) error {
+func (c *DaemonCommand) applyConfigDefaults(config *Config) {
+	c.applyWebDefaults(config)
+	c.applyAuthDefaults(config)
+	c.applyServerDefaults(config)
+}
+
+func (c *DaemonCommand) applyWebDefaults(config *Config) {
+	if !c.EnableWeb {
+		c.EnableWeb = config.Global.EnableWeb
+	}
+	if c.WebAddr == ":8081" && config.Global.WebAddr != "" {
+		c.WebAddr = config.Global.WebAddr
+	}
+}
+
+func (c *DaemonCommand) applyAuthDefaults(config *Config) {
+	if !c.WebAuthEnabled {
+		c.WebAuthEnabled = config.Global.WebAuthEnabled
+	}
+	if c.WebUsername == "" && config.Global.WebUsername != "" {
+		c.WebUsername = config.Global.WebUsername
+	}
+	if c.WebPasswordHash == "" && config.Global.WebPasswordHash != "" {
+		c.WebPasswordHash = config.Global.WebPasswordHash
+	}
+	if c.WebSecretKey == "" && config.Global.WebSecretKey != "" {
+		c.WebSecretKey = config.Global.WebSecretKey
+	}
+	if c.WebTokenExpiry == 24 && config.Global.WebTokenExpiry != 0 {
+		c.WebTokenExpiry = config.Global.WebTokenExpiry
+	}
+	if c.WebMaxLoginAttempts == 5 && config.Global.WebMaxLoginAttempts != 0 {
+		c.WebMaxLoginAttempts = config.Global.WebMaxLoginAttempts
+	}
+}
+
+func (c *DaemonCommand) applyServerDefaults(config *Config) {
+	if !c.EnablePprof {
+		c.EnablePprof = config.Global.EnablePprof
+	}
+	if c.PprofAddr == "127.0.0.1:8080" && config.Global.PprofAddr != "" {
+		c.PprofAddr = config.Global.PprofAddr
+	}
+}
+
+func waitForServerWithErrChan(ctx context.Context, addr string, errChan <-chan error) error {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -267,10 +359,14 @@ func waitForServer(ctx context.Context, addr string) error {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timeout waiting for server: %w", ctx.Err())
+		case err := <-errChan:
+			if err != nil {
+				return fmt.Errorf("server failed to start: %w", err)
+			}
 		case <-ticker.C:
 			conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 			if err == nil {
-				_ = conn.Close() // Ignore close error, connection test successful
+				_ = conn.Close()
 				return nil
 			}
 		}

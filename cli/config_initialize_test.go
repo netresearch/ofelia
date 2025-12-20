@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/domain"
 )
 
-// mockDockerProviderForInit implements core.DockerProvider for initialization tests
 type mockDockerProviderForInit struct {
 	containers []domain.Container
 }
@@ -123,16 +123,8 @@ func (m *mockDockerProviderForInit) Close() error {
 	return nil
 }
 
-// Hook up gocheck into the "go test" runner.
-func TestConfigInit(t *testing.T) { TestingT(t) }
-
-type ConfigInitSuite struct{}
-
-var _ = Suite(&ConfigInitSuite{})
-
-// TestInitializeAppSuccess verifies that InitializeApp succeeds when Docker handler connects and no containers are found.
-func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
-	// Override newDockerHandler to use mock provider
+func TestInitializeAppSuccess(t *testing.T) {
+	// Note: Not parallel - modifies global newDockerHandler
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
 	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
@@ -152,18 +144,17 @@ func (s *ConfigInitSuite) TestInitializeAppSuccess(c *C) {
 	cfg := NewConfig(&TestLogger{})
 	cfg.Docker.Filters = []string{}
 	err := cfg.InitializeApp()
-	c.Assert(err, IsNil)
-	c.Assert(cfg.sh, NotNil)
-	c.Assert(cfg.dockerHandler, NotNil)
+	require.NoError(t, err)
+	assert.NotNil(t, cfg.sh)
+	assert.NotNil(t, cfg.dockerHandler)
 }
 
-// TestInitializeAppLabelConflict ensures label-defined jobs do not override INI jobs at startup.
-func (s *ConfigInitSuite) TestInitializeAppLabelConflict(c *C) {
+func TestInitializeAppLabelConflict(t *testing.T) {
+	// Note: Not parallel - modifies global newDockerHandler
 	const iniStr = "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo ini\n"
 	cfg, err := BuildFromString(iniStr, &TestLogger{})
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Create mock with container that has conflicting labels
 	mockProvider := &mockDockerProviderForInit{
 		containers: []domain.Container{
 			{
@@ -193,21 +184,20 @@ func (s *ConfigInitSuite) TestInitializeAppLabelConflict(c *C) {
 
 	cfg.logger = &TestLogger{}
 	err = cfg.InitializeApp()
-	c.Assert(err, IsNil)
-	c.Assert(len(cfg.RunJobs), Equals, 1)
+	require.NoError(t, err)
+	assert.Len(t, cfg.RunJobs, 1)
 	j, ok := cfg.RunJobs["foo"]
-	c.Assert(ok, Equals, true)
-	c.Assert(j.GetSchedule(), Equals, "@every 5s")
-	c.Assert(j.JobSource, Equals, JobSourceINI)
+	assert.True(t, ok)
+	assert.Equal(t, "@every 5s", j.GetSchedule())
+	assert.Equal(t, JobSourceINI, j.JobSource)
 }
 
-// TestInitializeAppComposeConflict verifies INI compose jobs are not replaced by label jobs.
-func (s *ConfigInitSuite) TestInitializeAppComposeConflict(c *C) {
+func TestInitializeAppComposeConflict(t *testing.T) {
+	// Note: Not parallel - modifies global newDockerHandler
 	iniStr := "[job-compose \"foo\"]\nschedule = @daily\nfile = docker-compose.yml\n"
 	cfg, err := BuildFromString(iniStr, &TestLogger{})
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Create mock with container that has conflicting labels
 	mockProvider := &mockDockerProviderForInit{
 		containers: []domain.Container{
 			{
@@ -229,9 +219,9 @@ func (s *ConfigInitSuite) TestInitializeAppComposeConflict(c *C) {
 
 	cfg.logger = &TestLogger{}
 	err = cfg.InitializeApp()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	j, ok := cfg.ComposeJobs["foo"]
-	c.Assert(ok, Equals, true)
-	c.Assert(j.File, Equals, "docker-compose.yml")
-	c.Assert(j.JobSource, Equals, JobSourceINI)
+	assert.True(t, ok)
+	assert.Equal(t, "docker-compose.yml", j.File)
+	assert.Equal(t, JobSourceINI, j.JobSource)
 }

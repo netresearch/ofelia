@@ -5,8 +5,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
+
+// securityMu protects global security configuration for thread-safe access
+var securityMu sync.RWMutex
 
 const (
 	schemeHTTP  = "http"
@@ -138,17 +142,48 @@ func (v *WebhookSecurityValidator) isAllowedHost(hostname string) bool {
 // SetGlobalSecurityConfig sets the global security configuration for webhooks
 // This should be called during initialization with the parsed configuration
 func SetGlobalSecurityConfig(config *WebhookSecurityConfig) {
+	securityMu.Lock()
+	defer securityMu.Unlock()
+
 	// Update the global validator to use the new config
 	if config != nil {
 		validator := NewWebhookSecurityValidator(config)
-		ValidateWebhookURL = validator.Validate
-		TransportFactory = func() *http.Transport {
+		validateWebhookURLFunc = validator.Validate
+		transportFactoryFunc = func() *http.Transport {
 			return NewConfigurableTransport(config)
 		}
 	} else {
-		ValidateWebhookURL = ValidateWebhookURLImpl
-		TransportFactory = NewSafeTransport
+		validateWebhookURLFunc = ValidateWebhookURLImpl
+		transportFactoryFunc = NewSafeTransport
 	}
+}
+
+// getValidateWebhookURL returns the current URL validator with thread-safe access
+func getValidateWebhookURL() func(string) error {
+	securityMu.RLock()
+	defer securityMu.RUnlock()
+	return validateWebhookURLFunc
+}
+
+// getTransportFactory returns the current transport factory with thread-safe access
+func getTransportFactory() func() *http.Transport {
+	securityMu.RLock()
+	defer securityMu.RUnlock()
+	return transportFactoryFunc
+}
+
+// SetValidateWebhookURLForTest allows tests to override the URL validator (thread-safe)
+func SetValidateWebhookURLForTest(fn func(string) error) {
+	securityMu.Lock()
+	defer securityMu.Unlock()
+	validateWebhookURLFunc = fn
+}
+
+// SetTransportFactoryForTest allows tests to override the transport factory (thread-safe)
+func SetTransportFactoryForTest(fn func() *http.Transport) {
+	securityMu.Lock()
+	defer securityMu.Unlock()
+	transportFactoryFunc = fn
 }
 
 // SecurityConfigFromGlobal creates a WebhookSecurityConfig from WebhookGlobalConfig
@@ -177,14 +212,23 @@ func SecurityConfigFromGlobal(global *WebhookGlobalConfig) *WebhookSecurityConfi
 	return config
 }
 
-func init() {
-	// Set the global validator function
-	ValidateWebhookURL = ValidateWebhookURLImpl
+// validateWebhookURLFunc is the internal storage for the URL validator
+var validateWebhookURLFunc = ValidateWebhookURLImpl
+
+// transportFactoryFunc is the internal storage for the transport factory
+var transportFactoryFunc = NewSafeTransport
+
+// ValidateWebhookURL validates a URL for webhook requests (thread-safe access)
+var ValidateWebhookURL = func(rawURL string) error {
+	fn := getValidateWebhookURL()
+	return fn(rawURL)
 }
 
-// TransportFactory creates HTTP transports for webhook requests.
-// This can be overridden in tests to bypass DNS rebinding protection.
-var TransportFactory = NewSafeTransport
+// TransportFactory creates HTTP transports for webhook requests (thread-safe access)
+var TransportFactory = func() *http.Transport {
+	fn := getTransportFactory()
+	return fn()
+}
 
 // NewSafeTransport creates a standard HTTP transport.
 // URL validation is handled by the security validator before requests are made.

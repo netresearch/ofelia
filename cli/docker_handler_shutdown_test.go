@@ -8,6 +8,7 @@ import (
 
 	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/test"
+	"github.com/netresearch/ofelia/test/testutil"
 )
 
 // TestDockerHandler_Shutdown tests the Shutdown method
@@ -135,6 +136,7 @@ func TestDockerHandler_watchEvents(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
+		done := make(chan struct{})
 		handler := &DockerHandler{
 			ctx:            ctx,
 			cancel:         cancel,
@@ -144,19 +146,22 @@ func TestDockerHandler_watchEvents(t *testing.T) {
 			useEvents:      true,
 		}
 
-		// Start watchEvents in background
-		go handler.watchEvents()
+		go func() {
+			handler.watchEvents()
+			close(done)
+		}()
 
-		// Wait briefly for error to be handled
-		time.Sleep(100 * time.Millisecond)
-
-		// Cancel context to stop watching
+		time.Sleep(10 * time.Millisecond)
 		cancel()
 
-		// Give time for goroutine to exit
-		time.Sleep(50 * time.Millisecond)
-
-		// Just check it doesn't panic - success if we get here
+		testutil.Eventually(t, func() bool {
+			select {
+			case <-done:
+				return true
+			default:
+				return false
+			}
+		}, testutil.WithTimeout(100*time.Millisecond), testutil.WithInterval(5*time.Millisecond))
 	})
 
 	t.Run("stops on context cancellation", func(t *testing.T) {
@@ -167,6 +172,7 @@ func TestDockerHandler_watchEvents(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
+		done := make(chan struct{})
 		handler := &DockerHandler{
 			ctx:            ctx,
 			cancel:         cancel,
@@ -176,19 +182,21 @@ func TestDockerHandler_watchEvents(t *testing.T) {
 			useEvents:      true,
 		}
 
-		// Start watchEvents in background
-		go handler.watchEvents()
+		go func() {
+			handler.watchEvents()
+			close(done)
+		}()
 
-		// Wait briefly then cancel
-		time.Sleep(50 * time.Millisecond)
-
-		// Cancel context to stop watching
 		cancel()
 
-		// Give time for goroutine to exit
-		time.Sleep(50 * time.Millisecond)
-
-		// Just check clean shutdown - success if we get here
+		testutil.Eventually(t, func() bool {
+			select {
+			case <-done:
+				return true
+			default:
+				return false
+			}
+		}, testutil.WithTimeout(500*time.Millisecond), testutil.WithInterval(5*time.Millisecond))
 	})
 }
 

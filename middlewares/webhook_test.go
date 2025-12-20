@@ -7,18 +7,15 @@ import (
 	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
 )
 
-type SuiteWebhook struct {
-	BaseSuite
-}
+func TestNewWebhook_WithConfig(t *testing.T) {
+	t.Parallel()
 
-var _ = Suite(&SuiteWebhook{})
-
-func (s *SuiteWebhook) TestNewWebhook_WithConfig(c *C) {
 	config := &WebhookConfig{
 		Name:   "test",
 		Preset: "slack",
@@ -28,20 +25,23 @@ func (s *SuiteWebhook) TestNewWebhook_WithConfig(c *C) {
 	loader := NewPresetLoader(nil)
 
 	middleware, err := NewWebhook(config, loader)
-	c.Assert(err, IsNil)
-	c.Assert(middleware, NotNil)
+	require.NoError(t, err)
+	assert.NotNil(t, middleware)
 }
 
-func (s *SuiteWebhook) TestNewWebhook_NilConfig(c *C) {
+func TestNewWebhook_NilConfig(t *testing.T) {
+	t.Parallel()
+
 	loader := NewPresetLoader(nil)
 	middleware, err := NewWebhook(nil, loader)
 
-	// NewWebhook returns (nil, nil) for nil config - this is valid behavior
-	c.Assert(err, IsNil)
-	c.Assert(middleware, IsNil)
+	require.NoError(t, err)
+	assert.Nil(t, middleware)
 }
 
-func (s *SuiteWebhook) TestNewWebhook_InvalidPreset(c *C) {
+func TestNewWebhook_InvalidPreset(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{
 		Name:   "test",
 		Preset: "nonexistent-preset",
@@ -49,11 +49,13 @@ func (s *SuiteWebhook) TestNewWebhook_InvalidPreset(c *C) {
 	loader := NewPresetLoader(nil)
 
 	middleware, err := NewWebhook(config, loader)
-	c.Assert(err, NotNil)
-	c.Assert(middleware, IsNil)
+	assert.Error(t, err)
+	assert.Nil(t, middleware)
 }
 
-func (s *SuiteWebhook) TestWebhook_ContinueOnStop(c *C) {
+func TestWebhook_ContinueOnStop(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{
 		Name:   "test",
 		Preset: "slack",
@@ -63,22 +65,26 @@ func (s *SuiteWebhook) TestWebhook_ContinueOnStop(c *C) {
 	loader := NewPresetLoader(nil)
 
 	middleware, err := NewWebhook(config, loader)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	webhook, ok := middleware.(*Webhook)
-	c.Assert(ok, Equals, true)
-	c.Assert(webhook.ContinueOnStop(), Equals, true)
+	assert.True(t, ok)
+	assert.True(t, webhook.ContinueOnStop())
 }
 
-func (s *SuiteWebhook) TestWebhookManager_Creation(c *C) {
+func TestWebhookManager_Creation(t *testing.T) {
+	t.Parallel()
+
 	globalConfig := DefaultWebhookGlobalConfig()
 	manager := NewWebhookManager(globalConfig)
 
-	c.Assert(manager, NotNil)
-	c.Assert(manager.webhooks, NotNil)
+	assert.NotNil(t, manager)
+	assert.NotNil(t, manager.webhooks)
 }
 
-func (s *SuiteWebhook) TestWebhookManager_Register(c *C) {
+func TestWebhookManager_Register(t *testing.T) {
+	t.Parallel()
+
 	manager := NewWebhookManager(DefaultWebhookGlobalConfig())
 
 	config := &WebhookConfig{
@@ -87,23 +93,26 @@ func (s *SuiteWebhook) TestWebhookManager_Register(c *C) {
 	}
 
 	err := manager.Register(config)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 }
 
-func (s *SuiteWebhook) TestWebhookManager_RegisterEmptyName(c *C) {
+func TestWebhookManager_RegisterEmptyName(t *testing.T) {
+	t.Parallel()
+
 	manager := NewWebhookManager(DefaultWebhookGlobalConfig())
 
-	// Register validates that name is not empty
 	config := &WebhookConfig{
 		Name:   "",
 		Preset: "slack",
 	}
 
 	err := manager.Register(config)
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-func (s *SuiteWebhook) TestWebhookManager_Get(c *C) {
+func TestWebhookManager_Get(t *testing.T) {
+	t.Parallel()
+
 	manager := NewWebhookManager(DefaultWebhookGlobalConfig())
 
 	config := &WebhookConfig{
@@ -112,52 +121,47 @@ func (s *SuiteWebhook) TestWebhookManager_Get(c *C) {
 	}
 
 	err := manager.Register(config)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	webhook, ok := manager.Get("slack-alerts")
-	c.Assert(ok, Equals, true)
-	c.Assert(webhook, NotNil)
+	assert.True(t, ok)
+	assert.NotNil(t, webhook)
 }
 
-func (s *SuiteWebhook) TestWebhookManager_GetNonExistent(c *C) {
+func TestWebhookManager_GetNonExistent(t *testing.T) {
+	t.Parallel()
+
 	manager := NewWebhookManager(DefaultWebhookGlobalConfig())
 
 	webhook, ok := manager.Get("nonexistent")
-	c.Assert(ok, Equals, false)
-	c.Assert(webhook, IsNil)
+	assert.False(t, ok)
+	assert.Nil(t, webhook)
 }
 
-func (s *SuiteWebhook) TestWebhookConfig_ShouldNotify(c *C) {
-	// Test error trigger
+func TestWebhookConfig_ShouldNotify(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{Trigger: TriggerError}
-	c.Assert(config.ShouldNotify(true, false), Equals, true)
-	c.Assert(config.ShouldNotify(false, false), Equals, false)
+	assert.True(t, config.ShouldNotify(true, false))
+	assert.False(t, config.ShouldNotify(false, false))
 
-	// Test success trigger
 	config = &WebhookConfig{Trigger: TriggerSuccess}
-	c.Assert(config.ShouldNotify(false, false), Equals, true)
-	c.Assert(config.ShouldNotify(true, false), Equals, false)
+	assert.True(t, config.ShouldNotify(false, false))
+	assert.False(t, config.ShouldNotify(true, false))
 
-	// Test always trigger
 	config = &WebhookConfig{Trigger: TriggerAlways}
-	c.Assert(config.ShouldNotify(true, false), Equals, true)
-	c.Assert(config.ShouldNotify(false, false), Equals, true)
+	assert.True(t, config.ShouldNotify(true, false))
+	assert.True(t, config.ShouldNotify(false, false))
 }
-
-// Standard Go testing for HTTP integration tests
 
 func TestWebhook_SendsRequest(t *testing.T) {
-	// Temporarily disable SSRF validation for testing with localhost
-	originalValidator := ValidateWebhookURL
-	ValidateWebhookURL = func(rawURL string) error { return nil }
-	defer func() { ValidateWebhookURL = originalValidator }()
+	// Note: Not parallel - modifies global security config
+	SetValidateWebhookURLForTest(func(rawURL string) error { return nil })
+	defer SetValidateWebhookURLForTest(ValidateWebhookURLImpl)
 
-	// Temporarily use default transport (bypass DNS rebinding protection)
-	originalTransport := TransportFactory
-	TransportFactory = func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() }
-	defer func() { TransportFactory = originalTransport }()
+	SetTransportFactoryForTest(func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() })
+	defer SetTransportFactoryForTest(NewSafeTransport)
 
-	// Create a test server that records requests
 	var receivedBody string
 	var receivedHeaders http.Header
 
@@ -170,7 +174,6 @@ func TestWebhook_SendsRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create webhook with test server URL
 	config := &WebhookConfig{
 		Name:       "test",
 		Preset:     "slack",
@@ -184,55 +187,37 @@ func TestWebhook_SendsRequest(t *testing.T) {
 
 	loader := NewPresetLoader(nil)
 	middleware, err := NewWebhook(config, loader)
-	if err != nil {
-		t.Fatalf("Failed to create webhook: %v", err)
-	}
+	require.NoError(t, err)
 
 	webhook := middleware.(*Webhook)
 
-	// Create test context
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
 
 	sh := core.NewScheduler(&TestLogger{})
 	e, err := core.NewExecution()
-	if err != nil {
-		t.Fatalf("Failed to create execution: %v", err)
-	}
+	require.NoError(t, err)
 
 	ctx := core.NewContext(sh, job, e)
 	ctx.Start()
 	ctx.Stop(nil)
 
-	// Send the webhook
 	err = webhook.send(ctx)
-	if err != nil {
-		t.Errorf("Failed to send webhook: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Verify request was received
-	if receivedBody == "" {
-		t.Error("No body received by server")
-	}
-
-	if receivedHeaders.Get("Content-Type") != "application/json" {
-		t.Errorf("Unexpected Content-Type: %s", receivedHeaders.Get("Content-Type"))
-	}
+	assert.NotEmpty(t, receivedBody)
+	assert.Equal(t, "application/json", receivedHeaders.Get("Content-Type"))
 }
 
 func TestWebhook_Retry(t *testing.T) {
-	// Temporarily disable SSRF validation for testing with localhost
-	originalValidator := ValidateWebhookURL
-	ValidateWebhookURL = func(rawURL string) error { return nil }
-	defer func() { ValidateWebhookURL = originalValidator }()
+	// Note: Not parallel - modifies global security config
+	SetValidateWebhookURLForTest(func(rawURL string) error { return nil })
+	defer SetValidateWebhookURLForTest(ValidateWebhookURLImpl)
 
-	// Temporarily use default transport (bypass DNS rebinding protection)
-	originalTransport := TransportFactory
-	TransportFactory = func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() }
-	defer func() { TransportFactory = originalTransport }()
+	SetTransportFactoryForTest(func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() })
+	defer SetTransportFactoryForTest(NewSafeTransport)
 
-	// Create a server that fails first few requests
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -258,68 +243,46 @@ func TestWebhook_Retry(t *testing.T) {
 
 	loader := NewPresetLoader(nil)
 	middleware, err := NewWebhook(config, loader)
-	if err != nil {
-		t.Fatalf("Failed to create webhook: %v", err)
-	}
+	require.NoError(t, err)
 
 	webhook := middleware.(*Webhook)
 
-	// Create test context
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
 
 	sh := core.NewScheduler(&TestLogger{})
 	e, err := core.NewExecution()
-	if err != nil {
-		t.Fatalf("Failed to create execution: %v", err)
-	}
+	require.NoError(t, err)
 
 	ctx := core.NewContext(sh, job, e)
 	ctx.Start()
 	ctx.Stop(nil)
 
-	// Send with retry
 	err = webhook.sendWithRetry(ctx)
-	if err != nil {
-		t.Errorf("Failed to send webhook after retries: %v", err)
-	}
-
-	if attempts != 3 {
-		t.Errorf("Expected 3 attempts, got %d", attempts)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 3, attempts)
 }
 
 func TestWebhook_TriggerError_OnlyOnFailure(t *testing.T) {
-	requestCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
+	t.Parallel()
 
 	config := &WebhookConfig{
 		Name:       "test",
 		Preset:     "slack",
-		URL:        server.URL,
+		URL:        "https://example.com",
 		Trigger:    TriggerError,
 		Timeout:    5 * time.Second,
 		RetryCount: 0,
 	}
 
-	// Test using ShouldNotify method
-	// Success = should NOT notify
-	if config.ShouldNotify(false, false) {
-		t.Error("Should not notify on success with error trigger")
-	}
-
-	// Error = should notify
-	if !config.ShouldNotify(true, false) {
-		t.Error("Should notify on error with error trigger")
-	}
+	assert.False(t, config.ShouldNotify(false, false))
+	assert.True(t, config.ShouldNotify(true, false))
 }
 
 func TestWebhook_TriggerSuccess_OnlyOnSuccess(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{
 		Name:       "test",
 		Preset:     "slack",
@@ -329,18 +292,13 @@ func TestWebhook_TriggerSuccess_OnlyOnSuccess(t *testing.T) {
 		RetryCount: 0,
 	}
 
-	// Test with success
-	if !config.ShouldNotify(false, false) {
-		t.Error("Should notify on success with success trigger")
-	}
-
-	// Test with error
-	if config.ShouldNotify(true, false) {
-		t.Error("Should not notify on error with success trigger")
-	}
+	assert.True(t, config.ShouldNotify(false, false))
+	assert.False(t, config.ShouldNotify(true, false))
 }
 
 func TestWebhook_TriggerAlways(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{
 		Name:       "test",
 		Preset:     "slack",
@@ -350,18 +308,13 @@ func TestWebhook_TriggerAlways(t *testing.T) {
 		RetryCount: 0,
 	}
 
-	// Test with success
-	if !config.ShouldNotify(false, false) {
-		t.Error("Should notify on success with always trigger")
-	}
-
-	// Test with error
-	if !config.ShouldNotify(true, false) {
-		t.Error("Should notify on error with always trigger")
-	}
+	assert.True(t, config.ShouldNotify(false, false))
+	assert.True(t, config.ShouldNotify(true, false))
 }
 
 func TestWebhook_BuildWebhookData_Success(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{
 		Name:   "test",
 		Preset: "slack",
@@ -371,9 +324,7 @@ func TestWebhook_BuildWebhookData_Success(t *testing.T) {
 	loader := NewPresetLoader(nil)
 
 	middleware, err := NewWebhook(config, loader)
-	if err != nil {
-		t.Fatalf("Failed to create webhook: %v", err)
-	}
+	require.NoError(t, err)
 
 	webhook := middleware.(*Webhook)
 
@@ -383,9 +334,7 @@ func TestWebhook_BuildWebhookData_Success(t *testing.T) {
 
 	sh := core.NewScheduler(&TestLogger{})
 	e, err := core.NewExecution()
-	if err != nil {
-		t.Fatalf("Failed to create execution: %v", err)
-	}
+	require.NoError(t, err)
 
 	ctx := core.NewContext(sh, job, e)
 	ctx.Start()
@@ -393,20 +342,14 @@ func TestWebhook_BuildWebhookData_Success(t *testing.T) {
 
 	data := webhook.buildWebhookData(ctx)
 
-	if data.Job.Name != "test-job" {
-		t.Errorf("Expected job name 'test-job', got %s", data.Job.Name)
-	}
-
-	if data.Execution.Failed {
-		t.Error("Expected execution not failed")
-	}
-
-	if data.Execution.Status != "successful" {
-		t.Errorf("Expected status 'successful', got %s", data.Execution.Status)
-	}
+	assert.Equal(t, "test-job", data.Job.Name)
+	assert.False(t, data.Execution.Failed)
+	assert.Equal(t, "successful", data.Execution.Status)
 }
 
 func TestWebhook_BuildWebhookData_Error(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{
 		Name:   "test",
 		Preset: "slack",
@@ -416,9 +359,7 @@ func TestWebhook_BuildWebhookData_Error(t *testing.T) {
 	loader := NewPresetLoader(nil)
 
 	middleware, err := NewWebhook(config, loader)
-	if err != nil {
-		t.Fatalf("Failed to create webhook: %v", err)
-	}
+	require.NoError(t, err)
 
 	webhook := middleware.(*Webhook)
 
@@ -428,9 +369,7 @@ func TestWebhook_BuildWebhookData_Error(t *testing.T) {
 
 	sh := core.NewScheduler(&TestLogger{})
 	e, err := core.NewExecution()
-	if err != nil {
-		t.Fatalf("Failed to create execution: %v", err)
-	}
+	require.NoError(t, err)
 
 	ctx := core.NewContext(sh, job, e)
 	ctx.Start()
@@ -438,15 +377,7 @@ func TestWebhook_BuildWebhookData_Error(t *testing.T) {
 
 	data := webhook.buildWebhookData(ctx)
 
-	if data.Job.Name != "failing-job" {
-		t.Errorf("Expected job name 'failing-job', got %s", data.Job.Name)
-	}
-
-	if !data.Execution.Failed {
-		t.Error("Expected execution to be failed")
-	}
-
-	if data.Execution.Status != "failed" {
-		t.Errorf("Expected status 'failed', got %s", data.Execution.Status)
-	}
+	assert.Equal(t, "failing-job", data.Job.Name)
+	assert.True(t, data.Execution.Failed)
+	assert.Equal(t, "failed", data.Execution.Status)
 }

@@ -8,6 +8,7 @@ import (
 
 // TestBuildFromString_WithDependencies tests parsing of job dependency fields from INI config
 func TestBuildFromString_WithDependencies(t *testing.T) {
+	t.Parallel()
 	configStr := `
 [job-exec "job-a"]
 schedule = @every 5s
@@ -86,6 +87,7 @@ on-failure = job-b
 
 // TestBuildFromString_DependenciesAllJobTypes tests dependency fields work for all job types
 func TestBuildFromString_DependenciesAllJobTypes(t *testing.T) {
+	t.Parallel()
 	configStr := `
 [job-exec "exec-job"]
 schedule = @every 5s
@@ -183,6 +185,7 @@ depends-on = config-job
 
 // TestDockerLabels_Dependencies tests parsing of dependency fields from Docker labels
 func TestDockerLabels_Dependencies(t *testing.T) {
+	t.Parallel()
 	labels := map[string]map[string]string{
 		"worker-container": {
 			"ofelia.enabled":                       "true",
@@ -245,6 +248,7 @@ func TestDockerLabels_Dependencies(t *testing.T) {
 
 // TestBuildFromString_EmptyDependencies verifies jobs without dependencies work correctly
 func TestBuildFromString_EmptyDependencies(t *testing.T) {
+	t.Parallel()
 	configStr := `
 [job-exec "standalone-job"]
 schedule = @every 5s
@@ -277,6 +281,7 @@ command = echo standalone
 
 // TestDockerLabels_ComposeServiceName tests that Docker Compose service names are used for job prefixes
 func TestDockerLabels_ComposeServiceName(t *testing.T) {
+	t.Parallel()
 	// Simulate Docker Compose containers with com.docker.compose.service labels
 	labels := map[string]map[string]string{
 		"myproject-database-1": {
@@ -334,6 +339,7 @@ func TestDockerLabels_ComposeServiceName(t *testing.T) {
 
 // TestDockerLabels_FallbackToContainerName tests fallback to container name when no Compose label
 func TestDockerLabels_FallbackToContainerName(t *testing.T) {
+	t.Parallel()
 	// Non-Compose container (no com.docker.compose.service label)
 	labels := map[string]map[string]string{
 		"standalone-worker": {
@@ -359,6 +365,7 @@ func TestDockerLabels_FallbackToContainerName(t *testing.T) {
 
 // TestDockerLabels_MixedComposeAndNonCompose tests mixed Compose and non-Compose containers
 func TestDockerLabels_MixedComposeAndNonCompose(t *testing.T) {
+	t.Parallel()
 	labels := map[string]map[string]string{
 		// Compose container
 		"myproject-db-1": {
@@ -396,6 +403,7 @@ func TestDockerLabels_MixedComposeAndNonCompose(t *testing.T) {
 // TestDockerLabels_ExplicitContainerOverride tests that an explicit container label
 // overrides the default container (fixes #356 / upstream #227)
 func TestDockerLabels_ExplicitContainerOverride(t *testing.T) {
+	t.Parallel()
 	// Container "my_container" defines a job that should run in "backup" container
 	// This is the exact scenario from upstream issue #227
 	labels := map[string]map[string]string{
@@ -433,6 +441,7 @@ func TestDockerLabels_ExplicitContainerOverride(t *testing.T) {
 
 // TestDockerLabels_DefaultContainerWhenNotSpecified tests that container defaults to label source
 func TestDockerLabels_DefaultContainerWhenNotSpecified(t *testing.T) {
+	t.Parallel()
 	// Container "web" defines a job without explicit container - should default to "web"
 	labels := map[string]map[string]string{
 		"web": {

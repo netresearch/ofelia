@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core/adapters/mock"
 	"github.com/netresearch/ofelia/core/domain"
@@ -21,26 +22,28 @@ const (
 	watchDuration = time.Millisecond * 500
 )
 
-type SuiteRunJob struct {
+type runJobTestHelper struct {
 	mockClient *mock.DockerClient
 	provider   *SDKDockerProvider
 }
 
-var _ = Suite(&SuiteRunJob{})
+func setupRunJobTest(t *testing.T) *runJobTestHelper {
+	t.Helper()
 
-func (s *SuiteRunJob) SetUpTest(c *C) {
-	s.mockClient = mock.NewDockerClient()
-	s.provider = &SDKDockerProvider{
-		client: s.mockClient,
+	helper := &runJobTestHelper{
+		mockClient: mock.NewDockerClient(),
+	}
+	helper.provider = &SDKDockerProvider{
+		client: helper.mockClient,
 	}
 
-	// Set up mock behaviors
-	s.setupMockBehaviors()
+	setupRunJobMockBehaviors(helper.mockClient)
+	return helper
 }
 
-func (s *SuiteRunJob) setupMockBehaviors() {
-	containers := s.mockClient.Containers().(*mock.ContainerService)
-	images := s.mockClient.Images().(*mock.ImageService)
+func setupRunJobMockBehaviors(mockClient *mock.DockerClient) {
+	containers := mockClient.Containers().(*mock.ContainerService)
+	images := mockClient.Images().(*mock.ImageService)
 
 	// Track created containers
 	createdContainers := make(map[string]*domain.Container)
@@ -115,7 +118,9 @@ func (s *SuiteRunJob) setupMockBehaviors() {
 	}
 }
 
-func (s *SuiteRunJob) TestRun(c *C) {
+func TestRunJob_Run(t *testing.T) {
+	h := setupRunJobTest(t)
+
 	job := &RunJob{
 		BareJob: BareJob{
 			Name:    "test",
@@ -130,28 +135,29 @@ func (s *SuiteRunJob) TestRun(c *C) {
 		Environment: []string{"test_Key1=value1", "test_Key2=value2"},
 		Volume:      []string{"/test/tmp:/test/tmp:ro", "/test/tmp:/test/tmp:rw"},
 	}
-	job.Provider = s.provider
+	job.Provider = h.provider
 
 	exec, err := NewExecution()
-	if err != nil {
-		c.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	ctx := &Context{Job: job, Execution: exec}
 	logger := logrus.New()
 	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
 	ctx.Logger = &LogrusAdapter{Logger: logger}
 
 	err = job.Run(ctx)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	// Verify container was created with correct parameters
-	containers := s.mockClient.Containers().(*mock.ContainerService)
-	c.Assert(len(containers.CreateCalls) > 0, Equals, true)
+	containers := h.mockClient.Containers().(*mock.ContainerService)
+	assert.True(t, len(containers.CreateCalls) > 0, "expected container to be created")
 }
 
-func (s *SuiteRunJob) TestRunFailed(c *C) {
+func TestRunJob_RunFailed(t *testing.T) {
+	h := setupRunJobTest(t)
+
 	// Set up mock to return non-zero exit code
-	containers := s.mockClient.Containers().(*mock.ContainerService)
+	containers := h.mockClient.Containers().(*mock.ContainerService)
 	containers.OnWait = func(ctx context.Context, containerID string) (<-chan domain.WaitResponse, <-chan error) {
 		respCh := make(chan domain.WaitResponse, 1)
 		errCh := make(chan error, 1)
@@ -169,26 +175,27 @@ func (s *SuiteRunJob) TestRunFailed(c *C) {
 		Image:  ImageFixture,
 		Delete: "true",
 	}
-	job.Provider = s.provider
+	job.Provider = h.provider
 
 	exec, err := NewExecution()
-	if err != nil {
-		c.Fatal(err)
-	}
-	ctx := &Context{Job: job, Execution: exec}
+	require.NoError(t, err)
+
+	jobCtx := &Context{Job: job, Execution: exec}
 	logger := logrus.New()
 	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
-	ctx.Logger = &LogrusAdapter{Logger: logger}
+	jobCtx.Logger = &LogrusAdapter{Logger: logger}
 
-	ctx.Start()
-	err = job.Run(ctx)
-	ctx.Stop(err)
+	jobCtx.Start()
+	err = job.Run(jobCtx)
+	jobCtx.Stop(err)
 
-	c.Assert(err, NotNil)
-	c.Assert(ctx.Execution.Failed, Equals, true)
+	assert.Error(t, err)
+	assert.True(t, jobCtx.Execution.Failed)
 }
 
-func (s *SuiteRunJob) TestRunWithEntrypoint(c *C) {
+func TestRunJob_RunWithEntrypoint(t *testing.T) {
+	h := setupRunJobTest(t)
+
 	ep := ""
 	job := &RunJob{
 		BareJob: BareJob{
@@ -199,43 +206,38 @@ func (s *SuiteRunJob) TestRunWithEntrypoint(c *C) {
 		Entrypoint: &ep,
 		Delete:     "true",
 	}
-	job.Provider = s.provider
+	job.Provider = h.provider
 
 	exec, err := NewExecution()
-	if err != nil {
-		c.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	ctx := &Context{Job: job, Execution: exec}
 	logger := logrus.New()
 	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
 	ctx.Logger = &LogrusAdapter{Logger: logger}
 
 	err = job.Run(ctx)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	// Verify container was created
-	containers := s.mockClient.Containers().(*mock.ContainerService)
-	c.Assert(len(containers.CreateCalls) > 0, Equals, true)
+	containers := h.mockClient.Containers().(*mock.ContainerService)
+	assert.True(t, len(containers.CreateCalls) > 0, "expected container to be created")
 }
 
-// TestParseRepositoryTag tests the domain.ParseRepositoryTag function
-func (s *SuiteRunJob) TestParseRepositoryTagBareImage(c *C) {
+func TestRunJob_ParseRepositoryTagBareImage(t *testing.T) {
 	ref := domain.ParseRepositoryTag("foo")
-	c.Assert(ref.Repository, Equals, "foo")
-	c.Assert(ref.Tag, Equals, "latest")
+	assert.Equal(t, "foo", ref.Repository)
+	assert.Equal(t, "latest", ref.Tag)
 }
 
-func (s *SuiteRunJob) TestParseRepositoryTagVersion(c *C) {
+func TestRunJob_ParseRepositoryTagVersion(t *testing.T) {
 	ref := domain.ParseRepositoryTag("foo:qux")
-	c.Assert(ref.Repository, Equals, "foo")
-	c.Assert(ref.Tag, Equals, "qux")
+	assert.Equal(t, "foo", ref.Repository)
+	assert.Equal(t, "qux", ref.Tag)
 }
 
-func (s *SuiteRunJob) TestParseRepositoryTagRegistry(c *C) {
+func TestRunJob_ParseRepositoryTagRegistry(t *testing.T) {
 	ref := domain.ParseRepositoryTag("quay.io/srcd/rest:qux")
-	c.Assert(ref.Repository, Equals, "quay.io/srcd/rest")
-	c.Assert(ref.Tag, Equals, "qux")
+	assert.Equal(t, "quay.io/srcd/rest", ref.Repository)
+	assert.Equal(t, "qux", ref.Tag)
 }
-
-// Hook up gocheck into the "go test" runner
-func TestRunJobIntegration(t *testing.T) { TestingT(t) }

@@ -1,26 +1,32 @@
 package core
 
-import "time"
+import (
+	"sync/atomic"
+	"time"
+)
 
 // Test middleware and logger types used by gocheck-based tests in this package
 
 type TestMiddleware struct {
-	Called int
+	called atomic.Int32
 }
 
 func (m *TestMiddleware) ContinueOnStop() bool   { return false }
-func (m *TestMiddleware) Run(ctx *Context) error { m.Called++; return nil }
+func (m *TestMiddleware) Run(ctx *Context) error { m.called.Add(1); return nil }
+func (m *TestMiddleware) Called() int            { return int(m.called.Load()) }
 
 type TestJob struct {
 	BareJob
-	Called int
+	called atomic.Int32
 }
 
 func (j *TestJob) Run(ctx *Context) error {
-	j.Called++
+	j.called.Add(1)
 	time.Sleep(time.Millisecond * 50)
 	return nil
 }
+
+func (j *TestJob) Called() int { return int(j.called.Load()) }
 
 type TestLogger struct{}
 

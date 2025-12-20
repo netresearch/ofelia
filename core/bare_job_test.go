@@ -1,60 +1,74 @@
 package core
 
-import . "gopkg.in/check.v1"
+import (
+	"testing"
 
-type SuiteBareJob struct{}
+	"github.com/stretchr/testify/assert"
+)
 
-var _ = Suite(&SuiteBareJob{})
+func TestBareJobGetters(t *testing.T) {
+	t.Parallel()
 
-func (s *SuiteBareJob) TestGetters(c *C) {
 	job := &BareJob{
 		Name:     "foo",
 		Schedule: "bar",
 		Command:  "qux",
 	}
 
-	c.Assert(job.GetName(), Equals, "foo")
-	c.Assert(job.GetSchedule(), Equals, "bar")
-	c.Assert(job.GetCommand(), Equals, "qux")
+	assert.Equal(t, "foo", job.GetName())
+	assert.Equal(t, "bar", job.GetSchedule())
+	assert.Equal(t, "qux", job.GetCommand())
 }
 
-func (s *SuiteBareJob) TestNotifyStartStop(c *C) {
+func TestBareJobNotifyStartStop(t *testing.T) {
+	t.Parallel()
+
 	job := &BareJob{}
 
 	job.NotifyStart()
-	c.Assert(job.Running(), Equals, int32(1))
+	assert.Equal(t, int32(1), job.Running())
 
 	job.NotifyStop()
-	c.Assert(job.Running(), Equals, int32(0))
+	assert.Equal(t, int32(0), job.Running())
 }
 
-func (s *SuiteBareJob) TestHistoryTruncation(c *C) {
+func TestBareJobHistoryTruncation(t *testing.T) {
+	t.Parallel()
+
 	job := &BareJob{HistoryLimit: 2}
 	e1, e2, e3 := &Execution{}, &Execution{}, &Execution{}
 	job.SetLastRun(e1)
 	job.SetLastRun(e2)
 	job.SetLastRun(e3)
-	c.Assert(len(job.history), Equals, 2)
-	c.Assert(job.history[0], Equals, e2)
-	c.Assert(job.history[1], Equals, e3)
+
+	assert.Len(t, job.history, 2)
+	assert.Equal(t, e2, job.history[0])
+	assert.Equal(t, e3, job.history[1])
 }
 
-func (s *SuiteBareJob) TestHistoryUnlimited(c *C) {
+func TestBareJobHistoryUnlimited(t *testing.T) {
+	t.Parallel()
+
 	job := &BareJob{}
 	job.SetLastRun(&Execution{})
 	job.SetLastRun(&Execution{})
-	c.Assert(len(job.history), Equals, 2)
+
+	assert.Len(t, job.history, 2)
 }
 
-func (s *SuiteBareJob) TestGetHistory(c *C) {
+func TestBareJobGetHistory(t *testing.T) {
+	t.Parallel()
+
 	job := &BareJob{}
 	e1, e2 := &Execution{ID: "1"}, &Execution{ID: "2"}
 	job.SetLastRun(e1)
 	job.SetLastRun(e2)
+
 	hist := job.GetHistory()
-	c.Assert(hist, HasLen, 2)
-	c.Assert(hist[0], Equals, e1)
-	c.Assert(hist[1], Equals, e2)
+	assert.Len(t, hist, 2)
+	assert.Equal(t, e1, hist[0])
+	assert.Equal(t, e2, hist[1])
+
 	hist[0] = nil
-	c.Assert(job.history[0], Equals, e1)
+	assert.Equal(t, e1, job.history[0])
 }

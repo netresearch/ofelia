@@ -8,6 +8,7 @@ import (
 )
 
 func TestNewWebhookConfigs(t *testing.T) {
+	t.Parallel()
 	wc := NewWebhookConfigs()
 
 	if wc == nil {
@@ -24,6 +25,7 @@ func TestNewWebhookConfigs(t *testing.T) {
 }
 
 func TestParseWebhookName_DoubleQuotes(t *testing.T) {
+	t.Parallel()
 	name := parseWebhookName(`webhook "slack-alerts"`)
 	if name != "slack-alerts" {
 		t.Errorf("Expected 'slack-alerts', got '%s'", name)
@@ -31,6 +33,7 @@ func TestParseWebhookName_DoubleQuotes(t *testing.T) {
 }
 
 func TestParseWebhookName_SingleQuotes(t *testing.T) {
+	t.Parallel()
 	name := parseWebhookName(`webhook 'discord-webhook'`)
 	if name != "discord-webhook" {
 		t.Errorf("Expected 'discord-webhook', got '%s'", name)
@@ -38,6 +41,7 @@ func TestParseWebhookName_SingleQuotes(t *testing.T) {
 }
 
 func TestParseWebhookName_NoQuotes(t *testing.T) {
+	t.Parallel()
 	name := parseWebhookName("webhook mywebhook")
 	if name != "mywebhook" {
 		t.Errorf("Expected 'mywebhook', got '%s'", name)
@@ -45,6 +49,7 @@ func TestParseWebhookName_NoQuotes(t *testing.T) {
 }
 
 func TestParseWebhookName_WithSpaces(t *testing.T) {
+	t.Parallel()
 	name := parseWebhookName(`webhook   "spaced"   `)
 	if name != "spaced" {
 		t.Errorf("Expected 'spaced', got '%s'", name)
@@ -52,6 +57,7 @@ func TestParseWebhookName_WithSpaces(t *testing.T) {
 }
 
 func TestParseWebhookName_Empty(t *testing.T) {
+	t.Parallel()
 	name := parseWebhookName("webhook")
 	if name != "" {
 		t.Errorf("Expected empty string, got '%s'", name)
@@ -59,6 +65,7 @@ func TestParseWebhookName_Empty(t *testing.T) {
 }
 
 func TestJobWebhookConfig_GetWebhookNames_Empty(t *testing.T) {
+	t.Parallel()
 	config := &JobWebhookConfig{Webhooks: ""}
 	names := config.GetWebhookNames()
 
@@ -68,6 +75,7 @@ func TestJobWebhookConfig_GetWebhookNames_Empty(t *testing.T) {
 }
 
 func TestJobWebhookConfig_GetWebhookNames_Single(t *testing.T) {
+	t.Parallel()
 	config := &JobWebhookConfig{Webhooks: "slack"}
 	names := config.GetWebhookNames()
 
@@ -77,6 +85,7 @@ func TestJobWebhookConfig_GetWebhookNames_Single(t *testing.T) {
 }
 
 func TestJobWebhookConfig_GetWebhookNames_Multiple(t *testing.T) {
+	t.Parallel()
 	config := &JobWebhookConfig{Webhooks: "slack, discord, teams"}
 	names := config.GetWebhookNames()
 
@@ -94,6 +103,7 @@ func TestJobWebhookConfig_GetWebhookNames_Multiple(t *testing.T) {
 }
 
 func TestWebhookConfigs_InitManager(t *testing.T) {
+	t.Parallel()
 	wc := NewWebhookConfigs()
 
 	// Add a webhook config
@@ -113,6 +123,7 @@ func TestWebhookConfigs_InitManager(t *testing.T) {
 }
 
 func TestWebhookConfigs_InitManager_EmptyName(t *testing.T) {
+	t.Parallel()
 	wc := NewWebhookConfigs()
 
 	// Add a webhook config with empty name (which Register validates)
@@ -128,6 +139,7 @@ func TestWebhookConfigs_InitManager_EmptyName(t *testing.T) {
 }
 
 func TestGlobalWebhookConfig_Defaults(t *testing.T) {
+	t.Parallel()
 	global := middlewares.DefaultWebhookGlobalConfig()
 
 	if global.AllowRemotePresets {

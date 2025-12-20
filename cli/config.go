@@ -45,6 +45,12 @@ type Config struct {
 		LogLevel                string        `gcfg:"log-level" mapstructure:"log-level"`
 		EnableWeb               bool          `gcfg:"enable-web" mapstructure:"enable-web" default:"false"`
 		WebAddr                 string        `gcfg:"web-address" mapstructure:"web-address" default:":8081"`
+		WebAuthEnabled          bool          `gcfg:"web-auth-enabled" mapstructure:"web-auth-enabled" default:"false"`
+		WebUsername             string        `gcfg:"web-username" mapstructure:"web-username"`
+		WebPasswordHash         string        `gcfg:"web-password-hash" mapstructure:"web-password-hash"`
+		WebSecretKey            string        `gcfg:"web-secret-key" mapstructure:"web-secret-key"`
+		WebTokenExpiry          int           `gcfg:"web-token-expiry" mapstructure:"web-token-expiry" default:"24"`
+		WebMaxLoginAttempts     int           `gcfg:"web-max-login-attempts" mapstructure:"web-max-login-attempts" default:"5"`
 		EnablePprof             bool          `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
 		PprofAddr               string        `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
 		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`

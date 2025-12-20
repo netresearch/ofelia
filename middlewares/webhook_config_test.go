@@ -4,94 +4,111 @@ import (
 	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-type SuiteWebhookConfig struct {
-	BaseSuite
-}
+func TestDefaultWebhookConfig(t *testing.T) {
+	t.Parallel()
 
-var _ = Suite(&SuiteWebhookConfig{})
-
-func (s *SuiteWebhookConfig) TestDefaultWebhookConfig(c *C) {
 	config := DefaultWebhookConfig()
 
-	c.Assert(config, NotNil)
-	c.Assert(config.Trigger, Equals, TriggerError)
-	c.Assert(config.Timeout, Equals, 10*time.Second)
-	c.Assert(config.RetryCount, Equals, 3)
-	c.Assert(config.RetryDelay, Equals, 5*time.Second)
+	assert.NotNil(t, config)
+	assert.Equal(t, TriggerError, config.Trigger)
+	assert.Equal(t, 10*time.Second, config.Timeout)
+	assert.Equal(t, 3, config.RetryCount)
+	assert.Equal(t, 5*time.Second, config.RetryDelay)
 }
 
-func (s *SuiteWebhookConfig) TestDefaultWebhookGlobalConfig(c *C) {
+func TestDefaultWebhookGlobalConfig(t *testing.T) {
+	t.Parallel()
+
 	config := DefaultWebhookGlobalConfig()
 
-	c.Assert(config, NotNil)
-	c.Assert(config.AllowRemotePresets, Equals, false)
-	c.Assert(config.PresetCacheTTL, Equals, 24*time.Hour)
+	assert.NotNil(t, config)
+	assert.False(t, config.AllowRemotePresets)
+	assert.Equal(t, 24*time.Hour, config.PresetCacheTTL)
 }
 
-func (s *SuiteWebhookConfig) TestTriggerType_Constants(c *C) {
-	c.Assert(TriggerAlways, Equals, TriggerType("always"))
-	c.Assert(TriggerSuccess, Equals, TriggerType("success"))
-	c.Assert(TriggerError, Equals, TriggerType("error"))
-	c.Assert(TriggerSkipped, Equals, TriggerType("skipped"))
+func TestTriggerType_Constants(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, TriggerType("always"), TriggerAlways)
+	assert.Equal(t, TriggerType("success"), TriggerSuccess)
+	assert.Equal(t, TriggerType("error"), TriggerError)
+	assert.Equal(t, TriggerType("skipped"), TriggerSkipped)
 }
 
-func (s *SuiteWebhookConfig) TestParseWebhookNames_Empty(c *C) {
+func TestParseWebhookNames_Empty(t *testing.T) {
+	t.Parallel()
+
 	names := ParseWebhookNames("")
-	c.Assert(names, HasLen, 0)
+	assert.Empty(t, names)
 }
 
-func (s *SuiteWebhookConfig) TestParseWebhookNames_Single(c *C) {
+func TestParseWebhookNames_Single(t *testing.T) {
+	t.Parallel()
+
 	names := ParseWebhookNames("slack")
-	c.Assert(names, HasLen, 1)
-	c.Assert(names[0], Equals, "slack")
+	assert.Len(t, names, 1)
+	assert.Equal(t, "slack", names[0])
 }
 
-func (s *SuiteWebhookConfig) TestParseWebhookNames_Multiple(c *C) {
+func TestParseWebhookNames_Multiple(t *testing.T) {
+	t.Parallel()
+
 	names := ParseWebhookNames("slack,discord,teams")
-	c.Assert(names, HasLen, 3)
-	c.Assert(names[0], Equals, "slack")
-	c.Assert(names[1], Equals, "discord")
-	c.Assert(names[2], Equals, "teams")
+	assert.Len(t, names, 3)
+	assert.Equal(t, "slack", names[0])
+	assert.Equal(t, "discord", names[1])
+	assert.Equal(t, "teams", names[2])
 }
 
-func (s *SuiteWebhookConfig) TestParseWebhookNames_WithSpaces(c *C) {
+func TestParseWebhookNames_WithSpaces(t *testing.T) {
+	t.Parallel()
+
 	names := ParseWebhookNames("slack , discord , teams")
-	c.Assert(names, HasLen, 3)
-	c.Assert(names[0], Equals, "slack")
-	c.Assert(names[1], Equals, "discord")
-	c.Assert(names[2], Equals, "teams")
+	assert.Len(t, names, 3)
+	assert.Equal(t, "slack", names[0])
+	assert.Equal(t, "discord", names[1])
+	assert.Equal(t, "teams", names[2])
 }
 
-func (s *SuiteWebhookConfig) TestParseWebhookNames_EmptyElements(c *C) {
+func TestParseWebhookNames_EmptyElements(t *testing.T) {
+	t.Parallel()
+
 	names := ParseWebhookNames("slack,,discord")
-	c.Assert(names, HasLen, 2)
-	c.Assert(names[0], Equals, "slack")
-	c.Assert(names[1], Equals, "discord")
+	assert.Len(t, names, 2)
+	assert.Equal(t, "slack", names[0])
+	assert.Equal(t, "discord", names[1])
 }
 
-func (s *SuiteWebhookConfig) TestWebhookConfig_Validate_Valid(c *C) {
+func TestWebhookConfig_Validate_Valid(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{
 		Name:   "test",
 		Preset: "slack",
 	}
 
 	err := config.Validate()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 }
 
-func (s *SuiteWebhookConfig) TestWebhookConfig_Validate_NoPresetOrURL(c *C) {
+func TestWebhookConfig_Validate_NoPresetOrURL(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{
 		Name: "test",
 	}
 
 	err := config.Validate()
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-func (s *SuiteWebhookConfig) TestWebhookConfig_Validate_InvalidTrigger(c *C) {
+func TestWebhookConfig_Validate_InvalidTrigger(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{
 		Name:    "test",
 		Preset:  "slack",
@@ -99,69 +116,77 @@ func (s *SuiteWebhookConfig) TestWebhookConfig_Validate_InvalidTrigger(c *C) {
 	}
 
 	err := config.Validate()
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-func (s *SuiteWebhookConfig) TestWebhookConfig_ShouldNotify_Error(c *C) {
+func TestWebhookConfig_ShouldNotify_Error(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{Trigger: TriggerError}
 
-	c.Assert(config.ShouldNotify(true, false), Equals, true)   // Failed
-	c.Assert(config.ShouldNotify(false, false), Equals, false) // Success
-	c.Assert(config.ShouldNotify(false, true), Equals, false)  // Skipped
+	assert.True(t, config.ShouldNotify(true, false))
+	assert.False(t, config.ShouldNotify(false, false))
+	assert.False(t, config.ShouldNotify(false, true))
 }
 
-func (s *SuiteWebhookConfig) TestWebhookConfig_ShouldNotify_Success(c *C) {
+func TestWebhookConfig_ShouldNotify_Success(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{Trigger: TriggerSuccess}
 
-	c.Assert(config.ShouldNotify(true, false), Equals, false) // Failed
-	c.Assert(config.ShouldNotify(false, false), Equals, true) // Success
-	c.Assert(config.ShouldNotify(false, true), Equals, false) // Skipped
+	assert.False(t, config.ShouldNotify(true, false))
+	assert.True(t, config.ShouldNotify(false, false))
+	assert.False(t, config.ShouldNotify(false, true))
 }
 
-func (s *SuiteWebhookConfig) TestWebhookConfig_ShouldNotify_Always(c *C) {
+func TestWebhookConfig_ShouldNotify_Always(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{Trigger: TriggerAlways}
 
-	c.Assert(config.ShouldNotify(true, false), Equals, true)  // Failed
-	c.Assert(config.ShouldNotify(false, false), Equals, true) // Success
-	c.Assert(config.ShouldNotify(false, true), Equals, true)  // Skipped
+	assert.True(t, config.ShouldNotify(true, false))
+	assert.True(t, config.ShouldNotify(false, false))
+	assert.True(t, config.ShouldNotify(false, true))
 }
 
-func (s *SuiteWebhookConfig) TestWebhookConfig_ShouldNotify_Skipped(c *C) {
+func TestWebhookConfig_ShouldNotify_Skipped(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{Trigger: TriggerSkipped}
 
-	c.Assert(config.ShouldNotify(true, false), Equals, false)  // Failed
-	c.Assert(config.ShouldNotify(false, false), Equals, false) // Success
-	c.Assert(config.ShouldNotify(false, true), Equals, true)   // Skipped
+	assert.False(t, config.ShouldNotify(true, false))
+	assert.False(t, config.ShouldNotify(false, false))
+	assert.True(t, config.ShouldNotify(false, true))
 }
 
-func (s *SuiteWebhookConfig) TestWebhookConfig_ApplyDefaults(c *C) {
+func TestWebhookConfig_ApplyDefaults(t *testing.T) {
+	t.Parallel()
+
 	config := &WebhookConfig{Name: "test", Preset: "slack"}
 	config.ApplyDefaults()
 
-	c.Assert(config.Trigger, Equals, TriggerError)
-	c.Assert(config.Timeout, Equals, 10*time.Second)
-	c.Assert(config.RetryCount, Equals, 3)
-	c.Assert(config.RetryDelay, Equals, 5*time.Second)
+	assert.Equal(t, TriggerError, config.Trigger)
+	assert.Equal(t, 10*time.Second, config.Timeout)
+	assert.Equal(t, 3, config.RetryCount)
+	assert.Equal(t, 5*time.Second, config.RetryDelay)
 }
 
-// Standard Go testing integration tests
 func TestWebhookConfig_Integration(t *testing.T) {
+	t.Parallel()
+
 	config := DefaultWebhookConfig()
 	config.Name = "test-webhook"
 	config.Preset = "slack"
 	config.ID = "T12345/B67890"
 	config.Secret = "xoxb-secret"
 
-	if config.Name != "test-webhook" {
-		t.Errorf("Expected name 'test-webhook', got %s", config.Name)
-	}
-
-	if config.Preset != "slack" {
-		t.Errorf("Expected preset 'slack', got %s", config.Preset)
-	}
+	assert.Equal(t, "test-webhook", config.Name)
+	assert.Equal(t, "slack", config.Preset)
 }
 
 func TestWebhookData_Construction(t *testing.T) {
+	t.Parallel()
+
 	data := &WebhookData{
 		Job: WebhookJobData{
 			Name:    "test-job",
@@ -182,11 +207,6 @@ func TestWebhookData_Construction(t *testing.T) {
 		},
 	}
 
-	if data.Job.Name != "test-job" {
-		t.Errorf("Expected job name 'test-job', got %s", data.Job.Name)
-	}
-
-	if data.Execution.Status != "success" {
-		t.Errorf("Expected status 'success', got %s", data.Execution.Status)
-	}
+	assert.Equal(t, "test-job", data.Job.Name)
+	assert.Equal(t, "success", data.Execution.Status)
 }

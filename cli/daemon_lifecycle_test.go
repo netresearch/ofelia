@@ -13,19 +13,14 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/domain"
+	"github.com/netresearch/ofelia/test/testutil"
 )
 
-func TestDaemonLifecycle(t *testing.T) { TestingT(t) }
-
-type DaemonLifecycleSuite struct{}
-
-var _ = Suite(&DaemonLifecycleSuite{})
-
-// mockDockerProvider implements the core.DockerProvider interface for testing
 type mockDockerProvider struct{}
 
 func (m *mockDockerProvider) CreateContainer(ctx context.Context, config *domain.ContainerConfig, name string) (string, error) {
@@ -134,14 +129,10 @@ func (m *mockDockerProvider) Close() error {
 	return nil
 }
 
-// mockDockerLabelsUpdate implements the dockerLabelsUpdate interface
 type mockDockerLabelsUpdate struct{}
 
-func (m *mockDockerLabelsUpdate) dockerLabelsUpdate(labels map[string]map[string]string) {
-	// Mock implementation - do nothing
-}
+func (m *mockDockerLabelsUpdate) dockerLabelsUpdate(labels map[string]map[string]string) {}
 
-// Helper function to get an available address for testing
 func getAvailableAddress() string {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -151,9 +142,7 @@ func getAvailableAddress() string {
 	return fmt.Sprintf(":%d", listener.Addr().(*net.TCPAddr).Port)
 }
 
-// Test successful complete lifecycle
-func (s *DaemonLifecycleSuite) TestSuccessfulBootStartShutdown(c *C) {
-	// Setup
+func TestSuccessfulBootStartShutdown(t *testing.T) {
 	_, logger := newMemoryLogger(logrus.InfoLevel)
 	cmd := &DaemonCommand{
 		Logger:      logger,
@@ -161,7 +150,6 @@ func (s *DaemonLifecycleSuite) TestSuccessfulBootStartShutdown(c *C) {
 		EnablePprof: false,
 	}
 
-	// Mock docker handler that succeeds
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
@@ -179,41 +167,34 @@ func (s *DaemonLifecycleSuite) TestSuccessfulBootStartShutdown(c *C) {
 		return handler, nil
 	}
 
-	// Test boot phase
 	err := cmd.boot()
-	c.Assert(err, IsNil)
-	c.Assert(cmd.scheduler, NotNil)
-	c.Assert(cmd.shutdownManager, NotNil)
-	c.Assert(cmd.done, NotNil)
-	c.Assert(cmd.config, NotNil)
+	require.NoError(t, err)
+	assert.NotNil(t, cmd.scheduler)
+	assert.NotNil(t, cmd.shutdownManager)
+	assert.NotNil(t, cmd.done)
+	assert.NotNil(t, cmd.config)
 
-	// Test start phase
 	err = cmd.start()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Give some time for goroutines to start
 	time.Sleep(100 * time.Millisecond)
 
-	// Test shutdown
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		_ = cmd.shutdownManager.Shutdown()
 	}()
 
 	err = cmd.shutdown()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 }
 
-// Test boot failure scenarios
-func (s *DaemonLifecycleSuite) TestBootFailureInvalidConfig(c *C) {
-	// Create invalid config file
+func TestBootFailureInvalidConfig(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "ofelia_invalid_*.ini")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
-	// Write malformed INI content
 	_, err = tmpFile.WriteString("[global\ninvalid-section-header\nkey = value")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	tmpFile.Close()
 
 	_, logger := newMemoryLogger(logrus.DebugLevel)
@@ -222,7 +203,6 @@ func (s *DaemonLifecycleSuite) TestBootFailureInvalidConfig(c *C) {
 		Logger:     logger,
 	}
 
-	// Mock docker handler failure
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
@@ -230,19 +210,17 @@ func (s *DaemonLifecycleSuite) TestBootFailureInvalidConfig(c *C) {
 		return nil, errors.New("docker initialization failed")
 	}
 
-	// Boot should handle config error gracefully
 	err = cmd.boot()
-	c.Assert(err, NotNil) // InitializeApp will fail due to docker error
+	assert.Error(t, err)
 }
 
-func (s *DaemonLifecycleSuite) TestBootDockerConnectionFailure(c *C) {
+func TestBootDockerConnectionFailure(t *testing.T) {
 	hook, logger := newMemoryLogger(logrus.DebugLevel)
 	cmd := &DaemonCommand{
 		Logger:    logger,
 		EnableWeb: true,
 	}
 
-	// Mock docker handler failure
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
@@ -252,10 +230,9 @@ func (s *DaemonLifecycleSuite) TestBootDockerConnectionFailure(c *C) {
 	}
 
 	err := cmd.boot()
-	c.Assert(err, NotNil)
-	c.Assert(err.Error(), Matches, ".*Docker daemon.*")
+	require.Error(t, err)
+	assert.Regexp(t, ".*Docker daemon.*", err.Error())
 
-	// Verify error was logged
 	found := false
 	for _, entry := range hook.AllEntries() {
 		if strings.Contains(entry.Message, "Can't start the app") {
@@ -263,14 +240,11 @@ func (s *DaemonLifecycleSuite) TestBootDockerConnectionFailure(c *C) {
 			break
 		}
 	}
-	c.Assert(found, Equals, true)
+	assert.True(t, found)
 }
 
-// Test pprof server functionality
-func (s *DaemonLifecycleSuite) TestPprofServerStartup(c *C) {
+func TestPprofServerStartup(t *testing.T) {
 	hook, logger := newMemoryLogger(logrus.InfoLevel)
-
-	// Find available port
 	addr := getAvailableAddress()
 
 	cmd := &DaemonCommand{
@@ -280,7 +254,6 @@ func (s *DaemonLifecycleSuite) TestPprofServerStartup(c *C) {
 		done:        make(chan struct{}),
 	}
 
-	// Mock successful components
 	cmd.scheduler = core.NewScheduler(logger)
 	cmd.shutdownManager = core.NewShutdownManager(logger, 1*time.Second)
 	cmd.pprofServer = &http.Server{
@@ -289,35 +262,25 @@ func (s *DaemonLifecycleSuite) TestPprofServerStartup(c *C) {
 	}
 
 	err := cmd.start()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify pprof server started
-	found := false
-	for _, entry := range hook.AllEntries() {
-		if strings.Contains(entry.Message, "Starting pprof server") {
-			found = true
-			break
+	// Poll for log message instead of fixed sleep
+	testutil.Eventually(t, func() bool {
+		for _, entry := range hook.AllEntries() {
+			if strings.Contains(entry.Message, "Starting pprof server") {
+				return true
+			}
 		}
-	}
-	c.Assert(found, Equals, true)
+		return false
+	}, testutil.WithTimeout(500*time.Millisecond), testutil.WithInterval(10*time.Millisecond))
 
-	// Trigger shutdown
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		_ = cmd.shutdownManager.Shutdown()
-	}()
-
+	// Trigger shutdown asynchronously
+	go func() { _ = cmd.shutdownManager.Shutdown() }()
 	_ = cmd.shutdown()
 }
 
-// Test web server functionality
-func (s *DaemonLifecycleSuite) TestWebServerStartup(c *C) {
+func TestWebServerStartup(t *testing.T) {
 	hook, logger := newMemoryLogger(logrus.InfoLevel)
-
-	// Find available port
 	addr := getAvailableAddress()
 
 	cmd := &DaemonCommand{
@@ -327,7 +290,6 @@ func (s *DaemonLifecycleSuite) TestWebServerStartup(c *C) {
 		done:      make(chan struct{}),
 	}
 
-	// Setup successful boot
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
@@ -346,16 +308,14 @@ func (s *DaemonLifecycleSuite) TestWebServerStartup(c *C) {
 	}
 
 	err := cmd.boot()
-	c.Assert(err, IsNil)
-	c.Assert(cmd.webServer, NotNil)
+	require.NoError(t, err)
+	assert.NotNil(t, cmd.webServer)
 
 	err = cmd.start()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Give server time to start
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify web server started
 	found := false
 	for _, entry := range hook.AllEntries() {
 		if strings.Contains(entry.Message, "Starting web server") {
@@ -363,9 +323,8 @@ func (s *DaemonLifecycleSuite) TestWebServerStartup(c *C) {
 			break
 		}
 	}
-	c.Assert(found, Equals, true)
+	assert.True(t, found)
 
-	// Trigger shutdown
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		_ = cmd.shutdownManager.Shutdown()
@@ -374,24 +333,21 @@ func (s *DaemonLifecycleSuite) TestWebServerStartup(c *C) {
 	_ = cmd.shutdown()
 }
 
-// Test port binding conflicts
-func (s *DaemonLifecycleSuite) TestPortBindingConflict(c *C) {
-	hook, logger := newMemoryLogger(logrus.InfoLevel)
+func TestPortBindingConflict(t *testing.T) {
+	_, logger := newMemoryLogger(logrus.InfoLevel)
 
-	// Get an address and bind to it first
 	addr := getAvailableAddress()
 	listener, err := net.Listen("tcp", addr)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	defer listener.Close()
 
 	cmd := &DaemonCommand{
 		Logger:      logger,
 		EnablePprof: true,
-		PprofAddr:   addr, // This should conflict
+		PprofAddr:   addr,
 		done:        make(chan struct{}),
 	}
 
-	// Mock successful components
 	cmd.scheduler = core.NewScheduler(logger)
 	cmd.shutdownManager = core.NewShutdownManager(logger, 1*time.Second)
 	cmd.pprofServer = &http.Server{
@@ -400,24 +356,11 @@ func (s *DaemonLifecycleSuite) TestPortBindingConflict(c *C) {
 	}
 
 	err = cmd.start()
-	c.Assert(err, IsNil) // start() doesn't wait for servers to fully start
-
-	// Give time for error to occur
-	time.Sleep(200 * time.Millisecond)
-
-	// Check that error was logged
-	found := false
-	for _, entry := range hook.AllEntries() {
-		if entry.Level == logrus.ErrorLevel && strings.Contains(entry.Message, "Error starting HTTP server") {
-			found = true
-			break
-		}
-	}
-	c.Assert(found, Equals, true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pprof server startup failed")
 }
 
-// Test graceful shutdown with running jobs
-func (s *DaemonLifecycleSuite) TestGracefulShutdownWithRunningJobs(c *C) {
+func TestGracefulShutdownWithRunningJobs(t *testing.T) {
 	_, logger := newMemoryLogger(logrus.InfoLevel)
 
 	cmd := &DaemonCommand{
@@ -428,66 +371,56 @@ func (s *DaemonLifecycleSuite) TestGracefulShutdownWithRunningJobs(c *C) {
 	}
 
 	err := cmd.start()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Start shutdown in background
 	shutdownDone := make(chan error)
 	go func() {
 		shutdownDone <- cmd.shutdown()
 	}()
 
-	// Give some time then trigger shutdown
 	time.Sleep(50 * time.Millisecond)
 	_ = cmd.shutdownManager.Shutdown()
 
-	// Wait for shutdown to complete
 	select {
 	case err := <-shutdownDone:
-		c.Assert(err, IsNil)
+		require.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		c.Fatal("shutdown took too long")
+		t.Fatal("shutdown took too long")
 	}
 }
 
-// Test forced shutdown on timeout
-func (s *DaemonLifecycleSuite) TestForcedShutdownOnTimeout(c *C) {
+func TestForcedShutdownOnTimeout(t *testing.T) {
 	_, logger := newMemoryLogger(logrus.DebugLevel)
 
 	cmd := &DaemonCommand{
 		Logger:          logger,
-		shutdownManager: core.NewShutdownManager(logger, 100*time.Millisecond), // Very short timeout
+		shutdownManager: core.NewShutdownManager(logger, 100*time.Millisecond),
 		done:            make(chan struct{}),
 	}
 
-	// Create scheduler
 	cmd.scheduler = core.NewScheduler(logger)
 
 	err := cmd.start()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Start shutdown process
 	shutdownDone := make(chan error)
 	go func() {
 		shutdownDone <- cmd.shutdown()
 	}()
 
-	// Trigger shutdown immediately
 	_ = cmd.shutdownManager.Shutdown()
 
-	// Should complete quickly due to timeout
 	select {
 	case err := <-shutdownDone:
-		c.Assert(err, IsNil)
+		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
-		c.Fatal("shutdown took too long even with timeout")
+		t.Fatal("shutdown took too long even with timeout")
 	}
 }
 
-// Test configuration option application
-func (s *DaemonLifecycleSuite) TestConfigurationOptionApplication(c *C) {
+func TestConfigurationOptionApplication(t *testing.T) {
 	_, logger := newMemoryLogger(logrus.InfoLevel)
 
-	// Test CLI options override config file options
 	pollInterval := 30 * time.Second
 	cmd := &DaemonCommand{
 		Logger:             logger,
@@ -500,7 +433,6 @@ func (s *DaemonLifecycleSuite) TestConfigurationOptionApplication(c *C) {
 		LogLevel:           "DEBUG",
 	}
 
-	// Mock docker handler
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
@@ -519,22 +451,19 @@ func (s *DaemonLifecycleSuite) TestConfigurationOptionApplication(c *C) {
 	}
 
 	err := cmd.boot()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Verify options were applied
-	c.Assert(cmd.config.Docker.Filters, DeepEquals, []string{"label=test"})
-	c.Assert(cmd.config.Docker.PollInterval, Equals, pollInterval)
-	c.Assert(cmd.EnableWeb, Equals, true)
-	c.Assert(cmd.WebAddr, Equals, ":9999")
-	c.Assert(cmd.EnablePprof, Equals, true)
-	c.Assert(cmd.PprofAddr, Equals, "127.0.0.1:9998")
+	assert.Equal(t, []string{"label=test"}, cmd.config.Docker.Filters)
+	assert.Equal(t, pollInterval, cmd.config.Docker.PollInterval)
+	assert.True(t, cmd.EnableWeb)
+	assert.Equal(t, ":9999", cmd.WebAddr)
+	assert.True(t, cmd.EnablePprof)
+	assert.Equal(t, "127.0.0.1:9998", cmd.PprofAddr)
 }
 
-// Test concurrent server startup
-func (s *DaemonLifecycleSuite) TestConcurrentServerStartup(c *C) {
+func TestConcurrentServerStartup(t *testing.T) {
 	hook, logger := newMemoryLogger(logrus.InfoLevel)
 
-	// Use different available ports
 	pprofAddr := getAvailableAddress()
 	webAddr := getAvailableAddress()
 
@@ -547,7 +476,6 @@ func (s *DaemonLifecycleSuite) TestConcurrentServerStartup(c *C) {
 		done:        make(chan struct{}),
 	}
 
-	// Setup successful boot
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
@@ -566,45 +494,35 @@ func (s *DaemonLifecycleSuite) TestConcurrentServerStartup(c *C) {
 	}
 
 	err := cmd.boot()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	err = cmd.start()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	// Give servers time to start
-	time.Sleep(200 * time.Millisecond)
-
-	// Verify both servers started
-	pprofFound := false
-	webFound := false
-	for _, entry := range hook.AllEntries() {
-		if strings.Contains(entry.Message, "Starting pprof server") {
-			pprofFound = true
+	testutil.Eventually(t, func() bool {
+		pprofFound := false
+		webFound := false
+		for _, entry := range hook.AllEntries() {
+			if strings.Contains(entry.Message, "Starting pprof server") {
+				pprofFound = true
+			}
+			if strings.Contains(entry.Message, "Starting web server") {
+				webFound = true
+			}
 		}
-		if strings.Contains(entry.Message, "Starting web server") {
-			webFound = true
-		}
-	}
-	c.Assert(pprofFound, Equals, true)
-	c.Assert(webFound, Equals, true)
+		return pprofFound && webFound
+	}, testutil.WithTimeout(500*time.Millisecond), testutil.WithInterval(10*time.Millisecond))
 
-	// Trigger shutdown
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		_ = cmd.shutdownManager.Shutdown()
-	}()
-
+	go func() { _ = cmd.shutdownManager.Shutdown() }()
 	_ = cmd.shutdown()
 }
 
-// Test resource cleanup on failure
-func (s *DaemonLifecycleSuite) TestResourceCleanupOnFailure(c *C) {
+func TestResourceCleanupOnFailure(t *testing.T) {
 	_, logger := newMemoryLogger(logrus.InfoLevel)
 	cmd := &DaemonCommand{
 		Logger: logger,
 	}
 
-	// Mock docker handler that fails initialization
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
@@ -613,22 +531,19 @@ func (s *DaemonLifecycleSuite) TestResourceCleanupOnFailure(c *C) {
 	}
 
 	err := cmd.boot()
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 
-	// Verify cleanup occurred - done channel should not be created on failure
-	c.Assert(cmd.done, NotNil)            // done is created early in boot
-	c.Assert(cmd.shutdownManager, NotNil) // shutdown manager is created
+	assert.NotNil(t, cmd.done)
+	assert.NotNil(t, cmd.shutdownManager)
 }
 
-// Test health checker initialization
-func (s *DaemonLifecycleSuite) TestHealthCheckerInitialization(c *C) {
+func TestHealthCheckerInitialization(t *testing.T) {
 	_, logger := newMemoryLogger(logrus.InfoLevel)
 	cmd := &DaemonCommand{
 		Logger:    logger,
 		EnableWeb: true,
 	}
 
-	// Mock successful docker handler
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
@@ -647,19 +562,17 @@ func (s *DaemonLifecycleSuite) TestHealthCheckerInitialization(c *C) {
 	}
 
 	err := cmd.boot()
-	c.Assert(err, IsNil)
-	c.Assert(cmd.healthChecker, NotNil)
+	require.NoError(t, err)
+	assert.NotNil(t, cmd.healthChecker)
 }
 
-// Test server error handling during startup
-func (s *DaemonLifecycleSuite) TestServerErrorHandlingDuringStartup(c *C) {
+func TestServerErrorHandlingDuringStartup(t *testing.T) {
 	hook, logger := newMemoryLogger(logrus.InfoLevel)
 
-	// Create a server that will immediately fail (invalid address)
 	cmd := &DaemonCommand{
 		Logger:      logger,
 		EnablePprof: true,
-		PprofAddr:   "invalid:address:9999", // Invalid address format
+		PprofAddr:   "invalid:address:9999",
 		done:        make(chan struct{}),
 	}
 
@@ -670,12 +583,10 @@ func (s *DaemonLifecycleSuite) TestServerErrorHandlingDuringStartup(c *C) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	// With health checks, start() now correctly fails when server can't bind
 	err := cmd.start()
-	c.Assert(err, NotNil) // start() should fail for invalid address
-	c.Assert(err.Error(), Matches, ".*pprof server startup failed.*")
+	require.Error(t, err)
+	assert.Regexp(t, ".*pprof server startup failed.*", err.Error())
 
-	// Check that failure was logged
 	foundError := false
 	for _, entry := range hook.AllEntries() {
 		if entry.Level == logrus.ErrorLevel &&
@@ -685,11 +596,10 @@ func (s *DaemonLifecycleSuite) TestServerErrorHandlingDuringStartup(c *C) {
 			break
 		}
 	}
-	c.Assert(foundError, Equals, true)
+	assert.True(t, foundError)
 }
 
-// Test daemon complete execute workflow
-func (s *DaemonLifecycleSuite) TestCompleteExecuteWorkflow(c *C) {
+func TestCompleteExecuteWorkflow(t *testing.T) {
 	_, logger := newMemoryLogger(logrus.InfoLevel)
 	cmd := &DaemonCommand{
 		Logger:      logger,
@@ -697,7 +607,6 @@ func (s *DaemonLifecycleSuite) TestCompleteExecuteWorkflow(c *C) {
 		EnablePprof: false,
 	}
 
-	// Mock docker handler
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
@@ -715,10 +624,8 @@ func (s *DaemonLifecycleSuite) TestCompleteExecuteWorkflow(c *C) {
 		return handler, nil
 	}
 
-	// Simulate execute workflow in a goroutine with timeout
 	done := make(chan error)
 	go func() {
-		// This simulates the Execute method workflow
 		if err := cmd.boot(); err != nil {
 			done <- err
 			return
@@ -728,20 +635,17 @@ func (s *DaemonLifecycleSuite) TestCompleteExecuteWorkflow(c *C) {
 			return
 		}
 
-		// Simulate running for a short time
 		time.Sleep(100 * time.Millisecond)
 
-		// Trigger shutdown
 		_ = cmd.shutdownManager.Shutdown()
 
 		done <- cmd.shutdown()
 	}()
 
-	// Wait for completion or timeout
 	select {
 	case err := <-done:
-		c.Assert(err, IsNil)
+		require.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		c.Fatal("execute workflow took too long")
+		t.Fatal("execute workflow took too long")
 	}
 }

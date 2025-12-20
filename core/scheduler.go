@@ -36,40 +36,61 @@ type Scheduler struct {
 	cron                 *cron.Cron
 	wg                   sync.WaitGroup
 	isRunning            bool
-	mu                   sync.RWMutex // Protect isRunning and wg/removed operations
+	mu                   sync.RWMutex
 	maxConcurrentJobs    int
-	jobSemaphore         chan struct{} // Limits concurrent job execution
+	jobSemaphore         chan struct{}
 	retryExecutor        *RetryExecutor
 	workflowOrchestrator *WorkflowOrchestrator
-	jobsByName           map[string]Job  // Quick lookup for jobs by name
-	metricsRecorder      MetricsRecorder // Metrics recorder for job metrics
-	cleanupTicker        *time.Ticker    // Ticker for workflow cleanup
-	cleanupStop          chan struct{}   // Signal to stop cleanup
+	jobsByName           map[string]Job
+	metricsRecorder      MetricsRecorder
+	cleanupTicker        Ticker
+	cleanupStop          chan struct{}
+	clock                Clock
+	onJobComplete        func(jobName string, success bool)
 }
 
 func NewScheduler(l Logger) *Scheduler {
-	return NewSchedulerWithMetrics(l, nil)
+	return NewSchedulerWithOptions(l, nil, 0)
 }
 
-// NewSchedulerWithMetrics creates a new scheduler with optional metrics recording.
-// If metricsRecorder is non-nil, it will be used to record job scheduling metrics
-// via go-cron's ObservabilityHooks.
+// NewSchedulerWithMetrics creates a scheduler with metrics (deprecated: use NewSchedulerWithOptions)
 func NewSchedulerWithMetrics(l Logger, metricsRecorder MetricsRecorder) *Scheduler {
+	return NewSchedulerWithOptions(l, metricsRecorder, 0)
+}
+
+// NewSchedulerWithOptions creates a scheduler with configurable minimum interval.
+// minEveryInterval of 0 uses the library default (1s). Use negative value to allow sub-second.
+func NewSchedulerWithOptions(l Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration) *Scheduler {
+	return newSchedulerInternal(l, metricsRecorder, minEveryInterval, nil)
+}
+
+// NewSchedulerWithClock creates a scheduler with a fake clock for testing.
+// This allows tests to control time advancement without real waits.
+func NewSchedulerWithClock(l Logger, cronClock *CronClock) *Scheduler {
+	return newSchedulerInternal(l, nil, -time.Nanosecond, cronClock)
+}
+
+func newSchedulerInternal(l Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration, cronClock *CronClock) *Scheduler {
 	cronUtils := NewCronUtils(l)
 
-	// Build cron options
+	parser := cron.MustNewParser(
+		cron.SecondOptional | cron.Minute | cron.Hour |
+			cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+	)
+	if minEveryInterval != 0 {
+		parser = parser.WithMinEveryInterval(minEveryInterval)
+	}
+
 	cronOpts := []cron.Option{
-		cron.WithParser(
-			cron.MustNewParser(
-				cron.SecondOptional | cron.Minute | cron.Hour |
-					cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
-			),
-		),
+		cron.WithParser(parser),
 		cron.WithLogger(cronUtils),
 		cron.WithChain(cron.Recover(cronUtils)),
 	}
 
-	// Add observability hooks if metrics recorder is provided
+	if cronClock != nil {
+		cronOpts = append(cronOpts, cron.WithClock(cronClock))
+	}
+
 	if metricsRecorder != nil {
 		hooks := cron.ObservabilityHooks{
 			OnJobStart: func(_ cron.EntryID, name string, _ time.Time) {
@@ -90,6 +111,11 @@ func NewSchedulerWithMetrics(l Logger, metricsRecorder MetricsRecorder) *Schedul
 	// Default to 10 concurrent jobs, can be configured
 	maxConcurrent := 10
 
+	var clock Clock = GetDefaultClock()
+	if cronClock != nil {
+		clock = cronClock.FakeClock
+	}
+
 	s := &Scheduler{
 		Logger:            l,
 		cron:              cronInstance,
@@ -98,6 +124,7 @@ func NewSchedulerWithMetrics(l Logger, metricsRecorder MetricsRecorder) *Schedul
 		retryExecutor:     NewRetryExecutor(l),
 		jobsByName:        make(map[string]Job),
 		metricsRecorder:   metricsRecorder,
+		clock:             clock,
 	}
 
 	// Also set metrics on retry executor
@@ -125,15 +152,25 @@ func (s *Scheduler) SetMaxConcurrentJobs(maxJobs int) {
 	s.jobSemaphore = make(chan struct{}, maxJobs)
 }
 
-// SetMetricsRecorder sets the metrics recorder for the scheduler
 func (s *Scheduler) SetMetricsRecorder(recorder MetricsRecorder) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.metricsRecorder = recorder
-	// Also set it on the retry executor
 	if s.retryExecutor != nil {
 		s.retryExecutor.SetMetricsRecorder(recorder)
 	}
+}
+
+func (s *Scheduler) SetClock(c Clock) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clock = c
+}
+
+func (s *Scheduler) SetOnJobComplete(callback func(jobName string, success bool)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onJobComplete = callback
 }
 
 func (s *Scheduler) AddJob(j Job) error {
@@ -359,12 +396,12 @@ func (s *Scheduler) startWorkflowCleanup() {
 		}
 	}
 
-	s.cleanupTicker = time.NewTicker(cleanupInterval)
+	s.cleanupTicker = s.clock.NewTicker(cleanupInterval)
 
 	go func() {
 		for {
 			select {
-			case <-s.cleanupTicker.C:
+			case <-s.cleanupTicker.C():
 				s.workflowOrchestrator.CleanupOldExecutions(retentionDuration)
 				s.Logger.Debugf("Cleaned up workflow executions older than %v", retentionDuration)
 			case <-s.cleanupStop:
@@ -389,8 +426,7 @@ func (s *Scheduler) RunJob(jobName string) error {
 		return fmt.Errorf("job %s not found", jobName)
 	}
 
-	// Check if job can run based on dependencies
-	executionID := fmt.Sprintf("manual-%d", time.Now().Unix())
+	executionID := fmt.Sprintf("manual-%d", s.clock.Now().Unix())
 	if !s.workflowOrchestrator.CanExecute(jobName, executionID) {
 		return fmt.Errorf("job %s cannot run: dependencies not satisfied", jobName)
 	}
@@ -487,16 +523,13 @@ func (s *Scheduler) EnableJob(name string) error {
 	s.Disabled = append(s.Disabled[:idx], s.Disabled[idx+1:]...)
 	s.mu.Unlock()
 
-	// Wait for the name to be available in cron (removal is async when cron is running)
-	// Use exponential backoff: 1ms, 2ms, 4ms, 8ms, 16ms, 32ms, 64ms, 100ms, 100ms, 100ms
-	// (capped at 100ms per attempt, ~430ms total worst case)
 	backoff := time.Millisecond
 	for i := 0; i < 10; i++ {
 		entry := s.cron.EntryByName(name)
 		if !entry.Valid() {
 			break
 		}
-		time.Sleep(backoff)
+		s.clock.Sleep(backoff)
 		backoff *= 2
 		if backoff > 100*time.Millisecond {
 			backoff = 100 * time.Millisecond
@@ -528,8 +561,7 @@ func (w *jobWrapper) Run() {
 		}
 	}()
 
-	// Generate workflow execution ID
-	executionID := fmt.Sprintf("sched-%d-%s", time.Now().Unix(), w.j.GetName())
+	executionID := fmt.Sprintf("sched-%d-%s", w.s.clock.Now().Unix(), w.j.GetName())
 
 	// Check dependencies
 	if !w.s.workflowOrchestrator.CanExecute(w.j.GetName(), executionID) {
@@ -586,9 +618,12 @@ func (w *jobWrapper) Run() {
 
 	w.stop(ctx, err)
 
-	// Mark job as completed in workflow
 	success := err == nil && !ctx.Execution.Failed
 	w.s.workflowOrchestrator.JobCompleted(w.j.GetName(), executionID, success)
+
+	if w.s.onJobComplete != nil {
+		w.s.onJobComplete(w.j.GetName(), success)
+	}
 }
 
 func (w *jobWrapper) start(ctx *Context) {

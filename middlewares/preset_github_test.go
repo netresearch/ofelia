@@ -3,177 +3,214 @@ package middlewares
 import (
 	"testing"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-type SuitePresetGitHub struct {
-	BaseSuite
+func TestIsGitHubShorthand_True(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, IsGitHubShorthand("gh:org/repo/path.yaml"))
+	assert.True(t, IsGitHubShorthand("gh:netresearch/ofelia-presets/slack.yaml"))
 }
 
-var _ = Suite(&SuitePresetGitHub{})
+func TestIsGitHubShorthand_False(t *testing.T) {
+	t.Parallel()
 
-func (s *SuitePresetGitHub) TestIsGitHubShorthand_True(c *C) {
-	c.Assert(IsGitHubShorthand("gh:org/repo/path.yaml"), Equals, true)
-	c.Assert(IsGitHubShorthand("gh:netresearch/ofelia-presets/slack.yaml"), Equals, true)
+	assert.False(t, IsGitHubShorthand("slack"))
+	assert.False(t, IsGitHubShorthand("https://example.com"))
+	assert.False(t, IsGitHubShorthand("/path/to/file.yaml"))
+	assert.False(t, IsGitHubShorthand(""))
 }
 
-func (s *SuitePresetGitHub) TestIsGitHubShorthand_False(c *C) {
-	c.Assert(IsGitHubShorthand("slack"), Equals, false)
-	c.Assert(IsGitHubShorthand("https://example.com"), Equals, false)
-	c.Assert(IsGitHubShorthand("/path/to/file.yaml"), Equals, false)
-	c.Assert(IsGitHubShorthand(""), Equals, false)
-}
+func TestParseGitHubShorthand_SimpleFormat(t *testing.T) {
+	t.Parallel()
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthand_SimpleFormat(c *C) {
 	url, err := ParseGitHubShorthand("gh:netresearch/ofelia-presets/slack.yaml")
 
-	c.Assert(err, IsNil)
-	c.Assert(url, Equals, "https://raw.githubusercontent.com/netresearch/ofelia-presets/main/slack.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, "https://raw.githubusercontent.com/netresearch/ofelia-presets/main/slack.yaml", url)
 }
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthand_WithVersion(c *C) {
+func TestParseGitHubShorthand_WithVersion(t *testing.T) {
+	t.Parallel()
+
 	url, err := ParseGitHubShorthand("gh:netresearch/ofelia-presets/slack.yaml@v1.0.0")
 
-	c.Assert(err, IsNil)
-	c.Assert(url, Equals, "https://raw.githubusercontent.com/netresearch/ofelia-presets/v1.0.0/slack.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, "https://raw.githubusercontent.com/netresearch/ofelia-presets/v1.0.0/slack.yaml", url)
 }
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthand_WithBranch(c *C) {
+func TestParseGitHubShorthand_WithBranch(t *testing.T) {
+	t.Parallel()
+
 	url, err := ParseGitHubShorthand("gh:netresearch/ofelia-presets/slack.yaml@develop")
 
-	c.Assert(err, IsNil)
-	c.Assert(url, Equals, "https://raw.githubusercontent.com/netresearch/ofelia-presets/develop/slack.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, "https://raw.githubusercontent.com/netresearch/ofelia-presets/develop/slack.yaml", url)
 }
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthand_NestedPath(c *C) {
+func TestParseGitHubShorthand_NestedPath(t *testing.T) {
+	t.Parallel()
+
 	url, err := ParseGitHubShorthand("gh:org/repo/notifications/slack.yaml")
 
-	c.Assert(err, IsNil)
-	c.Assert(url, Equals, "https://raw.githubusercontent.com/org/repo/main/notifications/slack.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, "https://raw.githubusercontent.com/org/repo/main/notifications/slack.yaml", url)
 }
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthand_AutoAddYAML(c *C) {
+func TestParseGitHubShorthand_AutoAddYAML(t *testing.T) {
+	t.Parallel()
+
 	url, err := ParseGitHubShorthand("gh:org/repo/slack")
 
-	c.Assert(err, IsNil)
-	c.Assert(url, Equals, "https://raw.githubusercontent.com/org/repo/main/slack.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, "https://raw.githubusercontent.com/org/repo/main/slack.yaml", url)
 }
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthand_YMLExtension(c *C) {
+func TestParseGitHubShorthand_YMLExtension(t *testing.T) {
+	t.Parallel()
+
 	url, err := ParseGitHubShorthand("gh:org/repo/slack.yml")
 
-	c.Assert(err, IsNil)
-	c.Assert(url, Equals, "https://raw.githubusercontent.com/org/repo/main/slack.yml")
+	require.NoError(t, err)
+	assert.Equal(t, "https://raw.githubusercontent.com/org/repo/main/slack.yml", url)
 }
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthand_InvalidFormat(c *C) {
+func TestParseGitHubShorthand_InvalidFormat(t *testing.T) {
+	t.Parallel()
+
 	_, err := ParseGitHubShorthand("gh:")
 
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthand_NotGitHub(c *C) {
+func TestParseGitHubShorthand_NotGitHub(t *testing.T) {
+	t.Parallel()
+
 	_, err := ParseGitHubShorthand("https://example.com")
 
-	c.Assert(err, NotNil)
+	assert.Error(t, err)
 }
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthandDetails(c *C) {
+func TestParseGitHubShorthandDetails(t *testing.T) {
+	t.Parallel()
+
 	gh, err := ParseGitHubShorthandDetails("gh:netresearch/ofelia-presets/notifications/slack.yaml@v1.0.0")
 
-	c.Assert(err, IsNil)
-	c.Assert(gh, NotNil)
-	c.Assert(gh.Org, Equals, "netresearch")
-	c.Assert(gh.Repo, Equals, "ofelia-presets")
-	c.Assert(gh.Path, Equals, "notifications/slack.yaml")
-	c.Assert(gh.Version, Equals, "v1.0.0")
+	require.NoError(t, err)
+	assert.NotNil(t, gh)
+	assert.Equal(t, "netresearch", gh.Org)
+	assert.Equal(t, "ofelia-presets", gh.Repo)
+	assert.Equal(t, "notifications/slack.yaml", gh.Path)
+	assert.Equal(t, "v1.0.0", gh.Version)
 }
 
-func (s *SuitePresetGitHub) TestParseGitHubShorthandDetails_DefaultVersion(c *C) {
+func TestParseGitHubShorthandDetails_DefaultVersion(t *testing.T) {
+	t.Parallel()
+
 	gh, err := ParseGitHubShorthandDetails("gh:org/repo/path.yaml")
 
-	c.Assert(err, IsNil)
-	c.Assert(gh.Version, Equals, "main")
+	require.NoError(t, err)
+	assert.Equal(t, "main", gh.Version)
 }
 
-func (s *SuitePresetGitHub) TestIsVersioned_True(c *C) {
-	c.Assert(IsVersioned("gh:org/repo/path@v1.0.0"), Equals, true)
-	c.Assert(IsVersioned("gh:org/repo/path@main"), Equals, true)
+func TestIsVersioned_True(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, IsVersioned("gh:org/repo/path@v1.0.0"))
+	assert.True(t, IsVersioned("gh:org/repo/path@main"))
 }
 
-func (s *SuitePresetGitHub) TestIsVersioned_False(c *C) {
-	c.Assert(IsVersioned("gh:org/repo/path"), Equals, false)
-	c.Assert(IsVersioned("slack"), Equals, false)
+func TestIsVersioned_False(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, IsVersioned("gh:org/repo/path"))
+	assert.False(t, IsVersioned("slack"))
 }
 
-func (s *SuitePresetGitHub) TestFormatGitHubShorthand(c *C) {
+func TestFormatGitHubShorthand(t *testing.T) {
+	t.Parallel()
+
 	shorthand := FormatGitHubShorthand("netresearch", "ofelia-presets", "slack.yaml", "v1.0.0")
-	c.Assert(shorthand, Equals, "gh:netresearch/ofelia-presets/slack.yaml@v1.0.0")
+	assert.Equal(t, "gh:netresearch/ofelia-presets/slack.yaml@v1.0.0", shorthand)
 }
 
-func (s *SuitePresetGitHub) TestFormatGitHubShorthand_DefaultVersion(c *C) {
+func TestFormatGitHubShorthand_DefaultVersion(t *testing.T) {
+	t.Parallel()
+
 	shorthand := FormatGitHubShorthand("netresearch", "ofelia-presets", "slack.yaml", "main")
-	c.Assert(shorthand, Equals, "gh:netresearch/ofelia-presets/slack.yaml")
+	assert.Equal(t, "gh:netresearch/ofelia-presets/slack.yaml", shorthand)
 }
 
-func (s *SuitePresetGitHub) TestFormatGitHubShorthand_NoPath(c *C) {
+func TestFormatGitHubShorthand_NoPath(t *testing.T) {
+	t.Parallel()
+
 	shorthand := FormatGitHubShorthand("org", "repo", "", "v1.0.0")
-	c.Assert(shorthand, Equals, "gh:org/repo@v1.0.0")
+	assert.Equal(t, "gh:org/repo@v1.0.0", shorthand)
 }
 
-func (s *SuitePresetGitHub) TestExtractVersionFromShorthand(c *C) {
-	c.Assert(ExtractVersionFromShorthand("gh:org/repo/path@v1.0.0"), Equals, "v1.0.0")
-	c.Assert(ExtractVersionFromShorthand("gh:org/repo/path@main"), Equals, "main")
-	c.Assert(ExtractVersionFromShorthand("gh:org/repo/path"), Equals, "")
+func TestExtractVersionFromShorthand(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "v1.0.0", ExtractVersionFromShorthand("gh:org/repo/path@v1.0.0"))
+	assert.Equal(t, "main", ExtractVersionFromShorthand("gh:org/repo/path@main"))
+	assert.Empty(t, ExtractVersionFromShorthand("gh:org/repo/path"))
 }
 
-func (s *SuitePresetGitHub) TestStripVersionFromShorthand(c *C) {
-	c.Assert(StripVersionFromShorthand("gh:org/repo/path@v1.0.0"), Equals, "gh:org/repo/path")
-	c.Assert(StripVersionFromShorthand("gh:org/repo/path"), Equals, "gh:org/repo/path")
+func TestStripVersionFromShorthand(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "gh:org/repo/path", StripVersionFromShorthand("gh:org/repo/path@v1.0.0"))
+	assert.Equal(t, "gh:org/repo/path", StripVersionFromShorthand("gh:org/repo/path"))
 }
 
-func (s *SuitePresetGitHub) TestIsSemanticVersion(c *C) {
-	c.Assert(IsSemanticVersion("v1.0.0"), Equals, true)
-	c.Assert(IsSemanticVersion("1.0.0"), Equals, true)
-	c.Assert(IsSemanticVersion("v2.3.4"), Equals, true)
-	c.Assert(IsSemanticVersion("main"), Equals, false)
-	c.Assert(IsSemanticVersion("develop"), Equals, false)
-	c.Assert(IsSemanticVersion("feature/test"), Equals, false)
+func TestIsSemanticVersion(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, IsSemanticVersion("v1.0.0"))
+	assert.True(t, IsSemanticVersion("1.0.0"))
+	assert.True(t, IsSemanticVersion("v2.3.4"))
+	assert.False(t, IsSemanticVersion("main"))
+	assert.False(t, IsSemanticVersion("develop"))
+	assert.False(t, IsSemanticVersion("feature/test"))
 }
 
-func (s *SuitePresetGitHub) TestIsBranch(c *C) {
-	c.Assert(IsBranch("main"), Equals, true)
-	c.Assert(IsBranch("master"), Equals, true)
-	c.Assert(IsBranch("develop"), Equals, true)
-	c.Assert(IsBranch("feature/test"), Equals, true)
-	c.Assert(IsBranch("fix/bug"), Equals, true)
-	c.Assert(IsBranch("release/1.0"), Equals, true)
-	c.Assert(IsBranch("v1.0.0"), Equals, false)
+func TestIsBranch(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, IsBranch("main"))
+	assert.True(t, IsBranch("master"))
+	assert.True(t, IsBranch("develop"))
+	assert.True(t, IsBranch("feature/test"))
+	assert.True(t, IsBranch("fix/bug"))
+	assert.True(t, IsBranch("release/1.0"))
+	assert.False(t, IsBranch("v1.0.0"))
 }
 
-func (s *SuitePresetGitHub) TestValidateGitHubShorthand(c *C) {
-	c.Assert(ValidateGitHubShorthand("gh:org/repo/path.yaml"), IsNil)
-	c.Assert(ValidateGitHubShorthand("gh:org/repo/path.yaml@v1.0.0"), IsNil)
-	c.Assert(ValidateGitHubShorthand("slack"), NotNil)
-	c.Assert(ValidateGitHubShorthand("https://example.com"), NotNil)
+func TestValidateGitHubShorthand(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, ValidateGitHubShorthand("gh:org/repo/path.yaml"))
+	require.NoError(t, ValidateGitHubShorthand("gh:org/repo/path.yaml@v1.0.0"))
+	assert.Error(t, ValidateGitHubShorthand("slack"))
+	assert.Error(t, ValidateGitHubShorthand("https://example.com"))
 }
 
-// Standard Go testing
 func TestGitHubShorthand_RoundTrip(t *testing.T) {
-	// Test that parsing and formatting are consistent
+	t.Parallel()
+
 	original := "gh:netresearch/ofelia-presets/slack.yaml@v1.0.0"
 	details, err := ParseGitHubShorthandDetails(original)
-	if err != nil {
-		t.Fatalf("Failed to parse: %v", err)
-	}
+	require.NoError(t, err)
 
 	reconstructed := FormatGitHubShorthand(details.Org, details.Repo, details.Path, details.Version)
-	if reconstructed != original {
-		t.Errorf("Round trip failed: got %s, want %s", reconstructed, original)
-	}
+	assert.Equal(t, original, reconstructed)
 }
 
 func TestGitHubShorthand_URLGeneration(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		shorthand   string
 		expectedURL string
@@ -194,13 +231,7 @@ func TestGitHubShorthand_URLGeneration(t *testing.T) {
 
 	for _, tc := range testCases {
 		url, err := ParseGitHubShorthand(tc.shorthand)
-		if err != nil {
-			t.Errorf("Failed to parse %s: %v", tc.shorthand, err)
-			continue
-		}
-
-		if url != tc.expectedURL {
-			t.Errorf("For %s: got %s, want %s", tc.shorthand, url, tc.expectedURL)
-		}
+		require.NoError(t, err, "Failed to parse %s", tc.shorthand)
+		assert.Equal(t, tc.expectedURL, url, "For %s", tc.shorthand)
 	}
 }

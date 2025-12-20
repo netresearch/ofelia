@@ -9,16 +9,11 @@ import (
 
 	"github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
 )
-
-func TestDaemonBoot(t *testing.T) { TestingT(t) }
-
-type DaemonBootSuite struct{}
-
-var _ = Suite(&DaemonBootSuite{})
 
 func newMemoryLogger(level logrus.Level) (*logtest.Hook, core.Logger) {
 	logger := logrus.New()
@@ -28,13 +23,15 @@ func newMemoryLogger(level logrus.Level) (*logtest.Hook, core.Logger) {
 	return hook, &core.LogrusAdapter{Logger: logger}
 }
 
-func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
+func TestBootLogsConfigError(t *testing.T) {
+	// Note: Not parallel - modifies global newDockerHandler
+
 	tmpFile, err := os.CreateTemp("", "ofelia_bad_*.ini")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
 	_, err = tmpFile.WriteString("[global\nno-overlap = true\n")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	tmpFile.Close()
 
 	backend, logger := newMemoryLogger(logrus.DebugLevel)
@@ -54,16 +51,18 @@ func (s *DaemonBootSuite) TestBootLogsConfigError(c *C) {
 			warnMsg = true
 		}
 	}
-	c.Assert(warnMsg, Equals, true)
+	assert.True(t, warnMsg)
 }
 
-func (s *DaemonBootSuite) TestBootLogsConfigErrorSuppressed(c *C) {
+func TestBootLogsConfigErrorSuppressed(t *testing.T) {
+	// Note: Not parallel - modifies global newDockerHandler
+
 	tmpFile, err := os.CreateTemp("", "ofelia_bad_*.ini")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
 	_, err = tmpFile.WriteString("[global\nno-overlap = true\n")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	tmpFile.Close()
 
 	backend, logger := newMemoryLogger(logrus.InfoLevel)
@@ -83,12 +82,14 @@ func (s *DaemonBootSuite) TestBootLogsConfigErrorSuppressed(c *C) {
 			debugMsg = true
 		}
 	}
-	c.Assert(debugMsg, Equals, false)
+	assert.False(t, debugMsg)
 }
 
-func (s *DaemonBootSuite) TestBootLogsMissingConfig(c *C) {
+func TestBootLogsMissingConfig(t *testing.T) {
+	// Note: Not parallel - modifies global newDockerHandler
+
 	tmpFile, err := os.CreateTemp("", "ofelia_missing_*.ini")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	path := tmpFile.Name()
 	tmpFile.Close()
 	os.Remove(path)
@@ -110,12 +111,14 @@ func (s *DaemonBootSuite) TestBootLogsMissingConfig(c *C) {
 			warnMsg = true
 		}
 	}
-	c.Assert(warnMsg, Equals, true)
+	assert.True(t, warnMsg)
 }
 
-func (s *DaemonBootSuite) TestBootLogsMissingConfigIncludesFilename(c *C) {
+func TestBootLogsMissingConfigIncludesFilename(t *testing.T) {
+	// Note: Not parallel - modifies global newDockerHandler
+
 	tmpFile, err := os.CreateTemp("", "ofelia_missing_*.ini")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	path := tmpFile.Name()
 	tmpFile.Close()
 	os.Remove(path)
@@ -139,10 +142,12 @@ func (s *DaemonBootSuite) TestBootLogsMissingConfigIncludesFilename(c *C) {
 			warnMsg = true
 		}
 	}
-	c.Assert(warnMsg, Equals, true)
+	assert.True(t, warnMsg)
 }
 
-func (s *DaemonBootSuite) TestBootWebWithoutDocker(c *C) {
+func TestBootWebWithoutDocker(t *testing.T) {
+	// Note: Not parallel - modifies global newDockerHandler
+
 	_, logger := newMemoryLogger(logrus.InfoLevel)
 	cmd := &DaemonCommand{Logger: logger, EnableWeb: true}
 
@@ -153,5 +158,5 @@ func (s *DaemonBootSuite) TestBootWebWithoutDocker(c *C) {
 	}
 
 	_ = cmd.boot()
-	c.Assert(cmd.webServer, NotNil)
+	assert.NotNil(t, cmd.webServer)
 }

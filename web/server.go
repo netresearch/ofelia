@@ -18,12 +18,15 @@ import (
 )
 
 type Server struct {
-	addr      string
-	scheduler *core.Scheduler
-	config    interface{}
-	srv       *http.Server
-	origins   map[string]string
-	provider  core.DockerProvider // SDK-based Docker provider
+	addr         string
+	scheduler    *core.Scheduler
+	config       interface{}
+	srv          *http.Server
+	origins      map[string]string
+	provider     core.DockerProvider
+	authConfig   *SecureAuthConfig
+	tokenManager *SecureTokenManager
+	loginLimiter *RateLimiter
 }
 
 // HTTPServer returns the underlying http.Server used by the web interface. It
@@ -34,11 +37,50 @@ func (s *Server) HTTPServer() *http.Server { return s.srv }
 func (s *Server) GetHTTPServer() *http.Server { return s.srv }
 
 func NewServer(addr string, s *core.Scheduler, cfg interface{}, provider core.DockerProvider) *Server {
-	server := &Server{addr: addr, scheduler: s, config: cfg, origins: make(map[string]string), provider: provider}
+	return NewServerWithAuth(addr, s, cfg, provider, nil)
+}
+
+func NewServerWithAuth(addr string, s *core.Scheduler, cfg interface{}, provider core.DockerProvider, authCfg *SecureAuthConfig) *Server {
+	server := &Server{
+		addr:       addr,
+		scheduler:  s,
+		config:     cfg,
+		origins:    make(map[string]string),
+		provider:   provider,
+		authConfig: authCfg,
+	}
+
+	if authCfg != nil && authCfg.Enabled {
+		tokenExpiry := authCfg.TokenExpiry
+		if tokenExpiry == 0 {
+			tokenExpiry = 24
+		}
+		tm, err := NewSecureTokenManager(authCfg.SecretKey, tokenExpiry)
+		if err != nil {
+			s.Logger.Errorf("failed to initialize token manager: %v", err)
+			return nil
+		}
+		server.tokenManager = tm
+
+		maxAttempts := authCfg.MaxAttempts
+		if maxAttempts == 0 {
+			maxAttempts = 5
+		}
+		server.loginLimiter = NewRateLimiter(maxAttempts, maxAttempts)
+	}
+
 	mux := http.NewServeMux()
 
-	// Create rate limiter: 100 requests per minute per IP
 	rl := newRateLimiter(100, time.Minute)
+
+	if server.authConfig != nil && server.authConfig.Enabled {
+		loginHandler := NewSecureLoginHandler(server.authConfig, server.tokenManager, server.loginLimiter)
+		mux.Handle("/api/login", loginHandler)
+		mux.HandleFunc("/api/logout", server.logoutHandler)
+		mux.HandleFunc("/api/auth/status", server.authStatusHandler)
+		mux.HandleFunc("/api/csrf-token", server.csrfTokenHandler)
+	}
+
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
 	mux.HandleFunc("/api/jobs/disabled", server.disabledJobsHandler)
 	mux.HandleFunc("/api/jobs/run", server.runJobHandler)
@@ -50,19 +92,21 @@ func NewServer(addr string, s *core.Scheduler, cfg interface{}, provider core.Do
 	mux.HandleFunc("/api/jobs/", server.historyHandler)
 	mux.HandleFunc("/api/jobs", server.jobsHandler)
 	mux.HandleFunc("/api/config", server.configHandler)
+
 	uiFS, err := fs.Sub(static.UI, "ui")
 	if err != nil {
-		// Return error gracefully instead of panic
-		// The caller should handle this error appropriately
 		server.scheduler.Logger.Errorf("failed to load UI subdirectory: %v", err)
 		return nil
 	}
 	mux.Handle("/", http.FileServer(http.FS(uiFS)))
 
-	// Apply security middlewares
 	var handler http.Handler = mux
 	handler = securityHeaders(handler)
 	handler = rl.middleware(handler)
+
+	if server.authConfig != nil && server.authConfig.Enabled {
+		handler = server.authMiddleware(handler)
+	}
 
 	server.srv = &http.Server{
 		Addr:              addr,
@@ -83,18 +127,21 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// RegisterHealthEndpoints registers health check endpoints on the server
 func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 	if s.srv == nil || s.srv.Handler == nil {
 		return
 	}
 
-	// Get the existing mux from the handler chain
-	// We need to add the health endpoints to the underlying mux
-	// before the middleware chain
 	mux := http.NewServeMux()
 
-	// Re-register all existing endpoints
+	if s.authConfig != nil && s.authConfig.Enabled {
+		loginHandler := NewSecureLoginHandler(s.authConfig, s.tokenManager, s.loginLimiter)
+		mux.Handle("/api/login", loginHandler)
+		mux.HandleFunc("/api/logout", s.logoutHandler)
+		mux.HandleFunc("/api/auth/status", s.authStatusHandler)
+		mux.HandleFunc("/api/csrf-token", s.csrfTokenHandler)
+	}
+
 	mux.HandleFunc("/api/jobs/removed", s.removedJobsHandler)
 	mux.HandleFunc("/api/jobs/disabled", s.disabledJobsHandler)
 	mux.HandleFunc("/api/jobs/run", s.runJobHandler)
@@ -107,25 +154,25 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 	mux.HandleFunc("/api/jobs", s.jobsHandler)
 	mux.HandleFunc("/api/config", s.configHandler)
 
-	// Add health endpoints
 	mux.HandleFunc("/health", hc.HealthHandler())
 	mux.HandleFunc("/healthz", hc.HealthHandler())
 	mux.HandleFunc("/ready", hc.ReadinessHandler())
 	mux.HandleFunc("/live", hc.LivenessHandler())
 
-	// Add UI handler
 	uiFS, err := fs.Sub(static.UI, "ui")
 	if err == nil {
 		mux.Handle("/", http.FileServer(http.FS(uiFS)))
 	}
 
-	// Re-apply middleware chain
 	rl := newRateLimiter(100, time.Minute)
 	var handler http.Handler = mux
 	handler = securityHeaders(handler)
 	handler = rl.middleware(handler)
 
-	// Update the server handler
+	if s.authConfig != nil && s.authConfig.Enabled {
+		handler = s.authMiddleware(handler)
+	}
+
 	s.srv.Handler = handler
 }
 
@@ -539,4 +586,120 @@ func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	token := extractToken(r)
+	if token != "" && s.tokenManager != nil {
+		s.tokenManager.RevokeToken(token)
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+	})
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
+}
+
+func (s *Server) authStatusHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.authConfig == nil || !s.authConfig.Enabled {
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"authEnabled":   false,
+			"authenticated": true,
+		})
+		return
+	}
+
+	token := extractToken(r)
+	if token == "" {
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"authEnabled":   true,
+			"authenticated": false,
+		})
+		return
+	}
+
+	data, valid := s.tokenManager.ValidateToken(token)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"authEnabled":   true,
+		"authenticated": valid,
+		"username":      data.Username,
+	})
+}
+
+func (s *Server) csrfTokenHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.tokenManager == nil {
+		http.Error(w, "Auth not enabled", http.StatusNotFound)
+		return
+	}
+
+	csrfToken, err := s.tokenManager.GenerateCSRFToken()
+	if err != nil {
+		http.Error(w, "Failed to generate CSRF token", http.StatusInternalServerError)
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]string{"csrf_token": csrfToken})
+}
+
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		if path == "/api/login" || path == "/api/csrf-token" || path == "/api/auth/status" ||
+			path == "/health" || path == "/healthz" || path == "/ready" || path == "/live" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if !strings.HasPrefix(path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		token := extractToken(r)
+		if token == "" {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+
+		data, valid := s.tokenManager.ValidateToken(token)
+		if !valid {
+			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+			return
+		}
+
+		r.Header.Set("X-Auth-User", data.Username)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func extractToken(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		return strings.TrimPrefix(authHeader, "Bearer ")
+	}
+
+	cookie, err := r.Cookie("auth_token")
+	if err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
+
+	return ""
 }

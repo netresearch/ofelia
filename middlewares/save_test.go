@@ -4,22 +4,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
 )
 
 const testNameFoo = "foo"
 
-type SuiteSave struct {
-	BaseSuite
-}
-
-var _ = Suite(&SuiteSave{})
-
-func (s *SuiteSave) SetUpTest(c *C) {
+func setupSaveTestContext(t *testing.T) (*core.Context, *TestJob) {
+	t.Helper()
 	job := &TestJobConfig{
 		TestJob: TestJob{
 			BareJob: core.BareJob{
@@ -36,135 +33,142 @@ func (s *SuiteSave) SetUpTest(c *C) {
 		},
 	}
 
-	s.job = &job.TestJob
-
 	sh := core.NewScheduler(&TestLogger{})
 	e, err := core.NewExecution()
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
-	s.ctx = core.NewContext(sh, job, e)
+	ctx := core.NewContext(sh, job, e)
+	return ctx, &job.TestJob
 }
 
-func (s *SuiteSave) TestNewSlackEmpty(c *C) {
-	c.Assert(NewSave(&SaveConfig{}), IsNil)
+func TestNewSaveEmpty(t *testing.T) {
+	t.Parallel()
+	assert.Nil(t, NewSave(&SaveConfig{}))
 }
 
-func (s *SuiteSave) TestRunSuccess(c *C) {
-	dir, err := os.MkdirTemp("/tmp", "save")
-	c.Assert(err, IsNil)
-	defer os.RemoveAll(dir)
+func TestSaveRunSuccess(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupSaveTestContext(t)
 
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+	dir := t.TempDir()
 
-	s.job.Name = testNameFoo
-	s.ctx.Execution.Date = time.Time{}
+	ctx.Start()
+	ctx.Stop(nil)
+
+	job.Name = testNameFoo
+	ctx.Execution.Date = time.Time{}
 
 	m := NewSave(&SaveConfig{SaveFolder: dir})
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 
-	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".json"))
-	c.Assert(err, IsNil)
+	_, err := os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".json"))
+	require.NoError(t, err)
 
 	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".stdout.log"))
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".stderr.log"))
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 }
 
-func (s *SuiteSave) TestRunSuccessOnError(c *C) {
-	dir, err := os.MkdirTemp("/tmp", "save")
-	c.Assert(err, IsNil)
-	defer os.RemoveAll(dir)
+func TestSaveRunSuccessOnError(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupSaveTestContext(t)
 
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+	dir := t.TempDir()
 
-	s.job.Name = testNameFoo
-	s.ctx.Execution.Date = time.Time{}
+	ctx.Start()
+	ctx.Stop(nil)
+
+	job.Name = testNameFoo
+	ctx.Execution.Date = time.Time{}
 
 	m := NewSave(&SaveConfig{SaveFolder: dir, SaveOnlyOnError: true})
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 
-	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".json"))
-	c.Assert(err, Not(IsNil))
+	_, err := os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".json"))
+	assert.Error(t, err)
 }
 
-func (s *SuiteSave) TestSensitiveData(c *C) {
-	dir, err := os.MkdirTemp("/tmp", "save")
-	c.Assert(err, IsNil)
-	defer os.RemoveAll(dir)
+func TestSaveSensitiveData(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupSaveTestContext(t)
 
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+	dir := t.TempDir()
 
-	s.job.Name = "job-with-sensitive-data"
-	s.ctx.Execution.Date = time.Time{}
+	ctx.Start()
+	ctx.Stop(nil)
+
+	job.Name = "job-with-sensitive-data"
+	ctx.Execution.Date = time.Time{}
 
 	m := NewSave(&SaveConfig{SaveFolder: dir})
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 
 	expectedFileName := "00010101_000000_job-with-sensitive-data"
-	_, err = os.Stat(filepath.Join(dir, expectedFileName+".json"))
-	c.Assert(err, IsNil)
+	_, err := os.Stat(filepath.Join(dir, expectedFileName+".json"))
+	require.NoError(t, err)
 
 	_, err = os.Stat(filepath.Join(dir, expectedFileName+".stdout.log"))
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	_, err = os.Stat(filepath.Join(dir, expectedFileName+".stderr.log"))
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 
 	files, err := os.ReadDir(dir)
-	c.Assert(err, IsNil)
-	c.Assert(files, HasLen, 3)
+	require.NoError(t, err)
+	assert.Len(t, files, 3)
 
 	for _, file := range files {
 		b, err := os.ReadFile(filepath.Join(dir, file.Name()))
-		c.Assert(err, IsNil)
+		require.NoError(t, err)
 
 		if strings.Contains(string(b), "secret") {
-			c.Log(string(b))
-			c.Errorf("found secret string in %q", file.Name())
+			t.Logf("Content: %s", string(b))
+			t.Errorf("found secret string in %q", file.Name())
 		}
 	}
 }
 
-func (s *SuiteSave) TestCreatesSaveFolder(c *C) {
-	dir, err := os.MkdirTemp("/tmp", "save")
-	c.Assert(err, IsNil)
+func TestSaveCreatesSaveFolder(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupSaveTestContext(t)
+
+	dir, err := os.MkdirTemp("", "save")
+	require.NoError(t, err)
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+	ctx.Start()
+	ctx.Stop(nil)
 
-	s.job.Name = testNameFoo
-	s.ctx.Execution.Date = time.Time{}
+	job.Name = testNameFoo
+	ctx.Execution.Date = time.Time{}
 
 	m := NewSave(&SaveConfig{SaveFolder: dir})
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 
 	fi, err := os.Stat(dir)
-	c.Assert(err, IsNil)
-	c.Assert(fi.IsDir(), Equals, true)
+	require.NoError(t, err)
+	assert.True(t, fi.IsDir())
 }
 
-func (s *SuiteSave) TestSafeFilename(c *C) {
-	dir, err := os.MkdirTemp("/tmp", "save")
-	c.Assert(err, IsNil)
-	defer os.RemoveAll(dir)
+func TestSaveSafeFilename(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupSaveTestContext(t)
 
-	s.ctx.Start()
-	s.ctx.Stop(nil)
+	dir := t.TempDir()
 
-	s.job.Name = "foo/bar\\baz"
-	s.ctx.Execution.Date = time.Time{}
+	ctx.Start()
+	ctx.Stop(nil)
+
+	job.Name = "foo/bar\\baz"
+	ctx.Execution.Date = time.Time{}
 
 	m := NewSave(&SaveConfig{SaveFolder: dir})
-	c.Assert(m.Run(s.ctx), IsNil)
+	require.NoError(t, m.Run(ctx))
 
-	safe := strings.NewReplacer("/", "_", "\\", "_").Replace(s.job.Name)
-	_, err = os.Stat(filepath.Join(dir, "00010101_000000_"+safe+".stdout.log"))
-	c.Assert(err, IsNil)
+	safe := strings.NewReplacer("/", "_", "\\", "_").Replace(job.Name)
+	_, err := os.Stat(filepath.Join(dir, "00010101_000000_"+safe+".stdout.log"))
+	require.NoError(t, err)
 }

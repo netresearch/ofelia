@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type hashJob struct {
@@ -15,35 +16,34 @@ type hashJob struct {
 }
 
 func TestGetHash_SupportedKinds(t *testing.T) {
+	t.Parallel()
+
 	var h string
 	val := &hashJob{Str: "x", Num: 7, Flg: true}
-	if err := GetHash(reflect.TypeOf(val).Elem(), reflect.ValueOf(val).Elem(), &h); err != nil {
-		t.Fatalf("GetHash error: %v", err)
-	}
-	if h == "" {
-		t.Fatalf("expected non-empty hash")
-	}
+	err := GetHash(reflect.TypeOf(val).Elem(), reflect.ValueOf(val).Elem(), &h)
+	require.NoError(t, err)
+	assert.NotEmpty(t, h)
 }
 
 func TestExecutionStopFlagsAndDuration(t *testing.T) {
+	t.Parallel()
+
 	e := &Execution{}
 	start := time.Now()
 	e.Date = start
 	e.Start()
 	e.Stop(ErrSkippedExecution)
-	if !e.Skipped || e.Failed {
-		t.Fatalf("expected skipped true, failed false: %+v", e)
-	}
-	if e.Duration <= 0 {
-		t.Fatalf("expected positive duration, got %v", e.Duration)
-	}
-	// Failure path
+
+	assert.True(t, e.Skipped)
+	assert.False(t, e.Failed)
+	assert.Greater(t, e.Duration, time.Duration(0))
+
 	e = &Execution{}
 	e.Start()
 	e.Stop(assertError{})
-	if e.Error == nil || !e.Failed {
-		t.Fatalf("expected failure with error: %+v", e)
-	}
+
+	assert.NotNil(t, e.Error)
+	assert.True(t, e.Failed)
 }
 
 type assertError struct{}
@@ -51,157 +51,93 @@ type assertError struct{}
 func (assertError) Error() string { return "boom" }
 
 func TestBareJobHistory(t *testing.T) {
+	t.Parallel()
+
 	j := &BareJob{HistoryLimit: 2}
-	// Add three executions, ensure we keep last 2
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
+		_ = i
 		e := &Execution{}
 		j.SetLastRun(e)
 	}
-	if j.GetLastRun() == nil {
-		t.Fatalf("expected last run to be set")
-	}
-	if len(j.GetHistory()) != 2 {
-		t.Fatalf("expected history length 2, got %d", len(j.GetHistory()))
-	}
+
+	assert.NotNil(t, j.GetLastRun())
+	assert.Len(t, j.GetHistory(), 2)
 }
 
 func TestExecutionGetStdout(t *testing.T) {
-	e, err := NewExecution()
-	if err != nil {
-		t.Fatalf("NewExecution error: %v", err)
-	}
+	t.Parallel()
 
-	// Test with live buffer
+	e, err := NewExecution()
+	require.NoError(t, err)
+
 	testOutput := "test stdout content"
 	_, err = e.OutputStream.Write([]byte(testOutput))
-	if err != nil {
-		t.Fatalf("Write error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if got := e.GetStdout(); got != testOutput {
-		t.Errorf("GetStdout() with live buffer = %q, want %q", got, testOutput)
-	}
+	assert.Equal(t, testOutput, e.GetStdout())
 
-	// Test after cleanup (captured content)
 	e.Cleanup()
-	if got := e.GetStdout(); got != testOutput {
-		t.Errorf("GetStdout() after cleanup = %q, want %q", got, testOutput)
-	}
-
-	// Test with nil buffer and captured content
-	if e.OutputStream != nil {
-		t.Error("OutputStream should be nil after cleanup")
-	}
-	if e.CapturedStdout != testOutput {
-		t.Errorf("CapturedStdout = %q, want %q", e.CapturedStdout, testOutput)
-	}
+	assert.Equal(t, testOutput, e.GetStdout())
+	assert.Nil(t, e.OutputStream)
+	assert.Equal(t, testOutput, e.CapturedStdout)
 }
 
 func TestExecutionGetStderr(t *testing.T) {
-	e, err := NewExecution()
-	if err != nil {
-		t.Fatalf("NewExecution error: %v", err)
-	}
+	t.Parallel()
 
-	// Test with live buffer
+	e, err := NewExecution()
+	require.NoError(t, err)
+
 	testError := "test stderr content"
 	_, err = e.ErrorStream.Write([]byte(testError))
-	if err != nil {
-		t.Fatalf("Write error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if got := e.GetStderr(); got != testError {
-		t.Errorf("GetStderr() with live buffer = %q, want %q", got, testError)
-	}
+	assert.Equal(t, testError, e.GetStderr())
 
-	// Test after cleanup (captured content)
 	e.Cleanup()
-	if got := e.GetStderr(); got != testError {
-		t.Errorf("GetStderr() after cleanup = %q, want %q", got, testError)
-	}
-
-	// Test with nil buffer and captured content
-	if e.ErrorStream != nil {
-		t.Error("ErrorStream should be nil after cleanup")
-	}
-	if e.CapturedStderr != testError {
-		t.Errorf("CapturedStderr = %q, want %q", e.CapturedStderr, testError)
-	}
+	assert.Equal(t, testError, e.GetStderr())
+	assert.Nil(t, e.ErrorStream)
+	assert.Equal(t, testError, e.CapturedStderr)
 }
 
 func TestExecutionOutputCleanup(t *testing.T) {
-	e, err := NewExecution()
-	if err != nil {
-		t.Fatalf("NewExecution error: %v", err)
-	}
+	t.Parallel()
 
-	// Write test content
+	e, err := NewExecution()
+	require.NoError(t, err)
+
 	stdoutContent := "stdout test"
 	stderrContent := "stderr test"
 
 	_, err = e.OutputStream.Write([]byte(stdoutContent))
-	if err != nil {
-		t.Fatalf("Write stdout error: %v", err)
-	}
+	require.NoError(t, err)
 
 	_, err = e.ErrorStream.Write([]byte(stderrContent))
-	if err != nil {
-		t.Fatalf("Write stderr error: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Verify buffers are active before cleanup
-	if e.OutputStream == nil || e.ErrorStream == nil {
-		t.Fatal("Buffers should be active before cleanup")
-	}
+	assert.NotNil(t, e.OutputStream)
+	assert.NotNil(t, e.ErrorStream)
 
-	// Cleanup and verify capture
 	e.Cleanup()
 
-	// Verify buffers are nil after cleanup
-	if e.OutputStream != nil || e.ErrorStream != nil {
-		t.Error("Buffers should be nil after cleanup")
-	}
-
-	// Verify content is captured
-	if e.CapturedStdout != stdoutContent {
-		t.Errorf("CapturedStdout = %q, want %q", e.CapturedStdout, stdoutContent)
-	}
-	if e.CapturedStderr != stderrContent {
-		t.Errorf("CapturedStderr = %q, want %q", e.CapturedStderr, stderrContent)
-	}
-
-	// Verify GetStdout/GetStderr work after cleanup
-	if got := e.GetStdout(); got != stdoutContent {
-		t.Errorf("GetStdout() after cleanup = %q, want %q", got, stdoutContent)
-	}
-	if got := e.GetStderr(); got != stderrContent {
-		t.Errorf("GetStderr() after cleanup = %q, want %q", got, stderrContent)
-	}
+	assert.Nil(t, e.OutputStream)
+	assert.Nil(t, e.ErrorStream)
+	assert.Equal(t, stdoutContent, e.CapturedStdout)
+	assert.Equal(t, stderrContent, e.CapturedStderr)
+	assert.Equal(t, stdoutContent, e.GetStdout())
+	assert.Equal(t, stderrContent, e.GetStderr())
 }
 
 func TestExecutionEmptyOutput(t *testing.T) {
+	t.Parallel()
+
 	e, err := NewExecution()
-	if err != nil {
-		t.Fatalf("NewExecution error: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Test empty buffers
-	if got := e.GetStdout(); got != "" {
-		t.Errorf("GetStdout() with empty buffer = %q, want empty string", got)
-	}
-	if got := e.GetStderr(); got != "" {
-		t.Errorf("GetStderr() with empty buffer = %q, want empty string", got)
-	}
+	assert.Empty(t, e.GetStdout())
+	assert.Empty(t, e.GetStderr())
 
-	// Test after cleanup with empty buffers
 	e.Cleanup()
-	if got := e.GetStdout(); got != "" {
-		t.Errorf("GetStdout() after cleanup with empty buffer = %q, want empty string", got)
-	}
-	if got := e.GetStderr(); got != "" {
-		t.Errorf("GetStderr() after cleanup with empty buffer = %q, want empty string", got)
-	}
+	assert.Empty(t, e.GetStdout())
+	assert.Empty(t, e.GetStderr())
 }
-
-// Register a trivial gocheck hook to keep suite loader intact for other tests
-func Test(t *testing.T) { TestingT(t) }

@@ -1,11 +1,46 @@
 # Security Considerations
 
-**Last Updated**: 2025-01-15
-**Security Review Date**: 2025-09-06
+**Last Updated**: 2025-12-17
+**Security Review Date**: 2025-12-17
 
 ## Overview
 
-Ofelia implements defense-in-depth security practices across authentication, input validation, container isolation, and network security. This document covers security features, best practices, and deployment considerations for production environments.
+Ofelia implements defense-in-depth security practices across authentication, input validation, and application stability. This document covers security features, best practices, and deployment considerations for production environments.
+
+## Security Responsibility Model
+
+Understanding what security controls belong where is critical for proper deployment:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                 INFRASTRUCTURE RESPONSIBILITY                        │
+│  (Docker daemon, Kubernetes, host OS, network)                       │
+│                                                                      │
+│  • Container privileges (--privileged, capabilities)                 │
+│  • Host mounts and volume permissions                                │
+│  • Network isolation and firewall rules                              │
+│  • Resource limits (cgroups, ulimits)                                │
+│  • Security profiles (AppArmor, SELinux, seccomp)                    │
+│  • Docker socket access control                                      │
+│  • TLS termination (reverse proxy)                                   │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                   OFELIA RESPONSIBILITY                              │
+│  (Application-level controls)                                        │
+│                                                                      │
+│  • Authentication (JWT, passwords)                                   │
+│  • Authorization (who can create/run jobs) - Note: No RBAC yet       │
+│  • Input format validation (cron syntax, image names)                │
+│  • Rate limiting for API endpoints                                   │
+│  • Session management and token handling                             │
+│  • Application stability (memory bounds, graceful shutdown)          │
+│  • Audit logging of security events                                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Principle**: Ofelia schedules jobs as requested. The infrastructure enforces what's permitted. If you need to restrict container privileges, configure your Docker daemon, use rootless Docker, or deploy with Kubernetes PodSecurityStandards. See [ADR-002](./adr/ADR-002-security-boundaries.md) for the full rationale.
 
 ## Security Architecture
 
@@ -49,31 +84,34 @@ Ofelia implements defense-in-depth security practices across authentication, inp
 ## OWASP Top 10 Coverage
 
 ### A01:2021 - Broken Access Control
-**Protection**: JWT-based authentication with role-based access control
-
-- ✅ **JWT Authentication** ([web/jwt_auth.go](../web/jwt_auth.go)):
-  - HS256 signing algorithm
-  - Token expiry enforcement (configurable, default 24 hours)
-  - Secure token generation with cryptographic randomness
-  - Token refresh capability with separate expiry
+**Protection**: Token-based authentication (single-user model)
 
 - ✅ **Secure Authentication** ([web/auth_secure.go](../web/auth_secure.go)):
   - Bcrypt password hashing (cost factor 12)
+  - Cryptographically secure token generation
+  - Token expiry enforcement (configurable, default 24 hours)
   - Constant-time username comparison
   - Rate limiting per IP (default 5 attempts/minute)
   - Session management with secure cookies
 
+- ⚠️ **Current Limitations**:
+  - **No RBAC**: Single credential model - any authenticated user has full access
+  - **No token revocation list**: Tokens valid until expiry (use short expiry in sensitive environments)
+  - LocalJob restrictions only apply to Docker label sources
+
 - ✅ **Access Control**:
-  - API endpoints require valid JWT
-  - LocalJob execution restricted (configurable)
-  - Docker socket access controlled
-  - File system access sandboxed
+  - API endpoints require valid token (when auth enabled)
+  - LocalJob execution from labels restricted by default
+  - Docker socket access delegated to infrastructure
 
 **Configuration**:
 ```ini
 [global]
-jwt-secret = ${JWT_SECRET}  # Minimum 32 characters
-jwt-expiry-hours = 24
+web-auth-enabled = true
+web-username = admin
+web-password-hash = $2a$12$...  # bcrypt hash
+web-secret-key = ${WEB_SECRET_KEY}
+web-token-expiry = 24  # hours
 allow-host-jobs-from-labels = false  # Restrict LocalJobs
 ```
 
@@ -89,20 +127,22 @@ allow-host-jobs-from-labels = false  # Restrict LocalJobs
 - ✅ **JWT Signing**:
   - HS256 algorithm with minimum 32-byte secret
   - Automatic key validation on startup
-  - Token payload encryption available
 
 - ✅ **Secure Storage**:
   - Credentials never logged
   - Environment variable injection for secrets
-  - No plaintext password storage
+  - Bcrypt hashing for production passwords
 
 **Best Practices**:
 ```bash
-# Generate strong JWT secret
+# Generate bcrypt password hash
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+
+# Generate secret key
 openssl rand -base64 48
 
 # Store in environment
-export OFELIA_JWT_SECRET="your-generated-secret-here"
+export OFELIA_WEB_SECRET_KEY="your-generated-secret-here"
 ```
 
 ### A03:2021 - Injection Attacks
@@ -204,9 +244,11 @@ overlap = false
   X-Frame-Options: DENY
   X-XSS-Protection: 1; mode=block
   Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'
   Strict-Transport-Security: max-age=31536000 (when HTTPS)
   ```
+  
+  ⚠️ **Note**: CSP allows `'unsafe-inline'` for scripts and styles to support the embedded web UI. For stricter CSP, deploy behind a reverse proxy with custom headers.
 
 ### A06:2021 - Vulnerable and Outdated Components
 **Protection**: Dependency management and security updates
@@ -236,7 +278,7 @@ overlap = false
 ### A07:2021 - Identification and Authentication Failures
 **Protection**: Robust authentication mechanisms
 
-- ✅ **Multi-Factor Authentication Support**:
+- ✅ **Authentication Protections**:
   - JWT tokens with configurable expiry
   - CSRF tokens for state-changing operations
   - Rate limiting prevents brute force
@@ -348,61 +390,13 @@ webhook-allowed-hosts = hooks.slack.com, discord.com, ntfy.internal, 192.168.1.2
 
 ## Authentication & Authorization
 
-### JWT Authentication
-
-**Implementation**: [web/jwt_auth.go](../web/jwt_auth.go)
-
-**Features**:
-- Industry-standard JWT (RFC 7519)
-- HS256 signing algorithm
-- Configurable token expiry
-- Token refresh mechanism
-- Automatic token validation
-
-**Token Structure**:
-```json
-{
-  "username": "admin",
-  "exp": 1642348800,  // Expiry timestamp
-  "iat": 1642262400,  // Issued at
-  "nbf": 1642262400,  // Not before
-  "iss": "ofelia",    // Issuer
-  "sub": "admin"      // Subject
-}
-```
-
-**Security Requirements**:
-```go
-// JWT secret must be >= 32 characters
-if len(secretKey) < 32 {
-    return nil, errors.New("JWT secret key must be at least 32 characters long")
-}
-```
-
-**Usage**:
-```bash
-# Login
-curl -X POST http://localhost:8080/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"secure123"}'
-
-# Response
-{
-  "token": "eyJhbGc...",
-  "expires_in": 86400
-}
-
-# Use token
-curl -H "Authorization: Bearer eyJhbGc..." \
-  http://localhost:8080/api/jobs
-```
-
-### Secure Authentication
+### Token-Based Authentication
 
 **Implementation**: [web/auth_secure.go](../web/auth_secure.go)
 
 **Features**:
 - Bcrypt password hashing (cost 12)
+- Cryptographically secure token generation
 - Constant-time username comparison
 - Rate limiting (5 attempts/minute)
 - CSRF token protection
@@ -412,7 +406,26 @@ curl -H "Authorization: Bearer eyJhbGc..." \
 **Password Hashing**:
 ```bash
 # Generate bcrypt hash for configuration
-go run -tags tools tools/hashpw/main.go "your-password"
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+```
+
+**Usage**:
+```bash
+# Login
+curl -X POST http://localhost:8081/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"your-password"}'
+
+# Response
+{
+  "token": "abc123...",
+  "csrf_token": "xyz789...",
+  "expires_in": 86400
+}
+
+# Use token
+curl -H "Authorization: Bearer abc123..." \
+  http://localhost:8081/api/jobs
 ```
 
 **Rate Limiting**:
@@ -886,40 +899,50 @@ gosec ./...
 - ✅ **Have rollback procedures documented**
 - ✅ **Conduct post-incident reviews**
 
-## Security Updates (September 2025)
+## Security Updates (December 2025)
 
 Recent security enhancements implemented:
 
-### JWT Authentication System (Sept 2, 2025)
-- Industry-standard JWT implementation
-- HS256 signing with 32+ character secrets
+### Web Authentication System (Dec 17, 2025)
+- Secure token-based authentication wired up to web API
+- Bcrypt password hashing (cost factor 12)
+- Cryptographically secure token generation
 - Configurable token expiry
-- Token refresh mechanism
-- Middleware integration
+- Auth middleware protects /api/* endpoints
+- Dead auth code removed (legacy plain text auth, unused JWT handlers)
 
-### Enhanced Password Security (Sept 3, 2025)
+### Enhanced Password Security
 - Bcrypt hashing (cost factor 12)
 - Constant-time username comparison
 - Timing attack protection
 - 100ms delay on authentication failure
 
-### CSRF Protection (Sept 4, 2025)
+### CSRF Protection
 - One-time use CSRF tokens
 - Token validation middleware
 - Secure cookie attributes
 - SameSite cookie protection
 
-### Rate Limiting (Sept 5, 2025)
+### Rate Limiting
 - Per-IP rate limiting (5 attempts/minute for auth)
 - HTTP rate limiting (100 requests/minute)
 - Sliding window algorithm
 - Automatic cleanup of old entries
 
-### Input Validation Enhancements (Sept 6, 2025)
+### Input Validation
 - Docker image validation
 - Command argument sanitization
 - Environment variable validation
 - Enhanced path traversal prevention
+
+## Web UI Security
+
+The web UI and API are **disabled by default**. If you enable them (`enable-web = true`), see [Web Package Security](./packages/web.md#security-considerations) for:
+
+- JWT authentication configuration
+- Password hashing with bcrypt
+- Rate limiting and CSRF protection
+- Security headers
 
 ## Vulnerability Reporting
 
@@ -961,8 +984,9 @@ All security-relevant events are logged:
 
 ### Pre-Deployment
 
-- [ ] JWT secret ≥32 characters configured
-- [ ] HTTPS/TLS enabled
+- [ ] Web auth enabled with bcrypt password hash
+- [ ] Secret key configured (or auto-generated)
+- [ ] HTTPS/TLS enabled (via reverse proxy)
 - [ ] All secrets in environment variables
 - [ ] Container resource limits set
 - [ ] Non-root user configured
@@ -994,6 +1018,7 @@ All security-relevant events are logged:
 
 ## Related Documentation
 
+- [ADR-002: Security Boundaries](./adr/ADR-002-security-boundaries.md) - Architectural decision on security responsibilities
 - [Web Package](./packages/web.md) - Authentication and API security
 - [Config Package](./packages/config.md) - Input validation and sanitization
 - [Middlewares Package](./packages/middlewares.md) - Middleware security
