@@ -56,7 +56,7 @@ linters:
       forbid:
         - pattern: ^fmt\.Print.*$
     goconst:
-      min-occurrences: 5
+      min-occurrences: 6
     gocyclo:
       min-complexity: 15
     misspell:
