@@ -82,6 +82,7 @@ jobs:
       evaluated-envs: "VERSION:${{ github.ref_name }}, COMMIT:${{ github.sha }}"
       upload-assets: true
       draft-release: false
+      private-repository: false
 
   # Generate SBOMs for all binaries
   sbom:
