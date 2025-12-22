@@ -45,35 +45,24 @@ update_release_notes() {
         return 0
     fi
 
-    # Get PRs with this release label
-    local prs
-    prs=$(gh pr list --state merged --label "$label" --repo "$REPO" \
-        --json number,title \
-        --jq '.[] | "- [#\(.number)](https://github.com/'"$REPO"'/pull/\(.number)) \(.title)"' 2>/dev/null || echo "")
+    # Check if any PRs or issues have this label
+    local pr_count
+    pr_count=$(gh pr list --state merged --label "$label" --repo "$REPO" --json number --jq 'length' 2>/dev/null || echo "0")
+    local issue_count
+    issue_count=$(gh issue list --state closed --label "$label" --repo "$REPO" --json number --jq 'length' 2>/dev/null || echo "0")
 
-    # Get Issues with this release label
-    local issues
-    issues=$(gh issue list --state closed --label "$label" --repo "$REPO" \
-        --json number,title \
-        --jq '.[] | "- [#\(.number)](https://github.com/'"$REPO"'/issues/\(.number)) \(.title)"' 2>/dev/null || echo "")
-
-    # Skip if no PRs or issues found
-    if [[ -z "$prs" && -z "$issues" ]]; then
+    if [[ "$pr_count" == "0" && "$issue_count" == "0" ]]; then
         log_warn "No PRs or Issues found with label ${label}, skipping"
         return 0
     fi
 
+    # Build the filter URL
+    local filter_url="https://github.com/${REPO}/issues?q=label%3Areleased%3A${tag}+is%3Aclosed"
+
     # Build the new section
     local new_section=""
     new_section+="\n---\n\n## Included in this release\n\n"
-
-    if [[ -n "$prs" ]]; then
-        new_section+="### Pull Requests\n\n${prs}\n\n"
-    fi
-
-    if [[ -n "$issues" ]]; then
-        new_section+="### Issues\n\n${issues}\n\n"
-    fi
+    new_section+="[View all PRs and Issues included in this release](${filter_url})\n\n"
 
     if [[ "$DRY_RUN" == "--dry-run" ]]; then
         log_dry "Would update release notes for ${tag}:"
