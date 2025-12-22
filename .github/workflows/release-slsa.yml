@@ -333,9 +333,10 @@ VERIFICATION_EOF
   # Notify PRs and issues included in this release
   notify-released:
     name: Notify Released PRs/Issues
-    needs: [resolve-tag, docker]
+    needs: [resolve-tag, docker, release-notes]
     runs-on: ubuntu-latest
     permissions:
+      contents: write
       issues: write
       pull-requests: write
     env:
@@ -432,3 +433,47 @@ ISSUE_EOF
           done
 
           echo "Notification complete for ${RELEASE_TAG}"
+
+      - name: Update release notes with PR/Issue links
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Get existing release notes
+          gh release view "$RELEASE_TAG" --json body --jq '.body' > /tmp/notes.md
+
+          # Check if "Included in this release" section already exists
+          if grep -q "## Included in this release" /tmp/notes.md; then
+            echo "PR/Issue links section already exists, skipping"
+            exit 0
+          fi
+
+          # Query all PRs with this release label
+          echo "" >> /tmp/notes.md
+          echo "---" >> /tmp/notes.md
+          echo "" >> /tmp/notes.md
+          echo "## Included in this release" >> /tmp/notes.md
+          echo "" >> /tmp/notes.md
+
+          # Get PRs with this release label
+          PRS=$(gh pr list --state merged --label "released:${RELEASE_TAG}" --json number,title --jq '.[] | "- [#\(.number)](${{ github.server_url }}/${{ github.repository }}/pull/\(.number)) \(.title)"' 2>/dev/null || echo "")
+          if [[ -n "$PRS" ]]; then
+            echo "### Pull Requests" >> /tmp/notes.md
+            echo "" >> /tmp/notes.md
+            echo "$PRS" >> /tmp/notes.md
+            echo "" >> /tmp/notes.md
+          fi
+
+          # Get Issues with this release label
+          ISSUES=$(gh issue list --state closed --label "released:${RELEASE_TAG}" --json number,title --jq '.[] | "- [#\(.number)](${{ github.server_url }}/${{ github.repository }}/issues/\(.number)) \(.title)"' 2>/dev/null || echo "")
+          if [[ -n "$ISSUES" ]]; then
+            echo "### Issues" >> /tmp/notes.md
+            echo "" >> /tmp/notes.md
+            echo "$ISSUES" >> /tmp/notes.md
+            echo "" >> /tmp/notes.md
+          fi
+
+          # Update release notes
+          gh release edit "$RELEASE_TAG" --notes-file /tmp/notes.md
+          echo "Updated release notes with PR/Issue links"
