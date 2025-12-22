@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2025-12-22
+
+### Added
+
+- **Secure Web Authentication** ([#408](https://github.com/netresearch/ofelia/pull/408))
+  - Complete bcrypt password hashing with HMAC session tokens
+  - Secure cookie handling with HttpOnly, Secure, and SameSite flags
+  - Support for reverse proxy HTTPS detection (X-Forwarded-Proto)
+  - Password hashing utility: `ofelia hashpw`
+
+- **Doctor Command Enhancements** ([#408](https://github.com/netresearch/ofelia/pull/408))
+  - Web authentication configuration checks in `ofelia doctor`
+  - Validates password hash format and token secret strength
+
+- **ntfy-token Preset** ([#409](https://github.com/netresearch/ofelia/pull/409))
+  - Bearer token authentication for self-hosted ntfy instances
+  - Supports both ntfy.sh and self-hosted deployments with access tokens
+
+- **Webhook Host Whitelist** ([#410](https://github.com/netresearch/ofelia/pull/410))
+  - New `webhook-allowed-hosts` configuration option
+  - Default: `*` (allow all hosts) - consistent with local command trust model
+  - Whitelist mode when specific hosts are configured
+  - Supports domain wildcards (e.g., `*.slack.com`)
+
+- **CronClock Interface** ([#412](https://github.com/netresearch/ofelia/pull/412))
+  - Testable time abstraction for scheduler testing
+  - FakeClock implementation for instant, deterministic tests
+  - go-cron compatible Timer interface
+
+### Security
+
+- **Cookie Security Hardening** ([#411](https://github.com/netresearch/ofelia/pull/411))
+  - Secure, HttpOnly, and SameSite=Lax flags on all cookies
+  - HTTPS detection for reverse proxy deployments
+  - Security boundaries ADR documenting responsibility model
+
+- **GitHub Actions Pinning** ([#411](https://github.com/netresearch/ofelia/pull/411))
+  - All workflow actions pinned to SHA for supply chain security
+  - CodeQL updated to v3.31.9
+
+### Improved
+
+- **Test Infrastructure** ([#412](https://github.com/netresearch/ofelia/pull/412))
+  - Complete gocheck to stdlib+testify migration
+  - Eventually pattern replacing time.Sleep-based synchronization
+  - Parallel test execution with t.Parallel()
+  - Race condition fixes detected by -race flag
+
+- **Performance** ([#412](https://github.com/netresearch/ofelia/pull/412))
+  - Sub-second scheduling for faster test execution
+  - Optimized pre-commit and pre-push hooks
+  - Test suite runtime reduced by ~80%
+
+- **Linting** ([#413](https://github.com/netresearch/ofelia/pull/413))
+  - Comprehensive golangci-lint configuration audit
+  - All linting issues resolved
+
+### Documentation
+
+- **Security Boundaries ADR** ([#411](https://github.com/netresearch/ofelia/pull/411))
+  - ADR-002 documenting security responsibility model
+  - Clear separation between Ofelia and infrastructure responsibilities
+
+- **Webhook Documentation** ([#410](https://github.com/netresearch/ofelia/pull/410))
+  - Host whitelist configuration guide
+  - Security model explanation
+
+## [0.16.0] - 2025-12-10
+
 ### Fixed
 
 - **Docker Socket HTTP/2 Compatibility**
