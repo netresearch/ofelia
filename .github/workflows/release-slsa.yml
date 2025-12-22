@@ -434,7 +434,7 @@ ISSUE_EOF
 
           echo "Notification complete for ${RELEASE_TAG}"
 
-      - name: Update release notes with PR/Issue links
+      - name: Update release notes with issues link
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -445,35 +445,21 @@ ISSUE_EOF
 
           # Check if "Included in this release" section already exists
           if grep -q "## Included in this release" /tmp/notes.md; then
-            echo "PR/Issue links section already exists, skipping"
+            echo "Issues link section already exists, skipping"
             exit 0
           fi
 
-          # Query all PRs with this release label
+          # Add link to filtered issues/PRs
+          FILTER_URL="${{ github.server_url }}/${{ github.repository }}/issues?q=label%3Areleased%3A${RELEASE_TAG}+is%3Aclosed"
+
           echo "" >> /tmp/notes.md
           echo "---" >> /tmp/notes.md
           echo "" >> /tmp/notes.md
           echo "## Included in this release" >> /tmp/notes.md
           echo "" >> /tmp/notes.md
-
-          # Get PRs with this release label
-          PRS=$(gh pr list --state merged --label "released:${RELEASE_TAG}" --json number,title --jq '.[] | "- [#\(.number)](${{ github.server_url }}/${{ github.repository }}/pull/\(.number)) \(.title)"' 2>/dev/null || echo "")
-          if [[ -n "$PRS" ]]; then
-            echo "### Pull Requests" >> /tmp/notes.md
-            echo "" >> /tmp/notes.md
-            echo "$PRS" >> /tmp/notes.md
-            echo "" >> /tmp/notes.md
-          fi
-
-          # Get Issues with this release label
-          ISSUES=$(gh issue list --state closed --label "released:${RELEASE_TAG}" --json number,title --jq '.[] | "- [#\(.number)](${{ github.server_url }}/${{ github.repository }}/issues/\(.number)) \(.title)"' 2>/dev/null || echo "")
-          if [[ -n "$ISSUES" ]]; then
-            echo "### Issues" >> /tmp/notes.md
-            echo "" >> /tmp/notes.md
-            echo "$ISSUES" >> /tmp/notes.md
-            echo "" >> /tmp/notes.md
-          fi
+          echo "[View all PRs and Issues included in this release](${FILTER_URL})" >> /tmp/notes.md
+          echo "" >> /tmp/notes.md
 
           # Update release notes
           gh release edit "$RELEASE_TAG" --notes-file /tmp/notes.md
-          echo "Updated release notes with PR/Issue links"
+          echo "Updated release notes with issues filter link"
