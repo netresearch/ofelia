@@ -23,42 +23,9 @@ jobs:
         id: tag
         run: echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
 
-  # Generate changelog from conventional commits
-  changelog:
-    name: Generate Changelog
-    runs-on: ubuntu-latest
-    outputs:
-      changelog: ${{ steps.changelog.outputs.changelog }}
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
-        with:
-          egress-policy: audit
-
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          fetch-depth: 0
-
-      - name: Generate changelog
-        id: changelog
-        uses: orhun/git-cliff-action@4a4a951bc43fafe41cd2348d181853f52356bee7 # v4.4.2
-        with:
-          config: .cliff.toml
-          args: --latest --strip header
-        env:
-          OUTPUT: CHANGELOG.md
-
-      - name: Upload changelog
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
-        with:
-          name: changelog
-          path: CHANGELOG.md
-
   # SLSA Level 3 builds with provenance
   build:
     name: Build ${{ matrix.target }}
-    needs: changelog
     strategy:
       fail-fast: false
       matrix:
@@ -196,10 +163,10 @@ jobs:
             dist/checksums.txt.sig \
             --clobber
 
-  # Update release notes with changelog
+  # Append verification instructions to release notes
   release-notes:
     name: Update Release Notes
-    needs: [resolve-tag, changelog, checksums]
+    needs: [resolve-tag, checksums]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -209,49 +176,53 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Download changelog
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: changelog
-
-      - name: Update release notes
+      - name: Append verification instructions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
           set -euo pipefail
-          # Append verification instructions (indented to satisfy YAML, then stripped)
-          cat > /tmp/verification.md << 'VERIFICATION'
-          ---
 
-          ## Verification
+          # Get existing release notes
+          gh release view "$RELEASE_TAG" --json body --jq '.body' > /tmp/notes.md
 
-          All binaries include SLSA Level 3 provenance attestations.
+          # Check if verification section already exists
+          if grep -q "## Verification" /tmp/notes.md; then
+            echo "Verification section already exists, skipping"
+            exit 0
+          fi
 
-          ### Verify binary provenance
-          ```bash
-          slsa-verifier verify-artifact ofelia-linux-amd64 \
-            --provenance-path ofelia-linux-amd64.intoto.jsonl \
-            --source-uri github.com/netresearch/ofelia
-          ```
+          # Append verification instructions
+          cat >> /tmp/notes.md << 'VERIFICATION_EOF'
 
-          ### Verify checksums signature
-          ```bash
-          cosign verify-blob \
-            --certificate checksums.txt.pem \
-            --signature checksums.txt.sig \
-            --certificate-identity "https://github.com/netresearch/ofelia/.github/workflows/release-slsa.yml@refs/tags/<TAG>" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            checksums.txt
-          ```
-          VERIFICATION
-          sed 's/^          //' /tmp/verification.md | sed "s/<TAG>/${RELEASE_TAG}/g" >> CHANGELOG.md
+---
 
-          gh release edit "$RELEASE_TAG" \
-            --notes-file CHANGELOG.md
+## Verification
+
+All binaries include SLSA Level 3 provenance attestations.
+
+### Verify binary provenance
+```bash
+slsa-verifier verify-artifact ofelia-linux-amd64 \
+  --provenance-path ofelia-linux-amd64.intoto.jsonl \
+  --source-uri github.com/netresearch/ofelia
+```
+
+### Verify checksums signature
+```bash
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature checksums.txt.sig \
+  --certificate-identity "https://github.com/netresearch/ofelia/.github/workflows/release-slsa.yml@refs/tags/RELEASE_TAG_PLACEHOLDER" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  checksums.txt
+```
+VERIFICATION_EOF
+
+          # Replace placeholder with actual tag
+          sed -i "s/RELEASE_TAG_PLACEHOLDER/${RELEASE_TAG}/g" /tmp/notes.md
+
+          gh release edit "$RELEASE_TAG" --notes-file /tmp/notes.md
 
   # Container images (runs after binary builds succeed)
   docker:
@@ -358,3 +329,106 @@ jobs:
           set -euo pipefail
           cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest@${{ steps.push.outputs.digest }}
           cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}@${{ steps.push.outputs.digest }}
+
+  # Notify PRs and issues included in this release
+  notify-released:
+    name: Notify Released PRs/Issues
+    needs: [resolve-tag, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
+        with:
+          egress-policy: audit
+
+      - name: Label and comment on released PRs/Issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Get previous release tag
+          PREV_TAG=$(gh release list --json tagName --jq '.[].tagName' | grep -A1 "^${RELEASE_TAG}$" | tail -1)
+          if [[ -z "$PREV_TAG" || "$PREV_TAG" == "$RELEASE_TAG" ]]; then
+            echo "No previous release found, using first commit"
+            PREV_TAG=$(gh api repos/${{ github.repository }}/commits --jq '.[0].sha' | head -1)
+          fi
+
+          echo "Processing PRs between $PREV_TAG and $RELEASE_TAG"
+
+          # Create release label if it doesn't exist
+          gh label create "released:${RELEASE_TAG}" \
+            --color "0e8a16" \
+            --description "Included in ${RELEASE_TAG} release" 2>/dev/null || true
+
+          # Get all PR numbers from commits between releases
+          PR_NUMBERS=$(gh api "repos/${{ github.repository }}/compare/${PREV_TAG}...${RELEASE_TAG}" \
+            --jq '[.commits[].commit.message | capture("#(?<n>[0-9]+)"; "g") | .n] | unique | .[]' 2>/dev/null || echo "")
+
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${RELEASE_TAG}"
+
+          for pr in $PR_NUMBERS; do
+            # Check if it's a merged PR
+            PR_STATE=$(gh pr view "$pr" --json state --jq '.state' 2>/dev/null || echo "")
+            if [[ "$PR_STATE" != "MERGED" ]]; then
+              echo "PR #${pr} is not merged (state: ${PR_STATE:-unknown}), skipping"
+              continue
+            fi
+
+            # Check if already labeled
+            if gh pr view "$pr" --json labels --jq '.labels[].name' 2>/dev/null | grep -q "^released:${RELEASE_TAG}$"; then
+              echo "PR #${pr} already labeled, skipping"
+              continue
+            fi
+
+            echo "Processing PR #${pr}"
+
+            # Add label
+            gh pr edit "$pr" --add-label "released:${RELEASE_TAG}" 2>/dev/null || true
+
+            # Add comment
+            cat > /tmp/pr_comment.md << PR_EOF
+🚀 **Released in [${RELEASE_TAG}](${RELEASE_URL})**
+
+Thank you for your contribution! 🙏
+
+This is now available in the latest release. Please test and verify everything works as expected in your environment.
+
+If you encounter any issues, please open a new issue.
+PR_EOF
+            gh pr comment "$pr" --body-file /tmp/pr_comment.md 2>/dev/null || true
+
+            # Process linked issues
+            LINKED_ISSUES=$(gh pr view "$pr" --json closingIssuesReferences --jq '.closingIssuesReferences[].number' 2>/dev/null || echo "")
+            for issue in $LINKED_ISSUES; do
+              # Check if already labeled
+              if gh issue view "$issue" --json labels --jq '.labels[].name' 2>/dev/null | grep -q "^released:${RELEASE_TAG}$"; then
+                echo "Issue #${issue} already labeled, skipping"
+                continue
+              fi
+
+              echo "Processing Issue #${issue}"
+
+              # Add label
+              gh issue edit "$issue" --add-label "released:${RELEASE_TAG}" 2>/dev/null || true
+
+              # Add comment
+              cat > /tmp/issue_comment.md << ISSUE_EOF
+🚀 **Released in [${RELEASE_TAG}](${RELEASE_URL})**
+
+Thank you for reporting this! 🙏
+
+The fix/feature is now available in the latest release. Please update and verify everything works as expected.
+
+If the issue persists or you find related problems, please open a new issue.
+ISSUE_EOF
+              gh issue comment "$issue" --body-file /tmp/issue_comment.md 2>/dev/null || true
+            done
+          done
+
+          echo "Notification complete for ${RELEASE_TAG}"
