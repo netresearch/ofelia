@@ -527,8 +527,10 @@ func TestConvertFromAPIContainer(t *testing.T) {
 				if result.ID != "abc123" {
 					t.Errorf("ID = %q, want %q", result.ID, "abc123")
 				}
-				if result.Name != "/my-container" {
-					t.Errorf("Name = %q, want %q", result.Name, "/my-container")
+				// Regression test for issue #422: Docker API returns names with leading slash
+				// but Ofelia should strip it to prevent malformed API URLs like /api/jobs//container.job/history
+				if result.Name != "my-container" {
+					t.Errorf("Name = %q, want %q (leading slash should be stripped)", result.Name, "my-container")
 				}
 				if result.Image != "nginx:latest" {
 					t.Errorf("Image = %q, want %q", result.Image, "nginx:latest")
@@ -558,6 +560,10 @@ func TestConvertFromAPIContainer(t *testing.T) {
 				if result.State.Running {
 					t.Error("State.Running = true, want false")
 				}
+				// Leading slash should be stripped (issue #422)
+				if result.Name != "stopped" {
+					t.Errorf("Name = %q, want %q (leading slash stripped)", result.Name, "stopped")
+				}
 			},
 		},
 		{
@@ -585,8 +591,9 @@ func TestConvertFromAPIContainer(t *testing.T) {
 				State:   "running",
 			},
 			check: func(t *testing.T, result domain.Container) {
-				if result.Name != "/primary" {
-					t.Errorf("Name = %q, want %q (first name)", result.Name, "/primary")
+				// First name should be used with leading slash stripped (issue #422)
+				if result.Name != "primary" {
+					t.Errorf("Name = %q, want %q (first name, leading slash stripped)", result.Name, "primary")
 				}
 			},
 		},
