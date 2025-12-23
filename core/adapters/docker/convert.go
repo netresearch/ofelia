@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"strings"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
@@ -123,7 +124,9 @@ func convertFromContainerJSON(c *containertypes.InspectResponse) *domain.Contain
 func convertFromAPIContainer(c *containertypes.Summary) domain.Container {
 	var name string
 	if len(c.Names) > 0 {
-		name = c.Names[0]
+		// Docker API returns container names with leading slash (e.g., "/my-container").
+		// Strip it to prevent malformed URLs in the web UI (issue #422).
+		name = strings.TrimPrefix(c.Names[0], "/")
 	}
 
 	return domain.Container{
