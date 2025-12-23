@@ -192,35 +192,34 @@ jobs:
             exit 0
           fi
 
-          # Append verification instructions
-          cat >> /tmp/notes.md << 'VERIFICATION_EOF'
+          # Append verification instructions (indented for YAML, then stripped)
+          cat > /tmp/verification.md << 'VERIFICATION_EOF'
+          ---
 
----
+          ## Verification
 
-## Verification
+          All binaries include SLSA Level 3 provenance attestations.
 
-All binaries include SLSA Level 3 provenance attestations.
+          ### Verify binary provenance
+          ```bash
+          slsa-verifier verify-artifact ofelia-linux-amd64 \
+            --provenance-path ofelia-linux-amd64.intoto.jsonl \
+            --source-uri github.com/netresearch/ofelia
+          ```
 
-### Verify binary provenance
-```bash
-slsa-verifier verify-artifact ofelia-linux-amd64 \
-  --provenance-path ofelia-linux-amd64.intoto.jsonl \
-  --source-uri github.com/netresearch/ofelia
-```
+          ### Verify checksums signature
+          ```bash
+          cosign verify-blob \
+            --certificate checksums.txt.pem \
+            --signature checksums.txt.sig \
+            --certificate-identity "https://github.com/netresearch/ofelia/.github/workflows/release-slsa.yml@refs/tags/RELEASE_TAG_PLACEHOLDER" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            checksums.txt
+          ```
+          VERIFICATION_EOF
 
-### Verify checksums signature
-```bash
-cosign verify-blob \
-  --certificate checksums.txt.pem \
-  --signature checksums.txt.sig \
-  --certificate-identity "https://github.com/netresearch/ofelia/.github/workflows/release-slsa.yml@refs/tags/RELEASE_TAG_PLACEHOLDER" \
-  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  checksums.txt
-```
-VERIFICATION_EOF
-
-          # Replace placeholder with actual tag
-          sed -i "s/RELEASE_TAG_PLACEHOLDER/${RELEASE_TAG}/g" /tmp/notes.md
+          # Strip indentation and replace placeholder
+          sed 's/^          //' /tmp/verification.md | sed "s/RELEASE_TAG_PLACEHOLDER/${RELEASE_TAG}/g" >> /tmp/notes.md
 
           gh release edit "$RELEASE_TAG" --notes-file /tmp/notes.md
 
@@ -393,15 +392,17 @@ VERIFICATION_EOF
             gh pr edit "$pr" --add-label "released:${RELEASE_TAG}" 2>/dev/null || true
 
             # Add comment
-            cat > /tmp/pr_comment.md << PR_EOF
-🚀 **Released in [${RELEASE_TAG}](${RELEASE_URL})**
+            cat > /tmp/pr_comment.md << 'PR_EOF'
+            🚀 **Released in [${RELEASE_TAG}](${RELEASE_URL})**
 
-Thank you for your contribution! 🙏
+            Thank you for your contribution! 🙏
 
-This is now available in the latest release. Please test and verify everything works as expected in your environment.
+            This is now available in the latest release. Please test and verify everything works as expected in your environment.
 
-If you encounter any issues, please open a new issue.
-PR_EOF
+            If you encounter any issues, please open a new issue.
+            PR_EOF
+            sed -i 's/^            //' /tmp/pr_comment.md
+            sed -i "s|\${RELEASE_TAG}|${RELEASE_TAG}|g; s|\${RELEASE_URL}|${RELEASE_URL}|g" /tmp/pr_comment.md
             gh pr comment "$pr" --body-file /tmp/pr_comment.md 2>/dev/null || true
 
             # Process linked issues
@@ -419,15 +420,17 @@ PR_EOF
               gh issue edit "$issue" --add-label "released:${RELEASE_TAG}" 2>/dev/null || true
 
               # Add comment
-              cat > /tmp/issue_comment.md << ISSUE_EOF
-🚀 **Released in [${RELEASE_TAG}](${RELEASE_URL})**
+              cat > /tmp/issue_comment.md << 'ISSUE_EOF'
+              🚀 **Released in [${RELEASE_TAG}](${RELEASE_URL})**
 
-Thank you for reporting this! 🙏
+              Thank you for reporting this! 🙏
 
-The fix/feature is now available in the latest release. Please update and verify everything works as expected.
+              The fix/feature is now available in the latest release. Please update and verify everything works as expected.
 
-If the issue persists or you find related problems, please open a new issue.
-ISSUE_EOF
+              If the issue persists or you find related problems, please open a new issue.
+              ISSUE_EOF
+              sed -i 's/^              //' /tmp/issue_comment.md
+              sed -i "s|\${RELEASE_TAG}|${RELEASE_TAG}|g; s|\${RELEASE_URL}|${RELEASE_URL}|g" /tmp/issue_comment.md
               gh issue comment "$issue" --body-file /tmp/issue_comment.md 2>/dev/null || true
             done
           done
