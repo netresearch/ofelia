@@ -55,7 +55,7 @@ func TestBuildFromFileError(t *testing.T) {
 
 // Test InitializeApp returns error when Docker handler factory fails
 func TestInitializeAppErrorDockerHandler(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() - modifies global newDockerHandler
 	// Override newDockerHandler to simulate factory error
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
