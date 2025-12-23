@@ -268,9 +268,9 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 	go scheduler.RunJob("long-job-3")
 
 	testutil.Eventually(t, func() bool {
-		return longJob1.GetRunCount() > 0 || longJob2.GetRunCount() > 0 || longJob3.GetRunCount() > 0
-	}, testutil.WithTimeout(100*time.Millisecond), testutil.WithInterval(5*time.Millisecond),
-		testutil.WithMessage("at least one job should start"))
+		return longJob1.GetRunCount() > 0 && longJob2.GetRunCount() > 0 && longJob3.GetRunCount() > 0
+	}, testutil.WithTimeout(200*time.Millisecond), testutil.WithInterval(5*time.Millisecond),
+		testutil.WithMessage("all jobs should start"))
 
 	stopStart := time.Now()
 	stopErr := scheduler.Stop()
