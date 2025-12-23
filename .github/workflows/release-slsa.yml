@@ -194,7 +194,6 @@ jobs:
 
           # Append verification instructions (indented for YAML, then stripped)
           cat > /tmp/verification.md << 'VERIFICATION_EOF'
-          ---
 
           ## Verification
 
@@ -391,8 +390,8 @@ jobs:
             # Add label
             gh pr edit "$pr" --add-label "released:${RELEASE_TAG}" 2>/dev/null || true
 
-            # Add comment
-            cat > /tmp/pr_comment.md << 'PR_EOF'
+            # Add comment (use unquoted heredoc for natural variable expansion)
+            cat > /tmp/pr_comment.md << PR_EOF
             🚀 **Released in [${RELEASE_TAG}](${RELEASE_URL})**
 
             Thank you for your contribution! 🙏
@@ -402,7 +401,6 @@ jobs:
             If you encounter any issues, please open a new issue.
             PR_EOF
             sed -i 's/^            //' /tmp/pr_comment.md
-            sed -i "s|\${RELEASE_TAG}|${RELEASE_TAG}|g; s|\${RELEASE_URL}|${RELEASE_URL}|g" /tmp/pr_comment.md
             gh pr comment "$pr" --body-file /tmp/pr_comment.md 2>/dev/null || true
 
             # Process linked issues
@@ -419,8 +417,8 @@ jobs:
               # Add label
               gh issue edit "$issue" --add-label "released:${RELEASE_TAG}" 2>/dev/null || true
 
-              # Add comment
-              cat > /tmp/issue_comment.md << 'ISSUE_EOF'
+              # Add comment (use unquoted heredoc for natural variable expansion)
+              cat > /tmp/issue_comment.md << ISSUE_EOF
               🚀 **Released in [${RELEASE_TAG}](${RELEASE_URL})**
 
               Thank you for reporting this! 🙏
@@ -430,7 +428,6 @@ jobs:
               If the issue persists or you find related problems, please open a new issue.
               ISSUE_EOF
               sed -i 's/^              //' /tmp/issue_comment.md
-              sed -i "s|\${RELEASE_TAG}|${RELEASE_TAG}|g; s|\${RELEASE_URL}|${RELEASE_URL}|g" /tmp/issue_comment.md
               gh issue comment "$issue" --body-file /tmp/issue_comment.md 2>/dev/null || true
             done
           done
