@@ -49,7 +49,8 @@ jobs:
       evaluated-envs: "VERSION:${{ github.ref_name }}, COMMIT:${{ github.sha }}"
       upload-assets: true
       draft-release: false
-      private-repository: false
+      # Workaround for SLSA builder bug detecting public repos as private (see slsa-framework/slsa-github-generator#942)
+      private-repository: true
 
   # Generate SBOMs for all binaries
   sbom:
