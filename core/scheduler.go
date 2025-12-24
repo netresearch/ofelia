@@ -322,7 +322,30 @@ func (s *Scheduler) Start() error {
 	s.mu.Unlock()
 	s.Logger.Debugf("Starting scheduler")
 	s.cron.Start()
+
+	// Run jobs marked with run-on-startup
+	s.runStartupJobs()
+
 	return nil
+}
+
+// runStartupJobs executes jobs that have run-on-startup=true.
+// Each job runs in its own goroutine to avoid blocking the scheduler.
+func (s *Scheduler) runStartupJobs() {
+	s.mu.RLock()
+	jobs := make([]Job, 0)
+	for _, j := range s.Jobs {
+		if j.ShouldRunOnStartup() {
+			jobs = append(jobs, j)
+		}
+	}
+	s.mu.RUnlock()
+
+	for _, job := range jobs {
+		s.Logger.Noticef("Running startup job: %s", job.GetName())
+		wrapper := &jobWrapper{s: s, j: job}
+		go wrapper.Run()
+	}
 }
 
 // DefaultStopTimeout is the default timeout for graceful shutdown.

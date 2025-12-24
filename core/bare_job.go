@@ -7,9 +7,11 @@ import (
 )
 
 type BareJob struct {
-	Schedule         string   `hash:"true"`
-	Name             string   `hash:"true"`
-	Command          string   `hash:"true"`
+	Schedule string `hash:"true"`
+	Name     string `hash:"true"`
+	Command  string `hash:"true"`
+	// RunOnStartup runs the job immediately when the scheduler starts
+	RunOnStartup     bool     `default:"false" gcfg:"run-on-startup" mapstructure:"run-on-startup" hash:"true"`
 	HistoryLimit     int      `default:"10"`
 	MaxRetries       int      `default:"0"`                                  // Maximum number of retry attempts (0 = no retries)
 	RetryDelayMs     int      `default:"1000"`                               // Initial retry delay in milliseconds
@@ -38,6 +40,11 @@ func (j *BareJob) GetSchedule() string {
 
 func (j *BareJob) GetCommand() string {
 	return j.Command
+}
+
+// ShouldRunOnStartup returns true if the job should run immediately when the scheduler starts.
+func (j *BareJob) ShouldRunOnStartup() bool {
+	return j.RunOnStartup
 }
 
 func (j *BareJob) Running() int32 {

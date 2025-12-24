@@ -304,6 +304,156 @@ command = echo hello
 	}
 }
 
+// TestBuildFromString_RunOnStartup tests parsing of run-on-startup option
+func TestBuildFromString_RunOnStartup(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name           string
+		config         string
+		wantRunOnStart bool
+		wantSchedule   string
+	}{
+		{
+			name: "run-on-startup_true",
+			config: `
+[job-exec "startup-job"]
+schedule = @every 1h
+container = my-container
+command = echo hello
+run-on-startup = true
+`,
+			wantRunOnStart: true,
+			wantSchedule:   "@every 1h",
+		},
+		{
+			name: "run-on-startup_false",
+			config: `
+[job-exec "no-startup-job"]
+schedule = @every 1h
+container = my-container
+command = echo hello
+run-on-startup = false
+`,
+			wantRunOnStart: false,
+			wantSchedule:   "@every 1h",
+		},
+		{
+			name: "run-on-startup_default",
+			config: `
+[job-exec "default-job"]
+schedule = @every 1h
+container = my-container
+command = echo hello
+`,
+			wantRunOnStart: false, // Default is false
+			wantSchedule:   "@every 1h",
+		},
+		{
+			name: "run-on-startup_with_triggered_schedule",
+			config: `
+[job-exec "triggered-job"]
+schedule = @triggered
+container = my-container
+command = echo hello
+run-on-startup = true
+`,
+			wantRunOnStart: true,
+			wantSchedule:   "@triggered",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			logger := test.NewTestLogger()
+			cfg, err := BuildFromString(tt.config, logger)
+			if err != nil {
+				t.Fatalf("BuildFromString failed: %v", err)
+			}
+
+			if len(cfg.ExecJobs) != 1 {
+				t.Fatalf("Expected 1 exec job, got %d", len(cfg.ExecJobs))
+			}
+
+			for _, job := range cfg.ExecJobs {
+				if job.RunOnStartup != tt.wantRunOnStart {
+					t.Errorf("RunOnStartup = %v, want %v", job.RunOnStartup, tt.wantRunOnStart)
+				}
+				if job.Schedule != tt.wantSchedule {
+					t.Errorf("Schedule = %v, want %v", job.Schedule, tt.wantSchedule)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildFromString_RunOnStartupAllJobTypes tests run-on-startup works for all job types
+func TestBuildFromString_RunOnStartupAllJobTypes(t *testing.T) {
+	t.Parallel()
+	configStr := `
+[job-exec "exec-startup"]
+schedule = @every 1h
+container = test-container
+command = echo exec
+run-on-startup = true
+
+[job-run "run-startup"]
+schedule = @every 1h
+image = alpine
+command = echo run
+run-on-startup = true
+
+[job-local "local-startup"]
+schedule = @every 1h
+command = echo local
+run-on-startup = true
+
+[job-service-run "service-startup"]
+schedule = @every 1h
+image = nginx
+command = echo service
+run-on-startup = true
+
+[job-compose "compose-startup"]
+schedule = @every 1h
+command = up -d
+run-on-startup = true
+`
+
+	logger := test.NewTestLogger()
+	cfg, err := BuildFromString(configStr, logger)
+	if err != nil {
+		t.Fatalf("BuildFromString failed: %v", err)
+	}
+
+	// Verify all job types have run-on-startup enabled
+	for _, job := range cfg.ExecJobs {
+		if !job.RunOnStartup {
+			t.Errorf("ExecJob %q: RunOnStartup = false, want true", job.Name)
+		}
+	}
+	for _, job := range cfg.RunJobs {
+		if !job.RunOnStartup {
+			t.Errorf("RunJob %q: RunOnStartup = false, want true", job.Name)
+		}
+	}
+	for _, job := range cfg.LocalJobs {
+		if !job.RunOnStartup {
+			t.Errorf("LocalJob %q: RunOnStartup = false, want true", job.Name)
+		}
+	}
+	for _, job := range cfg.ServiceJobs {
+		if !job.RunOnStartup {
+			t.Errorf("ServiceJob %q: RunOnStartup = false, want true", job.Name)
+		}
+	}
+	for _, job := range cfg.ComposeJobs {
+		if !job.RunOnStartup {
+			t.Errorf("ComposeJob %q: RunOnStartup = false, want true", job.Name)
+		}
+	}
+}
+
 // TestResolveConfigFiles tests the resolveConfigFiles function
 func TestResolveConfigFiles(t *testing.T) {
 	t.Parallel()
