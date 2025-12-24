@@ -86,10 +86,8 @@ Implement a two-layer validation approach using:
 // cli/config_decode.go
 
 type DecodeResult struct {
-    UsedKeys     map[string]bool   // Keys that were present in input
-    UnusedKeys   []string          // Keys not matching any struct field
-    Warnings     []string          // Non-fatal issues
-    Errors       []error           // Fatal validation errors
+    UsedKeys   map[string]bool // Keys that were present in input
+    UnusedKeys []string        // Keys not matching any struct field
 }
 
 func decodeWithMetadata(input map[string]interface{}, output interface{}) (*DecodeResult, error) {
@@ -341,12 +339,13 @@ Deprecation warnings:
 8. Integrate validation into `BuildFromFile()` and `BuildFromString()`
 9. Add unknown key warnings to logger
 10. Update `dockerLabelsUpdate()` for label parsing
+11. Add Levenshtein distance for "did you mean?" suggestions
 
 ### Phase 3: Cleanup (Future)
 
-11. Deprecate `config/validator.go` custom validators
-12. Migrate remaining manual validation to struct tags
-13. Add Levenshtein distance for "did you mean?" suggestions
+12. Deprecate `config/validator.go` custom validators
+13. Migrate remaining manual validation to struct tags
+14. Add unknown key detection to job section parsing
 
 ## References
 
@@ -359,8 +358,8 @@ Deprecation warnings:
 
 1. **Unknown Key Detection**:
    - Typo in global section → warning logged
-   - Typo in job section → warning logged
-   - Valid unknown key in shadowed section → no warning
+   - Typo in docker section → warning logged
+   - Typo in job section → no warning (to be improved in Phase 3)
 
 2. **Value Validation**:
    - Invalid port number → error
