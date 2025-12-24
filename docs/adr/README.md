@@ -20,6 +20,7 @@ Each ADR follows this structure:
 |-----|-------|--------|------|
 | [ADR-001](./ADR-001-docker-registry-authentication.md) | Docker Registry Authentication | Accepted | 2025-12-10 |
 | [ADR-002](./ADR-002-security-boundaries.md) | Security Boundary Definition | Accepted | 2025-12-17 |
+| [ADR-003](./ADR-003-config-validation-improvements.md) | Configuration Validation Improvements | Proposed | 2025-12-24 |
 
 ## Creating New ADRs
 

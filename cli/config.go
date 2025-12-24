@@ -42,18 +42,18 @@ type Config struct {
 		middlewares.SlackConfig `mapstructure:",squash"`
 		middlewares.SaveConfig  `mapstructure:",squash"`
 		middlewares.MailConfig  `mapstructure:",squash"`
-		LogLevel                string        `gcfg:"log-level" mapstructure:"log-level"`
+		LogLevel                string        `gcfg:"log-level" mapstructure:"log-level" validate:"omitempty,oneof=debug info notice warning error critical"` //nolint:revive
 		EnableWeb               bool          `gcfg:"enable-web" mapstructure:"enable-web" default:"false"`
 		WebAddr                 string        `gcfg:"web-address" mapstructure:"web-address" default:":8081"`
 		WebAuthEnabled          bool          `gcfg:"web-auth-enabled" mapstructure:"web-auth-enabled" default:"false"`
 		WebUsername             string        `gcfg:"web-username" mapstructure:"web-username"`
 		WebPasswordHash         string        `gcfg:"web-password-hash" mapstructure:"web-password-hash"`
 		WebSecretKey            string        `gcfg:"web-secret-key" mapstructure:"web-secret-key"`
-		WebTokenExpiry          int           `gcfg:"web-token-expiry" mapstructure:"web-token-expiry" default:"24"`
-		WebMaxLoginAttempts     int           `gcfg:"web-max-login-attempts" mapstructure:"web-max-login-attempts" default:"5"`
+		WebTokenExpiry          int           `gcfg:"web-token-expiry" mapstructure:"web-token-expiry" validate:"gte=1,lte=8760" default:"24"`           //nolint:revive
+		WebMaxLoginAttempts     int           `gcfg:"web-max-login-attempts" mapstructure:"web-max-login-attempts" validate:"gte=1,lte=100" default:"5"` //nolint:revive
 		EnablePprof             bool          `gcfg:"enable-pprof" mapstructure:"enable-pprof" default:"false"`
 		PprofAddr               string        `gcfg:"pprof-address" mapstructure:"pprof-address" default:"127.0.0.1:8080"`
-		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" default:"24h"`
+		MaxRuntime              time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" validate:"gte=0" default:"24h"`
 		AllowHostJobsFromLabels bool          `gcfg:"allow-host-jobs-from-labels" mapstructure:"allow-host-jobs-from-labels" default:"false"` //nolint:revive
 		EnableStrictValidation  bool          `gcfg:"enable-strict-validation" mapstructure:"enable-strict-validation" default:"false"`
 		// DefaultUser sets the default user for exec/run/service jobs when not specified per-job.
@@ -64,7 +64,7 @@ type Config struct {
 		// When a job fails with the same error, notifications (Slack, email, save) will be
 		// suppressed until this cooldown period expires. Set to 0 to disable deduplication.
 		// Default: 0 (disabled - all notifications sent)
-		NotificationCooldown time.Duration `gcfg:"notification-cooldown" mapstructure:"notification-cooldown" default:"0"`
+		NotificationCooldown time.Duration `gcfg:"notification-cooldown" mapstructure:"notification-cooldown" validate:"gte=0" default:"0"`
 	}
 	ExecJobs          map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs           map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
@@ -123,16 +123,32 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 
 	c := NewConfig(logger)
 	var latest time.Time
+	allUsedKeys := make(map[string]bool)
+
 	for _, f := range files {
 		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, f)
 		if err != nil {
 			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
 			return nil, fmt.Errorf("failed to load config file %q: %w\n  → Check file exists and is readable: ls -l %q\n  → Verify file path is correct\n  → Check file permissions (should be readable)", f, err, f)
 		}
-		if err := parseIni(cfg, c); err != nil {
+		parseRes, parseErr := parseIni(cfg, c)
+		if parseErr != nil {
 			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
-			return nil, fmt.Errorf("failed to parse config file %q: %w\n  → Check INI syntax is valid (sections in [brackets], key=value pairs)\n  → Look for syntax errors near line mentioned in error\n  → Use 'ofelia validate --config=%q' to validate syntax", f, err, f)
+			return nil, fmt.Errorf("failed to parse config file %q: %w\n  → Check INI syntax is valid (sections in [brackets], key=value pairs)\n  → Look for syntax errors near line mentioned in error\n  → Use 'ofelia validate --config=%q' to validate syntax", f, parseErr, f)
 		}
+
+		// Merge used keys from this file
+		if parseRes != nil {
+			for k, v := range parseRes.usedKeys {
+				if v {
+					allUsedKeys[k] = true
+				}
+			}
+
+			// Log warnings for unknown keys
+			logUnknownKeyWarnings(logger, f, parseRes)
+		}
+
 		if info, statErr := os.Stat(f); statErr == nil {
 			if info.ModTime().After(latest) {
 				latest = info.ModTime()
@@ -153,7 +169,27 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 		}
 	}
 
+	// Handle deprecated configuration options: migrate then warn (using key presence)
+	ResetDeprecationWarnings()
+	deprecationRegistry.SetLogger(logger)
+	ApplyDeprecationMigrationsWithKeys(c, allUsedKeys)
+	CheckDeprecationsWithKeys(c, allUsedKeys)
+
 	return c, nil
+}
+
+// logUnknownKeyWarnings logs warnings for unknown configuration keys
+func logUnknownKeyWarnings(logger core.Logger, filename string, res *parseResult) {
+	if res == nil {
+		return
+	}
+
+	for _, key := range res.unknownGlobal {
+		logger.Warningf("Unknown configuration key '%s' in [global] section of %s (typo?)", key, filename)
+	}
+	for _, key := range res.unknownDocker {
+		logger.Warningf("Unknown configuration key '%s' in [docker] section of %s (typo?)", key, filename)
+	}
 }
 
 // BuildFromString builds a scheduler using the config from a string
@@ -167,8 +203,23 @@ func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load ini from string: %w", err)
 	}
-	if err := parseIni(cfg, c); err != nil {
-		return nil, fmt.Errorf("parse ini from string: %w", err)
+	parseRes, parseErr := parseIni(cfg, c)
+	if parseErr != nil {
+		return nil, fmt.Errorf("parse ini from string: %w", parseErr)
+	}
+
+	// Collect used keys for deprecation detection
+	usedKeys := make(map[string]bool)
+	if parseRes != nil {
+		usedKeys = parseRes.usedKeys
+
+		// Log warnings for unknown keys
+		for _, key := range parseRes.unknownGlobal {
+			logger.Warningf("Unknown configuration key '%s' in [global] section (typo?)", key)
+		}
+		for _, key := range parseRes.unknownDocker {
+			logger.Warningf("Unknown configuration key '%s' in [docker] section (typo?)", key)
+		}
 	}
 
 	// Validate the loaded configuration (if enabled)
@@ -178,6 +229,12 @@ func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
 			return nil, fmt.Errorf("configuration validation failed: %w", err)
 		}
 	}
+
+	// Handle deprecated configuration options: migrate then warn (using key presence)
+	ResetDeprecationWarnings()
+	deprecationRegistry.SetLogger(logger)
+	ApplyDeprecationMigrationsWithKeys(c, usedKeys)
+	CheckDeprecationsWithKeys(c, usedKeys)
 
 	return c, nil
 }
@@ -594,6 +651,11 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
 	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, servicePrep, JobSourceLabel, "service")
 	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
+
+	// Handle deprecated configuration options in parsed labels: migrate then warn
+	ResetDeprecationWarnings()
+	ApplyDeprecationMigrations(&parsedLabelConfig)
+	CheckDeprecations(&parsedLabelConfig)
 }
 
 func (c *Config) iniConfigUpdate() error {
@@ -851,7 +913,7 @@ type DockerConfig struct {
 
 	// ConfigPollInterval controls how often to check for INI config file changes.
 	// This is independent of container detection. Set to 0 to disable config file watching.
-	ConfigPollInterval time.Duration `mapstructure:"config-poll-interval" default:"10s"`
+	ConfigPollInterval time.Duration `mapstructure:"config-poll-interval" validate:"gte=0" default:"10s"`
 
 	// UseEvents enables Docker event-based container detection (recommended).
 	// When enabled, Ofelia reacts immediately to container start/stop events.
@@ -861,30 +923,31 @@ type DockerConfig struct {
 	// This is a fallback for environments where Docker events don't work reliably.
 	// Set to 0 (default) to disable explicit container polling.
 	// WARNING: If both events and polling are enabled, this is usually wasteful.
-	DockerPollInterval time.Duration `mapstructure:"docker-poll-interval" default:"0"`
+	DockerPollInterval time.Duration `mapstructure:"docker-poll-interval" validate:"gte=0" default:"0"`
 
 	// PollingFallback auto-enables container polling if event subscription fails.
 	// This provides backwards compatibility and resilience.
 	// Set to 0 to disable auto-fallback (will only log errors on event failure).
 	// Default is 10s for backwards compatibility.
-	PollingFallback time.Duration `mapstructure:"polling-fallback" default:"10s"`
+	PollingFallback time.Duration `mapstructure:"polling-fallback" validate:"gte=0" default:"10s"`
 
 	// Deprecated: Use ConfigPollInterval and DockerPollInterval instead.
 	// If set, this value is used for both config and container polling (BC).
-	PollInterval time.Duration `mapstructure:"poll-interval"`
+	PollInterval time.Duration `mapstructure:"poll-interval" validate:"gte=0"`
 
 	// Deprecated: Use DockerPollInterval=0 instead.
 	// If true, disables container polling entirely.
 	DisablePolling bool `mapstructure:"no-poll" default:"false"`
 }
 
-func parseIni(cfg *ini.File, c *Config) error {
-	if err := parseGlobalAndDocker(cfg, c); err != nil {
-		return err
+func parseIni(cfg *ini.File, c *Config) (*parseResult, error) {
+	parseRes, err := parseGlobalAndDocker(cfg, c)
+	if err != nil {
+		return nil, err
 	}
 	// Parse webhook sections
 	if err := parseWebhookSections(cfg, c); err != nil {
-		return err
+		return nil, err
 	}
 	for _, section := range cfg.Sections() {
 		name := strings.TrimSpace(section.Name())
@@ -896,7 +959,7 @@ func parseIni(cfg *ini.File, c *Config) error {
 				func(n string, j *ExecJobConfig) { c.ExecJobs[n] = j },
 				jobExec,
 			); err != nil {
-				return err
+				return nil, err
 			}
 		case strings.HasPrefix(name, jobRun):
 			if err := decodeJob(
@@ -905,7 +968,7 @@ func parseIni(cfg *ini.File, c *Config) error {
 				func(n string, j *RunJobConfig) { c.RunJobs[n] = j },
 				jobRun,
 			); err != nil {
-				return err
+				return nil, err
 			}
 		case strings.HasPrefix(name, jobServiceRun):
 			if err := decodeJob(
@@ -914,7 +977,7 @@ func parseIni(cfg *ini.File, c *Config) error {
 				func(n string, j *RunServiceConfig) { c.ServiceJobs[n] = j },
 				jobServiceRun,
 			); err != nil {
-				return err
+				return nil, err
 			}
 		case strings.HasPrefix(name, jobLocal):
 			if err := decodeJob(
@@ -923,7 +986,7 @@ func parseIni(cfg *ini.File, c *Config) error {
 				func(n string, j *LocalJobConfig) { c.LocalJobs[n] = j },
 				jobLocal,
 			); err != nil {
-				return err
+				return nil, err
 			}
 		case strings.HasPrefix(name, jobCompose):
 			if err := decodeJob(
@@ -932,11 +995,11 @@ func parseIni(cfg *ini.File, c *Config) error {
 				func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j },
 				jobCompose,
 			); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
-	return nil
+	return parseRes, nil
 }
 
 func latestChanged(files []string, prev time.Time) (time.Time, bool, error) {
@@ -953,20 +1016,51 @@ func latestChanged(files []string, prev time.Time) (time.Time, bool, error) {
 	return latest, latest.After(prev), nil
 }
 
-func parseGlobalAndDocker(cfg *ini.File, c *Config) error {
+// parseResult holds the results from parsing global and docker sections
+type parseResult struct {
+	usedKeys      map[string]bool
+	unknownGlobal []string
+	unknownDocker []string
+}
+
+func parseGlobalAndDocker(cfg *ini.File, c *Config) (*parseResult, error) {
+	result := &parseResult{
+		usedKeys: make(map[string]bool),
+	}
+
 	if sec, err := cfg.GetSection("global"); err == nil {
-		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Global); err != nil {
-			return fmt.Errorf("decode [global]: %w", err)
+		input := sectionToMap(sec)
+		decResult, decErr := decodeWithMetadata(input, &c.Global)
+		if decErr != nil {
+			return nil, fmt.Errorf("decode [global]: %w", decErr)
 		}
+		// Track used keys for deprecation detection
+		for k, v := range decResult.UsedKeys {
+			if v {
+				result.usedKeys[k] = true
+			}
+		}
+		result.unknownGlobal = decResult.UnusedKeys
 		// Parse global webhook configuration
 		parseGlobalWebhookConfig(sec, c)
 	}
+
 	if sec, err := cfg.GetSection("docker"); err == nil {
-		if err := mapstructure.WeakDecode(sectionToMap(sec), &c.Docker); err != nil {
-			return fmt.Errorf("decode [docker]: %w", err)
+		input := sectionToMap(sec)
+		decResult, decErr := decodeWithMetadata(input, &c.Docker)
+		if decErr != nil {
+			return nil, fmt.Errorf("decode [docker]: %w", decErr)
 		}
+		// Track used keys for deprecation detection
+		for k, v := range decResult.UsedKeys {
+			if v {
+				result.usedKeys[k] = true
+			}
+		}
+		result.unknownDocker = decResult.UnusedKeys
 	}
-	return nil
+
+	return result, nil
 }
 
 func decodeJob[T jobConfig](section *ini.Section, job T, set func(string, T), prefix string) error {

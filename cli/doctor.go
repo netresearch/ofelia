@@ -205,6 +205,31 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 		Status:   "pass",
 		Message:  fmt.Sprintf("%d job(s) configured", jobCount),
 	})
+
+	// Check for deprecated configuration options
+	deprecations := GetDeprecationRegistry().ForDoctor(conf)
+	if len(deprecations) > 0 {
+		for _, dep := range deprecations {
+			report.Checks = append(report.Checks, CheckResult{
+				Category: "Configuration",
+				Name:     "Deprecated Option",
+				Status:   "fail",
+				Message:  fmt.Sprintf("'%s' is deprecated and will be removed in %s", dep.Option, dep.RemovalVersion),
+				Hints: []string{
+					fmt.Sprintf("Use %s instead", dep.Replacement),
+					dep.Message,
+				},
+			})
+		}
+		// Deprecations don't make the report unhealthy, just warn
+	} else {
+		report.Checks = append(report.Checks, CheckResult{
+			Category: "Configuration",
+			Name:     "Deprecated Options",
+			Status:   "pass",
+			Message:  "No deprecated options in use",
+		})
+	}
 }
 
 func (c *DoctorCommand) checkWebAuth(report *DoctorReport) {
