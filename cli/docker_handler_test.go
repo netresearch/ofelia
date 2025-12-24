@@ -326,15 +326,22 @@ func TestResolveConfigDefaults(t *testing.T) {
 func TestResolveConfigDeprecatedPollInterval(t *testing.T) {
 	t.Parallel()
 	logger := &TestLogger{}
-	cfg := &DockerConfig{
-		PollInterval:       30 * time.Second, // deprecated, explicitly set
-		ConfigPollInterval: 10 * time.Second, // default
-		DockerPollInterval: 0,
-		PollingFallback:    10 * time.Second, // default
-		UseEvents:          false,            // events disabled
+
+	// Create a full Config with the deprecated Docker options
+	fullCfg := &Config{
+		Docker: DockerConfig{
+			PollInterval:       30 * time.Second, // deprecated, explicitly set
+			ConfigPollInterval: 10 * time.Second, // default
+			DockerPollInterval: 0,
+			PollingFallback:    10 * time.Second, // default
+			UseEvents:          false,            // events disabled
+		},
 	}
 
-	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
+	// Apply deprecation migrations (this is now done during config loading)
+	ApplyDeprecationMigrations(fullCfg)
+
+	configPoll, dockerPoll, fallback, useEvents := resolveConfig(&fullCfg.Docker, logger)
 
 	// With deprecated poll-interval and default values, should migrate
 	assert.Equal(t, 30*time.Second, configPoll) // migrated from poll-interval
@@ -347,15 +354,22 @@ func TestResolveConfigDeprecatedPollInterval(t *testing.T) {
 func TestResolveConfigDeprecatedPollIntervalExplicitOverride(t *testing.T) {
 	t.Parallel()
 	logger := &TestLogger{}
-	cfg := &DockerConfig{
-		PollInterval:       30 * time.Second, // deprecated
-		ConfigPollInterval: 20 * time.Second, // explicitly set (not default)
-		DockerPollInterval: 15 * time.Second, // explicitly set
-		PollingFallback:    5 * time.Second,  // explicitly set (not default)
-		UseEvents:          true,
+
+	// Create a full Config with the deprecated Docker options
+	fullCfg := &Config{
+		Docker: DockerConfig{
+			PollInterval:       30 * time.Second, // deprecated
+			ConfigPollInterval: 20 * time.Second, // explicitly set (not default)
+			DockerPollInterval: 15 * time.Second, // explicitly set
+			PollingFallback:    5 * time.Second,  // explicitly set (not default)
+			UseEvents:          true,
+		},
 	}
 
-	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
+	// Apply deprecation migrations (this is now done during config loading)
+	ApplyDeprecationMigrations(fullCfg)
+
+	configPoll, dockerPoll, fallback, useEvents := resolveConfig(&fullCfg.Docker, logger)
 
 	// Explicit values should take precedence
 	assert.Equal(t, 20*time.Second, configPoll) // kept explicit value
@@ -368,15 +382,22 @@ func TestResolveConfigDeprecatedPollIntervalExplicitOverride(t *testing.T) {
 func TestResolveConfigDeprecatedDisablePolling(t *testing.T) {
 	t.Parallel()
 	logger := &TestLogger{}
-	cfg := &DockerConfig{
-		DisablePolling:     true, // deprecated no-poll
-		ConfigPollInterval: 10 * time.Second,
-		DockerPollInterval: 30 * time.Second,
-		PollingFallback:    10 * time.Second,
-		UseEvents:          true,
+
+	// Create a full Config with the deprecated Docker options
+	fullCfg := &Config{
+		Docker: DockerConfig{
+			DisablePolling:     true, // deprecated no-poll
+			ConfigPollInterval: 10 * time.Second,
+			DockerPollInterval: 30 * time.Second,
+			PollingFallback:    10 * time.Second,
+			UseEvents:          true,
+		},
 	}
 
-	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
+	// Apply deprecation migrations (this is now done during config loading)
+	ApplyDeprecationMigrations(fullCfg)
+
+	configPoll, dockerPoll, fallback, useEvents := resolveConfig(&fullCfg.Docker, logger)
 
 	assert.Equal(t, 10*time.Second, configPoll)
 	assert.Equal(t, time.Duration(0), dockerPoll) // disabled by no-poll

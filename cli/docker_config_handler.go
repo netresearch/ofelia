@@ -47,39 +47,14 @@ func (c *DockerHandler) GetDockerProvider() core.DockerProvider {
 	return c.dockerProvider
 }
 
-// resolveConfig applies deprecation migration and validates configuration.
+// resolveConfig validates configuration and returns resolved values.
+// Deprecation migrations are handled centrally by cli/deprecations.go during config loading.
 func resolveConfig(cfg *DockerConfig, logger core.Logger) (configPoll, dockerPoll, fallback time.Duration, useEvents bool) {
-	// Start with new defaults
+	// Read values (already migrated by ApplyDeprecationMigrations during config load)
 	configPoll = cfg.ConfigPollInterval
 	dockerPoll = cfg.DockerPollInterval
 	fallback = cfg.PollingFallback
 	useEvents = cfg.UseEvents
-
-	// Handle deprecated PollInterval (BC migration)
-	if cfg.PollInterval > 0 {
-		logger.Warningf("DEPRECATED: 'poll-interval' is deprecated. " +
-			"Use 'config-poll-interval' for INI file watching and " +
-			"'docker-poll-interval' for container polling fallback.")
-		// If new options aren't explicitly set, use deprecated value
-		if configPoll == 10*time.Second { // default value
-			configPoll = cfg.PollInterval
-		}
-		// For BC: if events are disabled and poll-interval was set, enable container polling
-		if !useEvents && dockerPoll == 0 {
-			dockerPoll = cfg.PollInterval
-		}
-		// For BC: use poll-interval as polling-fallback if fallback wasn't explicitly set
-		if fallback == 10*time.Second { // default value
-			fallback = cfg.PollInterval
-		}
-	}
-
-	// Handle deprecated DisablePolling (BC migration)
-	if cfg.DisablePolling {
-		logger.Warningf("DEPRECATED: 'no-poll' is deprecated. Use 'docker-poll-interval=0' to disable container polling.")
-		dockerPoll = 0
-		fallback = 0 // Also disable fallback
-	}
 
 	// Warn if both events and explicit container polling are enabled
 	if useEvents && dockerPoll > 0 {
