@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
@@ -89,4 +90,74 @@ func mergeUsedKeys(results ...*DecodeResult) map[string]bool {
 		}
 	}
 	return merged
+}
+
+// extractMapstructureKeys extracts all configuration keys that mapstructure will
+// recognize for the given struct value. It returns keys from mapstructure tags,
+// or lowercase field names when no tag is specified. This is used to build the
+// list of known keys for "did you mean?" suggestions when unknown keys are detected.
+func extractMapstructureKeys(v interface{}) []string {
+	return extractMapstructureKeysFromType(reflect.TypeOf(v))
+}
+
+// extractMapstructureKeysFromType recursively extracts mapstructure keys from a
+// reflect.Type. It handles pointer types, embedded structs (both anonymous fields
+// and those with the ",squash" tag option), and fields without explicit tags.
+// For embedded/squashed structs, keys are collected recursively and flattened.
+func extractMapstructureKeysFromType(t reflect.Type) []string {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+
+	keys := make([]string, 0)
+	for i := range t.NumField() {
+		field := t.Field(i)
+
+		// Skip unexported fields
+		if !field.IsExported() {
+			continue
+		}
+
+		// Handle embedded structs (squash)
+		if field.Anonymous || hasSquashTag(field) {
+			embedded := extractMapstructureKeysFromType(field.Type)
+			keys = append(keys, embedded...)
+			continue
+		}
+
+		// Get mapstructure tag
+		tag := field.Tag.Get("mapstructure")
+
+		// Skip fields explicitly marked to ignore
+		if tag == "-" {
+			continue
+		}
+
+		// Parse tag (handle "name,omitempty" format)
+		if tag != "" {
+			parts := strings.Split(tag, ",")
+			name := parts[0]
+			if name != "" && name != "-" {
+				keys = append(keys, name)
+				continue
+			}
+		}
+
+		// No mapstructure tag or empty name - use lowercase field name
+		// mapstructure matches by lowercase field name when no tag is specified
+		keys = append(keys, strings.ToLower(field.Name))
+	}
+
+	return keys
+}
+
+// hasSquashTag checks if a struct field has the mapstructure ",squash" tag option.
+// The squash option tells mapstructure to flatten the embedded struct's fields into
+// the parent struct during decoding, rather than nesting them under the field name.
+func hasSquashTag(field reflect.StructField) bool {
+	tag := field.Tag.Get("mapstructure")
+	return strings.Contains(tag, "squash")
 }

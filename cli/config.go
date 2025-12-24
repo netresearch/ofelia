@@ -11,7 +11,6 @@ import (
 	"time"
 
 	defaults "github.com/creasty/defaults"
-	"github.com/mitchellh/mapstructure"
 	ini "gopkg.in/ini.v1"
 
 	"github.com/netresearch/ofelia/config"
@@ -190,6 +189,56 @@ func logUnknownKeyWarnings(logger core.Logger, filename string, res *parseResult
 	for _, key := range res.unknownDocker {
 		logger.Warningf("Unknown configuration key '%s' in [docker] section of %s (typo?)", key, filename)
 	}
+
+	// Log warnings for unknown keys in job sections
+	logJobUnknownKeyWarnings(logger, res.unknownJobs, filename)
+}
+
+// logJobUnknownKeyWarnings logs warnings for unknown keys in job sections with
+// "did you mean?" suggestions. If filename is non-empty, it is included in the message.
+func logJobUnknownKeyWarnings(logger core.Logger, unknownJobs []jobUnknownKeys, filename string) {
+	for _, job := range unknownJobs {
+		knownKeys := getKnownKeysForJobType(job.JobType)
+		for _, key := range job.UnknownKeys {
+			suggestion := findClosestMatch(key, knownKeys)
+			if filename != "" {
+				if suggestion != "" {
+					logger.Warningf("Unknown configuration key '%s' in [%s \"%s\"] of %s (did you mean '%s'?)",
+						key, job.JobType, job.JobName, filename, suggestion)
+				} else {
+					logger.Warningf("Unknown configuration key '%s' in [%s \"%s\"] of %s (typo?)",
+						key, job.JobType, job.JobName, filename)
+				}
+			} else {
+				if suggestion != "" {
+					logger.Warningf("Unknown configuration key '%s' in [%s \"%s\"] (did you mean '%s'?)",
+						key, job.JobType, job.JobName, suggestion)
+				} else {
+					logger.Warningf("Unknown configuration key '%s' in [%s \"%s\"] (typo?)",
+						key, job.JobType, job.JobName)
+				}
+			}
+		}
+	}
+}
+
+// getKnownKeysForJobType returns the list of valid configuration keys for a given job type.
+// It extracts all mapstructure keys from the corresponding job config struct.
+func getKnownKeysForJobType(jobType string) []string {
+	switch jobType {
+	case jobExec:
+		return extractMapstructureKeys(ExecJobConfig{})
+	case jobRun:
+		return extractMapstructureKeys(RunJobConfig{})
+	case jobServiceRun:
+		return extractMapstructureKeys(RunServiceConfig{})
+	case jobLocal:
+		return extractMapstructureKeys(LocalJobConfig{})
+	case jobCompose:
+		return extractMapstructureKeys(ComposeJobConfig{})
+	default:
+		return nil
+	}
 }
 
 // BuildFromString builds a scheduler using the config from a string
@@ -220,6 +269,9 @@ func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
 		for _, key := range parseRes.unknownDocker {
 			logger.Warningf("Unknown configuration key '%s' in [docker] section (typo?)", key)
 		}
+
+		// Log warnings for unknown keys in job sections (empty filename for string-based config)
+		logJobUnknownKeyWarnings(logger, parseRes.unknownJobs, "")
 	}
 
 	// Validate the loaded configuration (if enabled)
@@ -949,6 +1001,10 @@ func parseIni(cfg *ini.File, c *Config) (*parseResult, error) {
 	if err := parseWebhookSections(cfg, c); err != nil {
 		return nil, err
 	}
+
+	// Collector for unknown keys in job sections
+	var unknownJobs []jobUnknownKeys
+
 	for _, section := range cfg.Sections() {
 		name := strings.TrimSpace(section.Name())
 		switch {
@@ -958,6 +1014,7 @@ func parseIni(cfg *ini.File, c *Config) (*parseResult, error) {
 				&ExecJobConfig{JobSource: JobSourceINI},
 				func(n string, j *ExecJobConfig) { c.ExecJobs[n] = j },
 				jobExec,
+				&unknownJobs,
 			); err != nil {
 				return nil, err
 			}
@@ -967,6 +1024,7 @@ func parseIni(cfg *ini.File, c *Config) (*parseResult, error) {
 				&RunJobConfig{JobSource: JobSourceINI},
 				func(n string, j *RunJobConfig) { c.RunJobs[n] = j },
 				jobRun,
+				&unknownJobs,
 			); err != nil {
 				return nil, err
 			}
@@ -976,6 +1034,7 @@ func parseIni(cfg *ini.File, c *Config) (*parseResult, error) {
 				&RunServiceConfig{JobSource: JobSourceINI},
 				func(n string, j *RunServiceConfig) { c.ServiceJobs[n] = j },
 				jobServiceRun,
+				&unknownJobs,
 			); err != nil {
 				return nil, err
 			}
@@ -985,6 +1044,7 @@ func parseIni(cfg *ini.File, c *Config) (*parseResult, error) {
 				&LocalJobConfig{JobSource: JobSourceINI},
 				func(n string, j *LocalJobConfig) { c.LocalJobs[n] = j },
 				jobLocal,
+				&unknownJobs,
 			); err != nil {
 				return nil, err
 			}
@@ -994,11 +1054,14 @@ func parseIni(cfg *ini.File, c *Config) (*parseResult, error) {
 				&ComposeJobConfig{JobSource: JobSourceINI},
 				func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j },
 				jobCompose,
+				&unknownJobs,
 			); err != nil {
 				return nil, err
 			}
 		}
 	}
+
+	parseRes.unknownJobs = unknownJobs
 	return parseRes, nil
 }
 
@@ -1016,11 +1079,19 @@ func latestChanged(files []string, prev time.Time) (time.Time, bool, error) {
 	return latest, latest.After(prev), nil
 }
 
-// parseResult holds the results from parsing global and docker sections
+// parseResult holds the results from parsing global, docker, and job sections
 type parseResult struct {
 	usedKeys      map[string]bool
 	unknownGlobal []string
 	unknownDocker []string
+	unknownJobs   []jobUnknownKeys
+}
+
+// jobUnknownKeys tracks unknown keys found in a job section
+type jobUnknownKeys struct {
+	JobType     string   // e.g., "job-exec", "job-run"
+	JobName     string   // The job name from the section header
+	UnknownKeys []string // Keys that didn't match any struct field
 }
 
 func parseGlobalAndDocker(cfg *ini.File, c *Config) (*parseResult, error) {
@@ -1063,11 +1134,23 @@ func parseGlobalAndDocker(cfg *ini.File, c *Config) (*parseResult, error) {
 	return result, nil
 }
 
-func decodeJob[T jobConfig](section *ini.Section, job T, set func(string, T), prefix string) error {
+func decodeJob[T jobConfig](section *ini.Section, job T, set func(string, T), prefix string, unknownCollector *[]jobUnknownKeys) error {
 	jobName := parseJobName(strings.TrimSpace(section.Name()), prefix)
-	if err := mapstructure.WeakDecode(sectionToMap(section), job); err != nil {
+	input := sectionToMap(section)
+
+	result, err := decodeWithMetadata(input, job)
+	if err != nil {
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
 		return fmt.Errorf("failed to decode job %q configuration: %w\n  → Check job section syntax in config file\n  → Verify all required fields are set (schedule, command, container, etc.)\n  → Check for typos in configuration keys\n  → Use 'ofelia validate --config=<file>' to validate configuration\n  → Review job type requirements (job-exec, job-run, job-local, job-service-run)", jobName, err)
+	}
+
+	// Collect unknown keys for this job section
+	if len(result.UnusedKeys) > 0 && unknownCollector != nil {
+		*unknownCollector = append(*unknownCollector, jobUnknownKeys{
+			JobType:     prefix,
+			JobName:     jobName,
+			UnknownKeys: result.UnusedKeys,
+		})
 	}
 
 	// Validate job configuration if the job type supports it
