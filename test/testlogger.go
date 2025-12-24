@@ -164,3 +164,17 @@ func (l *Logger) ErrorCount() int {
 	}
 	return count
 }
+
+// WarningCount returns the number of warning messages
+func (l *Logger) WarningCount() int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	count := 0
+	for _, entry := range l.messages {
+		if entry.Level == "WARN" {
+			count++
+		}
+	}
+	return count
+}
