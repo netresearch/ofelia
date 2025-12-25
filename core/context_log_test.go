@@ -45,6 +45,7 @@ type stubJob struct {
 func (j *stubJob) GetName() string           { return j.name }
 func (j *stubJob) GetSchedule() string       { return "" }
 func (j *stubJob) GetCommand() string        { return "" }
+func (j *stubJob) ShouldRunOnStartup() bool  { return false }
 func (j *stubJob) Middlewares() []Middleware { return nil }
 func (j *stubJob) Use(...Middleware)         {}
 func (j *stubJob) Run(*Context) error        { return nil }

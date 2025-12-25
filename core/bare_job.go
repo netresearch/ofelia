@@ -7,9 +7,13 @@ import (
 )
 
 type BareJob struct {
-	Schedule         string   `hash:"true"`
-	Name             string   `hash:"true"`
-	Command          string   `hash:"true"`
+	Schedule string `hash:"true"`
+	Name     string `hash:"true"`
+	Command  string `hash:"true"`
+	// RunOnStartup controls whether the job is executed once immediately when the scheduler starts,
+	// before regular cron-based scheduling begins. This is a boolean flag with a default value of false.
+	// Startup executions are dispatched in non-blocking goroutines so they do not delay scheduler startup.
+	RunOnStartup     bool     `default:"false" gcfg:"run-on-startup" mapstructure:"run-on-startup" hash:"true"`
 	HistoryLimit     int      `default:"10"`
 	MaxRetries       int      `default:"0"`                                  // Maximum number of retry attempts (0 = no retries)
 	RetryDelayMs     int      `default:"1000"`                               // Initial retry delay in milliseconds
@@ -38,6 +42,11 @@ func (j *BareJob) GetSchedule() string {
 
 func (j *BareJob) GetCommand() string {
 	return j.Command
+}
+
+// ShouldRunOnStartup returns true if the job should run immediately when the scheduler starts.
+func (j *BareJob) ShouldRunOnStartup() bool {
+	return j.RunOnStartup
 }
 
 func (j *BareJob) Running() int32 {

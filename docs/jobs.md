@@ -35,6 +35,8 @@ This job is executed inside a running container, similar to `docker exec`.
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
   - Number of past executions kept in memory
+- `run-on-startup`: boolean = `false`
+  - Run the job once immediately when the scheduler starts, before regular cron-based scheduling begins. Startup executions are dispatched in non-blocking goroutines so they do not delay scheduler startup.
 
 ### INI-file example
 
@@ -137,6 +139,8 @@ This job can be used in 2 situations:
   - Number of past executions kept in memory
 - `max-runtime`: duration = `24h`
   - Maximum time the container is allowed to run before it is killed
+- `run-on-startup`: boolean = `false`
+  - Run the job once immediately when the scheduler starts, before regular cron-based scheduling begins. Startup executions are dispatched in non-blocking goroutines so they do not delay scheduler startup.
 
 ### INI-file example
 
@@ -208,6 +212,8 @@ Runs the command on the host running Ofelia.
   - Prevent that the job runs concurrently
 - `history-limit`: integer = `10`
   - Number of past executions kept in memory
+- `run-on-startup`: boolean = `false`
+  - Run the job once immediately when the scheduler starts, before regular cron-based scheduling begins. Startup executions are dispatched in non-blocking goroutines so they do not delay scheduler startup.
 
 ### INI-file example
 
@@ -259,6 +265,8 @@ This job can be used to:
   - Number of past executions kept in memory
 - `max-runtime`: duration = `24h`
   - Maximum time the service task may run before it is removed
+- `run-on-startup`: boolean = `false`
+  - Run the job once immediately when the scheduler starts, before regular cron-based scheduling begins. Startup executions are dispatched in non-blocking goroutines so they do not delay scheduler startup.
 
 ### INI-file example
 
@@ -297,6 +305,8 @@ container is started with `docker compose run --rm`.
   - Use `docker compose exec` instead of `run`.
 - `command`: string
   - Command passed to the service (optional).
+- `run-on-startup`: boolean = `false`
+  - Run the job once immediately when the scheduler starts, before regular cron-based scheduling begins. Startup executions are dispatched in non-blocking goroutines so they do not delay scheduler startup.
 
 ### INI-file example
 

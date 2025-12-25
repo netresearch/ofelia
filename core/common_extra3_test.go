@@ -37,8 +37,8 @@ func TestBareJobHashValue(t *testing.T) {
 		Name:     "name",
 		Command:  "cmd",
 	}
-	// Expect "schednamecmd"
-	want := "schednamecmd"
+	// Expect "schednamecmdfalse" (includes RunOnStartup=false)
+	want := "schednamecmdfalse"
 	got, err := job.Hash()
 	if err != nil {
 		t.Fatalf("hash error: %v", err)
