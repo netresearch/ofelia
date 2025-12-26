@@ -12,9 +12,19 @@ import (
 
 // SaveConfig configuration for the Save middleware
 type SaveConfig struct {
-	SaveFolder           string        `gcfg:"save-folder" mapstructure:"save-folder"`
-	SaveOnlyOnError      bool          `gcfg:"save-only-on-error" mapstructure:"save-only-on-error"`
-	RestoreHistory       *bool         `gcfg:"restore-history" mapstructure:"restore-history"`
+	// SaveFolder is the directory path where job execution logs and metadata are saved.
+	// When configured, execution output (stdout, stderr) and context (JSON) are saved
+	// after each job run. Leave empty to disable saving.
+	SaveFolder string `gcfg:"save-folder" mapstructure:"save-folder"`
+	// SaveOnlyOnError when true, only saves execution logs when a job fails.
+	// Defaults to false (saves all executions).
+	SaveOnlyOnError bool `gcfg:"save-only-on-error" mapstructure:"save-only-on-error"`
+	// RestoreHistory controls whether previously saved execution history is restored on startup.
+	// When nil (default), history restoration is enabled if SaveFolder is configured.
+	// Set explicitly to false to disable restoration even when SaveFolder is set.
+	RestoreHistory *bool `gcfg:"restore-history" mapstructure:"restore-history"`
+	// RestoreHistoryMaxAge defines the maximum age of execution history to restore on startup.
+	// Only executions newer than this duration are restored. Defaults to 24 hours.
 	RestoreHistoryMaxAge time.Duration `gcfg:"restore-history-max-age" mapstructure:"restore-history-max-age"`
 }
 

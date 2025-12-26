@@ -88,6 +88,7 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 	}
 
 	restoredCount := 0
+	restoredJobCount := 0
 	for jobName, jobEntries := range entriesByJob {
 		job, exists := jobsByName[jobName]
 		if !exists {
@@ -112,10 +113,11 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 			setter.SetLastRun(entry.Execution)
 			restoredCount++
 		}
+		restoredJobCount++
 	}
 
 	if restoredCount > 0 {
-		logger.Noticef("Restored %d history entries for %d job(s) from saved files", restoredCount, len(entriesByJob))
+		logger.Noticef("Restored %d history entries for %d job(s) from saved files", restoredCount, restoredJobCount)
 	}
 
 	return nil
@@ -125,7 +127,13 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 func parseHistoryFiles(saveFolder string, cutoff time.Time, logger core.Logger) ([]*restoredEntry, error) {
 	var entries []*restoredEntry
 
-	err := filepath.Walk(saveFolder, func(path string, info os.FileInfo, walkErr error) error {
+	// Resolve save folder to absolute path for containment check
+	absSaveFolder, err := filepath.Abs(saveFolder)
+	if err != nil {
+		return nil, fmt.Errorf("resolve save folder: %w", err)
+	}
+
+	err = filepath.Walk(saveFolder, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return nil //nolint:nilerr // Intentionally skip inaccessible files
 		}
@@ -140,8 +148,14 @@ func parseHistoryFiles(saveFolder string, cutoff time.Time, logger core.Logger) 
 			return nil
 		}
 
+		// Verify path is within save folder (defense in depth for G304)
+		absPath, absErr := filepath.Abs(path)
+		if absErr != nil || !strings.HasPrefix(absPath, absSaveFolder) {
+			return nil //nolint:nilerr // Intentionally skip invalid paths
+		}
+
 		// Parse the JSON file
-		entry, err := parseHistoryFile(path)
+		entry, err := parseHistoryFile(absPath)
 		if err != nil {
 			logger.Debugf("Skipping invalid history file %q: %v", path, err)
 			return nil
@@ -162,8 +176,9 @@ func parseHistoryFiles(saveFolder string, cutoff time.Time, logger core.Logger) 
 }
 
 // parseHistoryFile reads and parses a single JSON history file.
+// The path is validated by parseHistoryFiles to be within the save folder.
 func parseHistoryFile(path string) (*restoredEntry, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //#nosec G304 -- path is validated to be within save folder
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}
