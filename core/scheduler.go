@@ -73,10 +73,7 @@ func NewSchedulerWithClock(l Logger, cronClock *CronClock) *Scheduler {
 func newSchedulerInternal(l Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration, cronClock *CronClock) *Scheduler {
 	cronUtils := NewCronUtils(l)
 
-	parser := cron.MustNewParser(
-		cron.SecondOptional | cron.Minute | cron.Hour |
-			cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
-	)
+	parser := cron.FullParser()
 	if minEveryInterval != 0 {
 		parser = parser.WithMinEveryInterval(minEveryInterval)
 	}

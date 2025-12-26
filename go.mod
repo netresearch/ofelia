@@ -18,7 +18,7 @@ require (
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/netresearch/go-cron v0.7.1
+	github.com/netresearch/go-cron v0.8.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
