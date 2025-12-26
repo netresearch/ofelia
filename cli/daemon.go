@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/middlewares"
 	"github.com/netresearch/ofelia/web"
 )
 
@@ -98,6 +99,9 @@ func (c *DaemonCommand) boot() (err error) {
 	// Re-apply CLI/environment options so they override Docker labels
 	c.applyOptions(config)
 	c.scheduler = config.sh
+
+	// Restore job history from saved files if configured
+	c.restoreJobHistory(config)
 	c.dockerHandler = config.dockerHandler
 	c.config = config
 
@@ -352,6 +356,18 @@ func (c *DaemonCommand) applyServerDefaults(config *Config) {
 	}
 	if c.PprofAddr == "127.0.0.1:8080" && config.Global.PprofAddr != "" {
 		c.PprofAddr = config.Global.PprofAddr
+	}
+}
+
+// restoreJobHistory restores job history from saved files if configured.
+func (c *DaemonCommand) restoreJobHistory(config *Config) {
+	if !config.Global.SaveConfig.RestoreHistoryEnabled() {
+		return
+	}
+	saveFolder := config.Global.SaveConfig.SaveFolder
+	maxAge := config.Global.SaveConfig.GetRestoreHistoryMaxAge()
+	if err := middlewares.RestoreHistory(saveFolder, maxAge, c.scheduler.Jobs, c.Logger); err != nil {
+		c.Logger.Warningf("Failed to restore job history: %v", err)
 	}
 }
 

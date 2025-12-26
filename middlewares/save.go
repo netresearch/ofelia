@@ -5,14 +5,36 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/netresearch/ofelia/core"
 )
 
 // SaveConfig configuration for the Save middleware
 type SaveConfig struct {
-	SaveFolder      string `gcfg:"save-folder" mapstructure:"save-folder"`
-	SaveOnlyOnError bool   `gcfg:"save-only-on-error" mapstructure:"save-only-on-error"`
+	SaveFolder           string        `gcfg:"save-folder" mapstructure:"save-folder"`
+	SaveOnlyOnError      bool          `gcfg:"save-only-on-error" mapstructure:"save-only-on-error"`
+	RestoreHistory       *bool         `gcfg:"restore-history" mapstructure:"restore-history"`
+	RestoreHistoryMaxAge time.Duration `gcfg:"restore-history-max-age" mapstructure:"restore-history-max-age"`
+}
+
+// RestoreHistoryEnabled returns whether history restoration is enabled.
+// Defaults to true when SaveFolder is configured.
+func (c *SaveConfig) RestoreHistoryEnabled() bool {
+	if c.RestoreHistory != nil {
+		return *c.RestoreHistory
+	}
+	// Default: enabled if save folder is configured
+	return c.SaveFolder != ""
+}
+
+// GetRestoreHistoryMaxAge returns the max age for history restoration.
+// Defaults to 24 hours.
+func (c *SaveConfig) GetRestoreHistoryMaxAge() time.Duration {
+	if c.RestoreHistoryMaxAge > 0 {
+		return c.RestoreHistoryMaxAge
+	}
+	return 24 * time.Hour
 }
 
 // NewSave returns a Save middleware if the given configuration is not empty

@@ -447,6 +447,7 @@ func (cv *Validator2) isOptionalField(path string) bool {
 	optionalFields := []string{
 		"smtp-user", "smtp-password", "email-to", "email-from",
 		"slack-webhook", "slack-channel", "save-folder",
+		"restore-history", "restore-history-max-age",
 		"container", "service", "image", "user", "network",
 		"environment", "secrets", "volumes", "working_dir",
 		"log-level", // Has default value "info"
