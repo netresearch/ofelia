@@ -5,14 +5,46 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/netresearch/ofelia/core"
 )
 
 // SaveConfig configuration for the Save middleware
 type SaveConfig struct {
-	SaveFolder      string `gcfg:"save-folder" mapstructure:"save-folder"`
-	SaveOnlyOnError bool   `gcfg:"save-only-on-error" mapstructure:"save-only-on-error"`
+	// SaveFolder is the directory path where job execution logs and metadata are saved.
+	// When configured, execution output (stdout, stderr) and context (JSON) are saved
+	// after each job run. Leave empty to disable saving.
+	SaveFolder string `gcfg:"save-folder" mapstructure:"save-folder"`
+	// SaveOnlyOnError when true, only saves execution logs when a job fails.
+	// Defaults to false (saves all executions).
+	SaveOnlyOnError bool `gcfg:"save-only-on-error" mapstructure:"save-only-on-error"`
+	// RestoreHistory controls whether previously saved execution history is restored on startup.
+	// When nil (default), history restoration is enabled if SaveFolder is configured.
+	// Set explicitly to false to disable restoration even when SaveFolder is set.
+	RestoreHistory *bool `gcfg:"restore-history" mapstructure:"restore-history"`
+	// RestoreHistoryMaxAge defines the maximum age of execution history to restore on startup.
+	// Only executions newer than this duration are restored. Defaults to 24 hours.
+	RestoreHistoryMaxAge time.Duration `gcfg:"restore-history-max-age" mapstructure:"restore-history-max-age"`
+}
+
+// RestoreHistoryEnabled returns whether history restoration is enabled.
+// Defaults to true when SaveFolder is configured.
+func (c *SaveConfig) RestoreHistoryEnabled() bool {
+	if c.RestoreHistory != nil {
+		return *c.RestoreHistory
+	}
+	// Default: enabled if save folder is configured
+	return c.SaveFolder != ""
+}
+
+// GetRestoreHistoryMaxAge returns the max age for history restoration.
+// Defaults to 24 hours.
+func (c *SaveConfig) GetRestoreHistoryMaxAge() time.Duration {
+	if c.RestoreHistoryMaxAge > 0 {
+		return c.RestoreHistoryMaxAge
+	}
+	return 24 * time.Hour
 }
 
 // NewSave returns a Save middleware if the given configuration is not empty
