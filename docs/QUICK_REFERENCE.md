@@ -70,6 +70,17 @@ export OFELIA_PPROF_ADDRESS=127.0.0.1:8080
 0 0 */4 * * *              # Every 4 hours
 0 */30 * * * *             # Every 30 minutes
 
+# With year field (one-time scheduling)
+30 14 25 12 * 2025         # Dec 25, 2025 at 14:30 (one-time job)
+0 30 14 25 12 * 2025       # Same with seconds field
+0 0 1 1 * 2025-2027        # Jan 1 at midnight, 2025-2027
+
+# Extended syntax (L, W, #)
+0 12 L * *                 # Last day of every month at noon
+0 12 15W * *               # Nearest weekday to 15th at noon
+0 12 * * FRI#3             # 3rd Friday of every month at noon
+0 12 * * FRI#L             # Last Friday of every month at noon
+
 # Descriptors
 @yearly                    # 0 0 1 1 *
 @annually                  # 0 0 1 1 *
