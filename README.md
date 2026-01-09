@@ -2,6 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/netresearch/ofelia.svg)](https://pkg.go.dev/github.com/netresearch/ofelia)
 [![CI](https://github.com/netresearch/ofelia/actions/workflows/ci.yml/badge.svg)](https://github.com/netresearch/ofelia/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/netresearch/ofelia/graph/badge.svg)](https://codecov.io/gh/netresearch/ofelia)
 [![CodeQL](https://github.com/netresearch/ofelia/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/netresearch/ofelia/actions/workflows/github-code-scanning/codeql)
 [![GitHub release](https://img.shields.io/github/v/release/netresearch/ofelia)](https://github.com/netresearch/ofelia/releases/latest)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/netresearch/ofelia)](go.mod)
