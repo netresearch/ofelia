@@ -18,8 +18,9 @@ This job is executed inside a running container, similar to `docker exec`.
   - Command you want to run inside the container.
 - **`container`: string**
   - Name of the container you want to execute the command in.
-- `user`: string = `root`
+- `user`: string = `nobody`
   - User as which the command should be executed, similar to `docker exec --user <user>`
+  - If not set, uses the global `default-user` (default `nobody`); set to `default` to use the container's default user
 - `tty`: boolean = `false`
   - Allocate a pseudo-tty, similar to `docker exec -t`. See this [Stack Overflow answer](https://stackoverflow.com/questions/30137135/confused-about-docker-t-option-to-allocate-a-pseudo-tty) for more info.
 - `environment`
@@ -94,8 +95,9 @@ This job can be used in 2 situations:
   - If left blank, Ofelia assumes you will specify a container to start (situation 2).
 - `entrypoint`: string (1)
   - Override the image entrypoint. Use an empty value to remove it.
-- `user`: string = `root` (1)
+- `user`: string = `nobody` (1)
   - User as which the command should be executed, similar to `docker run --user <user>`
+  - If not set, uses the global `default-user` (default `nobody`); set to `default` to use the container's default user
 - `network`: string (1)
   - Connect the container to this network
 - `hostname`: string (1)
@@ -243,8 +245,9 @@ This job can be used to:
   - Connect the container to this network
 - `delete`: boolean = `true` (1)
   - Delete the container after the job is finished.
-- `user`: string = `root` (1, 2)
+- `user`: string = `nobody` (1, 2)
   - User as which the command should be executed.
+  - If not set, uses the global `default-user` (default `nobody`); set to `default` to use the container's default user
 - `tty`: boolean = `false` (1, 2)
   - Allocate a pseudo-tty, similar to `docker exec -t`. See this [Stack Overflow answer](https://stackoverflow.com/questions/30137135/confused-about-docker-t-option-to-allocate-a-pseudo-tty) for more info.
 - `annotations`

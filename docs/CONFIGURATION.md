@@ -204,6 +204,7 @@ docker-host = unix:///var/run/docker.sock
 docker-poll-interval = 30s
 docker-events = true
 allow-host-jobs-from-labels = false
+default-user = nobody        # Default for exec/run/service; empty uses container default
 
 # Notification Settings
 slack-url = https://hooks.slack.com/services/XXX/YYY/ZZZ

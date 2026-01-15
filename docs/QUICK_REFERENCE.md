@@ -101,7 +101,7 @@ export OFELIA_PPROF_ADDRESS=127.0.0.1:8080
 schedule = @daily
 container = container-name
 command = /path/to/script.sh
-user = root                     # Optional
+user = nobody                   # Optional (default: nobody)
 tty = false                     # Optional
 working-dir = /app              # Optional (Docker 17.09+)
 environment = FOO=bar           # Optional (Docker API 1.30+)
@@ -115,7 +115,7 @@ history-limit = 10              # Optional
 schedule = @hourly
 image = alpine:latest
 command = echo "hello"
-user = root                     # Optional
+user = nobody                   # Optional (default: nobody)
 network = bridge                # Optional
 hostname = job-container        # Optional
 volume = /host:/container:ro    # Optional
@@ -142,7 +142,7 @@ schedule = @daily
 image = alpine:latest
 command = echo "hello"
 network = swarm_network         # Required for swarm
-user = root                     # Optional
+user = nobody                   # Optional (default: nobody)
 no-overlap = true               # Optional
 max-runtime = 24h               # Optional
 ```
