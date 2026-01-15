@@ -141,7 +141,7 @@ services:
 | Daemon options | Environment variables | `OFELIA_*` prefix |
 | Global notifications | Labels on Ofelia container | Requires `ofelia.service=true` |
 | job-exec | Labels on target container | Container auto-detected |
-| job-run, job-local, job-service | Labels on Ofelia container | Requires `ofelia.service=true` |
+| job-run, job-local, job-service-run | Labels on Ofelia container | Requires `ofelia.service=true` |
 
 **Available Environment Variables**:
 
@@ -343,7 +343,7 @@ environment = CLEANUP_DAYS=30,LOG_FILE=/var/log/cleanup.log
 Deploys as a Docker Swarm service (requires Swarm mode).
 
 ```ini
-[job-service "distributed-task"]
+[job-service-run "distributed-task"]
 # Inherits all RunJob configuration
 schedule = @hourly
 image = myapp/worker:latest
