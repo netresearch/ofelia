@@ -43,7 +43,7 @@ export OFELIA_LOG_LEVEL=DEBUG              # DEBUG, INFO, WARNING, ERROR
 
 # Docker
 export OFELIA_DOCKER_FILTER="label=env=prod"  # Filter containers
-export OFELIA_POLL_INTERVAL=30s            # Poll interval (default: 10s)
+export OFELIA_POLL_INTERVAL=30s            # Deprecated: legacy poll-interval (no default)
 export OFELIA_DOCKER_EVENTS=true           # Use events
 export OFELIA_DOCKER_NO_POLL=true          # Disable polling
 

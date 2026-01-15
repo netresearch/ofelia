@@ -150,8 +150,8 @@ services:
 | `OFELIA_CONFIG` | Config file path | `/etc/ofelia/config.ini` |
 | `OFELIA_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | INFO |
 | `OFELIA_DOCKER_FILTER` | Docker container filter | (none) |
-| `OFELIA_POLL_INTERVAL` | Docker poll interval | 10s |
-| `OFELIA_DOCKER_EVENTS` | Use Docker events instead of polling | false |
+| `OFELIA_POLL_INTERVAL` | Deprecated legacy poll interval (affects config and container polling) | (unset) |
+| `OFELIA_DOCKER_EVENTS` | Use Docker events instead of polling | true |
 | `OFELIA_DOCKER_NO_POLL` | Disable Docker polling | false |
 | `OFELIA_ENABLE_WEB` | Enable web UI | false |
 | `OFELIA_WEB_ADDRESS` | Web UI bind address | :8081 |
