@@ -141,7 +141,7 @@ services:
 | Daemon options | Environment variables | `OFELIA_*` prefix |
 | Global notifications | Labels on Ofelia container | Requires `ofelia.service=true` |
 | job-exec | Labels on target container | Container auto-detected |
-| job-run, job-local, job-service | Labels on Ofelia container | Requires `ofelia.service=true` |
+| job-run, job-local, job-service-run | Labels on Ofelia container | Requires `ofelia.service=true` |
 
 **Available Environment Variables**:
 
@@ -150,8 +150,8 @@ services:
 | `OFELIA_CONFIG` | Config file path | `/etc/ofelia/config.ini` |
 | `OFELIA_LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | INFO |
 | `OFELIA_DOCKER_FILTER` | Docker container filter | (none) |
-| `OFELIA_POLL_INTERVAL` | Docker poll interval | 10s |
-| `OFELIA_DOCKER_EVENTS` | Use Docker events instead of polling | false |
+| `OFELIA_POLL_INTERVAL` | Deprecated legacy poll interval (affects config and container polling) | (unset) |
+| `OFELIA_DOCKER_EVENTS` | Use Docker events instead of polling | true |
 | `OFELIA_DOCKER_NO_POLL` | Disable Docker polling | false |
 | `OFELIA_ENABLE_WEB` | Enable web UI | false |
 | `OFELIA_WEB_ADDRESS` | Web UI bind address | :8081 |
@@ -204,6 +204,7 @@ docker-host = unix:///var/run/docker.sock
 docker-poll-interval = 30s
 docker-events = true
 allow-host-jobs-from-labels = false
+default-user = nobody        # Default for exec/run/service; empty uses container default
 
 # Notification Settings
 slack-url = https://hooks.slack.com/services/XXX/YYY/ZZZ
@@ -342,7 +343,7 @@ environment = CLEANUP_DAYS=30,LOG_FILE=/var/log/cleanup.log
 Deploys as a Docker Swarm service (requires Swarm mode).
 
 ```ini
-[job-service "distributed-task"]
+[job-service-run "distributed-task"]
 # Inherits all RunJob configuration
 schedule = @hourly
 image = myapp/worker:latest

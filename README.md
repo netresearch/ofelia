@@ -468,10 +468,9 @@ polling-fallback = 10s
 
 #### CLI Flags
 
-- `--docker-config-poll-interval`: INI file reload interval
 - `--docker-events`: Enable/disable Docker event-based container detection
-- `--docker-poll-interval`: Container polling interval (fallback)
-- `--docker-polling-fallback`: Auto-fallback interval if events fail
+- `--docker-poll-interval`: Deprecated legacy poll interval (affects config + container polling)
+- `--docker-no-poll`: Deprecated; disable container polling
 
 #### Backwards Compatibility
 

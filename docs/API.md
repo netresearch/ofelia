@@ -101,7 +101,7 @@ GET /api/job/{name}
   "schedule": "@daily",
   "command": "backup.sh",
   "container": "myapp",
-  "user": "root",
+  "user": "nobody",
   "environment": ["BACKUP_DIR=/data"],
   "tty": false,
   "lastRun": "2024-01-01T00:00:00Z",

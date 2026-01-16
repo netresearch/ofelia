@@ -490,7 +490,7 @@ Different job types have different label placement requirements:
 | `job-exec` | Target container | Executes commands inside the labeled container |
 | `job-run` | Ofelia container | Creates new containers, not tied to any specific existing container |
 | `job-local` | Ofelia container | Runs on host, labels must be on Ofelia itself |
-| `job-service` | Ofelia container | Creates Swarm services, not tied to existing containers |
+| `job-service-run` | Ofelia container | Creates Swarm services, not tied to existing containers |
 
 **Incorrect Configuration** (Labels on nginx, not discovered):
 ```yaml
