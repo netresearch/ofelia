@@ -390,7 +390,7 @@ jobs:
     name: gitleaks
     # gitleaks-action doesn't support merge_group events
     # Skip for fork PRs as secrets are not available
-    if: github.event_name != 'merge_group' && github.event.pull_request.head.repo.fork != true
+    if: github.event_name != 'merge_group' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork != true)
     runs-on: ubuntu-latest
     permissions:
       contents: read
