@@ -334,11 +334,25 @@ func (s *Scheduler) Start() error {
 	s.Logger.Debugf("Starting scheduler")
 	s.cron.Start()
 
-	// Fire startup execution for triggered-only jobs outside the lock.
+	// Fire startup execution for triggered-only jobs.
+	// Register with wg before spawning to prevent Stop()'s wg.Wait() from
+	// completing before goroutines have started.
+	s.mu.Lock()
+	for range startupTriggered {
+		s.wg.Add(1)
+	}
+	s.mu.Unlock()
 	for _, j := range startupTriggered {
 		s.Logger.Noticef("Running triggered-only job %q on startup", j.GetName())
 		wrapper := &jobWrapper{s: s, j: j}
-		go wrapper.Run()
+		go func() {
+			defer func() {
+				s.mu.Lock()
+				s.wg.Done()
+				s.mu.Unlock()
+			}()
+			wrapper.Run()
+		}()
 	}
 
 	return nil
@@ -597,10 +611,11 @@ func (w *jobWrapper) Run() {
 		return
 	}
 
+	w.s.mu.Lock()
 	if !w.s.cron.IsRunning() {
+		w.s.mu.Unlock()
 		return
 	}
-	w.s.mu.Lock()
 	w.s.wg.Add(1)
 	w.s.mu.Unlock()
 
