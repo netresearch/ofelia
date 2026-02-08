@@ -201,6 +201,9 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	if len(tags) > 0 {
 		opts = append(opts, cron.WithTags(tags...))
 	}
+	if j.ShouldRunOnStartup() {
+		opts = append(opts, cron.WithRunImmediately())
+	}
 
 	id, err := s.cron.AddJob(j.GetSchedule(), &jobWrapper{s, j}, opts...)
 	if err != nil {
@@ -320,29 +323,7 @@ func (s *Scheduler) Start() error {
 	s.Logger.Debugf("Starting scheduler")
 	s.cron.Start()
 
-	// Run jobs marked with run-on-startup
-	s.runStartupJobs()
-
 	return nil
-}
-
-// runStartupJobs executes jobs that have run-on-startup=true.
-// Each job runs in its own goroutine to avoid blocking the scheduler.
-func (s *Scheduler) runStartupJobs() {
-	s.mu.RLock()
-	jobs := make([]Job, 0)
-	for _, j := range s.Jobs {
-		if j.ShouldRunOnStartup() {
-			jobs = append(jobs, j)
-		}
-	}
-	s.mu.RUnlock()
-
-	for _, job := range jobs {
-		s.Logger.Noticef("Running startup job: %s", job.GetName())
-		wrapper := &jobWrapper{s: s, j: job}
-		go wrapper.Run()
-	}
 }
 
 // DefaultStopTimeout is the default timeout for graceful shutdown.
@@ -562,10 +543,9 @@ func (s *Scheduler) EnableJob(name string) error {
 // jobWrapper wraps a Job to manage running and waiting via the Scheduler.
 
 // IsRunning returns true if the scheduler is active.
+// Delegates to go-cron's IsRunning() which is the authoritative source.
 func (s *Scheduler) IsRunning() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.isRunning
+	return s.cron.IsRunning()
 }
 
 type jobWrapper struct {
