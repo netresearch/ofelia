@@ -35,7 +35,6 @@ type Scheduler struct {
 	middlewareContainer
 	cron                 *cron.Cron
 	wg                   sync.WaitGroup
-	isRunning            bool
 	mu                   sync.RWMutex
 	maxConcurrentJobs    int
 	jobSemaphore         chan struct{}
@@ -205,6 +204,11 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 		opts = append(opts, cron.WithRunImmediately())
 	}
 
+	// Apply global middlewares BEFORE adding to cron, because WithRunImmediately()
+	// may cause the job to execute immediately after AddJob returns — before we'd
+	// get a chance to apply middlewares afterwards.
+	j.Use(s.Middlewares()...)
+
 	id, err := s.cron.AddJob(j.GetSchedule(), &jobWrapper{s, j}, opts...)
 	if err != nil {
 		s.Logger.Warningf(
@@ -214,7 +218,6 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 		return fmt.Errorf("add cron job: %w", err)
 	}
 	j.SetCronJobID(uint64(id))
-	j.Use(s.Middlewares()...)
 	s.mu.Lock()
 	s.Jobs = append(s.Jobs, j)
 	s.jobsByName[j.GetName()] = j
@@ -303,7 +306,6 @@ func (s *Scheduler) GetJobsByTag(tag string) []Job {
 
 func (s *Scheduler) Start() error {
 	s.mu.Lock()
-	s.isRunning = true
 
 	// Build dependency graph
 	if err := s.workflowOrchestrator.BuildDependencyGraph(s.Jobs); err != nil {
@@ -319,9 +321,25 @@ func (s *Scheduler) Start() error {
 	// Start workflow cleanup routine
 	s.startWorkflowCleanup()
 
+	// Collect triggered-only jobs that need startup execution while we hold the lock.
+	// These jobs are not added to go-cron, so WithRunImmediately() does not apply.
+	var startupTriggered []Job
+	for _, j := range s.Jobs {
+		if IsTriggeredSchedule(j.GetSchedule()) && j.ShouldRunOnStartup() {
+			startupTriggered = append(startupTriggered, j)
+		}
+	}
+
 	s.mu.Unlock()
 	s.Logger.Debugf("Starting scheduler")
 	s.cron.Start()
+
+	// Fire startup execution for triggered-only jobs outside the lock.
+	for _, j := range startupTriggered {
+		s.Logger.Noticef("Running triggered-only job %q on startup", j.GetName())
+		wrapper := &jobWrapper{s: s, j: j}
+		go wrapper.Run()
+	}
 
 	return nil
 }
@@ -341,7 +359,6 @@ func (s *Scheduler) StopWithTimeout(timeout time.Duration) error {
 	completed := s.cron.StopWithTimeout(timeout)
 
 	s.mu.Lock()
-	s.isRunning = false
 
 	// Stop cleanup routine
 	if s.cleanupTicker != nil {
@@ -365,7 +382,6 @@ func (s *Scheduler) StopAndWait() {
 	s.cron.StopAndWait()
 
 	s.mu.Lock()
-	s.isRunning = false
 
 	// Stop cleanup routine
 	if s.cleanupTicker != nil {
@@ -581,11 +597,10 @@ func (w *jobWrapper) Run() {
 		return
 	}
 
-	w.s.mu.Lock()
-	if !w.s.isRunning {
-		w.s.mu.Unlock()
+	if !w.s.cron.IsRunning() {
 		return
 	}
+	w.s.mu.Lock()
 	w.s.wg.Add(1)
 	w.s.mu.Unlock()
 
