@@ -41,8 +41,7 @@ on:
         default: "7"
         type: string
 
-permissions:
-  packages: write
+permissions: read-all
 
 env:
   PACKAGE_NAME: ofelia
@@ -56,6 +55,8 @@ jobs:
   cleanup-edge-images:
     name: Cleanup Old Edge Images
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
@@ -182,6 +183,8 @@ jobs:
     name: Cleanup Orphaned Untagged Images
     runs-on: ubuntu-latest
     needs: cleanup-edge-images
+    permissions:
+      packages: write
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0 # v2.12.0
