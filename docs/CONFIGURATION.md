@@ -632,7 +632,7 @@ command = critical-check.sh
 email-to = ops@example.com,alerts@example.com
 email-subject = Critical Job Report
 email-from = ofelia@example.com
-email-only-on-error = true
+mail-only-on-error = true
 ```
 
 ### Configuration Inheritance
@@ -643,8 +643,9 @@ Notification settings support inheritance from global to job-level configuration
 
 | Setting Type | Inherited Fields | Notes |
 |--------------|------------------|-------|
-| **Email** | `smtp-host`, `smtp-port`, `smtp-user`, `smtp-password`, `email-from`, `email-to` | SMTP connection details are inherited |
-| **Slack** | `slack-webhook` | Webhook URL is inherited |
+| **Email** | `smtp-host`, `smtp-port`, `smtp-user`, `smtp-password`, `email-from`, `email-to`, `email-subject`, `mail-only-on-error` | SMTP connection details and behavior flags are inherited |
+| **Slack** | `slack-webhook`, `slack-only-on-error` | Webhook URL and behavior flags are inherited |
+| **Save** | `save-folder`, `save-only-on-error` | Save folder and behavior flags are inherited |
 
 **Example: Partial Override**
 
@@ -663,7 +664,7 @@ schedule = @daily
 container = postgres
 command = pg_dump mydb > /backup/db.sql
 # Only override error-only behavior - inherits all SMTP settings from global
-email-only-on-error = true
+mail-only-on-error = true
 
 [job-exec "critical-check"]
 schedule = @hourly
@@ -675,7 +676,7 @@ email-to = critical-alerts@example.com
 
 **Important Notes:**
 
-- Boolean fields (`email-only-on-error`, `slack-only-on-error`, `save-only-on-error`) are fully inherited from global config and can be overridden per-job in both directions (global true + job false, or global false + job true)
+- Boolean fields (`mail-only-on-error`, `slack-only-on-error`, `save-only-on-error`) are fully inherited from global config and can be overridden per-job in both directions (global true + job false, or global false + job true)
 - Job-level settings always take precedence over global settings when explicitly set
 - To enable notifications for a job, at minimum specify `email-to` or `slack-webhook` at either global or job level
 

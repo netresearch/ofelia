@@ -387,7 +387,7 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
@@ -401,7 +401,7 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
@@ -409,7 +409,7 @@ func (c *Config) registerAllJobs() {
 	for name, j := range c.LocalJobs {
 		_ = defaults.Set(j)
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
@@ -423,7 +423,7 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
@@ -431,7 +431,7 @@ func (c *Config) registerAllJobs() {
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(wm)
 		_ = c.sh.AddJob(j)
@@ -450,9 +450,10 @@ func (c *Config) injectDedup(slack *middlewares.SlackConfig, mail *middlewares.M
 // mergeNotificationDefaults copies global notification settings to job-level configs
 // when the job-level field has its zero value. This allows partial overrides where
 // a job can specify only `mail-only-on-error: true` while inheriting SMTP settings.
-func (c *Config) mergeNotificationDefaults(slack *middlewares.SlackConfig, mail *middlewares.MailConfig) {
+func (c *Config) mergeNotificationDefaults(slack *middlewares.SlackConfig, mail *middlewares.MailConfig, save *middlewares.SaveConfig) {
 	c.mergeSlackDefaults(slack)
 	c.mergeMailDefaults(mail)
+	c.mergeSaveDefaults(save)
 }
 
 // mergeSlackDefaults copies global Slack settings to job config where job has zero values
@@ -501,9 +502,24 @@ func (c *Config) mergeMailDefaults(job *middlewares.MailConfig) {
 	if job.EmailFrom == "" {
 		job.EmailFrom = global.EmailFrom
 	}
+	if job.EmailSubject == "" {
+		job.EmailSubject = global.EmailSubject
+	}
 	// MailOnlyOnError: inherit from global only when the job didn't explicitly set it (nil).
 	if job.MailOnlyOnError == nil && global.MailOnlyOnError != nil {
 		job.MailOnlyOnError = middlewares.BoolPtr(*global.MailOnlyOnError)
+	}
+}
+
+// mergeSaveDefaults copies global Save settings to job config where job has zero values
+func (c *Config) mergeSaveDefaults(job *middlewares.SaveConfig) {
+	global := &c.Global.SaveConfig
+	if job.SaveFolder == "" {
+		job.SaveFolder = global.SaveFolder
+	}
+	// SaveOnlyOnError: inherit from global only when the job didn't explicitly set it (nil).
+	if job.SaveOnlyOnError == nil && global.SaveOnlyOnError != nil {
+		job.SaveOnlyOnError = middlewares.BoolPtr(*global.SaveOnlyOnError)
 	}
 }
 
@@ -658,7 +674,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep, JobSourceLabel, "exec")
@@ -672,7 +688,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel, "run")
@@ -680,7 +696,7 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 	localPrep := func(name string, j *LocalJobConfig) {
 		_ = defaults.Set(j)
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 
@@ -693,14 +709,14 @@ func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 
@@ -785,7 +801,7 @@ func (c *Config) iniConfigUpdate() error {
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep, JobSourceINI, "exec")
@@ -799,7 +815,7 @@ func (c *Config) iniConfigUpdate() error {
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI, "run")
@@ -807,7 +823,7 @@ func (c *Config) iniConfigUpdate() error {
 	localPrep := func(name string, j *LocalJobConfig) {
 		_ = defaults.Set(j)
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, localPrep, JobSourceINI, "local")
@@ -821,7 +837,7 @@ func (c *Config) iniConfigUpdate() error {
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep, JobSourceINI, "service")
@@ -829,7 +845,7 @@ func (c *Config) iniConfigUpdate() error {
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig)
+		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep, JobSourceINI, "compose")

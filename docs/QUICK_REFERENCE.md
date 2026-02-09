@@ -598,7 +598,7 @@ email-to = admin@example.com
 schedule = @hourly
 container = app
 command = /critical-job.sh
-email-only-on-error = false          # Get success notifications too
+mail-only-on-error = false          # Get success notifications too
 ```
 
 ### Both Slack and Email
@@ -615,7 +615,7 @@ slack-only-on-error = true
 
 # Email for detailed logs
 email-to = team@example.com
-email-only-on-error = false
+mail-only-on-error = false
 ```
 
 ## Security Checklist

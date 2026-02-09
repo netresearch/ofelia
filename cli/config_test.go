@@ -842,3 +842,58 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 	require.NotNil(t, jobMail5.MailOnlyOnError)
 	assert.True(t, *jobMail5.MailOnlyOnError, "Both true - error-only setting should be preserved")
 }
+
+func TestMergeMailDefaultsEmailSubjectInheritance(t *testing.T) {
+	t.Parallel()
+
+	cfg := NewConfig(&TestLogger{})
+	cfg.Global.MailConfig.EmailSubject = "[{{status .Execution}}] {{.Job.GetName}}"
+
+	// Job without subject inherits from global
+	jobMail := middlewares.MailConfig{SMTPHost: "mail.example.com"}
+	cfg.mergeMailDefaults(&jobMail)
+	assert.Equal(t, "[{{status .Execution}}] {{.Job.GetName}}", jobMail.EmailSubject)
+
+	// Job with explicit subject keeps its own
+	jobMail2 := middlewares.MailConfig{
+		SMTPHost:     "mail.example.com",
+		EmailSubject: "Custom: {{.Job.GetName}}",
+	}
+	cfg.mergeMailDefaults(&jobMail2)
+	assert.Equal(t, "Custom: {{.Job.GetName}}", jobMail2.EmailSubject)
+}
+
+func TestMergeSaveDefaults(t *testing.T) {
+	t.Parallel()
+
+	cfg := NewConfig(&TestLogger{})
+	cfg.Global.SaveConfig.SaveFolder = "/var/log/ofelia"
+	cfg.Global.SaveConfig.SaveOnlyOnError = middlewares.BoolPtr(true)
+
+	// Job without save settings inherits from global
+	jobSave := middlewares.SaveConfig{}
+	cfg.mergeSaveDefaults(&jobSave)
+	assert.Equal(t, "/var/log/ofelia", jobSave.SaveFolder)
+	require.NotNil(t, jobSave.SaveOnlyOnError, "Global save-only-on-error=true should propagate to job")
+	assert.True(t, *jobSave.SaveOnlyOnError)
+
+	// Job with explicit folder keeps its own
+	jobSave2 := middlewares.SaveConfig{SaveFolder: "/custom/logs"}
+	cfg.mergeSaveDefaults(&jobSave2)
+	assert.Equal(t, "/custom/logs", jobSave2.SaveFolder)
+	require.NotNil(t, jobSave2.SaveOnlyOnError)
+	assert.True(t, *jobSave2.SaveOnlyOnError, "SaveOnlyOnError should still inherit")
+
+	// Job can explicitly override to false
+	jobSave3 := middlewares.SaveConfig{SaveOnlyOnError: middlewares.BoolPtr(false)}
+	cfg.mergeSaveDefaults(&jobSave3)
+	require.NotNil(t, jobSave3.SaveOnlyOnError)
+	assert.False(t, *jobSave3.SaveOnlyOnError, "Job explicit false should NOT be overridden by global true")
+
+	// Empty global: nothing inherited
+	cfgEmpty := NewConfig(&TestLogger{})
+	jobSave4 := middlewares.SaveConfig{}
+	cfgEmpty.mergeSaveDefaults(&jobSave4)
+	assert.Empty(t, jobSave4.SaveFolder)
+	assert.Nil(t, jobSave4.SaveOnlyOnError)
+}
