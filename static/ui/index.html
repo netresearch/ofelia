@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="auto">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -191,14 +191,14 @@
 
   <main class="container">
     <div class="tabs" role="tablist">
-      <button role="tab" class="active" data-tab="jobs" aria-selected="true">Jobs<span id="badgeJobs" class="tab-badge">0</span></button>
-      <button role="tab" data-tab="form">Create / Edit</button>
-      <button role="tab" data-tab="removed">Removed<span id="badgeRemoved" class="tab-badge muted" style="display:none">0</span></button>
-      <button role="tab" data-tab="config">Config</button>
+      <button role="tab" id="btn-jobs" class="active" data-tab="jobs" aria-selected="true" aria-controls="tab-jobs">Jobs<span id="badgeJobs" class="tab-badge">0</span></button>
+      <button role="tab" id="btn-form" data-tab="form" aria-selected="false" aria-controls="tab-form">Create / Edit</button>
+      <button role="tab" id="btn-removed" data-tab="removed" aria-selected="false" aria-controls="tab-removed">Removed<span id="badgeRemoved" class="tab-badge muted" style="display:none">0</span></button>
+      <button role="tab" id="btn-config" data-tab="config" aria-selected="false" aria-controls="tab-config">Config</button>
     </div>
 
     <!-- JOBS TAB -->
-    <div id="tab-jobs" class="tab-panel active" role="tabpanel">
+    <div id="tab-jobs" class="tab-panel active" role="tabpanel" aria-labelledby="btn-jobs">
       <div class="overflow-auto">
         <table id="jobs">
           <thead>
@@ -238,7 +238,7 @@
     </div>
 
     <!-- CREATE/EDIT TAB -->
-    <div id="tab-form" class="tab-panel" role="tabpanel">
+    <div id="tab-form" class="tab-panel" role="tabpanel" aria-labelledby="btn-form">
       <div class="form-card">
         <h2><span id="formTitle">Create Job</span> <span id="editBadge" class="edit-badge" style="display:none"></span></h2>
         <form id="jobForm">
@@ -343,7 +343,7 @@
     </div>
 
     <!-- REMOVED TAB -->
-    <div id="tab-removed" class="tab-panel" role="tabpanel">
+    <div id="tab-removed" class="tab-panel" role="tabpanel" aria-labelledby="btn-removed">
       <div class="overflow-auto">
         <table id="removedJobs">
           <thead>
@@ -363,7 +363,7 @@
     </div>
 
     <!-- CONFIG TAB -->
-    <div id="tab-config" class="tab-panel" role="tabpanel">
+    <div id="tab-config" class="tab-panel" role="tabpanel" aria-labelledby="btn-config">
       <div class="overflow-auto">
         <table id="configTable">
           <thead>
@@ -527,10 +527,10 @@
         if (j._disabled) {
           dot = '<span class="dot dot-disabled" title="Disabled"></span>';
           lastRun = ''; dur = '';
-        } else if (j.last_run) {
-          dot = statusDot(j.last_run.failed, j.last_run.skipped);
-          lastRun = formatTime(j.last_run.date);
-          dur = formatDuration(j.last_run.duration);
+        } else if (j.lastRun) {
+          dot = statusDot(j.lastRun.failed, j.lastRun.skipped);
+          lastRun = formatTime(j.lastRun.date);
+          dur = formatDuration(j.lastRun.duration);
         } else {
           dot = '<span class="dot dot-none" title="Never run"></span>';
           lastRun = ''; dur = '';
@@ -625,10 +625,10 @@
       jobs.forEach(j => {
         const tr = document.createElement('tr');
         let dot, lastRun, dur;
-        if (j.last_run) {
-          dot = statusDot(j.last_run.failed, j.last_run.skipped);
-          lastRun = formatTime(j.last_run.date);
-          dur = formatDuration(j.last_run.duration);
+        if (j.lastRun) {
+          dot = statusDot(j.lastRun.failed, j.lastRun.skipped);
+          lastRun = formatTime(j.lastRun.date);
+          dur = formatDuration(j.lastRun.duration);
         } else {
           dot = '<span class="dot dot-none"></span>';
           lastRun = ''; dur = '';
@@ -747,12 +747,12 @@
       typeSel.value = Array.from(typeSel.options).map(o=>o.value).includes(j.type) ? j.type : 'local';
       document.getElementById('jobSchedule').value = j.schedule;
       document.getElementById('jobCommand').value = j.command;
-      document.getElementById('jobImage').value = j.config.image || '';
-      document.getElementById('jobContainer').value = j.config.container || '';
-      document.getElementById('jobFile').value = j.config.file || '';
-      document.getElementById('jobService').value = j.config.service || '';
+      document.getElementById('jobImage').value = j.config.Image || '';
+      document.getElementById('jobContainer').value = j.config.Container || '';
+      document.getElementById('jobFile').value = j.config.File || '';
+      document.getElementById('jobService').value = j.config.Service || '';
       const execEl = document.getElementById('jobExec');
-      if (execEl) execEl.checked = j.config.exec || false;
+      if (execEl) execEl.checked = j.config.Exec || false;
       editing = name;
       updateFormChrome();
       updateTypeFields();
