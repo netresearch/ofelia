@@ -4,14 +4,15 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened]
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: read-all
 
 jobs:
   auto-merge:
     name: Auto-merge Dependabot/Renovate PRs
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     # Only run for dependency update bots
     if: >-
       github.actor == 'dependabot[bot]' ||
