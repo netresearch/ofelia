@@ -1,245 +1,652 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" data-theme="auto">
 <head>
   <meta charset="UTF-8">
-  <title>Ofelia Jobs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Ofelia</title>
+  <link rel="stylesheet" href="pico.min.css">
+  <script>
+    /* Apply saved preferences before first paint to avoid flash */
+    (function() {
+      var t = localStorage.getItem('theme');
+      if (t && t !== 'auto') document.documentElement.setAttribute('data-theme', t);
+      var d = localStorage.getItem('density') || 'auto';
+      var coarse = window.matchMedia('(pointer: coarse)').matches;
+      var narrow = window.matchMedia('(max-width: 600px)').matches;
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var eff = d === 'auto' ? ((coarse || narrow || reduce) ? 'comfortable' : 'compact') : d;
+      if (eff === 'compact') document.body ? document.body.classList.add('compact') : document.documentElement.classList.add('compact-early');
+    })();
+  </script>
   <style>
-    table { border-collapse: collapse; }
-    th, td { border: 1px solid #ccc; padding: 4px; }
-    .fixed { font-family: monospace; }
-    #configTable { border-collapse: collapse; font-family: monospace; }
-    #configTable th, #configTable td { border: 1px solid #ccc; padding: 4px; }
+    html.compact-early body { --pico-spacing: .5rem; --pico-typography-spacing-vertical: .5rem; --pico-font-size: 87.5%; }
+    /* ── Base (shared) ── */
+    body { padding: 0; }
+    body > nav { position: sticky; top: 0; z-index: 10; background: var(--pico-background-color);
+      border-bottom: 1px solid var(--pico-muted-border-color); padding: .4rem 1rem; margin: 0; }
+    body > nav ul { margin: 0; }
+    td.wrap { white-space: normal; word-break: break-all; }
+    .mono { font-family: monospace; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--pico-muted-border-color); margin-bottom: .75rem; }
+    .tabs button { background: none; border: none; padding: .4rem .9rem; cursor: pointer;
+      color: var(--pico-muted-color); border-bottom: 2px solid transparent; margin-bottom: -2px; }
+    .tabs button.active { color: var(--pico-primary); border-bottom-color: var(--pico-primary); font-weight: 600; }
+    .tabs button:hover { color: var(--pico-primary); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .tab-badge { background: var(--pico-primary); color: #fff; border-radius: 9px;
+      padding: 0 .45rem; margin-left: .3rem; vertical-align: middle; }
+    .tab-badge.muted { background: var(--pico-muted-color); }
+
+    /* Action buttons */
+    .actions { display: flex; gap: 2px; }
+    .actions button { margin: 0; line-height: 1; }
+
+    /* Status dot */
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    .dot-ok { background: #2a9d2a; }
+    .dot-fail { background: #d32f2f; }
+    .dot-skip { background: #f9a825; }
+    .dot-none { background: var(--pico-muted-color); }
+    .dot-disabled { background: var(--pico-muted-color); opacity: .5; }
+
+    /* Form */
+    .form-card { max-width: 42rem; }
+    .form-card h2 { display: flex; align-items: center; gap: .5rem; }
+    .form-card .edit-badge { font-size: .75rem; background: var(--pico-primary); color: #fff;
+      border-radius: 4px; padding: .1rem .5rem; font-weight: 400; }
+    .form-section { margin-bottom: .8rem; }
+    .form-section-title { font-weight: 600; color: var(--pico-muted-color);
+      text-transform: uppercase; letter-spacing: .04em; margin: 0 0 .4rem; padding-bottom: .2rem;
+      border-bottom: 1px solid var(--pico-muted-border-color); }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem .8rem; }
+    .form-field { margin-bottom: .3rem; }
+    .form-field label { margin-bottom: .15rem; display: block; font-weight: 500; }
+    .form-field input, .form-field select { margin-bottom: 0; }
+    .form-field .hint { font-size: .78rem; color: var(--pico-muted-color); margin: .15rem 0 0; line-height: 1.3; }
+    .form-actions { display: flex; align-items: center; gap: .5rem; margin-top: .6rem; padding-top: .5rem;
+      border-top: 1px solid var(--pico-muted-border-color); }
+    .type-fields { display: none; }
+    .type-fields.visible { display: block; }
+    .type-desc { color: var(--pico-muted-color); margin: .15rem 0 .5rem;
+      padding: .4rem .6rem; background: color-mix(in srgb, var(--pico-primary) 6%, transparent);
+      border-radius: var(--pico-border-radius); line-height: 1.4; }
+
+    /* History panel */
+    #historyPanel { margin-top: .75rem; padding: .6rem; border: 1px solid var(--pico-muted-border-color);
+      border-radius: var(--pico-border-radius); display: none; }
+    #historyPanel.visible { display: block; }
+    #historyPanel .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; }
+    #historyPanel .panel-head h2 { margin: 0; }
+    #historyPanel .close-btn { background: none; border: none; cursor: pointer; font-size: 1.1rem;
+      color: var(--pico-muted-color); padding: .1rem .4rem; }
+
+    /* Collapsible */
+    details pre { max-height: 14rem; overflow: auto; margin: .3rem 0; }
+
+    /* Selected row */
+    tr.selected { background: color-mix(in srgb, var(--pico-primary) 12%, transparent); }
+
+    /* Empty state */
+    .empty { color: var(--pico-muted-color); font-style: italic; padding: .5rem 0; }
+
+    /* Nav branding */
+    .brand { display: flex; align-items: baseline; gap: .3rem; }
+    .brand strong { font-size: 1.1rem; }
+    .brand small { font-size: .75rem; color: var(--pico-muted-color); }
+
+    /* Nav controls — comfortable (base) */
+    .nav-controls { display: flex; align-items: center; gap: .5rem; }
+    .nav-controls select { margin: 0; width: auto; }
+    .nav-btn { background: none; border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius);
+      cursor: pointer; padding: .4rem .7rem; font-size: .82rem; font-weight: 600; line-height: 1.3;
+      color: var(--pico-contrast); margin: 0;
+      min-width: 3.6rem; text-align: center; text-transform: uppercase; letter-spacing: .02em; }
+    .nav-btn:hover { border-color: var(--pico-primary); color: var(--pico-primary); }
+    .nav-btn.active { background: var(--pico-primary); color: #fff; border-color: var(--pico-primary); }
+
+    /* Footer */
+    footer.container { margin-top: 1.5rem; padding: .6rem 1rem; border-top: 1px solid var(--pico-muted-border-color);
+      font-size: .78rem; color: var(--pico-muted-color); }
+    footer .footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .3rem .8rem; }
+    footer a { color: var(--pico-muted-color); text-decoration: underline; text-underline-offset: 2px; }
+    footer a:hover { color: var(--pico-primary); }
+    footer .footer-links { display: flex; flex-wrap: wrap; gap: .2rem .6rem; }
+    footer .sep { opacity: .4; }
+
+    /* ── Comfortable base heading ── */
+    h2 { font-size: 1.3rem; margin: 0 0 .5rem; }
+
+    /* ── Compact density overrides ── */
+    body.compact { --pico-spacing: .5rem; --pico-typography-spacing-vertical: .5rem; --pico-font-size: 87.5%; }
+    body.compact > nav { padding: .3rem 1rem; }
+    body.compact main.container { padding-top: .5rem; }
+    body.compact h2 { font-size: 1.1rem; margin: 0 0 .3rem; }
+    body.compact table { font-size: .8rem; }
+    body.compact table th, body.compact table td { padding: .25rem .4rem; white-space: nowrap; }
+    body.compact td.wrap { white-space: normal; }
+    body.compact .mono { font-size: .78rem; }
+    body.compact .tabs { margin-bottom: .5rem; }
+    body.compact .tabs button { padding: .35rem .8rem; font-size: .85rem; }
+    body.compact .tab-badge { font-size: .7rem; }
+    body.compact .actions button { padding: .15rem .35rem; font-size: .8rem; }
+    body.compact .dot { width: 8px; height: 8px; margin-right: 4px; }
+    body.compact .form-card { max-width: 38rem; }
+    body.compact .form-section { margin-bottom: .6rem; }
+    body.compact .form-section-title { font-size: .8rem; margin-bottom: .3rem; padding-bottom: .15rem; }
+    body.compact .form-grid { gap: .2rem .6rem; }
+    body.compact .form-field { margin-bottom: .25rem; }
+    body.compact .form-field label { font-size: .8rem; margin-bottom: .1rem; }
+    body.compact .form-field input, body.compact .form-field select { padding: .25rem .4rem; font-size: .8rem; height: 2rem; }
+    body.compact .form-field .hint { font-size: .7rem; margin-top: .1rem; }
+    body.compact .form-actions { margin-top: .5rem; padding-top: .4rem; }
+    body.compact .form-actions button { padding: .3rem 1rem; font-size: .8rem; }
+    body.compact .type-desc { font-size: .78rem; margin: .1rem 0 .4rem; padding: .3rem .5rem; }
+    body.compact #historyPanel { margin-top: .5rem; padding: .5rem; }
+    body.compact #historyPanel .panel-head { margin-bottom: .3rem; }
+    body.compact details > summary { font-size: .8rem; }
+    body.compact details pre { font-size: .75rem; max-height: 12rem; }
+    body.compact .empty { font-size: .85rem; }
+    body.compact .brand strong { font-size: 1rem; }
+    body.compact .brand small { font-size: .7rem; }
+    body.compact .nav-controls { gap: .4rem; }
+    body.compact .nav-controls select { padding: .2rem 1.8rem .2rem .4rem; font-size: .8rem; height: auto; }
+    body.compact .nav-btn { padding: .2rem .5rem; font-size: .72rem; min-width: 3.2rem; }
+    body.compact footer.container { font-size: .72rem; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .form-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 480px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .tabs button { padding: .3rem .5rem; font-size: .78rem; }
+      footer .footer-inner { flex-direction: column; align-items: flex-start; }
+      .nav-controls { gap: .2rem; }
+    }
   </style>
 </head>
 <body>
-  <label>Time zone
-    <select id="timezoneSelect">
-      <option value="local">local</option>
-      <option value="server">server</option>
-      <option value="utc">utc</option>
-    </select>
-  </label>
-  <h1>Scheduled Jobs</h1>
-  <table id="jobs">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Type</th>
-        <th>Schedule</th>
-        <th>Command</th>
-        <th>Origin</th>
-        <th>Last Status</th>
-        <th>Run Time</th>
-        <th>Duration</th>
-        <th>Config</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <nav>
+    <ul><li><div class="brand"><strong>Ofelia</strong> <small>by <a href="https://github.com/netresearch/ofelia" target="_blank" rel="noopener">Netresearch</a></small></div></li></ul>
+    <ul>
+      <li><small id="jobCount"></small></li>
+      <li>
+        <div class="nav-controls">
+          <select id="timezoneSelect" aria-label="Time zone" title="How timestamps are displayed">
+            <option value="local">🕐 Browser</option>
+            <option value="server">🖥 Server</option>
+            <option value="utc">🌐 UTC</option>
+          </select>
+          <button id="themeBtn" class="nav-btn" aria-label="Toggle theme" title="Theme: system"></button>
+          <button id="densityBtn" class="nav-btn" aria-label="Toggle density" title="Density: compact"></button>
+        </div>
+      </li>
+    </ul>
+  </nav>
 
-  <h1>Disabled Jobs</h1>
-  <table id="disabledJobs">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Type</th>
-        <th>Schedule</th>
-        <th>Command</th>
-        <th>Origin</th>
-        <th>Config</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <main class="container">
+    <div class="tabs" role="tablist">
+      <button role="tab" class="active" data-tab="jobs" aria-selected="true">Jobs<span id="badgeJobs" class="tab-badge">0</span></button>
+      <button role="tab" data-tab="form">Create / Edit</button>
+      <button role="tab" data-tab="removed">Removed<span id="badgeRemoved" class="tab-badge muted" style="display:none">0</span></button>
+      <button role="tab" data-tab="config">Config</button>
+    </div>
 
-  <h2>Create/Update Job</h2>
-  <form id="jobForm">
-    <label>Name <input id="jobName" required placeholder="unique name" title="unique job identifier"></label>
-    <label>Type
-      <select id="jobType">
-        <option value="local">local</option>
-        <option value="run">run</option>
-        <option value="exec">exec</option>
-        <option value="compose">compose</option>
-      </select>
-    </label>
-    <label>Schedule <input id="jobSchedule" required placeholder="cron expression" title="cron-like schedule"></label>
-    <label>Command <input id="jobCommand" placeholder="command or arguments" title="command to execute"></label>
-    <label>Image <input id="jobImage" placeholder="docker image" title="image for run jobs"></label>
-    <label>Container <input id="jobContainer" placeholder="target container" title="container name for exec jobs"></label>
-    <label>Compose File <input id="jobFile" placeholder="compose file path" title="docker compose yaml"></label>
-    <label>Service <input id="jobService" placeholder="swarm service" title="service name for compose"></label>
-    <label>Exec <input type="checkbox" id="jobExec" title="compose exec instead of run"></label>
-    <button type="submit">💾</button>
-  </form>
+    <!-- JOBS TAB -->
+    <div id="tab-jobs" class="tab-panel active" role="tabpanel">
+      <div class="overflow-auto">
+        <table id="jobs">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">Name</th>
+              <th scope="col">Schedule</th>
+              <th scope="col">Command</th>
+              <th scope="col">Last Run</th>
+              <th scope="col">Duration</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="historyPanel">
+        <div class="panel-head">
+          <h2>History: <span id="historyJob"></span></h2>
+          <button class="close-btn" onclick="closeHistory()" aria-label="Close history" title="Close">&times;</button>
+        </div>
+        <div class="overflow-auto">
+          <table id="history">
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col">Date</th>
+                <th scope="col">Duration</th>
+                <th scope="col">Error</th>
+                <th scope="col">Output</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-  <h1>Job History for <span id="historyJob"></span></h1>
-  <table id="history">
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Duration</th>
-        <th>Status</th>
-        <th>Error</th>
-        <th>Stdout</th>
-        <th>Stderr</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+    <!-- CREATE/EDIT TAB -->
+    <div id="tab-form" class="tab-panel" role="tabpanel">
+      <div class="form-card">
+        <h2><span id="formTitle">Create Job</span> <span id="editBadge" class="edit-badge" style="display:none"></span></h2>
+        <form id="jobForm">
 
-  <h1>Removed Jobs</h1>
-  <table id="removedJobs">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Type</th>
-        <th>Schedule</th>
-        <th>Command</th>
-        <th>Origin</th>
-        <th>Last Status</th>
-        <th>Run Time</th>
-        <th>Duration</th>
-        <th>Config</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-  <h1>Configuration</h1>
-  <table id="configTable"><tbody></tbody></table>
+          <!-- Section: basics -->
+          <div class="form-section">
+            <div class="form-section-title">Basics</div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="jobName">Name</label>
+                <input id="jobName" required placeholder="my-backup-job">
+                <p class="hint">Unique identifier. Use lowercase with hyphens.</p>
+              </div>
+              <div class="form-field">
+                <label for="jobType">Type</label>
+                <select id="jobType">
+                  <option value="local">local</option>
+                  <option value="run">run</option>
+                  <option value="exec">exec</option>
+                  <option value="compose">compose</option>
+                </select>
+                <p class="hint">How the job executes. Determines which fields appear below.</p>
+              </div>
+            </div>
+            <div id="typeDesc" class="type-desc">Runs a command on the Ofelia host machine.</div>
+          </div>
+
+          <!-- Section: schedule & command -->
+          <div class="form-section">
+            <div class="form-section-title">Schedule &amp; Command</div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="jobSchedule">Schedule</label>
+                <input id="jobSchedule" required placeholder="@every 5m" class="mono">
+                <p class="hint">Cron expression or shorthand: <code>@every 30s</code>, <code>@hourly</code>, <code>0 */2 * * *</code></p>
+              </div>
+              <div class="form-field">
+                <label for="jobCommand">Command</label>
+                <input id="jobCommand" placeholder="echo hello" class="mono">
+                <p class="hint">Shell command or arguments to execute.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: type-specific — run -->
+          <div id="fields-run" class="type-fields">
+            <div class="form-section">
+              <div class="form-section-title">Docker Run Settings</div>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="jobImage">Image</label>
+                  <input id="jobImage" placeholder="alpine:latest">
+                  <p class="hint">Docker image to create a new container from.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: type-specific — exec -->
+          <div id="fields-exec" class="type-fields">
+            <div class="form-section">
+              <div class="form-section-title">Docker Exec Settings</div>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="jobContainer">Container</label>
+                  <input id="jobContainer" placeholder="my-nginx-1">
+                  <p class="hint">Name or ID of an existing running container.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: type-specific — compose -->
+          <div id="fields-compose" class="type-fields">
+            <div class="form-section">
+              <div class="form-section-title">Docker Compose Settings</div>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="jobFile">Compose File</label>
+                  <input id="jobFile" placeholder="/path/to/compose.yml">
+                  <p class="hint">Path to the docker compose YAML file.</p>
+                </div>
+                <div class="form-field">
+                  <label for="jobService">Service</label>
+                  <input id="jobService" placeholder="db">
+                  <p class="hint">Service name defined in the compose file.</p>
+                </div>
+              </div>
+              <div class="form-field" style="margin-top:.3rem">
+                <label><input type="checkbox" id="jobExec" role="switch"> Exec mode</label>
+                <p class="hint">Use <code>docker compose exec</code> instead of <code>run</code> (attaches to running service).</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="formSubmitBtn">Create Job</button>
+            <button type="button" onclick="resetForm()" class="secondary outline">Clear</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- REMOVED TAB -->
+    <div id="tab-removed" class="tab-panel" role="tabpanel">
+      <div class="overflow-auto">
+        <table id="removedJobs">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">Name</th>
+              <th scope="col">Schedule</th>
+              <th scope="col">Command</th>
+              <th scope="col">Last Run</th>
+              <th scope="col">Duration</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="removedEmpty" class="empty" style="display:none">No removed jobs.</p>
+    </div>
+
+    <!-- CONFIG TAB -->
+    <div id="tab-config" class="tab-panel" role="tabpanel">
+      <div class="overflow-auto">
+        <table id="configTable">
+          <thead>
+            <tr>
+              <th scope="col">Key</th>
+              <th scope="col">Value</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
   <script>
+    /* ── Tabs ── */
+    document.querySelectorAll('.tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tabs button').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected','true');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    function switchTab(name) {
+      document.querySelector(`.tabs button[data-tab="${name}"]`).click();
+    }
+
+    /* ── Helpers ── */
     function formatDuration(ns) {
       if (ns === null || ns === undefined || ns === '') return '';
       ns = Number(ns);
-      if (ns >= 3600e9) {
-        const h = Math.floor(ns / 3600e9);
-        const m = Math.floor((ns % 3600e9) / 60e9);
-        return `${h}:${String(m).padStart(2,'0')}h`;
-      }
-      if (ns >= 1e9) return `${(ns / 1e9).toFixed(2)}s`;
-      if (ns >= 1e6) return `${(ns / 1e6).toFixed(2)}ms`;
-      if (ns >= 1e3) return `${(ns / 1e3).toFixed(2)}µs`;
+      if (ns >= 3600e9) { const h = Math.floor(ns / 3600e9); const m = Math.floor((ns % 3600e9) / 60e9); return `${h}:${String(m).padStart(2,'0')}h`; }
+      if (ns >= 1e9) return `${(ns / 1e9).toFixed(1)}s`;
+      if (ns >= 1e6) return `${(ns / 1e6).toFixed(1)}ms`;
+      if (ns >= 1e3) return `${(ns / 1e3).toFixed(0)}µs`;
       return `${ns}ns`;
     }
 
     function formatTime(dateStr) {
       const pref = localStorage.getItem('timezone') || 'local';
-      if (dateStr === null || dateStr === undefined) return 'Invalid Date';
+      if (dateStr === null || dateStr === undefined) return '';
       const str = String(dateStr);
       const dt = new Date(str);
-      if (isNaN(dt)) return 'Invalid Date';
+      if (isNaN(dt)) return '';
       if (pref === 'utc') return dt.toISOString().replace('T',' ').replace('Z','');
       if (pref === 'server') return str.replace('T',' ').replace('Z','');
       return dt.toLocaleString();
     }
 
+    function stripControlChars(s) {
+      if (!s) return '';
+      // Strip Docker stream mux headers (8-byte prefix per frame) and other control chars
+      return s.replace(/[\x00-\x08\x0e-\x1f]/g, '');
+    }
+
+    function statusDot(failed, skipped) {
+      if (failed) return '<span class="dot dot-fail" title="Failed"></span>';
+      if (skipped) return '<span class="dot dot-skip" title="Skipped"></span>';
+      return '<span class="dot dot-ok" title="Success"></span>';
+    }
+
+    /* ── State ── */
     let jobsData = {};
     let editing = null;
+    let selectedJob = null;
     const tzSelect = document.getElementById('timezoneSelect');
     tzSelect.value = localStorage.getItem('timezone') || 'local';
-    tzSelect.addEventListener('change', () => {
-      localStorage.setItem('timezone', tzSelect.value);
-      refresh();
+    tzSelect.addEventListener('change', () => { localStorage.setItem('timezone', tzSelect.value); refresh(); });
+
+    /* ── Theme: auto / light / dark ── */
+    const themeCycle = ['auto', 'light', 'dark'];
+    const themeText = { auto: 'Auto', light: 'Light', dark: 'Dark' };
+    let currentTheme = localStorage.getItem('theme') || 'auto';
+    const themeBtn = document.getElementById('themeBtn');
+
+    function applyTheme(t) {
+      currentTheme = t;
+      localStorage.setItem('theme', t);
+      if (t === 'auto') {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', t);
+      }
+      themeBtn.textContent = themeText[t];
+      themeBtn.title = 'Theme: ' + themeText[t];
+    }
+    themeBtn.addEventListener('click', () => {
+      applyTheme(themeCycle[(themeCycle.indexOf(currentTheme) + 1) % themeCycle.length]);
     });
+    applyTheme(currentTheme);
+
+    /* ── Density: auto / compact / comfortable ── */
+    const densityCycle = ['auto', 'compact', 'comfortable'];
+    const densityText = { auto: 'Auto', compact: 'Compact', comfortable: 'Comfy' };
+    let currentDensity = localStorage.getItem('density') || 'auto';
+    const densityBtn = document.getElementById('densityBtn');
+
+    /* Detect if device prefers comfortable: touch screen, narrow viewport, or prefers-reduced-motion */
+    function systemWantsComfortable() {
+      return window.matchMedia('(pointer: coarse)').matches ||
+             window.matchMedia('(max-width: 600px)').matches ||
+             window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    function applyDensity(d) {
+      currentDensity = d;
+      localStorage.setItem('density', d);
+      const effective = d === 'auto' ? (systemWantsComfortable() ? 'comfortable' : 'compact') : d;
+      document.body.classList.toggle('compact', effective === 'compact');
+      document.documentElement.classList.remove('compact-early');
+      densityBtn.textContent = densityText[d];
+      densityBtn.title = 'Density: ' + densityText[d] + (d === 'auto' ? ' (' + effective + ')' : '');
+    }
+    densityBtn.addEventListener('click', () => {
+      applyDensity(densityCycle[(densityCycle.indexOf(currentDensity) + 1) % densityCycle.length]);
+    });
+    applyDensity(currentDensity);
+    /* Re-evaluate auto density on resize */
+    window.matchMedia('(max-width: 600px)').addEventListener('change', () => {
+      if (currentDensity === 'auto') applyDensity('auto');
+    });
+
+    /* ── Jobs table (merged: active + disabled) ── */
     async function loadJobs() {
-      const resp = await fetch('/api/jobs');
-      const jobs = await resp.json();
+      const [activeResp, disabledResp] = await Promise.all([fetch('/api/jobs'), fetch('/api/jobs/disabled')]);
+      const active = await activeResp.json();
+      const disabled = await disabledResp.json();
       const tbody = document.querySelector('#jobs tbody');
       tbody.innerHTML = '';
       jobsData = {};
-      jobs.forEach(j => {
+
+      const all = [
+        ...active.map(j => ({...j, _disabled: false})),
+        ...disabled.map(j => ({...j, _disabled: true}))
+      ];
+
+      document.getElementById('badgeJobs').textContent = all.length;
+      document.getElementById('jobCount').textContent = `${active.length} active` + (disabled.length ? ` · ${disabled.length} disabled` : '');
+
+      if (all.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">No jobs configured.</td></tr>';
+        return;
+      }
+
+      all.forEach(j => {
         jobsData[j.name] = j;
         const tr = document.createElement('tr');
-        const statusText = j.last_run ? (j.last_run.failed ? 'Failed' : (j.last_run.skipped ? 'Skipped' : 'Success')) : 'never';
-        const symbol = statusText === 'Failed' ? '❌' : statusText === 'Skipped' ? '⏭' : statusText === 'Success' ? '✅' : '–';
-        const status = `${symbol} ${statusText}`;
-        const time = j.last_run ? formatTime(j.last_run.date) : '';
-        const duration = j.last_run ? j.last_run.duration : '';
-        const cfg = `<details><summary>⚙</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
-        tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td class="fixed">${j.schedule}</td><td class="fixed">${j.command}</td>` +
-          `<td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${formatDuration(duration)}</td><td>${cfg}</td>` +
-          `<td><button onclick="runJob('${j.name}')">▶</button>` +
-          `<button onclick="editJob('${j.name}')">✎</button>` +
-          `<button onclick="deleteJob('${j.name}')">🗑</button>` +
-          `<button onclick="disableJob('${j.name}')">⏸</button></td>`;
+        if (j.name === selectedJob) tr.classList.add('selected');
+
+        let dot, lastRun, dur;
+        if (j._disabled) {
+          dot = '<span class="dot dot-disabled" title="Disabled"></span>';
+          lastRun = ''; dur = '';
+        } else if (j.last_run) {
+          dot = statusDot(j.last_run.failed, j.last_run.skipped);
+          lastRun = formatTime(j.last_run.date);
+          dur = formatDuration(j.last_run.duration);
+        } else {
+          dot = '<span class="dot dot-none" title="Never run"></span>';
+          lastRun = ''; dur = '';
+        }
+
+        const name = j._disabled ? `<s style="opacity:.5">${j.name}</s>` : j.name;
+        const sched = j._disabled ? `<s style="opacity:.5">${j.schedule}</s>` : j.schedule;
+
+        let actions;
+        if (j._disabled) {
+          actions = `<div class="actions">` +
+            `<button onclick="event.stopPropagation();enableJob('${j.name}')" aria-label="Enable ${j.name}" title="Enable">&#x23EF;</button>` +
+            `<button onclick="event.stopPropagation();editJob('${j.name}')" aria-label="Edit ${j.name}" title="Edit">&#x270E;</button>` +
+            `</div>`;
+        } else {
+          actions = `<div class="actions">` +
+            `<button onclick="event.stopPropagation();runJob('${j.name}')" aria-label="Run ${j.name}" title="Run">&#x25B6;</button>` +
+            `<button onclick="event.stopPropagation();editJob('${j.name}')" aria-label="Edit ${j.name}" title="Edit">&#x270E;</button>` +
+            `<button onclick="event.stopPropagation();disableJob('${j.name}')" aria-label="Disable ${j.name}" title="Disable">&#x23F8;</button>` +
+            `<button class="secondary outline" onclick="event.stopPropagation();deleteJob('${j.name}')" aria-label="Delete ${j.name}" title="Delete">&#x1F5D1;</button>` +
+            `</div>`;
+        }
+
+        tr.innerHTML = `<td>${dot}</td><td>${name}</td><td class="mono">${sched}</td><td class="mono wrap">${j.command}</td>` +
+          `<td>${lastRun}</td><td>${dur}</td><td>${actions}</td>`;
+        tr.style.cursor = 'pointer';
         tr.addEventListener('click', () => loadHistory(j.name));
         tbody.appendChild(tr);
       });
     }
 
-    async function loadDisabled() {
-      const resp = await fetch('/api/jobs/disabled');
-      const jobs = await resp.json();
-      const tbody = document.querySelector('#disabledJobs tbody');
-      tbody.innerHTML = '';
-      jobs.forEach(j => {
-        const tr = document.createElement('tr');
-        const cfg = `<details><summary>⚙</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
-        tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td class="fixed">${j.schedule}</td><td class="fixed">${j.command}</td><td>${j.origin}</td><td>${cfg}</td>` +
-          `<td><button onclick="enableJob('${j.name}')">⏯</button></td>`;
-        tbody.appendChild(tr);
-      });
-    }
-
+    /* ── History ── */
     async function loadHistory(name) {
+      selectedJob = name;
       document.getElementById('historyJob').textContent = name;
+      const panel = document.getElementById('historyPanel');
+      panel.classList.add('visible');
+      // Highlight selected row
+      document.querySelectorAll('#jobs tbody tr').forEach(r => r.classList.remove('selected'));
+      const rows = document.querySelectorAll('#jobs tbody tr');
+      rows.forEach(r => { if (r.children[1]?.textContent === name) r.classList.add('selected'); });
+
       const resp = await fetch(`/api/jobs/${name}/history`);
       const hist = await resp.json();
       const tbody = document.querySelector('#history tbody');
       tbody.innerHTML = '';
+      if (hist.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty">No history yet.</td></tr>';
+        return;
+      }
       hist.forEach(e => {
         const row = document.createElement('tr');
-        const statusText = e.failed ? 'Failed' : (e.skipped ? 'Skipped' : 'Success');
-        const symbol = statusText === 'Failed' ? '❌' : statusText === 'Skipped' ? '⏭' : '✅';
-        const status = `${symbol} ${statusText}`;
-        const time = formatTime(e.date);
-        const err = e.error ? e.error : '';
-        row.innerHTML = `<td>${time}</td><td>${formatDuration(e.duration)}</td><td>${status}</td>` +
-          `<td>${err}</td>` +
-          `<td><details><summary>stdout</summary><pre>${e.stdout}</pre></details></td>` +
-          `<td><details><summary>stderr</summary><pre>${e.stderr}</pre></details></td>`;
+        const dot = statusDot(e.failed, e.skipped);
+        const err = e.error || '';
+        const stdout = stripControlChars(e.stdout);
+        const stderr = stripControlChars(e.stderr);
+        const hasOut = stdout || stderr;
+        const output = hasOut ?
+          `<details><summary>view</summary><pre>${stdout}</pre>` +
+          (stderr ? `<pre style="color:var(--pico-del-color)">${stderr}</pre>` : '') + `</details>` : '';
+        row.innerHTML = `<td>${dot}</td><td>${formatTime(e.date)}</td><td>${formatDuration(e.duration)}</td>` +
+          `<td class="wrap">${err}</td><td>${output}</td>`;
         tbody.appendChild(row);
       });
     }
+
+    function closeHistory() {
+      selectedJob = null;
+      document.getElementById('historyPanel').classList.remove('visible');
+      document.querySelectorAll('#jobs tbody tr').forEach(r => r.classList.remove('selected'));
+    }
+
+    /* ── Removed ── */
     async function loadRemoved() {
       const resp = await fetch('/api/jobs/removed');
       const jobs = await resp.json();
       const tbody = document.querySelector('#removedJobs tbody');
+      const badge = document.getElementById('badgeRemoved');
+      const empty = document.getElementById('removedEmpty');
       tbody.innerHTML = '';
+
+      if (jobs.length === 0) {
+        badge.style.display = 'none';
+        empty.style.display = '';
+        return;
+      }
+      badge.textContent = jobs.length;
+      badge.style.display = '';
+      empty.style.display = 'none';
+
       jobs.forEach(j => {
         const tr = document.createElement('tr');
-        const statusText = j.last_run ? (j.last_run.failed ? 'Failed' : (j.last_run.skipped ? 'Skipped' : 'Success')) : 'never';
-        const symbol = statusText === 'Failed' ? '❌' : statusText === 'Skipped' ? '⏭' : statusText === 'Success' ? '✅' : '–';
-        const status = `${symbol} ${statusText}`;
-        const time = j.last_run ? formatTime(j.last_run.date) : '';
-        const duration = j.last_run ? j.last_run.duration : '';
-        const cfg = `<details><summary>⚙</summary><pre>${JSON.stringify(j.config, null, 2)}</pre></details>`;
-        tr.innerHTML = `<td>${j.name}</td><td>${j.type}</td><td class="fixed">${j.schedule}</td><td class="fixed">${j.command}</td><td>${j.origin}</td><td>${status}</td><td>${time}</td><td>${formatDuration(duration)}</td><td>${cfg}</td>`;
+        let dot, lastRun, dur;
+        if (j.last_run) {
+          dot = statusDot(j.last_run.failed, j.last_run.skipped);
+          lastRun = formatTime(j.last_run.date);
+          dur = formatDuration(j.last_run.duration);
+        } else {
+          dot = '<span class="dot dot-none"></span>';
+          lastRun = ''; dur = '';
+        }
+        tr.innerHTML = `<td>${dot}</td><td>${j.name}</td><td class="mono">${j.schedule}</td><td class="mono wrap">${j.command}</td><td>${lastRun}</td><td>${dur}</td>`;
         tbody.appendChild(tr);
       });
     }
+
+    /* ── Config ── */
     function renderConfigTable(cfg) {
       const tbody = document.querySelector('#configTable tbody');
       tbody.innerHTML = '';
       function addRow(k, v) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${k}</td><td>${v}</td>`;
+        tr.innerHTML = `<td class="mono">${k}</td><td>${v}</td>`;
         tbody.appendChild(tr);
       }
-      function traverse(o, prefix = '') {
+      function traverse(o, prefix) {
         for (const [k, v] of Object.entries(o)) {
-          if (['ExecJobs', 'RunJobs', 'LabelRunJobs', 'ServiceJobs', 'LocalJobs'].includes(k)) continue;
+          if (['ExecJobs','RunJobs','LabelRunJobs','ServiceJobs','LocalJobs'].includes(k)) continue;
           if (v === null || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0)) continue;
-          if (typeof v === 'object' && !Array.isArray(v)) {
-            traverse(v, prefix + k + '.');
-          } else {
-            addRow(prefix + k, v);
-          }
+          if (typeof v === 'object' && !Array.isArray(v)) { traverse(v, prefix + k + '.'); }
+          else { addRow(prefix + k, v); }
         }
       }
-      traverse(cfg);
+      traverse(cfg, '');
     }
 
     async function loadConfig() {
@@ -248,21 +655,61 @@
       renderConfigTable(cfg);
     }
 
+    /* ── Actions ── */
     async function runJob(name) {
-      await fetch('/api/jobs/run', {method: 'POST', body: JSON.stringify({name}), headers: {'Content-Type': 'application/json'}});
+      await fetch('/api/jobs/run', {method:'POST', body:JSON.stringify({name}), headers:{'Content-Type':'application/json'}});
       refresh();
     }
-
     async function disableJob(name) {
-      await fetch('/api/jobs/disable', {method: 'POST', body: JSON.stringify({name}), headers: {'Content-Type': 'application/json'}});
+      await fetch('/api/jobs/disable', {method:'POST', body:JSON.stringify({name}), headers:{'Content-Type':'application/json'}});
       refresh();
     }
-
     async function enableJob(name) {
-      await fetch('/api/jobs/enable', {method: 'POST', body: JSON.stringify({name}), headers: {'Content-Type': 'application/json'}});
+      await fetch('/api/jobs/enable', {method:'POST', body:JSON.stringify({name}), headers:{'Content-Type':'application/json'}});
+      refresh();
+    }
+    async function deleteJob(name) {
+      await fetch('/api/jobs/delete', {method:'POST', body:JSON.stringify({name}), headers:{'Content-Type':'application/json','X-Origin':'web'}});
       refresh();
     }
 
+    /* ── Form: type descriptions ── */
+    const typeDescriptions = {
+      local: 'Runs a command directly on the Ofelia host machine.',
+      run: 'Creates a new Docker container from an image, runs the command, then removes the container.',
+      exec: 'Runs the command inside an already running Docker container.',
+      compose: 'Runs the command via Docker Compose against a service defined in a compose file.'
+    };
+
+    /* ── Form: type-specific field visibility ── */
+    function updateTypeFields() {
+      const type = document.getElementById('jobType').value;
+      document.querySelectorAll('.type-fields').forEach(el => el.classList.remove('visible'));
+      const panel = document.getElementById('fields-' + type);
+      if (panel) panel.classList.add('visible');
+      document.getElementById('typeDesc').textContent = typeDescriptions[type] || '';
+    }
+    document.getElementById('jobType').addEventListener('change', updateTypeFields);
+    updateTypeFields();
+
+    /* ── Form: update title/button for create vs edit ── */
+    function updateFormChrome() {
+      const title = document.getElementById('formTitle');
+      const badge = document.getElementById('editBadge');
+      const btn = document.getElementById('formSubmitBtn');
+      if (editing) {
+        title.textContent = 'Edit Job';
+        badge.textContent = editing;
+        badge.style.display = '';
+        btn.textContent = 'Update Job';
+      } else {
+        title.textContent = 'Create Job';
+        badge.style.display = 'none';
+        btn.textContent = 'Create Job';
+      }
+    }
+
+    /* ── Form: submit ── */
     document.getElementById('jobForm').addEventListener('submit', async e => {
       e.preventDefault();
       const name = document.getElementById('jobName').value;
@@ -273,10 +720,13 @@
       const container = document.getElementById('jobContainer').value;
       const file = document.getElementById('jobFile').value;
       const service = document.getElementById('jobService').value;
-      const exec = document.getElementById('jobExec').checked;
+      const execEl = document.getElementById('jobExec');
+      const exec = execEl ? execEl.checked : false;
       const url = editing === name ? '/api/jobs/update' : '/api/jobs/create';
-      await fetch(url, {method: 'POST', body: JSON.stringify({name, type, schedule, command, image, container, file, service, exec}), headers: {'Content-Type': 'application/json','X-Origin':'web'}});
+      await fetch(url, {method:'POST', body:JSON.stringify({name,type,schedule,command,image,container,file,service,exec}), headers:{'Content-Type':'application/json','X-Origin':'web'}});
       editing = null;
+      resetForm();
+      switchTab('jobs');
       refresh();
     });
 
@@ -285,31 +735,50 @@
       if (!j) return;
       document.getElementById('jobName').value = j.name;
       const typeSel = document.getElementById('jobType');
-      const opts = Array.from(typeSel.options).map(o => o.value);
-      typeSel.value = opts.includes(j.type) ? j.type : 'local';
+      typeSel.value = Array.from(typeSel.options).map(o=>o.value).includes(j.type) ? j.type : 'local';
       document.getElementById('jobSchedule').value = j.schedule;
       document.getElementById('jobCommand').value = j.command;
       document.getElementById('jobImage').value = j.config.image || '';
       document.getElementById('jobContainer').value = j.config.container || '';
       document.getElementById('jobFile').value = j.config.file || '';
       document.getElementById('jobService').value = j.config.service || '';
-      document.getElementById('jobExec').checked = j.config.exec || false;
+      const execEl = document.getElementById('jobExec');
+      if (execEl) execEl.checked = j.config.exec || false;
       editing = name;
+      updateFormChrome();
+      updateTypeFields();
+      switchTab('form');
     }
 
-    async function deleteJob(name) {
-      await fetch('/api/jobs/delete', {method: 'POST', body: JSON.stringify({name}), headers: {'Content-Type': 'application/json','X-Origin':'web'}});
-      refresh();
+    function resetForm() {
+      document.getElementById('jobForm').reset();
+      editing = null;
+      updateFormChrome();
+      updateTypeFields();
     }
 
+    /* ── Refresh ── */
     function refresh() {
-      loadJobs();
-      loadDisabled();
-      loadRemoved();
-      loadConfig();
+      loadJobs(); loadRemoved(); loadConfig();
+      if (selectedJob) loadHistory(selectedJob);
     }
     refresh();
     setInterval(refresh, 5000);
   </script>
+
+  <footer class="container">
+    <div class="footer-inner">
+      <span>&copy; Netresearch DTT GmbH &middot; MIT License &middot; Originally by M&aacute;ximo Cuadros</span>
+      <div class="footer-links">
+        <a href="https://github.com/netresearch/ofelia" target="_blank" rel="noopener">GitHub</a>
+        <span class="sep">&middot;</span>
+        <a href="https://github.com/netresearch/ofelia/issues" target="_blank" rel="noopener">Issues</a>
+        <span class="sep">&middot;</span>
+        <a href="https://github.com/netresearch/ofelia/discussions" target="_blank" rel="noopener">Discussions</a>
+        <span class="sep">&middot;</span>
+        <a href="https://github.com/netresearch/ofelia/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>
