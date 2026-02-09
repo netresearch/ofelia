@@ -675,7 +675,7 @@ email-to = critical-alerts@example.com
 
 **Important Notes:**
 
-- Boolean fields (`email-only-on-error`, `slack-only-on-error`) are NOT inherited due to Go's zero-value semantics (cannot distinguish "not set" from "explicitly false")
+- Boolean fields (`email-only-on-error`, `slack-only-on-error`, `save-only-on-error`) are fully inherited from global config and can be overridden per-job in both directions (global true + job false, or global false + job true)
 - Job-level settings always take precedence over global settings when explicitly set
 - To enable notifications for a job, at minimum specify `email-to` or `slack-webhook` at either global or job level
 

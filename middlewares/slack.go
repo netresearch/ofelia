@@ -21,7 +21,7 @@ var (
 // SlackConfig configuration for the Slack middleware
 type SlackConfig struct {
 	SlackWebhook     string `gcfg:"slack-webhook" mapstructure:"slack-webhook" json:"-"`
-	SlackOnlyOnError bool   `gcfg:"slack-only-on-error" mapstructure:"slack-only-on-error"`
+	SlackOnlyOnError *bool  `gcfg:"slack-only-on-error" mapstructure:"slack-only-on-error"`
 	// Dedup is the notification deduplicator (set by config loader, not INI)
 	Dedup *NotificationDedup `mapstructure:"-" json:"-"`
 }
@@ -69,7 +69,7 @@ func (m *Slack) Run(ctx *core.Context) error {
 	err := ctx.Next()
 	ctx.Stop(err)
 
-	shouldNotify := ctx.Execution.Failed || !m.SlackOnlyOnError
+	shouldNotify := ctx.Execution.Failed || !boolVal(m.SlackOnlyOnError)
 	if shouldNotify {
 		// Check deduplication - suppress duplicate error notifications
 		if m.Dedup != nil && ctx.Execution.Failed && !m.Dedup.ShouldNotify(ctx) {

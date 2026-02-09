@@ -83,7 +83,7 @@ func TestSaveRunSuccessOnError(t *testing.T) {
 	job.Name = testNameFoo
 	ctx.Execution.Date = time.Time{}
 
-	m := NewSave(&SaveConfig{SaveFolder: dir, SaveOnlyOnError: true})
+	m := NewSave(&SaveConfig{SaveFolder: dir, SaveOnlyOnError: BoolPtr(true)})
 	require.NoError(t, m.Run(ctx))
 
 	_, err := os.Stat(filepath.Join(dir, "00010101_000000_"+testNameFoo+".json"))

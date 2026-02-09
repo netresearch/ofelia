@@ -18,7 +18,7 @@ type SaveConfig struct {
 	SaveFolder string `gcfg:"save-folder" mapstructure:"save-folder"`
 	// SaveOnlyOnError when true, only saves execution logs when a job fails.
 	// Defaults to false (saves all executions).
-	SaveOnlyOnError bool `gcfg:"save-only-on-error" mapstructure:"save-only-on-error"`
+	SaveOnlyOnError *bool `gcfg:"save-only-on-error" mapstructure:"save-only-on-error"`
 	// RestoreHistory controls whether previously saved execution history is restored on startup.
 	// When nil (default), history restoration is enabled if SaveFolder is configured.
 	// Set explicitly to false to disable restoration even when SaveFolder is set.
@@ -73,7 +73,7 @@ func (m *Save) Run(ctx *core.Context) error {
 	err := ctx.Next()
 	ctx.Stop(err)
 
-	if ctx.Execution.Failed || !m.SaveOnlyOnError {
+	if ctx.Execution.Failed || !boolVal(m.SaveOnlyOnError) {
 		err := m.saveToDisk(ctx)
 		if err != nil {
 			ctx.Logger.Errorf("Save error: %q", err)

@@ -443,7 +443,8 @@ func TestIniConfigUpdateGlobalChange(t *testing.T) {
 	ms := cfg.sh.Middlewares()
 	assert.Len(t, ms, 1)
 	saveMw := ms[0].(*middlewares.Save)
-	assert.False(t, saveMw.SaveOnlyOnError)
+	require.NotNil(t, saveMw.SaveOnlyOnError)
+	assert.False(t, *saveMw.SaveOnlyOnError)
 	assert.Equal(t, logrus.InfoLevel, logrus.GetLevel())
 
 	oldTime := cfg.configModTime
@@ -459,7 +460,8 @@ func TestIniConfigUpdateGlobalChange(t *testing.T) {
 	ms = cfg.sh.Middlewares()
 	assert.Len(t, ms, 1)
 	saveMw = ms[0].(*middlewares.Save)
-	assert.True(t, saveMw.SaveOnlyOnError)
+	require.NotNil(t, saveMw.SaveOnlyOnError)
+	assert.True(t, *saveMw.SaveOnlyOnError)
 	assert.Equal(t, logrus.DebugLevel, logrus.GetLevel())
 }
 
