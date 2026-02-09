@@ -47,11 +47,12 @@
 
     /* Status dot */
     .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
-    .dot-ok { background: #2a9d2a; }
-    .dot-fail { background: #d32f2f; }
-    .dot-skip { background: #f9a825; }
+    .dot-ok { background: var(--pico-ins-color); }
+    .dot-fail { background: var(--pico-del-color); }
+    .dot-skip { background: var(--pico-mark-background-color); }
     .dot-none { background: var(--pico-muted-color); }
     .dot-disabled { background: var(--pico-muted-color); opacity: .5; }
+    .disabled-text { opacity: .5; }
 
     /* Form */
     .form-card { max-width: 42rem; }
@@ -217,7 +218,7 @@
       <div id="historyPanel">
         <div class="panel-head">
           <h2>History: <span id="historyJob"></span></h2>
-          <button class="close-btn" onclick="closeHistory()" aria-label="Close history" title="Close">&times;</button>
+          <button class="close-btn" id="closeHistoryBtn" aria-label="Close history" title="Close">&times;</button>
         </div>
         <div class="overflow-auto">
           <table id="history">
@@ -335,7 +336,7 @@
 
           <div class="form-actions">
             <button type="submit" id="formSubmitBtn">Create Job</button>
-            <button type="button" onclick="resetForm()" class="secondary outline">Clear</button>
+            <button type="button" id="formClearBtn" class="secondary outline">Clear</button>
           </div>
         </form>
       </div>
@@ -419,6 +420,12 @@
       if (!s) return '';
       // Strip Docker stream mux headers (8-byte prefix per frame) and other control chars
       return s.replace(/[\x00-\x08\x0e-\x1f]/g, '');
+    }
+
+    function escapeHtml(str) {
+      if (!str && str !== 0) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function statusDot(failed, skipped) {
@@ -513,6 +520,7 @@
       all.forEach(j => {
         jobsData[j.name] = j;
         const tr = document.createElement('tr');
+        tr.dataset.jobName = j.name;
         if (j.name === selectedJob) tr.classList.add('selected');
 
         let dot, lastRun, dur;
@@ -528,28 +536,29 @@
           lastRun = ''; dur = '';
         }
 
-        const name = j._disabled ? `<s style="opacity:.5">${j.name}</s>` : j.name;
-        const sched = j._disabled ? `<s style="opacity:.5">${j.schedule}</s>` : j.schedule;
+        const eName = escapeHtml(j.name);
+        const name = j._disabled ? `<s class="disabled-text">${eName}</s>` : eName;
+        const eSched = escapeHtml(j.schedule);
+        const sched = j._disabled ? `<s class="disabled-text">${eSched}</s>` : eSched;
+        const eCmd = escapeHtml(j.command);
 
         let actions;
         if (j._disabled) {
           actions = `<div class="actions">` +
-            `<button onclick="event.stopPropagation();enableJob('${j.name}')" aria-label="Enable ${j.name}" title="Enable">&#x23EF;</button>` +
-            `<button onclick="event.stopPropagation();editJob('${j.name}')" aria-label="Edit ${j.name}" title="Edit">&#x270E;</button>` +
+            `<button data-action="enable" data-job="${eName}" aria-label="Enable ${eName}" title="Enable">&#x23EF;</button>` +
+            `<button data-action="edit" data-job="${eName}" aria-label="Edit ${eName}" title="Edit">&#x270E;</button>` +
             `</div>`;
         } else {
           actions = `<div class="actions">` +
-            `<button onclick="event.stopPropagation();runJob('${j.name}')" aria-label="Run ${j.name}" title="Run">&#x25B6;</button>` +
-            `<button onclick="event.stopPropagation();editJob('${j.name}')" aria-label="Edit ${j.name}" title="Edit">&#x270E;</button>` +
-            `<button onclick="event.stopPropagation();disableJob('${j.name}')" aria-label="Disable ${j.name}" title="Disable">&#x23F8;</button>` +
-            `<button class="secondary outline" onclick="event.stopPropagation();deleteJob('${j.name}')" aria-label="Delete ${j.name}" title="Delete">&#x1F5D1;</button>` +
+            `<button data-action="run" data-job="${eName}" aria-label="Run ${eName}" title="Run">&#x25B6;</button>` +
+            `<button data-action="edit" data-job="${eName}" aria-label="Edit ${eName}" title="Edit">&#x270E;</button>` +
+            `<button data-action="disable" data-job="${eName}" aria-label="Disable ${eName}" title="Disable">&#x23F8;</button>` +
+            `<button class="secondary outline" data-action="delete" data-job="${eName}" aria-label="Delete ${eName}" title="Delete">&#x1F5D1;</button>` +
             `</div>`;
         }
 
-        tr.innerHTML = `<td>${dot}</td><td>${name}</td><td class="mono">${sched}</td><td class="mono wrap">${j.command}</td>` +
+        tr.innerHTML = `<td>${dot}</td><td>${name}</td><td class="mono">${sched}</td><td class="mono wrap">${eCmd}</td>` +
           `<td>${lastRun}</td><td>${dur}</td><td>${actions}</td>`;
-        tr.style.cursor = 'pointer';
-        tr.addEventListener('click', () => loadHistory(j.name));
         tbody.appendChild(tr);
       });
     }
@@ -561,9 +570,9 @@
       const panel = document.getElementById('historyPanel');
       panel.classList.add('visible');
       // Highlight selected row
-      document.querySelectorAll('#jobs tbody tr').forEach(r => r.classList.remove('selected'));
-      const rows = document.querySelectorAll('#jobs tbody tr');
-      rows.forEach(r => { if (r.children[1]?.textContent === name) r.classList.add('selected'); });
+      document.querySelectorAll('#jobs tbody tr').forEach(r => {
+        r.classList.toggle('selected', r.dataset.jobName === name);
+      });
 
       const resp = await fetch(`/api/jobs/${name}/history`);
       const hist = await resp.json();
@@ -576,9 +585,9 @@
       hist.forEach(e => {
         const row = document.createElement('tr');
         const dot = statusDot(e.failed, e.skipped);
-        const err = e.error || '';
-        const stdout = stripControlChars(e.stdout);
-        const stderr = stripControlChars(e.stderr);
+        const err = escapeHtml(e.error || '');
+        const stdout = escapeHtml(stripControlChars(e.stdout));
+        const stderr = escapeHtml(stripControlChars(e.stderr));
         const hasOut = stdout || stderr;
         const output = hasOut ?
           `<details><summary>view</summary><pre>${stdout}</pre>` +
@@ -624,7 +633,7 @@
           dot = '<span class="dot dot-none"></span>';
           lastRun = ''; dur = '';
         }
-        tr.innerHTML = `<td>${dot}</td><td>${j.name}</td><td class="mono">${j.schedule}</td><td class="mono wrap">${j.command}</td><td>${lastRun}</td><td>${dur}</td>`;
+        tr.innerHTML = `<td>${dot}</td><td>${escapeHtml(j.name)}</td><td class="mono">${escapeHtml(j.schedule)}</td><td class="mono wrap">${escapeHtml(j.command)}</td><td>${lastRun}</td><td>${dur}</td>`;
         tbody.appendChild(tr);
       });
     }
@@ -635,7 +644,7 @@
       tbody.innerHTML = '';
       function addRow(k, v) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td class="mono">${k}</td><td>${v}</td>`;
+        tr.innerHTML = `<td class="mono">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td>`;
         tbody.appendChild(tr);
       }
       function traverse(o, prefix) {
@@ -756,6 +765,25 @@
       updateFormChrome();
       updateTypeFields();
     }
+
+    /* ── Event delegation for jobs table ── */
+    document.querySelector('#jobs tbody').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (btn) {
+        const action = btn.dataset.action;
+        const name = btn.dataset.job;
+        if (action === 'run') runJob(name);
+        else if (action === 'edit') editJob(name);
+        else if (action === 'disable') disableJob(name);
+        else if (action === 'delete') deleteJob(name);
+        else if (action === 'enable') enableJob(name);
+        return;
+      }
+      const tr = e.target.closest('tr[data-job-name]');
+      if (tr) loadHistory(tr.dataset.jobName);
+    });
+    document.getElementById('closeHistoryBtn').addEventListener('click', closeHistory);
+    document.getElementById('formClearBtn').addEventListener('click', resetForm);
 
     /* ── Refresh ── */
     function refresh() {
