@@ -19,6 +19,17 @@ This file explains repo‑wide conventions and where to find scoped rules.
 - Full lint check: `make lint`
 - Security check: `make security-check`
 
+## Go JSON serialization
+- Struct fields with explicit `json` tags use the tag name (e.g., `json:"lastRun"` → `lastRun`)
+- Struct fields **without** `json` tags serialize as the Go field name (capitalized: `Image`, `Container`)
+- Always `grep 'json:"' web/server.go` before writing frontend code that reads API responses
+- `apiJob.Config` is `json.RawMessage` from `json.Marshal(job)` — core structs lack json tags, so keys are capitalized
+
+## CI & merge workflow
+- ~27 CI checks: golangci-lint (140-char line limit), CodeQL, Trivy, mutation, unit/integration/fuzz
+- Repo uses **GitHub merge queue** — `gh pr merge --delete-branch` is NOT supported
+- Automated reviewers: github-actions (auto-approve), gemini-code-assist, Copilot (both COMMENTED — check all)
+
 ## Index of scoped AGENTS.md
 - `./cli/AGENTS.md` — command-line interface and configuration
 - `./core/AGENTS.md` — core business logic and scheduling
