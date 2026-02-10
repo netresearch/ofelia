@@ -36,7 +36,7 @@
 - Semantic color vars: `--pico-ins-color` (green), `--pico-del-color` (red), `--pico-mark-background-color` (yellow)
 - All user data must be escaped via `escapeHtml()` before innerHTML insertion
 - Use `data-*` attributes + event delegation, not inline `onclick`
-- Docker stdout has 8-byte stream mux headers — strip with `stripControlChars()`
+- Docker logs may contain ASCII control characters — clean them in the UI with `stripControlChars()`; stdout/stderr stream demuxing is handled server-side via `stdcopy.StdCopy` in the Docker adapter.
 
 ## CSP headers (`middleware.go`)
 - `script-src 'self' 'unsafe-inline'` — inline scripts in index.html
