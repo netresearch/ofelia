@@ -25,7 +25,7 @@ type MailConfig struct {
 	EmailTo           string `gcfg:"email-to" mapstructure:"email-to"`
 	EmailFrom         string `gcfg:"email-from" mapstructure:"email-from"`
 	EmailSubject      string `gcfg:"email-subject" mapstructure:"email-subject"`
-	MailOnlyOnError   bool   `gcfg:"mail-only-on-error" mapstructure:"mail-only-on-error"`
+	MailOnlyOnError   *bool  `gcfg:"mail-only-on-error" mapstructure:"mail-only-on-error"`
 	// Dedup is the notification deduplicator (set by config loader, not INI)
 	Dedup *NotificationDedup `mapstructure:"-" json:"-"`
 
@@ -70,7 +70,7 @@ func (m *Mail) Run(ctx *core.Context) error {
 	err := ctx.Next()
 	ctx.Stop(err)
 
-	if !(ctx.Execution.Failed || !m.MailOnlyOnError) {
+	if !(ctx.Execution.Failed || !boolVal(m.MailOnlyOnError)) {
 		return err
 	}
 	// Check deduplication - suppress duplicate error notifications

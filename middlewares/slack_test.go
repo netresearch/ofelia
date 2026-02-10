@@ -67,7 +67,7 @@ func TestSlackRunSuccessOnError(t *testing.T) {
 	ctx.Start()
 	ctx.Stop(nil)
 
-	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL, SlackOnlyOnError: true})
+	m := NewSlack(&SlackConfig{SlackWebhook: ts.URL, SlackOnlyOnError: BoolPtr(true)})
 	require.NoError(t, m.Run(ctx))
 }
 

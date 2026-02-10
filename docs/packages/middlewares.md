@@ -36,7 +36,7 @@ type MailConfig struct {
     SMTPTLSSkipVerify bool
     EmailTo           string
     EmailFrom         string
-    MailOnlyOnError   bool
+    MailOnlyOnError   *bool
 }
 ```
 
@@ -75,7 +75,7 @@ Slack webhook integration for job notifications.
 ```go
 type SlackConfig struct {
     SlackWebhook     string
-    SlackOnlyOnError bool
+    SlackOnlyOnError *bool
 }
 ```
 
@@ -121,7 +121,7 @@ Output persistence middleware for saving execution logs to disk.
 ```go
 type SaveConfig struct {
     SaveFolder      string
-    SaveOnlyOnError bool
+    SaveOnlyOnError *bool
 }
 ```
 
@@ -421,7 +421,7 @@ import (
 func TestSaveMiddleware(t *testing.T) {
     config := &middlewares.SaveConfig{
         SaveFolder:      t.TempDir(),
-        SaveOnlyOnError: false,
+        SaveOnlyOnError: middlewares.BoolPtr(false),
     }
 
     middleware := middlewares.NewSave(config)
