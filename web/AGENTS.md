@@ -29,12 +29,26 @@
 - Context propagation through request lifecycle
 - Graceful shutdown handling with proper cleanup
 
+## Web UI (`static/ui/index.html`)
+- Single-page app using **Pico CSS v2** (classless/semantic, auto dark mode)
+- Served via `//go:embed ui/*` in `static/static.go` — new files auto-included
+- Pico dark mode: `data-theme` must be **absent** for auto (NOT set to `"auto"`)
+- Semantic color vars: `--pico-ins-color` (green), `--pico-del-color` (red), `--pico-mark-background-color` (yellow)
+- All user data must be escaped via `escapeHtml()` before innerHTML insertion
+- Use `data-*` attributes + event delegation, not inline `onclick`
+- Docker stdout has 8-byte stream mux headers — strip with `stripControlChars()`
+
+## CSP headers (`middleware.go`)
+- `script-src 'self' 'unsafe-inline'` — inline scripts in index.html
+- `style-src 'self' 'unsafe-inline'` — inline styles in index.html
+- `img-src 'self' data:` — required for Pico CSS inline SVG data URIs
+
 ## Security & safety
 - JWT tokens: use secure signing, proper expiration, rotation
 - Authentication: never log credentials, use secure headers
 - CORS: configure appropriately for production
 - Rate limiting: implement to prevent abuse
-- Input validation: sanitize all user inputs
+- Input validation: sanitize all user inputs; escape HTML for web UI
 - HTTPS: enforce in production environments
 - Session management: secure cookie settings
 
