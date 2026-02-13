@@ -131,7 +131,8 @@ func (m *mockDockerProvider) Close() error {
 
 type mockDockerLabelsUpdate struct{}
 
-func (m *mockDockerLabelsUpdate) dockerLabelsUpdate(labels map[DockerContainerInfo]map[string]string) {}
+func (m *mockDockerLabelsUpdate) dockerLabelsUpdate(labels map[DockerContainerInfo]map[string]string) {
+}
 
 func getAvailableAddress() string {
 	listener, err := net.Listen("tcp", ":0")
