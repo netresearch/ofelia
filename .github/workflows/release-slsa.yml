@@ -246,6 +246,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      - name: Download release binaries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p bin
+          for suffix in linux-386 linux-amd64 linux-arm64 linux-armv6 linux-armv7; do
+            gh release download "$VERSION" --pattern "ofelia-${suffix}" --dir bin
+            chmod +x "bin/ofelia-${suffix}"
+          done
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
 
@@ -291,8 +302,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           platforms: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
-          build-args: |
-            CGO_ENABLED=0
           provenance: true
           sbom: true
 

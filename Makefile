@@ -239,7 +239,11 @@ precommit: dev-check
 
 .PHONY: docker-build
 docker-build:
-	@docker build -t $(PROJECT):$(PKG_TAG) .
+	@mkdir -p bin
+	CGO_ENABLED=0 GOOS=linux GOARCH=$$(go env GOARCH) go build -trimpath \
+		-ldflags="-s -w -X main.version=dev -X main.build=$$(git rev-parse --short HEAD)" \
+		-o bin/ofelia-linux-$$(go env GOARCH) .
+	docker build -t $(PROJECT):$(PKG_TAG) .
 
 .PHONY: docker-run
 docker-run: docker-build

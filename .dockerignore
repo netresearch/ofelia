@@ -5,11 +5,21 @@
 # CI
 .github/
 
+# Go source (binary is pre-built)
+*.go
+go.mod
+go.sum
+cli/
+config/
+core/
+logging/
+metrics/
+middlewares/
+web/
+
 # Go build cache and artifacts
 **/*.out
 **/*.test
-bin/
-build/
 coverage.out
 
 # Node/UI (if any)
@@ -19,6 +29,20 @@ dist/
 # Editor
 .vscode/
 .idea/
+
+# Docs/config
+docs/
+.slsa-goreleaser/
+.gremlins*.yaml
+.golangci.yml
+.hadolint.yaml
+lefthook.yml
+Makefile
+LICENSE
+README.md
+AGENTS.md
+SECURITY.md
+CHANGELOG.md
 
 # Misc
 .DS_Store
