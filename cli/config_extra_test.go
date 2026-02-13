@@ -81,8 +81,12 @@ func TestDockerLabelsUpdateExecJobs(t *testing.T) {
 	cfg.ExecJobs = make(map[string]*ExecJobConfig)
 
 	// 1) Addition of new job
-	labelsAdd := map[string]map[string]string{
-		"container1": {
+	container1Info := DockerContainerInfo{
+		Name:    "container1",
+		Running: true,
+	}
+	labelsAdd := map[DockerContainerInfo]map[string]string{
+		container1Info: {
 			labelPrefix + ".job-exec.foo.schedule": "@every 5s",
 			labelPrefix + ".job-exec.foo.command":  "echo foo",
 		},
@@ -100,8 +104,8 @@ func TestDockerLabelsUpdateExecJobs(t *testing.T) {
 	assert.Len(t, entries, 1)
 
 	// 2) Change schedule (should restart job)
-	labelsChange := map[string]map[string]string{
-		"container1": {
+	labelsChange := map[DockerContainerInfo]map[string]string{
+		container1Info: {
 			labelPrefix + ".job-exec.foo.schedule": "@every 10s",
 			labelPrefix + ".job-exec.foo.command":  "echo foo",
 		},
@@ -114,7 +118,7 @@ func TestDockerLabelsUpdateExecJobs(t *testing.T) {
 	assert.Len(t, entries, 1)
 
 	// 3) Removal of job
-	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+	cfg.dockerLabelsUpdate(map[DockerContainerInfo]map[string]string{})
 	assert.Empty(t, cfg.ExecJobs)
 	entries = cfg.sh.Entries()
 	assert.Empty(t, entries)
@@ -133,9 +137,13 @@ func TestDockerLabelsSecurityPolicyViolation(t *testing.T) {
 	cfg.LocalJobs = make(map[string]*LocalJobConfig)
 	cfg.ComposeJobs = make(map[string]*ComposeJobConfig)
 
+	cont1Info := DockerContainerInfo{
+		Name:    "cont1",
+		Running: true,
+	}
 	// Attempt to create local and compose jobs via labels
-	labels := map[string]map[string]string{
-		"cont1": {
+	labels := map[DockerContainerInfo]map[string]string{
+		cont1Info: {
 			requiredLabel:                           "true",
 			serviceLabel:                            "true",
 			labelPrefix + ".job-local.l.schedule":   "@daily",
@@ -174,8 +182,12 @@ func TestDockerLabelsUpdateStaleJobs(t *testing.T) {
 	cfg.LocalJobs = make(map[string]*LocalJobConfig)
 	cfg.ServiceJobs = make(map[string]*RunServiceConfig)
 
-	labels := map[string]map[string]string{
-		"cont1": {
+	cont1Info := DockerContainerInfo{
+		Name:    "cont1",
+		Running: true,
+	}
+	labels := map[DockerContainerInfo]map[string]string{
+		cont1Info: {
 			requiredLabel:                               "true",
 			serviceLabel:                                "true",
 			labelPrefix + ".job-local.l.schedule":       "@daily",
@@ -189,7 +201,7 @@ func TestDockerLabelsUpdateStaleJobs(t *testing.T) {
 	assert.Len(t, cfg.LocalJobs, 1)
 	assert.Len(t, cfg.ServiceJobs, 1)
 
-	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+	cfg.dockerLabelsUpdate(map[DockerContainerInfo]map[string]string{})
 	assert.Empty(t, cfg.LocalJobs)
 	assert.Empty(t, cfg.ServiceJobs)
 }

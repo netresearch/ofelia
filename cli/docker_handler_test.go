@@ -21,7 +21,7 @@ import (
 // dummyNotifier implements dockerLabelsUpdate
 type dummyNotifier struct{}
 
-func (d *dummyNotifier) dockerLabelsUpdate(labels map[string]map[string]string) {}
+func (d *dummyNotifier) dockerLabelsUpdate(labels map[DockerContainerInfo]map[string]string) {}
 
 // mockDockerProviderForHandler implements core.DockerProvider for handler tests
 type mockDockerProviderForHandler struct {
@@ -164,7 +164,7 @@ func addExecJobsToScheduler(cfg *Config) {
 func assertKeepsIniJobs(t *testing.T, cfg *Config, jobsCount func() int) {
 	t.Helper()
 	assert.Len(t, cfg.sh.Entries(), 1)
-	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+	cfg.dockerLabelsUpdate(map[DockerContainerInfo]map[string]string{})
 	assert.Equal(t, 1, jobsCount())
 	assert.Len(t, cfg.sh.Entries(), 1)
 }
@@ -222,6 +222,9 @@ func TestGetDockerLabelsValid(t *testing.T) {
 		containers: []domain.Container{
 			{
 				Name: "cont1",
+				State: domain.ContainerState{
+					Running: false,
+				},
 				Labels: map[string]string{
 					"ofelia.enabled":               "true",
 					"ofelia.job-exec.foo.schedule": "@every 1s",
@@ -236,8 +239,8 @@ func TestGetDockerLabelsValid(t *testing.T) {
 	labels, err := h.GetDockerLabels()
 	require.NoError(t, err)
 
-	expected := map[string]map[string]string{
-		"cont1": {
+	expected := map[DockerContainerInfo]map[string]string{
+		{Name: "cont1", Running: false}: {
 			"ofelia.enabled":               "true",
 			"ofelia.job-exec.foo.schedule": "@every 1s",
 			"ofelia.job-run.bar.schedule":  "@every 2s",

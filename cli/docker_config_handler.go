@@ -37,8 +37,16 @@ type DockerHandler struct {
 	fallbackCancel        context.CancelFunc // To stop fallback polling when events recover
 }
 
+// DockerContainerInfo is a struct that contains the name and running state of a Docker container.
+type DockerContainerInfo struct {
+	// Name is the name of the Docker container.
+	Name string
+	// IsRunning is a boolean flag that indicates if the container is running.
+	Running bool
+}
+
 type dockerLabelsUpdate interface {
-	dockerLabelsUpdate(map[string]map[string]string)
+	dockerLabelsUpdate(map[DockerContainerInfo]map[string]string)
 }
 
 // GetDockerProvider returns the DockerProvider interface for SDK-based operations.
@@ -238,7 +246,7 @@ func (c *DockerHandler) refreshContainerLabels() {
 	c.notifier.dockerLabelsUpdate(labels)
 }
 
-func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) {
+func (c *DockerHandler) GetDockerLabels() (map[DockerContainerInfo]map[string]string, error) {
 	filters := map[string][]string{
 		"label": {requiredLabelFilter},
 	}
@@ -259,6 +267,7 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 
 	conts, err := c.dockerProvider.ListContainers(c.ctx, domain.ListOptions{
 		Filters: filters,
+		All:     true,
 	})
 	if err != nil {
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
@@ -269,10 +278,14 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 		return nil, ErrNoContainerWithOfeliaEnabled
 	}
 
-	labels := make(map[string]map[string]string)
+	labels := make(map[DockerContainerInfo]map[string]string)
 
 	for _, cont := range conts {
 		name := cont.Name
+		containerInfo := DockerContainerInfo{
+			Name:    name,
+			Running: cont.State.Running,
+		}
 		if name != "" && len(cont.Labels) > 0 {
 			// Filter to only ofelia labels
 			ofeliaLabels := make(map[string]string)
@@ -282,7 +295,7 @@ func (c *DockerHandler) GetDockerLabels() (map[string]map[string]string, error) 
 				}
 			}
 			if len(ofeliaLabels) > 0 {
-				labels[name] = ofeliaLabels
+				labels[containerInfo] = ofeliaLabels
 			}
 		}
 	}

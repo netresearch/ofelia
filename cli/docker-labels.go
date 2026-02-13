@@ -20,7 +20,7 @@ const (
 	dockerComposeServiceLabel = "com.docker.compose.service"
 )
 
-func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) error {
+func (c *Config) buildFromDockerLabels(labels map[DockerContainerInfo]map[string]string) error {
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals := splitLabelsByType(labels)
 
 	if len(globals) > 0 {
@@ -78,7 +78,7 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 }
 
 // splitLabelsByType partitions label maps and parses values into per-type maps.
-func splitLabelsByType(labels map[string]map[string]string) (
+func splitLabelsByType(labels map[DockerContainerInfo]map[string]string) (
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]interface{},
 	globalConfigs map[string]interface{},
 ) {
@@ -89,7 +89,9 @@ func splitLabelsByType(labels map[string]map[string]string) (
 	composeJobs = make(map[string]map[string]interface{})
 	globalConfigs = make(map[string]interface{})
 
-	for containerName, labelSet := range labels {
+	for containerInfo, labelSet := range labels {
+		containerName := containerInfo.Name
+		containerRunning := containerInfo.Running
 		isService := hasServiceLabel(labelSet)
 		for k, v := range labelSet {
 			parts := strings.Split(k, ".")
@@ -106,6 +108,13 @@ func splitLabelsByType(labels map[string]map[string]string) (
 				jobPrefix := getJobPrefix(labelSet, containerName)
 				scopedName = jobPrefix + "." + jobName
 			}
+
+			if !containerRunning && jobType != jobRun {
+				// Only job run can be provided on the non-running container.
+				// Ignore any other job types.
+				continue
+			}
+
 			switch {
 			case jobType == jobExec:
 				ensureJob(execJobs, scopedName)
@@ -124,6 +133,11 @@ func splitLabelsByType(labels map[string]map[string]string) (
 			case jobType == jobRun:
 				ensureJob(runJobs, jobName)
 				setJobParam(runJobs[jobName], jobParam, v)
+				// Only set default container if not explicitly specified via label
+				// This allows cross-container job execution via ofelia.job-run.*.container
+				if !isService && runJobs[jobName]["container"] == nil {
+					runJobs[jobName]["container"] = containerName
+				}
 			case jobType == jobCompose:
 				ensureJob(composeJobs, jobName)
 				setJobParam(composeJobs[jobName], jobParam, v)

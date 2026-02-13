@@ -659,7 +659,7 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 	current[name] = j
 }
 
-func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
+func (c *Config) dockerLabelsUpdate(labels map[DockerContainerInfo]map[string]string) {
 	c.logger.Debugf("dockerLabelsUpdate started")
 
 	parsedLabelConfig := Config{

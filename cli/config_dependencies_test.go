@@ -186,8 +186,12 @@ depends-on = config-job
 // TestDockerLabels_Dependencies tests parsing of dependency fields from Docker labels
 func TestDockerLabels_Dependencies(t *testing.T) {
 	t.Parallel()
-	labels := map[string]map[string]string{
-		"worker-container": {
+	containerInfo := DockerContainerInfo{
+		Name:    "worker-container",
+		Running: true,
+	}
+	labels := map[DockerContainerInfo]map[string]string{
+		containerInfo: {
 			"ofelia.enabled":                       "true",
 			"ofelia.job-exec.process.schedule":     "@hourly",
 			"ofelia.job-exec.process.command":      "process.sh",
@@ -282,9 +286,17 @@ command = echo standalone
 // TestDockerLabels_ComposeServiceName tests that Docker Compose service names are used for job prefixes
 func TestDockerLabels_ComposeServiceName(t *testing.T) {
 	t.Parallel()
+	dbContainerInfo := DockerContainerInfo{
+		Name:    "myproject-database-1",
+		Running: true,
+	}
+	appContainerInfo := DockerContainerInfo{
+		Name:    "myproject-app-1",
+		Running: true,
+	}
 	// Simulate Docker Compose containers with com.docker.compose.service labels
-	labels := map[string]map[string]string{
-		"myproject-database-1": {
+	labels := map[DockerContainerInfo]map[string]string{
+		dbContainerInfo: {
 			"ofelia.enabled":                     "true",
 			"com.docker.compose.service":         "database",
 			"ofelia.job-exec.backup.schedule":    "@daily",
@@ -293,7 +305,7 @@ func TestDockerLabels_ComposeServiceName(t *testing.T) {
 			"ofelia.job-exec.cleanup.command":    "cleanup.sh",
 			"ofelia.job-exec.cleanup.on-success": "notify",
 		},
-		"myproject-app-1": {
+		appContainerInfo: {
 			"ofelia.enabled":                     "true",
 			"com.docker.compose.service":         "app",
 			"ofelia.job-exec.process.schedule":   "@hourly",
@@ -340,9 +352,13 @@ func TestDockerLabels_ComposeServiceName(t *testing.T) {
 // TestDockerLabels_FallbackToContainerName tests fallback to container name when no Compose label
 func TestDockerLabels_FallbackToContainerName(t *testing.T) {
 	t.Parallel()
+	standaloneContainerInfo := DockerContainerInfo{
+		Name:    "standalone-worker",
+		Running: true,
+	}
 	// Non-Compose container (no com.docker.compose.service label)
-	labels := map[string]map[string]string{
-		"standalone-worker": {
+	labels := map[DockerContainerInfo]map[string]string{
+		standaloneContainerInfo: {
 			"ofelia.enabled":                "true",
 			"ofelia.job-exec.task.schedule": "@daily",
 			"ofelia.job-exec.task.command":  "run-task.sh",
@@ -366,16 +382,24 @@ func TestDockerLabels_FallbackToContainerName(t *testing.T) {
 // TestDockerLabels_MixedComposeAndNonCompose tests mixed Compose and non-Compose containers
 func TestDockerLabels_MixedComposeAndNonCompose(t *testing.T) {
 	t.Parallel()
-	labels := map[string]map[string]string{
+	dbContainerInfo := DockerContainerInfo{
+		Name:    "myproject-db-1",
+		Running: true,
+	}
+	legacyContainerInfo := DockerContainerInfo{
+		Name:    "legacy-worker",
+		Running: true,
+	}
+	labels := map[DockerContainerInfo]map[string]string{
 		// Compose container
-		"myproject-db-1": {
+		dbContainerInfo: {
 			"ofelia.enabled":                  "true",
 			"com.docker.compose.service":      "db",
 			"ofelia.job-exec.backup.schedule": "@daily",
 			"ofelia.job-exec.backup.command":  "backup.sh",
 		},
 		// Non-Compose container
-		"legacy-worker": {
+		legacyContainerInfo: {
 			"ofelia.enabled":               "true",
 			"ofelia.job-exec.run.schedule": "@hourly",
 			"ofelia.job-exec.run.command":  "run.sh",
@@ -406,8 +430,12 @@ func TestDockerLabels_ExplicitContainerOverride(t *testing.T) {
 	t.Parallel()
 	// Container "my_container" defines a job that should run in "backup" container
 	// This is the exact scenario from upstream issue #227
-	labels := map[string]map[string]string{
-		"my_container": {
+	myContainerInfo := DockerContainerInfo{
+		Name:    "my_container",
+		Running: true,
+	}
+	labels := map[DockerContainerInfo]map[string]string{
+		myContainerInfo: {
 			"ofelia.enabled":                       "true",
 			"ofelia.job-exec.backup-pg1.schedule":  "@every 2m",
 			"ofelia.job-exec.backup-pg1.command":   "/backup my_container",
@@ -443,8 +471,12 @@ func TestDockerLabels_ExplicitContainerOverride(t *testing.T) {
 func TestDockerLabels_DefaultContainerWhenNotSpecified(t *testing.T) {
 	t.Parallel()
 	// Container "web" defines a job without explicit container - should default to "web"
-	labels := map[string]map[string]string{
-		"web": {
+	webContainerInfo := DockerContainerInfo{
+		Name:    "web",
+		Running: true,
+	}
+	labels := map[DockerContainerInfo]map[string]string{
+		webContainerInfo: {
 			"ofelia.enabled":                "true",
 			"ofelia.job-exec.logs.schedule": "@hourly",
 			"ofelia.job-exec.logs.command":  "cat /var/log/app.log",

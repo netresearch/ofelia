@@ -261,9 +261,14 @@ func TestDockerLabelsUpdate_Integration(t *testing.T) {
 		t.Fatalf("InitializeApp failed: %v", err)
 	}
 
+	containerInfo := DockerContainerInfo{
+		Name:    "container1",
+		Running: true,
+	}
+
 	// Simulate docker labels update
-	labels := map[string]map[string]string{
-		"container1": {
+	labels := map[DockerContainerInfo]map[string]string{
+		containerInfo: {
 			"ofelia.enabled":                "true",
 			"ofelia.job-exec.test.schedule": "@every 10s",
 			"ofelia.job-exec.test.command":  "echo test",

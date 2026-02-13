@@ -95,8 +95,12 @@ func FuzzDockerLabels(f *testing.F) {
 		c := NewConfig(logger)
 
 		// Create a mock label set as if from a container
-		labels := map[string]map[string]string{
-			"test-container": {
+		testContainerInfo := DockerContainerInfo{
+			Name:    "test-container",
+			Running: true,
+		}
+		labels := map[DockerContainerInfo]map[string]string{
+			testContainerInfo: {
 				labelKey:         labelValue,
 				"ofelia.enabled": "true",
 			},
