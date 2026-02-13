@@ -41,7 +41,7 @@ type DockerHandler struct {
 type DockerContainerInfo struct {
 	// Name is the name of the Docker container.
 	Name string
-	// IsRunning is a boolean flag that indicates if the container is running.
+	// Running is a boolean flag that indicates if the container is running.
 	Running bool
 }
 
