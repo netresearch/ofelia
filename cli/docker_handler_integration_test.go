@@ -20,7 +20,7 @@ import (
 // chanNotifier implements dockerLabelsUpdate and notifies via channel when updates occur.
 type chanNotifier struct{ ch chan struct{} }
 
-func (n *chanNotifier) dockerLabelsUpdate(_ map[string]map[string]string) {
+func (n *chanNotifier) dockerLabelsUpdate(_ map[DockerContainerInfo]map[string]string) {
 	select {
 	case n.ch <- struct{}{}:
 	default:
