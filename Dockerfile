@@ -8,12 +8,15 @@ ARG TARGETVARIANT
 
 COPY bin/ofelia-linux-* /tmp/
 
+# Select binary matching the target platform.
+# For ARM, Docker buildx sets TARGETVARIANT to "v6", "v7", etc.
+# Pre-built binaries follow the naming: ofelia-linux-{386,amd64,arm64,armv6,armv7}
 RUN set -eux; \
-  if [ "${TARGETARCH}" = "arm" ]; then \
-    BINARY="ofelia-linux-arm${TARGETVARIANT}"; \
-  else \
-    BINARY="ofelia-linux-${TARGETARCH}"; \
-  fi; \
+  case "${TARGETARCH}" in \
+    arm) BINARY="ofelia-linux-arm${TARGETVARIANT}" ;; \
+    386|amd64|arm64) BINARY="ofelia-linux-${TARGETARCH}" ;; \
+    *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+  esac; \
   cp "/tmp/${BINARY}" /usr/bin/ofelia; \
   chmod +x /usr/bin/ofelia
 

@@ -456,7 +456,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
-        run: go build -trimpath -ldflags='-s -w' -o ofelia-${{ matrix.suffix }} .
+        run: go build -trimpath -ldflags="-s -w -X 'main.version=edge' -X 'main.build=${{ github.sha }}'" -o ofelia-${{ matrix.suffix }} .
 
       - name: Upload binary
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
