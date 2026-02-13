@@ -45,7 +45,8 @@ jobs:
     needs: quality-gate
     if: >-
       github.event.pull_request.draft == false &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
+      github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
       - name: Harden Runner
