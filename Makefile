@@ -239,7 +239,9 @@ precommit: dev-check
 
 .PHONY: docker-build
 docker-build:
-	@docker build -t $(PROJECT):$(PKG_TAG) .
+	@mkdir -p bin
+	CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o bin/ofelia-linux-amd64 .
+	docker build -t $(PROJECT):$(PKG_TAG) .
 
 .PHONY: docker-run
 docker-run: docker-build
