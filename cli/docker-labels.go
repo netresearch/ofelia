@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
+	"github.com/netresearch/ofelia/core"
 )
 
 const (
@@ -21,7 +22,7 @@ const (
 )
 
 func (c *Config) buildFromDockerLabels(labels map[DockerContainerInfo]map[string]string) error {
-	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals := splitLabelsByType(labels)
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals := c.splitLabelsByType(labels)
 
 	if len(globals) > 0 {
 		if err := mapstructure.WeakDecode(globals, &c.Global); err != nil {
@@ -77,8 +78,44 @@ func (c *Config) buildFromDockerLabels(labels map[DockerContainerInfo]map[string
 	return nil
 }
 
+// Returns true if specified job can be run on a service container, logs debug messsage if not.
+func canRunServiceJob(jobType string, jobName string, containerName string, isService bool, logger core.Logger) bool {
+	switch jobType {
+	case jobLocal, jobServiceRun:
+		if !isService {
+			logger.Debugf("Container %s. Job %s (%s) can be run only on service containers. Skipping", containerName, jobName, jobType)
+		}
+		return isService
+	case jobRun, jobExec, jobCompose:
+		return true
+	}
+	logger.Warningf("Unknown job type %s found in container. Skipping", jobType, containerName)
+	return false
+}
+
+// Returns true if specified job can be run on a stopped container, logs debug messsage if not.
+func canRunJobInStoppedContainer(jobType string, jobName string, containerName string, isRunning bool, logger core.Logger) bool {
+	switch jobType {
+	case jobExec, jobLocal, jobServiceRun, jobCompose:
+		if !isRunning {
+			logger.Debugf("Container %s is stopped, skipping job %s (%s) from stopped container: only job-run allowed on stopped containers", containerName, jobName, jobType)
+		}
+		return isRunning
+	case jobRun:
+		return true
+	}
+	logger.Warningf("Unknown job type %s found in container. Skipping", jobType, containerName)
+	return false
+}
+
+// Returns true if specified job can be run on a container, logs debug messsage if not.
+func canRunJobOnContainer(jobType string, jobName string, containerName string, isRunning bool, isService bool, logger core.Logger) bool {
+	return canRunServiceJob(jobType, jobName, containerName, isService, logger) &&
+		canRunJobInStoppedContainer(jobType, jobName, containerName, isRunning, logger)
+}
+
 // splitLabelsByType partitions label maps and parses values into per-type maps.
-func splitLabelsByType(labels map[DockerContainerInfo]map[string]string) (
+func (c *Config) splitLabelsByType(labels map[DockerContainerInfo]map[string]string) (
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]interface{},
 	globalConfigs map[string]interface{},
 ) {
@@ -109,9 +146,7 @@ func splitLabelsByType(labels map[DockerContainerInfo]map[string]string) (
 				scopedName = jobPrefix + "." + jobName
 			}
 
-			if !containerRunning && jobType != jobRun {
-				// Only job run can be provided on the non-running container.
-				// Ignore any other job types.
+			if !canRunJobOnContainer(jobType, jobName, containerName, containerRunning, isService, c.logger) {
 				continue
 			}
 
