@@ -54,7 +54,7 @@ func TestMergeJobMaps(t *testing.T) {
 		t.Parallel()
 		got := mergeJobMaps(map[string]string{}, map[string]string{}, true)
 		assert.NotNil(t, got)
-		assert.Len(t, got, 0)
+		assert.Empty(t, got)
 	})
 }
 

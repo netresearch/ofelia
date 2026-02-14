@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
+
 	"github.com/netresearch/ofelia/core"
 )
 
@@ -98,7 +99,12 @@ func canRunJobInStoppedContainer(jobType string, jobName string, containerName s
 	switch jobType {
 	case jobExec, jobLocal, jobServiceRun, jobCompose:
 		if !isRunning {
-			logger.Debugf("Container %s is stopped, skipping job %s (%s) from stopped container: only job-run allowed on stopped containers", containerName, jobName, jobType)
+			logger.Debugf(
+				"Container %s is stopped, skipping job %s (%s) from stopped container: only job-run allowed on stopped containers",
+				containerName,
+				jobName,
+				jobType,
+			)
 		}
 		return isRunning
 	case jobRun:
@@ -196,21 +202,21 @@ func (c *Config) splitLabelsByType(labels map[DockerContainerInfo]map[string]str
 // mergeJobMaps merges two maps into a new map.
 // This helps us to avoid duplicate job definitions for the same job name with an option to override the previously defined job.
 func mergeJobMaps[K comparable, V any](left map[K]V, right map[K]V, useRightIfExists bool) map[K]V {
-	new := make(map[K]V, len(left))
+	result := make(map[K]V, len(left))
 	// Copy left map to new
 	for k, v := range left {
-		new[k] = v
+		result[k] = v
 	}
 	// Merge right map into new
 	for k, v := range right {
-		_, exists := new[k]
+		_, exists := result[k]
 		// If right value exists and useRightIfExists is true,
 		// or right value does not exist, set new value
 		if !exists || useRightIfExists {
-			new[k] = v
+			result[k] = v
 		}
 	}
-	return new
+	return result
 }
 
 func hasServiceLabel(labels map[string]string) bool {
