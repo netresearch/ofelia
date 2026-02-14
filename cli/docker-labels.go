@@ -120,6 +120,38 @@ func canRunJobOnContainer(jobType string, jobName string, containerName string, 
 		canRunJobInStoppedContainer(jobType, jobName, containerName, isRunning, logger)
 }
 
+// applyLabelToJobMaps updates the appropriate job map for the given label.
+// It is extracted to keep splitLabelsByType cyclomatic complexity under the linter limit.
+func applyLabelToJobMaps(
+	jobType, jobName, jobParam, scopedName, containerName, paramValue string,
+	isService bool,
+	execJobs, localJobs, containerRunJobs, serviceJobs, composeJobs map[string]map[string]interface{},
+) {
+	switch {
+	case jobType == jobExec:
+		ensureJob(execJobs, scopedName)
+		setJobParam(execJobs[scopedName], jobParam, paramValue)
+		if !isService && execJobs[scopedName]["container"] == nil {
+			execJobs[scopedName]["container"] = containerName
+		}
+	case jobType == jobLocal && isService:
+		ensureJob(localJobs, jobName)
+		setJobParam(localJobs[jobName], jobParam, paramValue)
+	case jobType == jobServiceRun && isService:
+		ensureJob(serviceJobs, jobName)
+		setJobParam(serviceJobs[jobName], jobParam, paramValue)
+	case jobType == jobRun:
+		ensureJob(containerRunJobs, jobName)
+		setJobParam(containerRunJobs[jobName], jobParam, paramValue)
+		if !isService && containerRunJobs[jobName]["container"] == nil {
+			containerRunJobs[jobName]["container"] = containerName
+		}
+	case jobType == jobCompose:
+		ensureJob(composeJobs, jobName)
+		setJobParam(composeJobs[jobName], jobParam, paramValue)
+	}
+}
+
 // splitLabelsByType partitions label maps and parses values into per-type maps.
 func (c *Config) splitLabelsByType(labels map[DockerContainerInfo]map[string]string) (
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]interface{},
@@ -162,33 +194,8 @@ func (c *Config) splitLabelsByType(labels map[DockerContainerInfo]map[string]str
 				continue
 			}
 
-			switch {
-			case jobType == jobExec:
-				ensureJob(execJobs, scopedName)
-				setJobParam(execJobs[scopedName], jobParam, v)
-				// Only set default container if not explicitly specified via label
-				// This allows cross-container job execution via ofelia.job-exec.*.container
-				if !isService && execJobs[scopedName]["container"] == nil {
-					execJobs[scopedName]["container"] = containerName
-				}
-			case jobType == jobLocal && isService:
-				ensureJob(localJobs, jobName)
-				setJobParam(localJobs[jobName], jobParam, v)
-			case jobType == jobServiceRun && isService:
-				ensureJob(serviceJobs, jobName)
-				setJobParam(serviceJobs[jobName], jobParam, v)
-			case jobType == jobRun:
-				ensureJob(containerRunJobs, jobName)
-				setJobParam(containerRunJobs[jobName], jobParam, v)
-				// Only set default container if not explicitly specified via label
-				// This allows cross-container job execution via ofelia.job-run.*.container
-				if !isService && containerRunJobs[jobName]["container"] == nil {
-					containerRunJobs[jobName]["container"] = containerName
-				}
-			case jobType == jobCompose:
-				ensureJob(composeJobs, jobName)
-				setJobParam(composeJobs[jobName], jobParam, v)
-			}
+			applyLabelToJobMaps(jobType, jobName, jobParam, scopedName, containerName, v, isService,
+				execJobs, localJobs, containerRunJobs, serviceJobs, composeJobs)
 		}
 
 		// Merge new run jobs into existing run jobs
