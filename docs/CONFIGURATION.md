@@ -153,6 +153,7 @@ services:
 | `OFELIA_POLL_INTERVAL` | Deprecated legacy poll interval (affects config and container polling) | (unset) |
 | `OFELIA_DOCKER_EVENTS` | Use Docker events instead of polling | true |
 | `OFELIA_DOCKER_NO_POLL` | Disable Docker polling | false |
+| `OFELIA_DOCKER_INCLUDE_STOPPED` | Include stopped containers when reading Docker labels (onl for job-run) | false |
 | `OFELIA_ENABLE_WEB` | Enable web UI | false |
 | `OFELIA_WEB_ADDRESS` | Web UI bind address | :8081 |
 | `OFELIA_WEB_AUTH_ENABLED` | Enable web UI authentication | false |

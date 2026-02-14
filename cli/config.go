@@ -1003,6 +1003,10 @@ func (c *RunServiceConfig) buildMiddlewares(wm *middlewares.WebhookManager) {
 type DockerConfig struct {
 	Filters []string `mapstructure:"filters"`
 
+	// IncludeStopped when true lists stopped containers when reading Docker labels (only for job-run).
+	// When false, only running containers are considered. Can be set via --docker-include-stopped or OFELIA_DOCKER_INCLUDE_STOPPED.
+	IncludeStopped bool `mapstructure:"include-stopped" default:"false"`
+
 	// ConfigPollInterval controls how often to check for INI config file changes.
 	// This is independent of container detection. Set to 0 to disable config file watching.
 	ConfigPollInterval time.Duration `mapstructure:"config-poll-interval" validate:"gte=0" default:"10s"`

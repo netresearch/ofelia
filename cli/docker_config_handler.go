@@ -35,6 +35,8 @@ type DockerHandler struct {
 	eventsFailed          bool
 	fallbackPollingActive bool
 	fallbackCancel        context.CancelFunc // To stop fallback polling when events recover
+
+	includeStopped bool // When true, ListContainers uses All: true so stopped containers are included
 }
 
 // DockerContainerInfo is a struct that contains the name and running state of a Docker container.
@@ -99,6 +101,7 @@ func NewDockerHandler(
 		useEvents:          useEvents,
 		dockerPollInterval: dockerPoll,
 		pollingFallback:    fallback,
+		includeStopped:     cfg.IncludeStopped,
 	}
 
 	var err error
@@ -267,7 +270,7 @@ func (c *DockerHandler) GetDockerLabels() (map[DockerContainerInfo]map[string]st
 
 	conts, err := c.dockerProvider.ListContainers(c.ctx, domain.ListOptions{
 		Filters: filters,
-		All:     true,
+		All:     c.includeStopped,
 	})
 	if err != nil {
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)

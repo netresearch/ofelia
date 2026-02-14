@@ -25,8 +25,9 @@ func (d *dummyNotifier) dockerLabelsUpdate(labels map[DockerContainerInfo]map[st
 
 // mockDockerProviderForHandler implements core.DockerProvider for handler tests
 type mockDockerProviderForHandler struct {
-	containers []domain.Container
-	pingErr    error
+	containers      []domain.Container
+	pingErr         error
+	LastListOptions domain.ListOptions // records last ListContainers opts for tests
 }
 
 func (m *mockDockerProviderForHandler) CreateContainer(ctx context.Context, config *domain.ContainerConfig, name string) (string, error) {
@@ -50,6 +51,7 @@ func (m *mockDockerProviderForHandler) InspectContainer(ctx context.Context, con
 }
 
 func (m *mockDockerProviderForHandler) ListContainers(ctx context.Context, opts domain.ListOptions) ([]domain.Container, error) {
+	m.LastListOptions = opts
 	return m.containers, nil
 }
 
@@ -247,6 +249,48 @@ func TestGetDockerLabelsValid(t *testing.T) {
 		},
 	}
 	assert.Equal(t, expected, labels)
+}
+
+// TestGetDockerLabelsIncludeStoppedFalse verifies that GetDockerLabels calls ListContainers with All: false when includeStopped is false
+func TestGetDockerLabelsIncludeStoppedFalse(t *testing.T) {
+	t.Parallel()
+	mockProvider := &mockDockerProviderForHandler{
+		containers: []domain.Container{
+			{
+				Name:   "cont1",
+				State:  domain.ContainerState{Running: true},
+				Labels: map[string]string{"ofelia.enabled": "true", "ofelia.job-run.foo.schedule": "@every 1s"},
+			},
+		},
+	}
+	h := &DockerHandler{
+		filters: []string{}, logger: &TestLogger{}, ctx: context.Background(),
+		dockerProvider: mockProvider, includeStopped: false,
+	}
+	_, err := h.GetDockerLabels()
+	require.NoError(t, err)
+	assert.False(t, mockProvider.LastListOptions.All, "ListContainers should be called with All: false when includeStopped is false")
+}
+
+// TestGetDockerLabelsIncludeStoppedTrue verifies that GetDockerLabels calls ListContainers with All: true when includeStopped is true
+func TestGetDockerLabelsIncludeStoppedTrue(t *testing.T) {
+	t.Parallel()
+	mockProvider := &mockDockerProviderForHandler{
+		containers: []domain.Container{
+			{
+				Name:   "cont1",
+				State:  domain.ContainerState{Running: false},
+				Labels: map[string]string{"ofelia.enabled": "true", "ofelia.job-run.foo.schedule": "@every 1s"},
+			},
+		},
+	}
+	h := &DockerHandler{
+		filters: []string{}, logger: &TestLogger{}, ctx: context.Background(),
+		dockerProvider: mockProvider, includeStopped: true,
+	}
+	_, err := h.GetDockerLabels()
+	require.NoError(t, err)
+	assert.True(t, mockProvider.LastListOptions.All, "ListContainers should be called with All: true when includeStopped is true")
 }
 
 // TestWatchConfigInvalidInterval verifies that watchConfig exits immediately when

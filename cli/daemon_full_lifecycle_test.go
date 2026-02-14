@@ -57,6 +57,9 @@ func TestDaemonCommand_ApplyOptions(t *testing.T) {
 	noPoll := true
 	cmd.DockerNoPoll = &noPoll
 
+	dockerIncludeStopped := true
+	cmd.DockerIncludeStopped = &dockerIncludeStopped
+
 	cfg := NewConfig(logger)
 	cmd.applyOptions(cfg)
 
@@ -87,6 +90,9 @@ func TestDaemonCommand_ApplyOptions(t *testing.T) {
 	}
 	if cfg.Global.LogLevel != "debug" {
 		t.Errorf("Expected log level debug, got %s", cfg.Global.LogLevel)
+	}
+	if !cfg.Docker.IncludeStopped {
+		t.Error("Expected IncludeStopped to be true")
 	}
 }
 
