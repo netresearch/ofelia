@@ -85,6 +85,9 @@ services:
 - Global settings centralized in one place
 - Environment variable substitution for secrets (`${SMTP_PASSWORD}`)
 
+> [!NOTE]
+> Please check the `Include stopped containers` documentaion below if you are using `--docker-include-stopped` flag.
+
 ### Labels-Only Configuration (No INI File)
 
 Ofelia can run entirely without an INI configuration file, using only Docker labels and environment variables. This is ideal for simple setups, Kubernetes environments, or when you want all configuration in one place.
@@ -181,6 +184,26 @@ services:
 - Production environments with email notifications
 - When credentials must be protected
 - When you need environment variable substitution for secrets
+
+#### Include stopped containers (OFELIA_DOCKER_INCLUDE_STOPPED, --docker-include-stopped)
+
+You can enable `include-stopped` via the env var **`OFELIA_DOCKER_INCLUDE_STOPPED`**, the flag **`--docker-include-stopped`**, or in config under `[docker]` as **`include-stopped = true`**. Default is `false`.
+
+**Purpose**
+
+- **Job-run on stopped containers:** This option is for running **job-run** jobs whose Ofelia labels are defined on **stopped** containers (e.g. scheduled backup, configure or migrate tasks on containters that stops after executing a task). Other job types (job-exec, job-local, job-service-run, job-compose) from stopped containers are ignored; only job-run labels are parsed on stopped containers.
+- **Decentralization:** Each service can own its job-run definitions via Docker labels on its own container instead of configuring them only on the Ofelia service container.
+
+**Behaviour**
+
+- When `include-stopped` is true, Ofelia searches for job-run labels across **all** matching containers (running and stopped). Stopped containers are included in the label scan.
+- Only one definition per job-run **name** is kept. Definitions from **running** containers take precedence over definitions from stopped containers.
+- When two containers (both stopped) define the same job-run name, the definition from the container that is effectively processed last is used (e.g. last created or last in iteration). Avoid defining the same job-run name on multiple stopped containers if you need a predictable result.
+
+**Recommendations**
+
+- Set up **container pruning** (or a clear lifecycle for stopped containers) so that old stopped containers with Ofelia labels do not accumulate and are not used unintentionally.
+- Prefer specifying a **Docker filter** (`--docker-filter` or `[docker]` `filters`) to limit which containers Ofelia inspects; this reduces the set of running and stopped containers considered.
 
 ## INI Configuration
 

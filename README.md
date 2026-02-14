@@ -469,13 +469,14 @@ polling-fallback = 10s
 # When true lists stopped containers when reading Docker labels (only for job-run)
 # When false, only running containers are considered
 # Default is false
+# See "Include stopped containers" in the docs/CONFIGURATION.md for full documentation
 include-stopped = false
 ```
 
 #### CLI Flags
 
 - `--docker-events`: Enable/disable Docker event-based container detection
-- `--docker-include-stopped`: List stopped containers when reading Docker labels (only for job-run)
+- `--docker-include-stopped`: Include stopped containers when reading Docker labels (see "Include stopped containers" in the [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for full documentation)
 - `--docker-poll-interval`: Deprecated legacy poll interval (affects config + container polling)
 - `--docker-no-poll`: Deprecated; disable container polling
 
