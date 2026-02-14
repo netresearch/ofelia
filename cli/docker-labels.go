@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
@@ -22,8 +23,8 @@ const (
 	dockerComposeServiceLabel = "com.docker.compose.service"
 )
 
-func (c *Config) buildFromDockerLabels(labels map[DockerContainerInfo]map[string]string) error {
-	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals := c.splitLabelsByType(labels)
+func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) error {
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals := c.splitContainersLabelsIntoJobMapsByType(containers)
 
 	if len(globals) > 0 {
 		if err := mapstructure.WeakDecode(globals, &c.Global); err != nil {
@@ -121,7 +122,7 @@ func canRunJobOnContainer(jobType string, jobName string, containerName string, 
 }
 
 // applyLabelToJobMaps updates the appropriate job map for the given label.
-// It is extracted to keep splitLabelsByType cyclomatic complexity under the linter limit.
+// It is extracted to keep splitContainersLabelsIntoJobMapsByType cyclomatic complexity under the linter limit.
 func applyLabelToJobMaps(
 	jobType, jobName, jobParam, scopedName, containerName, paramValue string,
 	isService bool,
@@ -152,8 +153,38 @@ func applyLabelToJobMaps(
 	}
 }
 
-// splitLabelsByType partitions label maps and parses values into per-type maps.
-func (c *Config) splitLabelsByType(labels map[DockerContainerInfo]map[string]string) (
+func sortContainers(containers []DockerContainerInfo) []DockerContainerInfo {
+	// Sort containers. Order:
+	// 1. Running containers first
+	// 2. Not running containers second
+	// 3. Sort by Created (newest first)
+	// 4. Sort by name
+	sortedContainers := make([]DockerContainerInfo, len(containers))
+	copy(sortedContainers, containers)
+
+	slices.SortStableFunc(sortedContainers, func(left DockerContainerInfo, right DockerContainerInfo) int {
+		if left.State.Running != right.State.Running {
+			if left.State.Running {
+				return -1
+			} else {
+				return 1
+			}
+		}
+
+		// Sort containers by Created (newest first)
+		// if result is not 0, return result, otherwise sort by name
+		createdSortResult := right.Created.Compare(left.Created)
+		if createdSortResult != 0 {
+			return createdSortResult
+		}
+
+		return strings.Compare(left.Name, right.Name)
+	})
+	return sortedContainers
+}
+
+// splitContainersLabelsIntoJobMapsByType partitions container labels and parses values into per-type job maps.
+func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerContainerInfo) (
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]interface{},
 	globalConfigs map[string]interface{},
 ) {
@@ -164,9 +195,12 @@ func (c *Config) splitLabelsByType(labels map[DockerContainerInfo]map[string]str
 	composeJobs = make(map[string]map[string]interface{})
 	globalConfigs = make(map[string]interface{})
 
-	for containerInfo, labelSet := range labels {
+	sortedContainers := sortContainers(containers)
+
+	for _, containerInfo := range sortedContainers {
 		containerName := containerInfo.Name
-		containerRunning := containerInfo.Running
+		containerRunning := containerInfo.State.Running
+		labelSet := containerInfo.Labels
 		isService := hasServiceLabel(labelSet)
 
 		// New run jobs for the container

@@ -200,18 +200,18 @@ func TestDockerHandler_watchEvents(t *testing.T) {
 	})
 }
 
-// trackingNotifier tracks dockerLabelsUpdate calls
+// trackingNotifier tracks dockerContainersUpdate calls
 type trackingNotifier struct {
-	mu          sync.Mutex
-	updateCount int
-	lastLabels  map[DockerContainerInfo]map[string]string
-	updated     chan struct{}
+	mu             sync.Mutex
+	updateCount    int
+	lastContainers []DockerContainerInfo
+	updated        chan struct{}
 }
 
-func (n *trackingNotifier) dockerLabelsUpdate(labels map[DockerContainerInfo]map[string]string) {
+func (n *trackingNotifier) dockerContainersUpdate(containers []DockerContainerInfo) {
 	n.mu.Lock()
 	n.updateCount++
-	n.lastLabels = labels
+	n.lastContainers = containers
 	n.mu.Unlock()
 
 	if n.updated != nil {

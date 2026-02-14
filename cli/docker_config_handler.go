@@ -21,7 +21,7 @@ type DockerHandler struct {
 	cancel         context.CancelFunc
 	filters        []string
 	dockerProvider core.DockerProvider // SDK-based provider
-	notifier       dockerLabelsUpdate
+	notifier       dockerContainersUpdate
 	logger         core.Logger
 
 	// Separated configuration options
@@ -43,12 +43,16 @@ type DockerHandler struct {
 type DockerContainerInfo struct {
 	// Name is the name of the Docker container.
 	Name string
+	// Created is the creation time of the container.
+	Created time.Time
 	// Running is a boolean flag that indicates if the container is running.
-	Running bool
+	State domain.ContainerState
+	// Labels is a map of labels for the container.
+	Labels map[string]string
 }
 
-type dockerLabelsUpdate interface {
-	dockerLabelsUpdate(map[DockerContainerInfo]map[string]string)
+type dockerContainersUpdate interface {
+	dockerContainersUpdate([]DockerContainerInfo)
 }
 
 // GetDockerProvider returns the DockerProvider interface for SDK-based operations.
@@ -78,7 +82,7 @@ func resolveConfig(cfg *DockerConfig, logger core.Logger) (configPoll, dockerPol
 
 func NewDockerHandler(
 	ctx context.Context, //nolint:contextcheck // external callers provide base context; we derive cancelable child
-	notifier dockerLabelsUpdate,
+	notifier dockerContainersUpdate,
 	logger core.Logger,
 	cfg *DockerConfig,
 	provider core.DockerProvider,
@@ -242,14 +246,14 @@ func (c *DockerHandler) startFallbackPolling() {
 
 // refreshContainerLabels fetches and updates container labels.
 func (c *DockerHandler) refreshContainerLabels() {
-	labels, err := c.GetDockerLabels()
+	labels, err := c.GetDockerContainers()
 	if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
 		c.logger.Debugf("%v", err)
 	}
-	c.notifier.dockerLabelsUpdate(labels)
+	c.notifier.dockerContainersUpdate(labels)
 }
 
-func (c *DockerHandler) GetDockerLabels() (map[DockerContainerInfo]map[string]string, error) {
+func (c *DockerHandler) GetDockerContainers() ([]DockerContainerInfo, error) {
 	filters := map[string][]string{
 		"label": {requiredLabelFilter},
 	}
@@ -281,29 +285,32 @@ func (c *DockerHandler) GetDockerLabels() (map[DockerContainerInfo]map[string]st
 		return nil, ErrNoContainerWithOfeliaEnabled
 	}
 
-	labels := make(map[DockerContainerInfo]map[string]string)
+	containers := make([]DockerContainerInfo, 0, len(conts))
 
 	for _, cont := range conts {
+		if cont.Name == "" || len(cont.Labels) == 0 {
+			continue
+		}
+		ofeliaLabels := make(map[string]string)
+		for k, v := range cont.Labels {
+			if strings.HasPrefix(k, labelPrefix) {
+				ofeliaLabels[k] = v
+			}
+		}
+		if len(ofeliaLabels) == 0 {
+			continue
+		}
 		name := cont.Name
 		containerInfo := DockerContainerInfo{
 			Name:    name,
-			Running: cont.State.Running,
+			Created: cont.Created,
+			State:   cont.State,
+			Labels:  ofeliaLabels,
 		}
-		if name != "" && len(cont.Labels) > 0 {
-			// Filter to only ofelia labels
-			ofeliaLabels := make(map[string]string)
-			for k, v := range cont.Labels {
-				if strings.HasPrefix(k, labelPrefix) {
-					ofeliaLabels[k] = v
-				}
-			}
-			if len(ofeliaLabels) > 0 {
-				labels[containerInfo] = ofeliaLabels
-			}
-		}
+		containers = append(containers, containerInfo)
 	}
 
-	return labels, nil
+	return containers, nil
 }
 
 // handleEventStreamError marks the event stream as failed and starts fallback polling if configured.

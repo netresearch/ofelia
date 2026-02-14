@@ -3,6 +3,7 @@ package cli
 import (
 	"testing"
 
+	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/test"
 )
 
@@ -187,11 +188,9 @@ depends-on = config-job
 func TestDockerLabels_Dependencies(t *testing.T) {
 	t.Parallel()
 	containerInfo := DockerContainerInfo{
-		Name:    "worker-container",
-		Running: true,
-	}
-	labels := map[DockerContainerInfo]map[string]string{
-		containerInfo: {
+		Name:  "worker-container",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			"ofelia.enabled":                       "true",
 			"ofelia.job-exec.process.schedule":     "@hourly",
 			"ofelia.job-exec.process.command":      "process.sh",
@@ -214,7 +213,7 @@ func TestDockerLabels_Dependencies(t *testing.T) {
 
 	logger := test.NewTestLogger()
 	cfg := &Config{logger: logger}
-	err := cfg.buildFromDockerLabels(labels)
+	err := cfg.buildFromDockerContainers([]DockerContainerInfo{containerInfo})
 	if err != nil {
 		t.Fatalf("buildFromDockerLabels failed: %v", err)
 	}
@@ -287,16 +286,9 @@ command = echo standalone
 func TestDockerLabels_ComposeServiceName(t *testing.T) {
 	t.Parallel()
 	dbContainerInfo := DockerContainerInfo{
-		Name:    "myproject-database-1",
-		Running: true,
-	}
-	appContainerInfo := DockerContainerInfo{
-		Name:    "myproject-app-1",
-		Running: true,
-	}
-	// Simulate Docker Compose containers with com.docker.compose.service labels
-	labels := map[DockerContainerInfo]map[string]string{
-		dbContainerInfo: {
+		Name:  "myproject-database-1",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			"ofelia.enabled":                     "true",
 			"com.docker.compose.service":         "database",
 			"ofelia.job-exec.backup.schedule":    "@daily",
@@ -305,7 +297,11 @@ func TestDockerLabels_ComposeServiceName(t *testing.T) {
 			"ofelia.job-exec.cleanup.command":    "cleanup.sh",
 			"ofelia.job-exec.cleanup.on-success": "notify",
 		},
-		appContainerInfo: {
+	}
+	appContainerInfo := DockerContainerInfo{
+		Name:  "myproject-app-1",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			"ofelia.enabled":                     "true",
 			"com.docker.compose.service":         "app",
 			"ofelia.job-exec.process.schedule":   "@hourly",
@@ -314,11 +310,12 @@ func TestDockerLabels_ComposeServiceName(t *testing.T) {
 		},
 	}
 
+	// Simulate Docker Compose containers with com.docker.compose.service labels
 	logger := test.NewTestLogger()
 	cfg := &Config{logger: logger}
-	err := cfg.buildFromDockerLabels(labels)
+	err := cfg.buildFromDockerContainers([]DockerContainerInfo{dbContainerInfo, appContainerInfo})
 	if err != nil {
-		t.Fatalf("buildFromDockerLabels failed: %v", err)
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
 	}
 
 	// Jobs should be named using service name, not container name
@@ -353,12 +350,9 @@ func TestDockerLabels_ComposeServiceName(t *testing.T) {
 func TestDockerLabels_FallbackToContainerName(t *testing.T) {
 	t.Parallel()
 	standaloneContainerInfo := DockerContainerInfo{
-		Name:    "standalone-worker",
-		Running: true,
-	}
-	// Non-Compose container (no com.docker.compose.service label)
-	labels := map[DockerContainerInfo]map[string]string{
-		standaloneContainerInfo: {
+		Name:  "standalone-worker",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			"ofelia.enabled":                "true",
 			"ofelia.job-exec.task.schedule": "@daily",
 			"ofelia.job-exec.task.command":  "run-task.sh",
@@ -367,9 +361,9 @@ func TestDockerLabels_FallbackToContainerName(t *testing.T) {
 
 	logger := test.NewTestLogger()
 	cfg := &Config{logger: logger}
-	err := cfg.buildFromDockerLabels(labels)
+	err := cfg.buildFromDockerContainers([]DockerContainerInfo{standaloneContainerInfo})
 	if err != nil {
-		t.Fatalf("buildFromDockerLabels failed: %v", err)
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
 	}
 
 	// Should use container name since no Compose service label
@@ -383,23 +377,19 @@ func TestDockerLabels_FallbackToContainerName(t *testing.T) {
 func TestDockerLabels_MixedComposeAndNonCompose(t *testing.T) {
 	t.Parallel()
 	dbContainerInfo := DockerContainerInfo{
-		Name:    "myproject-db-1",
-		Running: true,
-	}
-	legacyContainerInfo := DockerContainerInfo{
-		Name:    "legacy-worker",
-		Running: true,
-	}
-	labels := map[DockerContainerInfo]map[string]string{
-		// Compose container
-		dbContainerInfo: {
+		Name:  "myproject-db-1",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			"ofelia.enabled":                  "true",
 			"com.docker.compose.service":      "db",
 			"ofelia.job-exec.backup.schedule": "@daily",
 			"ofelia.job-exec.backup.command":  "backup.sh",
 		},
-		// Non-Compose container
-		legacyContainerInfo: {
+	}
+	legacyContainerInfo := DockerContainerInfo{
+		Name:  "legacy-worker",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			"ofelia.enabled":               "true",
 			"ofelia.job-exec.run.schedule": "@hourly",
 			"ofelia.job-exec.run.command":  "run.sh",
@@ -408,7 +398,7 @@ func TestDockerLabels_MixedComposeAndNonCompose(t *testing.T) {
 
 	logger := test.NewTestLogger()
 	cfg := &Config{logger: logger}
-	err := cfg.buildFromDockerLabels(labels)
+	err := cfg.buildFromDockerContainers([]DockerContainerInfo{dbContainerInfo, legacyContainerInfo})
 	if err != nil {
 		t.Fatalf("buildFromDockerLabels failed: %v", err)
 	}
@@ -431,11 +421,9 @@ func TestDockerLabels_ExplicitContainerOverride(t *testing.T) {
 	// Container "my_container" defines a job that should run in "backup" container
 	// This is the exact scenario from upstream issue #227
 	myContainerInfo := DockerContainerInfo{
-		Name:    "my_container",
-		Running: true,
-	}
-	labels := map[DockerContainerInfo]map[string]string{
-		myContainerInfo: {
+		Name:  "my_container",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			"ofelia.enabled":                       "true",
 			"ofelia.job-exec.backup-pg1.schedule":  "@every 2m",
 			"ofelia.job-exec.backup-pg1.command":   "/backup my_container",
@@ -445,9 +433,9 @@ func TestDockerLabels_ExplicitContainerOverride(t *testing.T) {
 
 	logger := test.NewTestLogger()
 	cfg := &Config{logger: logger}
-	err := cfg.buildFromDockerLabels(labels)
+	err := cfg.buildFromDockerContainers([]DockerContainerInfo{myContainerInfo})
 	if err != nil {
-		t.Fatalf("buildFromDockerLabels failed: %v", err)
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
 	}
 
 	// Job should exist with scoped name
@@ -472,11 +460,9 @@ func TestDockerLabels_DefaultContainerWhenNotSpecified(t *testing.T) {
 	t.Parallel()
 	// Container "web" defines a job without explicit container - should default to "web"
 	webContainerInfo := DockerContainerInfo{
-		Name:    "web",
-		Running: true,
-	}
-	labels := map[DockerContainerInfo]map[string]string{
-		webContainerInfo: {
+		Name:  "web",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			"ofelia.enabled":                "true",
 			"ofelia.job-exec.logs.schedule": "@hourly",
 			"ofelia.job-exec.logs.command":  "cat /var/log/app.log",
@@ -486,9 +472,9 @@ func TestDockerLabels_DefaultContainerWhenNotSpecified(t *testing.T) {
 
 	logger := test.NewTestLogger()
 	cfg := &Config{logger: logger}
-	err := cfg.buildFromDockerLabels(labels)
+	err := cfg.buildFromDockerContainers([]DockerContainerInfo{webContainerInfo})
 	if err != nil {
-		t.Fatalf("buildFromDockerLabels failed: %v", err)
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
 	}
 
 	job, exists := cfg.ExecJobs["web.logs"]

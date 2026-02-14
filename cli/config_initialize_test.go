@@ -127,7 +127,7 @@ func TestInitializeAppSuccess(t *testing.T) {
 	// Note: Not parallel - modifies global newDockerHandler
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{
 			ctx:                ctx,
 			filters:            cfg.Filters,
@@ -171,7 +171,7 @@ func TestInitializeAppLabelConflict(t *testing.T) {
 
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{
 			ctx:                ctx,
 			filters:            cfg.Filters,
@@ -213,7 +213,7 @@ func TestInitializeAppComposeConflict(t *testing.T) {
 
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{ctx: ctx, filters: cfg.Filters, notifier: notifier, logger: logger, dockerProvider: mockProvider, configPollInterval: 0}, nil
 	}
 

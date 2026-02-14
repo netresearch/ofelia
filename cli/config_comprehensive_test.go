@@ -76,7 +76,7 @@ func TestRegisterAllJobs(t *testing.T) {
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		mockProvider := &mockDockerProviderForHandler{}
 		return orig(ctx, notifier, logger, cfg, mockProvider)
 	}
@@ -243,14 +243,14 @@ log-level = info
 	}
 }
 
-// TestDockerLabelsUpdate_Integration tests dockerLabelsUpdate with real scheduler
-func TestDockerLabelsUpdate_Integration(t *testing.T) {
+// TestDockerContainersUpdate_Integration tests dockerContainersUpdate with real scheduler
+func TestDockerContainersUpdate_Integration(t *testing.T) {
 	// Cannot use t.Parallel() - modifies global newDockerHandler
 	logger := test.NewTestLogger()
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		mockProvider := &mockDockerProviderForHandler{}
 		return orig(ctx, notifier, logger, cfg, mockProvider)
 	}
@@ -262,20 +262,15 @@ func TestDockerLabelsUpdate_Integration(t *testing.T) {
 	}
 
 	containerInfo := DockerContainerInfo{
-		Name:    "container1",
-		Running: true,
-	}
-
-	// Simulate docker labels update
-	labels := map[DockerContainerInfo]map[string]string{
-		containerInfo: {
+		Labels: map[string]string{
 			"ofelia.enabled":                "true",
 			"ofelia.job-exec.test.schedule": "@every 10s",
 			"ofelia.job-exec.test.command":  "echo test",
 		},
 	}
 
-	cfg.dockerLabelsUpdate(labels)
+	// Simulate docker labels update
+	cfg.dockerContainersUpdate([]DockerContainerInfo{containerInfo})
 
 	// Verify job was added (should be skipped due to no service label)
 	if len(cfg.ExecJobs) != 0 {

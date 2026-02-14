@@ -347,7 +347,7 @@ func (c *Config) initDockerHandler() error {
 }
 
 func (c *Config) mergeJobsFromDockerLabels() {
-	dockerLabels, err := c.dockerHandler.GetDockerLabels()
+	dockerContainers, err := c.dockerHandler.GetDockerContainers()
 	if err != nil {
 		return
 	}
@@ -355,7 +355,7 @@ func (c *Config) mergeJobsFromDockerLabels() {
 		logger: c.logger,
 		Global: c.Global, // Copy Global settings including AllowHostJobsFromLabels
 	}
-	_ = parsed.buildFromDockerLabels(dockerLabels)
+	_ = parsed.buildFromDockerContainers(dockerContainers)
 
 	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
 	mergeJobs(c, c.RunJobs, parsed.RunJobs, "run")
@@ -659,14 +659,14 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 	current[name] = j
 }
 
-func (c *Config) dockerLabelsUpdate(labels map[DockerContainerInfo]map[string]string) {
-	c.logger.Debugf("dockerLabelsUpdate started")
+func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
+	c.logger.Debugf("dockerContainersUpdate started")
 
 	parsedLabelConfig := Config{
 		logger: c.logger,
 		Global: c.Global, // Copy Global settings including AllowHostJobsFromLabels
 	}
-	_ = parsedLabelConfig.buildFromDockerLabels(labels)
+	_ = parsedLabelConfig.buildFromDockerContainers(containers)
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
