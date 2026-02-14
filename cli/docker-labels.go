@@ -130,6 +130,12 @@ func (c *Config) splitLabelsByType(labels map[DockerContainerInfo]map[string]str
 		containerName := containerInfo.Name
 		containerRunning := containerInfo.Running
 		isService := hasServiceLabel(labelSet)
+
+		// New run jobs for the container
+		// We merge them into the existing run jobs later based on the container running state.
+		// This helps us to avoid duplicate job definitions for the same job name and prefer jobs from the running container.
+		containerRunJobs := make(map[string]map[string]interface{})
+
 		for k, v := range labelSet {
 			parts := strings.Split(k, ".")
 			if len(parts) < 4 {
@@ -166,20 +172,45 @@ func (c *Config) splitLabelsByType(labels map[DockerContainerInfo]map[string]str
 				ensureJob(serviceJobs, jobName)
 				setJobParam(serviceJobs[jobName], jobParam, v)
 			case jobType == jobRun:
-				ensureJob(runJobs, jobName)
-				setJobParam(runJobs[jobName], jobParam, v)
+				ensureJob(containerRunJobs, jobName)
+				setJobParam(containerRunJobs[jobName], jobParam, v)
 				// Only set default container if not explicitly specified via label
 				// This allows cross-container job execution via ofelia.job-run.*.container
-				if !isService && runJobs[jobName]["container"] == nil {
-					runJobs[jobName]["container"] = containerName
+				if !isService && containerRunJobs[jobName]["container"] == nil {
+					containerRunJobs[jobName]["container"] = containerName
 				}
 			case jobType == jobCompose:
 				ensureJob(composeJobs, jobName)
 				setJobParam(composeJobs[jobName], jobParam, v)
 			}
 		}
+
+		// Merge new run jobs into existing run jobs
+		// If the container is running, use the new run jobs and overwrite the existing run jobs.
+		// If the container is stopped, use the existing run jobs if possible and do not overwrite them.
+		runJobs = mergeJobMaps(runJobs, containerRunJobs, containerRunning)
 	}
 	return
+}
+
+// mergeJobMaps merges two maps into a new map.
+// This helps us to avoid duplicate job definitions for the same job name with an option to override the previously defined job.
+func mergeJobMaps[K comparable, V any](left map[K]V, right map[K]V, useRightIfExists bool) map[K]V {
+	new := make(map[K]V, len(left))
+	// Copy left map to new
+	for k, v := range left {
+		new[k] = v
+	}
+	// Merge right map into new
+	for k, v := range right {
+		_, exists := new[k]
+		// If right value exists and useRightIfExists is true,
+		// or right value does not exist, set new value
+		if !exists || useRightIfExists {
+			new[k] = v
+		}
+	}
+	return new
 }
 
 func hasServiceLabel(labels map[string]string) bool {

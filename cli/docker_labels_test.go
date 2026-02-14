@@ -8,6 +8,56 @@ import (
 	"github.com/netresearch/ofelia/test"
 )
 
+func TestMergeJobMaps(t *testing.T) {
+	t.Parallel()
+
+	t.Run("left empty right has keys", func(t *testing.T) {
+		t.Parallel()
+		right := map[string]string{"a": "right"}
+		got := mergeJobMaps(nil, right, true)
+		assert.Equal(t, right, got)
+		got = mergeJobMaps(nil, right, false)
+		assert.Equal(t, right, got)
+	})
+
+	t.Run("same key useRightIfExists false keeps left", func(t *testing.T) {
+		t.Parallel()
+		left := map[string]string{"a": "left"}
+		right := map[string]string{"a": "right"}
+		got := mergeJobMaps(left, right, false)
+		assert.Equal(t, "left", got["a"])
+	})
+
+	t.Run("same key useRightIfExists true uses right", func(t *testing.T) {
+		t.Parallel()
+		left := map[string]string{"a": "left"}
+		right := map[string]string{"a": "right"}
+		got := mergeJobMaps(left, right, true)
+		assert.Equal(t, "right", got["a"])
+	})
+
+	t.Run("disjoint keys both present", func(t *testing.T) {
+		t.Parallel()
+		left := map[string]string{"a": "left"}
+		right := map[string]string{"b": "right"}
+		got := mergeJobMaps(left, right, false)
+		assert.Len(t, got, 2)
+		assert.Equal(t, "left", got["a"])
+		assert.Equal(t, "right", got["b"])
+		got = mergeJobMaps(left, right, true)
+		assert.Len(t, got, 2)
+		assert.Equal(t, "left", got["a"])
+		assert.Equal(t, "right", got["b"])
+	})
+
+	t.Run("both empty", func(t *testing.T) {
+		t.Parallel()
+		got := mergeJobMaps(map[string]string{}, map[string]string{}, true)
+		assert.NotNil(t, got)
+		assert.Len(t, got, 0)
+	})
+}
+
 func TestCanRunServiceJob(t *testing.T) {
 	t.Parallel()
 	logger := test.NewTestLogger()

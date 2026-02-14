@@ -212,6 +212,10 @@ func TestLabelsConfig(t *testing.T) {
 		Name:    "not-running",
 		Running: false,
 	}
+	otherNotRunningContainerInfo := DockerContainerInfo{
+		Name:    "other-not-running",
+		Running: false,
+	}
 
 	testcases := []struct {
 		Labels         map[DockerContainerInfo]map[string]string
@@ -574,6 +578,58 @@ func TestLabelsConfig(t *testing.T) {
 				},
 			},
 			Comment: "Only run jobs are allowed on non-running containers",
+		},
+		{
+			Labels: map[DockerContainerInfo]map[string]string{
+				someContainerInfo: {
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule": "running-schedule",
+					labelPrefix + "." + jobRun + ".job1.command":  "running-command",
+				},
+				notRunningContainerInfo: {
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule",
+					labelPrefix + "." + jobRun + ".job1.command":  "stopped-command",
+				},
+			},
+			ExpectedConfig: Config{
+				RunJobs: map[string]*RunJobConfig{
+					"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "running-schedule",
+						Command:  "running-command",
+					}, Container: someContainerInfo.Name}},
+				},
+			},
+			Comment: "Run jobs from running container take precedence over jobs from stopped container",
+		},
+		{
+			Labels: map[DockerContainerInfo]map[string]string{
+				notRunningContainerInfo: {
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule1",
+					labelPrefix + "." + jobRun + ".job1.command":  "stopped-command1",
+				},
+				otherNotRunningContainerInfo: {
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule2",
+					labelPrefix + "." + jobRun + ".job1.command":  "stopped-command2",
+					labelPrefix + "." + jobRun + ".job2.schedule": "stopped-schedule3",
+					labelPrefix + "." + jobRun + ".job2.command":  "stopped-command3",
+				},
+			},
+			ExpectedConfig: Config{
+				RunJobs: map[string]*RunJobConfig{
+					"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "stopped-schedule1",
+						Command:  "stopped-command1",
+					}, Container: notRunningContainerInfo.Name}},
+					"job2": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "stopped-schedule3",
+						Command:  "stopped-command3",
+					}, Container: otherNotRunningContainerInfo.Name}},
+				},
+			},
+			Comment: "Only one run job with a unique name is allowed from stopped containers",
 		},
 	}
 
