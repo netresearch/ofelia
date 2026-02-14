@@ -212,10 +212,6 @@ func TestLabelsConfig(t *testing.T) {
 		Name:    "not-running",
 		Running: false,
 	}
-	otherNotRunningContainerInfo := DockerContainerInfo{
-		Name:    "other-not-running",
-		Running: false,
-	}
 
 	testcases := []struct {
 		Labels         map[DockerContainerInfo]map[string]string
@@ -602,35 +598,6 @@ func TestLabelsConfig(t *testing.T) {
 			},
 			Comment: "Run jobs from running container take precedence over jobs from stopped container",
 		},
-		{
-			Labels: map[DockerContainerInfo]map[string]string{
-				notRunningContainerInfo: {
-					requiredLabel: "true",
-					labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule1",
-					labelPrefix + "." + jobRun + ".job1.command":  "stopped-command1",
-				},
-				otherNotRunningContainerInfo: {
-					requiredLabel: "true",
-					labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule2",
-					labelPrefix + "." + jobRun + ".job1.command":  "stopped-command2",
-					labelPrefix + "." + jobRun + ".job2.schedule": "stopped-schedule3",
-					labelPrefix + "." + jobRun + ".job2.command":  "stopped-command3",
-				},
-			},
-			ExpectedConfig: Config{
-				RunJobs: map[string]*RunJobConfig{
-					"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
-						Schedule: "stopped-schedule1",
-						Command:  "stopped-command1",
-					}, Container: notRunningContainerInfo.Name}},
-					"job2": {RunJob: core.RunJob{BareJob: core.BareJob{
-						Schedule: "stopped-schedule3",
-						Command:  "stopped-command3",
-					}, Container: otherNotRunningContainerInfo.Name}},
-				},
-			},
-			Comment: "Only one run job with a unique name is allowed from stopped containers",
-		},
 	}
 
 	for _, tc := range testcases {
@@ -650,6 +617,85 @@ func TestLabelsConfig(t *testing.T) {
 			assert.Equal(t, tc.ExpectedConfig, conf, "Test %q failed", tc.Comment)
 		})
 	}
+}
+
+func TestLabelsConfigOnlyOneRunJobAllowedFromStoppedContainers(t *testing.T) {
+	t.Parallel()
+	// Now the map[container][label]string is used, and the order of the containers is not deterministic,
+	// so we need a separate test for the case where only one run job with a unique name is allowed from stopped containers.
+
+	notRunningContainerInfo := DockerContainerInfo{
+		Name:    "not-running",
+		Running: false,
+	}
+	otherNotRunningContainerInfo := DockerContainerInfo{
+		Name:    "other-not-running",
+		Running: false,
+	}
+
+	testcase := struct {
+		Labels         map[DockerContainerInfo]map[string]string
+		ExpectedConfig Config
+		Comment        string
+	}{
+		Labels: map[DockerContainerInfo]map[string]string{
+			notRunningContainerInfo: {
+				requiredLabel: "true",
+				labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule1",
+				labelPrefix + "." + jobRun + ".job1.command":  "stopped-command1",
+			},
+			otherNotRunningContainerInfo: {
+				requiredLabel: "true",
+				labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule2",
+				labelPrefix + "." + jobRun + ".job1.command":  "stopped-command2",
+				labelPrefix + "." + jobRun + ".job2.schedule": "stopped-schedule3",
+				labelPrefix + "." + jobRun + ".job2.command":  "stopped-command3",
+			},
+		},
+		ExpectedConfig: Config{
+			RunJobs: map[string]*RunJobConfig{
+				"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
+					Schedule: "stopped-schedule1",
+					Command:  "stopped-command1",
+				}, Container: notRunningContainerInfo.Name}},
+				"job2": {RunJob: core.RunJob{BareJob: core.BareJob{
+					Schedule: "stopped-schedule3",
+					Command:  "stopped-command3",
+				}, Container: otherNotRunningContainerInfo.Name}},
+			},
+		},
+		Comment: "Only one run job with a unique name is allowed from stopped containers",
+	}
+
+	conf := Config{}
+	conf.logger = test.NewTestLogger()
+	conf.Global.AllowHostJobsFromLabels = true
+	err := conf.buildFromDockerLabels(testcase.Labels)
+	require.NoError(t, err)
+	setJobSource(&conf, JobSourceLabel)
+	setJobSource(&testcase.ExpectedConfig, JobSourceLabel)
+
+	conf.logger = nil
+	testcase.ExpectedConfig.logger = nil
+	testcase.ExpectedConfig.Global.AllowHostJobsFromLabels = true
+
+	assert.Equal(t, testcase.ExpectedConfig, conf, "Test %q failed", testcase.Comment)
+
+	require.Len(t, conf.RunJobs, 2)
+	require.Contains(t, conf.RunJobs, "job1")
+	require.Contains(t, conf.RunJobs, "job2")
+	job1 := conf.RunJobs["job1"]
+	job2 := conf.RunJobs["job2"]
+	require.NotNil(t, job1)
+	require.NotNil(t, job2)
+	// job2 is only defined on otherNotRunningContainerInfo
+	assert.Equal(t, "stopped-schedule3", job2.Schedule)
+	assert.Equal(t, "stopped-command3", job2.Command)
+	assert.Equal(t, otherNotRunningContainerInfo.Name, job2.Container)
+	// job1 can come from either stopped container
+	validJob1 := (job1.Schedule == "stopped-schedule1" && job1.Command == "stopped-command1" && job1.Container == notRunningContainerInfo.Name) ||
+		(job1.Schedule == "stopped-schedule2" && job1.Command == "stopped-command2" && job1.Container == otherNotRunningContainerInfo.Name)
+	assert.True(t, validJob1, "job1 should be from one of the two stopped containers, got schedule=%q command=%q container=%q", job1.Schedule, job1.Command, job1.Container)
 }
 
 func TestBuildFromStringError(t *testing.T) {
