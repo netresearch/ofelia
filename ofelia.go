@@ -67,7 +67,7 @@ func main() {
 
 	logger := buildLogger(pre.LogLevel)
 
-	parser := flags.NewNamedParser("ofelia", flags.Default)
+	parser := flags.NewNamedParser("ofelia", flags.Default|flags.AllowBoolValues)
 	_, _ = parser.AddCommand(
 		"daemon",
 		"daemon process",
@@ -106,11 +106,12 @@ func main() {
 	)
 
 	if _, err := parser.ParseArgs(args); err != nil {
-		if flagErr, ok := errors.AsType[*flags.Error](err); ok {
-			if flagErr.Type == flags.ErrHelp {
-				return
-			}
+		if flags.WroteHelp(err) {
+			return
+		}
 
+		var flagErr *flags.Error
+		if errors.As(err, &flagErr) {
 			parser.WriteHelp(os.Stdout)
 			// forbidigo: avoid fmt.Printf; use logger-like output to stdout instead
 			_, _ = fmt.Fprintf(os.Stdout, "\nBuild information\n  commit: %s\n  date:%s\n", version, build)
