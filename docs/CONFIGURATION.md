@@ -86,7 +86,7 @@ services:
 - Environment variable substitution for secrets (`${SMTP_PASSWORD}`)
 
 > [!NOTE]
-> Please check the `Include stopped containers` documentaion below if you are using `--docker-include-stopped` flag.
+> Please check the `Include stopped containers` documentation below if you are using `--docker-include-stopped` flag.
 
 ### Labels-Only Configuration (No INI File)
 
@@ -191,7 +191,7 @@ You can enable `include-stopped` via the env var **`OFELIA_DOCKER_INCLUDE_STOPPE
 
 **Purpose**
 
-- **Job-run on stopped containers:** This option is for running **job-run** jobs whose Ofelia labels are defined on **stopped** containers (e.g. scheduled backup, configure or migrate tasks on containters that stops after executing a task). Other job types (job-exec, job-local, job-service-run, job-compose) from stopped containers are ignored; only job-run labels are parsed on stopped containers.
+- **Job-run on stopped containers:** This option is for running **job-run** jobs whose Ofelia labels are defined on **stopped** containers (e.g. scheduled backup, configure or migrate tasks on containers that stops after executing a task). Other job types (job-exec, job-local, job-service-run, job-compose) from stopped containers are ignored; only job-run labels are parsed on stopped containers.
 - **Decentralization:** Each service can own its job-run definitions via Docker labels on its own container instead of configuring them only on the Ofelia service container.
 
 **Behaviour**

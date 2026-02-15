@@ -80,7 +80,7 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 	return nil
 }
 
-// Returns true if specified job can be run on a service container, logs debug messsage if not.
+// Returns true if specified job can be run on a service container, logs debug message if not.
 func canRunServiceJob(jobType string, jobName string, containerName string, isService bool, logger core.Logger) bool {
 	switch jobType {
 	case jobLocal, jobServiceRun:
@@ -95,7 +95,7 @@ func canRunServiceJob(jobType string, jobName string, containerName string, isSe
 	return false
 }
 
-// Returns true if specified job can be run on a stopped container, logs debug messsage if not.
+// Returns true if specified job can be run on a stopped container, logs debug message if not.
 func canRunJobInStoppedContainer(jobType string, jobName string, containerName string, isRunning bool, logger core.Logger) bool {
 	switch jobType {
 	case jobExec, jobLocal, jobServiceRun, jobCompose:
@@ -115,7 +115,7 @@ func canRunJobInStoppedContainer(jobType string, jobName string, containerName s
 	return false
 }
 
-// Returns true if specified job can be run on a container, logs debug messsage if not.
+// Returns true if specified job can be run on a container, logs debug message if not.
 func canRunJobOnContainer(jobType string, jobName string, containerName string, isRunning bool, isService bool, logger core.Logger) bool {
 	return canRunServiceJob(jobType, jobName, containerName, isService, logger) &&
 		canRunJobInStoppedContainer(jobType, jobName, containerName, isRunning, logger)
