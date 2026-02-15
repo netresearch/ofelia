@@ -207,14 +207,10 @@ func TestLocalJob_BuildCommand_Environment(t *testing.T) {
 
 func TestLocalJob_Run_WithWorkingDirectory(t *testing.T) {
 	// Create a temporary directory with a test file
-	tempDir, err := os.MkdirTemp("", "localjob_workdir_test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+	tempDir := t.TempDir()
 
 	testFile := filepath.Join(tempDir, "testfile.txt")
-	err = os.WriteFile(testFile, []byte("test content"), 0o644)
+	err := os.WriteFile(testFile, []byte("test content"), 0o644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}

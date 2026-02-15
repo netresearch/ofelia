@@ -42,14 +42,11 @@ func TestBuildFromFileError(t *testing.T) {
 	require.Error(t, err)
 
 	// Invalid content
-	tmpFile, err := os.CreateTemp("", "config_test")
+	configFile := filepath.Join(t.TempDir(), "config.ini")
+	err = os.WriteFile(configFile, []byte("invalid content"), 0o644)
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
 
-	_, _ = tmpFile.WriteString("invalid content")
-	tmpFile.Close()
-
-	_, err = BuildFromFile(tmpFile.Name(), test.NewTestLogger())
+	_, err = BuildFromFile(configFile, test.NewTestLogger())
 	assert.Error(t, err)
 }
 
@@ -197,14 +194,11 @@ func TestDockerLabelsUpdateStaleJobs(t *testing.T) {
 // Test iniConfigUpdate reloads jobs from the INI file
 func TestIniConfigUpdate(t *testing.T) {
 	t.Parallel()
-	tmp, err := os.CreateTemp("", "ofelia_*.ini")
+	configFile := filepath.Join(t.TempDir(), "config.ini")
+	err := os.WriteFile(configFile, []byte(iniFoo), 0o644)
 	require.NoError(t, err)
-	defer os.Remove(tmp.Name())
 
-	_, _ = tmp.WriteString(iniFoo)
-	tmp.Close()
-
-	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
+	cfg, err := BuildFromFile(configFile, test.NewTestLogger())
 	require.NoError(t, err)
 	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
@@ -227,9 +221,9 @@ func TestIniConfigUpdate(t *testing.T) {
 	// modify ini: change schedule and add new job
 	oldTime := cfg.configModTime
 	content2 := strings.ReplaceAll(iniFoo, "@every 5s", "@every 10s") + iniBar
-	err = os.WriteFile(tmp.Name(), []byte(content2), 0o644)
+	err = os.WriteFile(configFile, []byte(content2), 0o644)
 	require.NoError(t, err)
-	require.NoError(t, waitForModTimeChange(tmp.Name(), oldTime))
+	require.NoError(t, waitForModTimeChange(configFile, oldTime))
 
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)
@@ -239,9 +233,9 @@ func TestIniConfigUpdate(t *testing.T) {
 	// modify ini: remove foo
 	oldTime = cfg.configModTime
 	content3 := iniBar
-	err = os.WriteFile(tmp.Name(), []byte(content3), 0o644)
+	err = os.WriteFile(configFile, []byte(content3), 0o644)
 	require.NoError(t, err)
-	require.NoError(t, waitForModTimeChange(tmp.Name(), oldTime))
+	require.NoError(t, waitForModTimeChange(configFile, oldTime))
 
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)
@@ -253,16 +247,12 @@ func TestIniConfigUpdate(t *testing.T) {
 // TestIniConfigUpdateEnvChange verifies environment changes are applied on reload.
 func TestIniConfigUpdateEnvChange(t *testing.T) {
 	t.Parallel()
-	tmp, err := os.CreateTemp("", "ofelia_*.ini")
-	require.NoError(t, err)
-	defer os.Remove(tmp.Name())
-
+	configFile := filepath.Join(t.TempDir(), "config.ini")
 	content1 := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\nenvironment = FOO=bar\n"
-	_, err = tmp.WriteString(content1)
+	err := os.WriteFile(configFile, []byte(content1), 0o644)
 	require.NoError(t, err)
-	tmp.Close()
 
-	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
+	cfg, err := BuildFromFile(configFile, test.NewTestLogger())
 	require.NoError(t, err)
 	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
@@ -282,9 +272,9 @@ func TestIniConfigUpdateEnvChange(t *testing.T) {
 
 	oldTime := cfg.configModTime
 	content2 := "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\nenvironment = FOO=baz\n"
-	err = os.WriteFile(tmp.Name(), []byte(content2), 0o644)
+	err = os.WriteFile(configFile, []byte(content2), 0o644)
 	require.NoError(t, err)
-	require.NoError(t, waitForModTimeChange(tmp.Name(), oldTime))
+	require.NoError(t, waitForModTimeChange(configFile, oldTime))
 
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)
@@ -294,15 +284,11 @@ func TestIniConfigUpdateEnvChange(t *testing.T) {
 // Test iniConfigUpdate does nothing when the INI file did not change
 func TestIniConfigUpdateNoReload(t *testing.T) {
 	t.Parallel()
-	tmp, err := os.CreateTemp("", "ofelia_*.ini")
+	configFile := filepath.Join(t.TempDir(), "config.ini")
+	err := os.WriteFile(configFile, []byte(iniFoo), 0o644)
 	require.NoError(t, err)
-	defer os.Remove(tmp.Name())
 
-	_, err = tmp.WriteString(iniFoo)
-	require.NoError(t, err)
-	tmp.Close()
-
-	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
+	cfg, err := BuildFromFile(configFile, test.NewTestLogger())
 	require.NoError(t, err)
 	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
@@ -329,15 +315,11 @@ func TestIniConfigUpdateNoReload(t *testing.T) {
 // TestIniConfigUpdateLabelConflict verifies INI jobs override label jobs on reload.
 func TestIniConfigUpdateLabelConflict(t *testing.T) {
 	t.Parallel()
-	tmp, err := os.CreateTemp("", "ofelia_*.ini")
+	configFile := filepath.Join(t.TempDir(), "config.ini")
+	err := os.WriteFile(configFile, []byte(""), 0o644)
 	require.NoError(t, err)
-	defer os.Remove(tmp.Name())
 
-	_, err = tmp.WriteString("")
-	require.NoError(t, err)
-	tmp.Close()
-
-	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
+	cfg, err := BuildFromFile(configFile, test.NewTestLogger())
 	require.NoError(t, err)
 	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
@@ -356,9 +338,9 @@ func TestIniConfigUpdateLabelConflict(t *testing.T) {
 
 	oldTime := cfg.configModTime
 	iniStr := "[job-run \"foo\"]\nschedule = @daily\nimage = busybox\ncommand = echo ini\n"
-	err = os.WriteFile(tmp.Name(), []byte(iniStr), 0o644)
+	err = os.WriteFile(configFile, []byte(iniStr), 0o644)
 	require.NoError(t, err)
-	require.NoError(t, waitForModTimeChange(tmp.Name(), oldTime))
+	require.NoError(t, waitForModTimeChange(configFile, oldTime))
 
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)
@@ -371,12 +353,10 @@ func TestIniConfigUpdateLabelConflict(t *testing.T) {
 // Test iniConfigUpdate reloads when any of the glob matched files change
 func TestIniConfigUpdateGlob(t *testing.T) {
 	t.Parallel()
-	dir, err := os.MkdirTemp("", "ofelia_glob_update")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	file1 := filepath.Join(dir, "a.ini")
-	err = os.WriteFile(file1, []byte(iniFoo), 0o644)
+	err := os.WriteFile(file1, []byte(iniFoo), 0o644)
 	require.NoError(t, err)
 
 	file2 := filepath.Join(dir, "b.ini")
@@ -417,22 +397,19 @@ func TestIniConfigUpdateGlob(t *testing.T) {
 // level are reloaded.
 func TestIniConfigUpdateGlobalChange(t *testing.T) {
 	t.Parallel()
-	tmp, err := os.CreateTemp("", "ofelia_*.ini")
-	require.NoError(t, err)
-	defer os.Remove(tmp.Name())
+	configFile := filepath.Join(t.TempDir(), "config.ini")
 
 	dir := t.TempDir()
 	content1 := fmt.Sprintf("[global]\nlog-level = INFO\nsave-folder = %s\n",
 		dir)
 	content1 += "save-only-on-error = false\n"
 	content1 += iniFoo
-	_, err = tmp.WriteString(content1)
+	err := os.WriteFile(configFile, []byte(content1), 0o644)
 	require.NoError(t, err)
-	tmp.Close()
 
 	logrus.SetLevel(logrus.InfoLevel)
 
-	cfg, err := BuildFromFile(tmp.Name(), test.NewTestLogger())
+	cfg, err := BuildFromFile(configFile, test.NewTestLogger())
 	require.NoError(t, err)
 	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
@@ -450,9 +427,9 @@ func TestIniConfigUpdateGlobalChange(t *testing.T) {
 	oldTime := cfg.configModTime
 	content2 := fmt.Sprintf("[global]\nlog-level = DEBUG\nsave-folder = %s\nsave-only-on-error = true\n", dir)
 	content2 += iniFoo
-	err = os.WriteFile(tmp.Name(), []byte(content2), 0o644)
+	err = os.WriteFile(configFile, []byte(content2), 0o644)
 	require.NoError(t, err)
-	require.NoError(t, waitForModTimeChange(tmp.Name(), oldTime))
+	require.NoError(t, waitForModTimeChange(configFile, oldTime))
 
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)

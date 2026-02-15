@@ -212,9 +212,8 @@ func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
 	}
 
 	typ := val.Type()
-	for i := range val.NumField() {
-		field := val.Field(i)
-		fieldType := typ.Field(i)
+	for fieldType := range typ.Fields() {
+		field := val.FieldByIndex(fieldType.Index)
 		fieldName := fieldType.Name
 
 		// Build field path for nested structs
@@ -224,7 +223,7 @@ func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
 		}
 
 		// Skip unexported fields
-		if !field.CanInterface() {
+		if !fieldType.IsExported() {
 			continue
 		}
 
