@@ -406,16 +406,22 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_ = s.scheduler.DisableJob(req.Name)
 	job, err := s.jobFromRequest(&req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.scheduler.AddJob(job); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+
+	// Try atomic update first; fall back to disable+add for new jobs
+	if err := s.scheduler.UpdateJob(req.Name, req.Schedule, job); err != nil {
+		// Job doesn't exist yet — disable any remnant and add fresh
+		_ = s.scheduler.DisableJob(req.Name)
+		if err := s.scheduler.AddJob(job); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
+
 	origin := r.Header.Get("X-Origin")
 	if origin == "" {
 		origin = "api"

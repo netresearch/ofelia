@@ -517,6 +517,42 @@ func (s *Scheduler) GetDisabledJob(name string) Job {
 	return j
 }
 
+// UpdateJob atomically replaces the schedule and job implementation for an
+// existing named entry using go-cron's UpdateEntryJobByName. The old job's
+// in-flight invocations complete before the new schedule takes effect (because
+// go-cron serializes entry mutations through the scheduler goroutine).
+//
+// Returns ErrJobNotFound if no active job with the given name exists.
+func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error {
+	s.mu.RLock()
+	oldJob, _ := getJob(s.Jobs, name)
+	if oldJob == nil {
+		s.mu.RUnlock()
+		return fmt.Errorf("%w: %q", ErrJobNotFound, name)
+	}
+	s.mu.RUnlock()
+
+	newJob.Use(s.Middlewares()...)
+
+	if err := s.cron.UpdateEntryJobByName(name, newSchedule, &jobWrapper{s, newJob}); err != nil {
+		return fmt.Errorf("update job: %w", err)
+	}
+
+	// Update internal state
+	s.mu.Lock()
+	for i, j := range s.Jobs {
+		if j.GetName() == name {
+			s.Jobs[i] = newJob
+			break
+		}
+	}
+	s.jobsByName[name] = newJob
+	s.mu.Unlock()
+
+	s.Logger.Noticef("Job updated %q - %q", name, newSchedule)
+	return nil
+}
+
 // DisableJob stops scheduling the job but keeps it for later enabling.
 func (s *Scheduler) DisableJob(name string) error {
 	// First, find the job under read lock
