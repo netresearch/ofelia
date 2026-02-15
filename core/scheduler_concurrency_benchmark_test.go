@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -80,7 +81,7 @@ func BenchmarkSchedulerConcurrency(b *testing.B) {
 				for i := range tc.numJobs {
 					go func(jobIndex int) {
 						defer wg.Done()
-						scheduler.RunJob(fmt.Sprintf("bench-job-%d", jobIndex))
+						scheduler.RunJob(context.Background(), fmt.Sprintf("bench-job-%d", jobIndex))
 					}(i)
 				}
 
@@ -126,7 +127,7 @@ func BenchmarkSchedulerMemoryUsage(b *testing.B) {
 	for range b.N {
 		// Trigger rapid job executions to stress memory allocation
 		for i := range numJobs {
-			go scheduler.RunJob(fmt.Sprintf("mem-job-%d", i))
+			go scheduler.RunJob(context.Background(), fmt.Sprintf("mem-job-%d", i))
 		}
 		// Allow some jobs to complete before next iteration
 		time.Sleep(time.Millisecond * 5)
@@ -236,7 +237,7 @@ func BenchmarkSchedulerSemaphoreContention(b *testing.B) {
 				for i := range numCompetingJobs {
 					go func(jobIndex int) {
 						defer wg.Done()
-						scheduler.RunJob(fmt.Sprintf("compete-job-%d", jobIndex))
+						scheduler.RunJob(context.Background(), fmt.Sprintf("compete-job-%d", jobIndex))
 					}(i)
 				}
 

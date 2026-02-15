@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -149,10 +150,10 @@ func XTestSchedulerConcurrentJobExecution(t *testing.T) {
 	defer scheduler.Stop()
 
 	// Manually trigger jobs to test concurrency
-	go scheduler.RunJob("job1")
-	go scheduler.RunJob("job2")
-	go scheduler.RunJob("job3")
-	go scheduler.RunJob("job4")
+	go scheduler.RunJob(context.Background(), "job1")
+	go scheduler.RunJob(context.Background(), "job2")
+	go scheduler.RunJob(context.Background(), "job3")
+	go scheduler.RunJob(context.Background(), "job4")
 
 	// Wait for first two jobs to start (within concurrency limit)
 	job1.WaitForRunning()
@@ -232,7 +233,7 @@ func XTestSchedulerJobSemaphoreLimiting(t *testing.T) {
 
 	// Trigger all jobs simultaneously
 	for i := range numJobs {
-		go scheduler.RunJob(fmt.Sprintf("job%d", i))
+		go scheduler.RunJob(context.Background(), fmt.Sprintf("job%d", i))
 	}
 
 	// Wait for maximum allowed jobs to start
@@ -379,7 +380,7 @@ func TestSchedulerGracefulShutdown(t *testing.T) {
 	}
 
 	// Start the job
-	go scheduler.RunJob("long-job")
+	go scheduler.RunJob(context.Background(), "long-job")
 	longRunningJob.WaitForRunning()
 	longRunningJob.AllowStart()
 
@@ -482,7 +483,7 @@ func TestSchedulerRaceConditions(t *testing.T) {
 				}
 			case 2:
 				// Run job manually
-				if err := scheduler.RunJob(jobName); err != nil {
+				if err := scheduler.RunJob(context.Background(), jobName); err != nil {
 					// This might fail if job was removed/disabled concurrently, which is OK
 					t.Logf("RunJob failed for %s (may be expected): %v", jobName, err)
 				} else {
@@ -545,7 +546,7 @@ func XTestSchedulerMaxConcurrentJobsConfiguration(t *testing.T) {
 
 			// Try to run all jobs
 			for i := range jobs {
-				go scheduler.RunJob(fmt.Sprintf("limit-job%d", i))
+				go scheduler.RunJob(context.Background(), fmt.Sprintf("limit-job%d", i))
 			}
 
 			// Count how many actually start running
@@ -691,12 +692,12 @@ func TestSchedulerWorkflowIntegration(t *testing.T) {
 
 	// Test manual job execution with dependencies
 	// This should work for job1 (no dependencies)
-	if err := scheduler.RunJob("workflow-job1"); err != nil {
+	if err := scheduler.RunJob(context.Background(), "workflow-job1"); err != nil {
 		t.Errorf("RunJob failed for job1: %v", err)
 	}
 
 	// This might fail for job2 due to dependency check
-	err := scheduler.RunJob("workflow-job2")
+	err := scheduler.RunJob(context.Background(), "workflow-job2")
 	// We don't assert error here as dependency logic may or may not prevent execution
 	// depending on the workflow state
 	t.Logf("RunJob for job2 (with dependencies) result: %v", err)

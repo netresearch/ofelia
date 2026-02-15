@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -43,6 +44,7 @@ type Context struct {
 	Logger    Logger
 	Job       Job
 	Execution *Execution
+	Ctx       context.Context //nolint:containedctx // intentional: propagates go-cron's per-entry context through middleware chain
 
 	current     int
 	executed    bool
@@ -55,6 +57,20 @@ func NewContext(s *Scheduler, j Job, e *Execution) *Context {
 		Logger:      s.Logger,
 		Job:         j,
 		Execution:   e,
+		Ctx:         context.Background(),
+		middlewares: j.Middlewares(),
+	}
+}
+
+// NewContextWithContext creates a Context with a specific context.Context,
+// typically the per-entry context provided by go-cron's JobWithContext interface.
+func NewContextWithContext(ctx context.Context, s *Scheduler, j Job, e *Execution) *Context {
+	return &Context{
+		Scheduler:   s,
+		Logger:      s.Logger,
+		Job:         j,
+		Execution:   e,
+		Ctx:         ctx,
 		middlewares: j.Middlewares(),
 	}
 }

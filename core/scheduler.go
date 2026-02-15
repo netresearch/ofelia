@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -81,6 +82,7 @@ func newSchedulerInternal(l Logger, metricsRecorder MetricsRecorder, minEveryInt
 		cron.WithParser(parser),
 		cron.WithLogger(cronUtils),
 		cron.WithChain(cron.Recover(cronUtils)),
+		cron.WithCapacity(64), // pre-allocate for typical workloads
 	}
 
 	if cronClock != nil {
@@ -234,8 +236,10 @@ func (s *Scheduler) RemoveJob(j Job) error {
 		"Job deregistered (will not fire again) %q - %q - %q - ID: %v",
 		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
 	)
-	// Use O(1) removal by name if possible
+	// Use O(1) removal by name, then wait for any in-flight execution
+	// to complete before updating internal state
 	s.cron.RemoveByName(j.GetName())
+	s.cron.WaitForJobByName(j.GetName())
 	s.mu.Lock()
 	for i, job := range s.Jobs {
 		if job == j || job.GetCronJobID() == j.GetCronJobID() {
@@ -351,7 +355,7 @@ func (s *Scheduler) Start() error {
 				s.wg.Done()
 				s.mu.Unlock()
 			}()
-			wrapper.Run()
+			wrapper.RunWithContext(context.Background())
 		}()
 	}
 
@@ -447,8 +451,9 @@ func (s *Scheduler) Entries() []cron.Entry {
 	return s.cron.Entries()
 }
 
-// RunJob manually triggers a job by name
-func (s *Scheduler) RunJob(jobName string) error {
+// RunJob manually triggers a job by name. The provided context is propagated
+// to the job's RunWithContext method and is available via Context.Ctx.
+func (s *Scheduler) RunJob(ctx context.Context, jobName string) error {
 	s.mu.RLock()
 	job, exists := s.jobsByName[jobName]
 	s.mu.RUnlock()
@@ -462,9 +467,8 @@ func (s *Scheduler) RunJob(jobName string) error {
 		return fmt.Errorf("%w: %s", ErrDependencyNotMet, jobName)
 	}
 
-	// Run the job
 	wrapper := &jobWrapper{s: s, j: job}
-	go wrapper.Run()
+	go wrapper.RunWithContext(ctx)
 
 	return nil
 }
@@ -513,6 +517,42 @@ func (s *Scheduler) GetDisabledJob(name string) Job {
 	return j
 }
 
+// UpdateJob atomically replaces the schedule and job implementation for an
+// existing named entry using go-cron's UpdateEntryJobByName. The old job's
+// in-flight invocations complete before the new schedule takes effect (because
+// go-cron serializes entry mutations through the scheduler goroutine).
+//
+// Returns ErrJobNotFound if no active job with the given name exists.
+func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error {
+	s.mu.RLock()
+	oldJob, _ := getJob(s.Jobs, name)
+	if oldJob == nil {
+		s.mu.RUnlock()
+		return fmt.Errorf("%w: %q", ErrJobNotFound, name)
+	}
+	s.mu.RUnlock()
+
+	newJob.Use(s.Middlewares()...)
+
+	if err := s.cron.UpdateEntryJobByName(name, newSchedule, &jobWrapper{s, newJob}); err != nil {
+		return fmt.Errorf("update job: %w", err)
+	}
+
+	// Update internal state
+	s.mu.Lock()
+	for i, j := range s.Jobs {
+		if j.GetName() == name {
+			s.Jobs[i] = newJob
+			break
+		}
+	}
+	s.jobsByName[name] = newJob
+	s.mu.Unlock()
+
+	s.Logger.Noticef("Job updated %q - %q", name, newSchedule)
+	return nil
+}
+
 // DisableJob stops scheduling the job but keeps it for later enabling.
 func (s *Scheduler) DisableJob(name string) error {
 	// First, find the job under read lock
@@ -527,6 +567,8 @@ func (s *Scheduler) DisableJob(name string) error {
 	// Remove from cron without holding our lock (cron has its own lock)
 	// Use RemoveByName to properly clean up the name registry for later re-enabling
 	s.cron.RemoveByName(name)
+	// Wait for any in-flight execution to complete before updating state
+	s.cron.WaitForJobByName(name)
 
 	// Now acquire write lock to update internal state
 	s.mu.Lock()
@@ -544,6 +586,8 @@ func (s *Scheduler) DisableJob(name string) error {
 }
 
 // EnableJob schedules a previously disabled job.
+// Uses go-cron's UpsertJob for atomic create-or-update, eliminating the
+// previous polling retry loop that waited for RemoveByName to take effect.
 func (s *Scheduler) EnableJob(name string) error {
 	s.mu.Lock()
 	j, idx := getJob(s.Disabled, name)
@@ -554,20 +598,36 @@ func (s *Scheduler) EnableJob(name string) error {
 	s.Disabled = append(s.Disabled[:idx], s.Disabled[idx+1:]...)
 	s.mu.Unlock()
 
-	backoff := time.Millisecond
-	for range 10 {
-		entry := s.cron.EntryByName(name)
-		if !entry.Valid() {
-			break
-		}
-		s.clock.Sleep(backoff)
-		backoff *= 2
-		if backoff > 100*time.Millisecond {
-			backoff = 100 * time.Millisecond
-		}
+	if IsTriggeredSchedule(j.GetSchedule()) {
+		// Triggered-only jobs aren't scheduled in cron; just restore state
+		j.Use(s.Middlewares()...)
+		s.mu.Lock()
+		s.Jobs = append(s.Jobs, j)
+		s.jobsByName[j.GetName()] = j
+		s.mu.Unlock()
+		return nil
 	}
 
-	return s.AddJob(j)
+	j.Use(s.Middlewares()...)
+
+	opts := []cron.JobOption{cron.WithName(j.GetName())}
+	if j.ShouldRunOnStartup() {
+		opts = append(opts, cron.WithRunImmediately())
+	}
+
+	id, err := s.cron.UpsertJob(j.GetSchedule(), &jobWrapper{s, j}, opts...)
+	if err != nil {
+		return fmt.Errorf("enable job: %w", err)
+	}
+	j.SetCronJobID(uint64(id))
+
+	s.mu.Lock()
+	s.Jobs = append(s.Jobs, j)
+	s.jobsByName[j.GetName()] = j
+	s.mu.Unlock()
+
+	s.Logger.Noticef("Job re-enabled %q - %q - ID: %v", j.GetName(), j.GetSchedule(), id)
+	return nil
 }
 
 // jobWrapper wraps a Job to manage running and waiting via the Scheduler.
@@ -578,12 +638,36 @@ func (s *Scheduler) IsRunning() bool {
 	return s.cron.IsRunning()
 }
 
+// IsJobRunning reports whether the named job has any invocations currently in
+// flight. Returns false if no job with the given name exists or the scheduler
+// has no cron instance.
+func (s *Scheduler) IsJobRunning(name string) bool {
+	if s.cron == nil {
+		return false
+	}
+	return s.cron.IsJobRunningByName(name)
+}
+
 type jobWrapper struct {
 	s *Scheduler
 	j Job
 }
 
+// Compile-time assertion: jobWrapper implements cron.JobWithContext.
+var _ cron.JobWithContext = (*jobWrapper)(nil)
+
+// Run implements cron.Job. Called by go-cron for jobs that don't support context.
 func (w *jobWrapper) Run() {
+	w.runWithCtx(context.Background())
+}
+
+// RunWithContext implements cron.JobWithContext. Called by go-cron with a
+// per-entry context that is canceled when the entry is removed or replaced.
+func (w *jobWrapper) RunWithContext(ctx context.Context) {
+	w.runWithCtx(ctx)
+}
+
+func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	// Add panic recovery to handle job panics gracefully
 	defer func() {
 		if r := recover(); r != nil {
@@ -634,22 +718,22 @@ func (w *jobWrapper) Run() {
 	// Ensure buffers are returned to pool when done
 	defer e.Cleanup()
 
-	ctx := NewContext(w.s, w.j, e)
+	jctx := NewContextWithContext(ctx, w.s, w.j, e)
 
 	// Mark job as started in workflow
 	w.s.workflowOrchestrator.JobStarted(w.j.GetName(), executionID)
 
-	w.start(ctx)
+	w.start(jctx)
 
 	// Execute with retry logic
-	err = w.s.retryExecutor.ExecuteWithRetry(w.j, ctx, func(c *Context) error {
+	err = w.s.retryExecutor.ExecuteWithRetry(w.j, jctx, func(c *Context) error {
 		return c.Next()
 	})
 
-	w.stop(ctx, err)
+	w.stop(jctx, err)
 
-	success := err == nil && !ctx.Execution.Failed
-	w.s.workflowOrchestrator.JobCompleted(w.j.GetName(), executionID, success)
+	success := err == nil && !jctx.Execution.Failed
+	w.s.workflowOrchestrator.JobCompleted(ctx, w.j.GetName(), executionID, success)
 
 	if w.s.onJobComplete != nil {
 		w.s.onJobComplete(w.j.GetName(), success)

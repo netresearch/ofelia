@@ -52,6 +52,7 @@ type apiJob struct {
 	Type     string          `json:"type"`
 	Schedule string          `json:"schedule"`
 	Command  string          `json:"command"`
+	Running  bool            `json:"running"`
 	LastRun  *apiExecution   `json:"lastRun"`
 	Origin   string          `json:"origin"`
 	Config   json.RawMessage `json:"config"`
