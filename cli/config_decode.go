@@ -114,8 +114,6 @@ func extractMapstructureKeysFromType(t reflect.Type) []string {
 
 	keys := make([]string, 0)
 	for field := range t.Fields() {
-		field := field
-
 		// Skip unexported fields
 		if !field.IsExported() {
 			continue

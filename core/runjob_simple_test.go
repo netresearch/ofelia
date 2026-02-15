@@ -550,11 +550,6 @@ func TestRunJob_Validate(t *testing.T) {
 
 // Helper functions for testing
 
-//go:fix inline
-func stringPtr(s string) *string {
-	return new(s)
-}
-
 func parseBool(s string) (bool, error) {
 	switch s {
 	case "true", "1":
