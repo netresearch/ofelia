@@ -44,7 +44,7 @@ type Context struct {
 	Logger    Logger
 	Job       Job
 	Execution *Execution
-	Ctx       context.Context // per-entry context from go-cron; canceled on entry removal
+	Ctx       context.Context //nolint:containedctx // intentional: propagates go-cron's per-entry context through middleware chain
 
 	current     int
 	executed    bool

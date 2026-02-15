@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 )
 
@@ -54,7 +55,7 @@ func TestWorkflowDependencies(t *testing.T) {
 
 	// Mark job A as completed
 	orchestrator.JobStarted("job-a", executionID)
-	orchestrator.JobCompleted("job-a", executionID, true)
+	orchestrator.JobCompleted(context.Background(), "job-a", executionID, true)
 
 	// Now job B should be able to run
 	if !orchestrator.CanExecute("job-b", executionID) {
@@ -67,7 +68,7 @@ func TestWorkflowDependencies(t *testing.T) {
 
 	// Mark job B as completed
 	orchestrator.JobStarted("job-b", executionID)
-	orchestrator.JobCompleted("job-b", executionID, true)
+	orchestrator.JobCompleted(context.Background(), "job-b", executionID, true)
 
 	// Now job C should be able to run
 	if !orchestrator.CanExecute("job-c", executionID) {
@@ -159,7 +160,7 @@ func TestOnSuccessOnFailureTriggers(t *testing.T) {
 	orchestrator.JobStarted("job-main", executionID)
 
 	// Complete main job successfully
-	orchestrator.JobCompleted("job-main", executionID, true)
+	orchestrator.JobCompleted(context.Background(), "job-main", executionID, true)
 
 	// Verify that job-success can now execute (would be triggered)
 	if !orchestrator.CanExecute("job-success", executionID) {
@@ -169,7 +170,7 @@ func TestOnSuccessOnFailureTriggers(t *testing.T) {
 	// Test failure trigger
 	executionID = "test-exec-failure"
 	orchestrator.JobStarted("job-main", executionID)
-	orchestrator.JobCompleted("job-main", executionID, false)
+	orchestrator.JobCompleted(context.Background(), "job-main", executionID, false)
 
 	// Verify that job-failure can execute (would be triggered)
 	if !orchestrator.CanExecute("job-failure", executionID) {
@@ -212,7 +213,7 @@ func TestParallelExecutionControl(t *testing.T) {
 	}
 
 	// Complete the job
-	orchestrator.JobCompleted("job-no-parallel", executionID, true)
+	orchestrator.JobCompleted(context.Background(), "job-no-parallel", executionID, true)
 
 	// Now it should be allowed again
 	if !orchestrator.CanExecute("job-no-parallel", executionID) {
@@ -251,7 +252,7 @@ func TestWorkflowStatus(t *testing.T) {
 	}
 
 	// Complete one job successfully
-	orchestrator.JobCompleted("job-a", executionID, true)
+	orchestrator.JobCompleted(context.Background(), "job-a", executionID, true)
 
 	status = orchestrator.GetWorkflowStatus(executionID)
 	if status["completedJobs"].(int) != 1 {
@@ -262,7 +263,7 @@ func TestWorkflowStatus(t *testing.T) {
 	}
 
 	// Fail the other job
-	orchestrator.JobCompleted("job-b", executionID, false)
+	orchestrator.JobCompleted(context.Background(), "job-b", executionID, false)
 
 	status = orchestrator.GetWorkflowStatus(executionID)
 	if status["failedJobs"].(int) != 1 {

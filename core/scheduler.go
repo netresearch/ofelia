@@ -355,7 +355,7 @@ func (s *Scheduler) Start() error {
 				s.wg.Done()
 				s.mu.Unlock()
 			}()
-			wrapper.Run()
+			wrapper.RunWithContext(context.Background())
 		}()
 	}
 
@@ -451,8 +451,9 @@ func (s *Scheduler) Entries() []cron.Entry {
 	return s.cron.Entries()
 }
 
-// RunJob manually triggers a job by name
-func (s *Scheduler) RunJob(jobName string) error {
+// RunJob manually triggers a job by name. The provided context is propagated
+// to the job's RunWithContext method and is available via Context.Ctx.
+func (s *Scheduler) RunJob(ctx context.Context, jobName string) error {
 	s.mu.RLock()
 	job, exists := s.jobsByName[jobName]
 	s.mu.RUnlock()
@@ -466,9 +467,8 @@ func (s *Scheduler) RunJob(jobName string) error {
 		return fmt.Errorf("%w: %s", ErrDependencyNotMet, jobName)
 	}
 
-	// Run the job
 	wrapper := &jobWrapper{s: s, j: job}
-	go wrapper.Run()
+	go wrapper.RunWithContext(ctx)
 
 	return nil
 }
@@ -733,7 +733,7 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	w.stop(jctx, err)
 
 	success := err == nil && !jctx.Execution.Failed
-	w.s.workflowOrchestrator.JobCompleted(w.j.GetName(), executionID, success)
+	w.s.workflowOrchestrator.JobCompleted(ctx, w.j.GetName(), executionID, success)
 
 	if w.s.onJobComplete != nil {
 		w.s.onJobComplete(w.j.GetName(), success)

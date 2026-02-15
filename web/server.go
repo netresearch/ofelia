@@ -344,7 +344,7 @@ func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.scheduler.RunJob(req.Name); err != nil {
+	if err := s.scheduler.RunJob(r.Context(), req.Name); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
