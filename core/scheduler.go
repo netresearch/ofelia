@@ -81,6 +81,7 @@ func newSchedulerInternal(l Logger, metricsRecorder MetricsRecorder, minEveryInt
 		cron.WithParser(parser),
 		cron.WithLogger(cronUtils),
 		cron.WithChain(cron.Recover(cronUtils)),
+		cron.WithCapacity(64), // pre-allocate for typical workloads
 	}
 
 	if cronClock != nil {
