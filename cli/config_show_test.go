@@ -99,8 +99,8 @@ command = echo service
 					t.Fatalf("Failed to write config file: %v", err)
 				}
 			} else {
-				// Use non-existent file
-				configFile = "/tmp/nonexistent_ofelia_config.ini"
+				// Use non-existent path within a temp dir (portable)
+				configFile = filepath.Join(t.TempDir(), "nonexistent_config.ini")
 			}
 
 			// Capture stdout

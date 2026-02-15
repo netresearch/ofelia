@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/test"
 )
@@ -478,12 +480,12 @@ func TestResolveConfigFiles(t *testing.T) {
 			switch tt.name {
 			case "single file":
 				path := filepath.Join(t.TempDir(), "ofelia.ini")
-				os.WriteFile(path, []byte(""), 0o644)
+				require.NoError(t, os.WriteFile(path, []byte(""), 0o644))
 				pattern = path
 			case "glob pattern with multiple files":
 				dir := t.TempDir()
-				os.WriteFile(filepath.Join(dir, "a.ini"), []byte(""), 0o644)
-				os.WriteFile(filepath.Join(dir, "b.ini"), []byte(""), 0o644)
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "a.ini"), []byte(""), 0o644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "b.ini"), []byte(""), 0o644))
 				pattern = filepath.Join(dir, "*.ini")
 			default:
 				pattern = "/nonexistent/file.ini"
