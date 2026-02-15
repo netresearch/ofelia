@@ -411,3 +411,45 @@ func TestSecurityValidator_IPAddressWhitelist(t *testing.T) {
 	err = validator.Validate("http://192.168.1.21/webhook")
 	require.Error(t, err)
 }
+
+// TestWebhookSecurityIPv6URLs verifies URL validation with IPv6 addresses.
+// Go 1.26 is stricter about URL parsing — IPv6 must use bracket notation.
+func TestWebhookSecurityIPv6URLs(t *testing.T) {
+	t.Parallel()
+
+	validIPv6URLs := []string{
+		"http://[::1]:8080/webhook",
+		"https://[::1]/webhook",
+		"http://[2001:db8::1]:9090/hook",
+		"https://[fe80::1%25eth0]:443/notify",
+	}
+
+	invalidIPv6URLs := []string{
+		"http://::1/webhook",      // missing brackets — rejected by Go 1.26
+		"http://::1:8080/webhook", // ambiguous colon — rejected by Go 1.26
+	}
+
+	// Valid IPv6 URLs should pass basic validation
+	for _, u := range validIPv6URLs {
+		err := ValidateWebhookURLImpl(u)
+		assert.NoError(t, err, "ValidateWebhookURLImpl(%q) should succeed", u)
+	}
+
+	// Invalid IPv6 URLs should fail
+	for _, u := range invalidIPv6URLs {
+		err := ValidateWebhookURLImpl(u)
+		assert.Error(t, err, "ValidateWebhookURLImpl(%q) should fail for malformed IPv6", u)
+	}
+
+	// IPv6 with whitelisted host — url.Hostname() strips brackets,
+	// so AllowedHosts should contain bare addresses like "::1"
+	validator := NewWebhookSecurityValidator(&WebhookSecurityConfig{
+		AllowedHosts: []string{"::1", "2001:db8::1"},
+	})
+
+	err := validator.Validate("http://[::1]:8080/webhook")
+	assert.NoError(t, err, "Whitelisted IPv6 host should pass")
+
+	err = validator.Validate("http://[2001:db8::99]:8080/webhook")
+	assert.Error(t, err, "Non-whitelisted IPv6 host should fail")
+}
