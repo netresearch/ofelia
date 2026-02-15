@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -598,7 +599,21 @@ type jobWrapper struct {
 	j Job
 }
 
+// Compile-time assertion: jobWrapper implements cron.JobWithContext.
+var _ cron.JobWithContext = (*jobWrapper)(nil)
+
+// Run implements cron.Job. Called by go-cron for jobs that don't support context.
 func (w *jobWrapper) Run() {
+	w.runWithCtx(context.Background())
+}
+
+// RunWithContext implements cron.JobWithContext. Called by go-cron with a
+// per-entry context that is canceled when the entry is removed or replaced.
+func (w *jobWrapper) RunWithContext(ctx context.Context) {
+	w.runWithCtx(ctx)
+}
+
+func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	// Add panic recovery to handle job panics gracefully
 	defer func() {
 		if r := recover(); r != nil {
@@ -649,21 +664,21 @@ func (w *jobWrapper) Run() {
 	// Ensure buffers are returned to pool when done
 	defer e.Cleanup()
 
-	ctx := NewContext(w.s, w.j, e)
+	jctx := NewContextWithContext(ctx, w.s, w.j, e)
 
 	// Mark job as started in workflow
 	w.s.workflowOrchestrator.JobStarted(w.j.GetName(), executionID)
 
-	w.start(ctx)
+	w.start(jctx)
 
 	// Execute with retry logic
-	err = w.s.retryExecutor.ExecuteWithRetry(w.j, ctx, func(c *Context) error {
+	err = w.s.retryExecutor.ExecuteWithRetry(w.j, jctx, func(c *Context) error {
 		return c.Next()
 	})
 
-	w.stop(ctx, err)
+	w.stop(jctx, err)
 
-	success := err == nil && !ctx.Execution.Failed
+	success := err == nil && !jctx.Execution.Failed
 	w.s.workflowOrchestrator.JobCompleted(w.j.GetName(), executionID, success)
 
 	if w.s.onJobComplete != nil {
