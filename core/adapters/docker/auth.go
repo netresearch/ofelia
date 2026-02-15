@@ -23,8 +23,8 @@ type ConfigAuthProvider struct {
 
 // Logger interface for auth provider logging
 type Logger interface {
-	Debugf(format string, args ...interface{})
-	Warningf(format string, args ...interface{})
+	Debugf(format string, args ...any)
+	Warningf(format string, args ...any)
 }
 
 // NewConfigAuthProvider creates a new auth provider.
@@ -96,13 +96,13 @@ func (p *ConfigAuthProvider) loadConfig() (*configfile.ConfigFile, error) {
 	return cfg, nil
 }
 
-func (p *ConfigAuthProvider) logDebug(format string, args ...interface{}) {
+func (p *ConfigAuthProvider) logDebug(format string, args ...any) {
 	if p.logger != nil {
 		p.logger.Debugf(format, args...)
 	}
 }
 
-func (p *ConfigAuthProvider) logWarning(format string, args ...interface{}) {
+func (p *ConfigAuthProvider) logWarning(format string, args ...any) {
 	if p.logger != nil {
 		p.logger.Warningf(format, args...)
 	}

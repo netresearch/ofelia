@@ -76,10 +76,7 @@ func Retry(ctx context.Context, policy *RetryPolicy, fn func() error) error {
 		}
 
 		// Calculate next delay with exponential backoff
-		delay = time.Duration(float64(delay) * policy.BackoffFactor)
-		if delay > policy.MaxDelay {
-			delay = policy.MaxDelay
-		}
+		delay = min(time.Duration(float64(delay)*policy.BackoffFactor), policy.MaxDelay)
 	}
 
 	return fmt.Errorf("max retry attempts (%d) exceeded: %w", policy.MaxAttempts, lastErr)
@@ -282,11 +279,11 @@ func (cb *CircuitBreaker) GetState() CircuitBreakerState {
 }
 
 // GetMetrics returns circuit breaker metrics
-func (cb *CircuitBreaker) GetMetrics() map[string]interface{} {
+func (cb *CircuitBreaker) GetMetrics() map[string]any {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"name":             cb.name,
 		"state":            cb.state.String(),
 		"total_calls":      atomic.LoadUint64(&cb.totalCalls),
@@ -424,8 +421,8 @@ func (b *Bulkhead) Execute(ctx context.Context, fn func() error) error {
 }
 
 // GetMetrics returns bulkhead metrics
-func (b *Bulkhead) GetMetrics() map[string]interface{} {
-	return map[string]interface{}{
+func (b *Bulkhead) GetMetrics() map[string]any {
+	return map[string]any{
 		"name":           b.name,
 		"max_concurrent": b.maxConcurrent,
 		"active":         atomic.LoadInt32(&b.active),

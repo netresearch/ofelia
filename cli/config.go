@@ -464,7 +464,7 @@ func (c *Config) mergeSlackDefaults(job *middlewares.SlackConfig) {
 	}
 	// SlackOnlyOnError: inherit from global only when the job didn't explicitly set it (nil).
 	if job.SlackOnlyOnError == nil && global.SlackOnlyOnError != nil {
-		job.SlackOnlyOnError = middlewares.BoolPtr(*global.SlackOnlyOnError)
+		job.SlackOnlyOnError = new(*global.SlackOnlyOnError)
 	}
 }
 
@@ -507,7 +507,7 @@ func (c *Config) mergeMailDefaults(job *middlewares.MailConfig) {
 	}
 	// MailOnlyOnError: inherit from global only when the job didn't explicitly set it (nil).
 	if job.MailOnlyOnError == nil && global.MailOnlyOnError != nil {
-		job.MailOnlyOnError = middlewares.BoolPtr(*global.MailOnlyOnError)
+		job.MailOnlyOnError = new(*global.MailOnlyOnError)
 	}
 }
 
@@ -519,7 +519,7 @@ func (c *Config) mergeSaveDefaults(job *middlewares.SaveConfig) {
 	}
 	// SaveOnlyOnError: inherit from global only when the job didn't explicitly set it (nil).
 	if job.SaveOnlyOnError == nil && global.SaveOnlyOnError != nil {
-		job.SaveOnlyOnError = middlewares.BoolPtr(*global.SaveOnlyOnError)
+		job.SaveOnlyOnError = new(*global.SaveOnlyOnError)
 	}
 }
 
@@ -925,7 +925,7 @@ func (c *RunJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
 // Hash overrides BareJob.Hash() to include RunJob-specific fields
 func (c *RunJobConfig) Hash() (string, error) {
 	var hash string
-	if err := core.GetHash(reflect.TypeOf(&c.RunJob).Elem(), reflect.ValueOf(&c.RunJob).Elem(), &hash); err != nil {
+	if err := core.GetHash(reflect.TypeFor[core.RunJob](), reflect.ValueOf(&c.RunJob).Elem(), &hash); err != nil {
 		return "", fmt.Errorf("failed to generate hash for RunJob config: %w", err)
 	}
 	return hash, nil
@@ -1211,8 +1211,8 @@ func parseJobName(section, prefix string) string {
 	return strings.Trim(s, "\"")
 }
 
-func sectionToMap(section *ini.Section) map[string]interface{} {
-	m := make(map[string]interface{})
+func sectionToMap(section *ini.Section) map[string]any {
+	m := make(map[string]any)
 	for _, key := range section.Keys() {
 		vals := key.ValueWithShadows()
 		switch {

@@ -98,7 +98,7 @@ func TestExecJob_ExitCodeHandling(t *testing.T) {
 		name         string
 		exitCode     int
 		expectError  bool
-		expectedType interface{}
+		expectedType any
 	}{
 		{
 			name:         "success_exit_0",

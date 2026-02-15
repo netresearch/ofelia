@@ -35,17 +35,17 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d host-based local jobs from container labels. "+
 				"Host job execution from container labels is disabled for security. "+
 				"This prevents container-to-host privilege escalation attacks.", len(localJobs))
-			localJobs = make(map[string]map[string]interface{})
+			localJobs = make(map[string]map[string]any)
 		}
 		if len(composeJobs) > 0 {
 			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d host-based compose jobs from container labels. "+
 				"Host job execution from container labels is disabled for security. "+
 				"This prevents container-to-host privilege escalation attacks.", len(composeJobs))
-			composeJobs = make(map[string]map[string]interface{})
+			composeJobs = make(map[string]map[string]any)
 		}
 	}
 
-	decodeInto := func(src map[string]map[string]interface{}, dst any) error {
+	decodeInto := func(src map[string]map[string]any, dst any) error {
 		if len(src) == 0 {
 			return nil
 		}
@@ -79,15 +79,15 @@ func (c *Config) buildFromDockerLabels(labels map[string]map[string]string) erro
 
 // splitLabelsByType partitions label maps and parses values into per-type maps.
 func splitLabelsByType(labels map[string]map[string]string) (
-	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]interface{},
-	globalConfigs map[string]interface{},
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]any,
+	globalConfigs map[string]any,
 ) {
-	execJobs = make(map[string]map[string]interface{})
-	localJobs = make(map[string]map[string]interface{})
-	runJobs = make(map[string]map[string]interface{})
-	serviceJobs = make(map[string]map[string]interface{})
-	composeJobs = make(map[string]map[string]interface{})
-	globalConfigs = make(map[string]interface{})
+	execJobs = make(map[string]map[string]any)
+	localJobs = make(map[string]map[string]any)
+	runJobs = make(map[string]map[string]any)
+	serviceJobs = make(map[string]map[string]any)
+	composeJobs = make(map[string]map[string]any)
+	globalConfigs = make(map[string]any)
 
 	for containerName, labelSet := range labels {
 		isService := hasServiceLabel(labelSet)
@@ -154,9 +154,9 @@ func getJobPrefix(labels map[string]string, containerName string) string {
 	return containerName
 }
 
-func ensureJob(m map[string]map[string]interface{}, name string) {
+func ensureJob(m map[string]map[string]any, name string) {
 	if _, ok := m[name]; !ok {
-		m[name] = make(map[string]interface{})
+		m[name] = make(map[string]any)
 	}
 }
 
@@ -170,7 +170,7 @@ func markJobSource[J interface{ SetJobSource(JobSource) }](m map[string]J, src J
 	}
 }
 
-func setJobParam(params map[string]interface{}, paramName, paramVal string) {
+func setJobParam(params map[string]any, paramName, paramVal string) {
 	switch strings.ToLower(paramName) {
 	case "volume", "environment", "volumes-from", "depends-on", "on-success", "on-failure":
 		arr := []string{} // allow providing JSON arr of volume mounts or dependency lists

@@ -200,11 +200,11 @@ type mockLogger struct {
 	warningMessages []string
 }
 
-func (m *mockLogger) Debugf(format string, args ...interface{}) {
+func (m *mockLogger) Debugf(format string, args ...any) {
 	m.debugMessages = append(m.debugMessages, format)
 }
 
-func (m *mockLogger) Warningf(format string, args ...interface{}) {
+func (m *mockLogger) Warningf(format string, args ...any) {
 	m.warningMessages = append(m.warningMessages, format)
 }
 

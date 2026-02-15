@@ -273,7 +273,7 @@ func TestPresetLoader_TemplateRendering(t *testing.T) {
 		preset, err := loader.Load(name)
 		require.NoError(t, err, "Failed to load preset %s", name)
 
-		data := map[string]interface{}{
+		data := map[string]any{
 			"Job": WebhookJobData{
 				Name:    "test-job",
 				Command: "echo hello",

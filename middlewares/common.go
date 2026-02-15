@@ -2,7 +2,7 @@ package middlewares
 
 import "reflect"
 
-func IsEmpty(i interface{}) bool {
+func IsEmpty(i any) bool {
 	t := reflect.TypeOf(i).Elem()
 	e := reflect.New(t).Interface()
 
@@ -19,6 +19,8 @@ func boolVal(b *bool) bool {
 
 // BoolPtr returns a pointer to the given bool value.
 // Used in config merging and tests to create explicit *bool values.
+//
+//go:fix inline
 func BoolPtr(v bool) *bool {
-	return &v
+	return new(v)
 }

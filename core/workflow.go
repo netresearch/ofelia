@@ -267,7 +267,7 @@ func (wo *WorkflowOrchestrator) CleanupOldExecutions(maxAge time.Duration) {
 }
 
 // GetWorkflowStatus returns the status of a workflow execution
-func (wo *WorkflowOrchestrator) GetWorkflowStatus(executionID string) map[string]interface{} {
+func (wo *WorkflowOrchestrator) GetWorkflowStatus(executionID string) map[string]any {
 	wo.mu.RLock()
 	execution, exists := wo.executions[executionID]
 	wo.mu.RUnlock()
@@ -279,7 +279,7 @@ func (wo *WorkflowOrchestrator) GetWorkflowStatus(executionID string) map[string
 	execution.mu.RLock()
 	defer execution.mu.RUnlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"id":            execution.ID,
 		"startTime":     execution.StartTime,
 		"duration":      time.Since(execution.StartTime),

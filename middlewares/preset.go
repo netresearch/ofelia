@@ -269,8 +269,8 @@ func (l *PresetLoader) isTrustedSource(source string) bool {
 	}
 
 	// Parse trusted sources (comma-separated)
-	trusted := strings.Split(l.globalConfig.TrustedPresetSources, ",")
-	for _, pattern := range trusted {
+	trusted := strings.SplitSeq(l.globalConfig.TrustedPresetSources, ",")
+	for pattern := range trusted {
 		pattern = strings.TrimSpace(pattern)
 		if pattern == "" {
 			continue
@@ -288,8 +288,8 @@ func (l *PresetLoader) isTrustedSource(source string) bool {
 // matchGlobPattern performs simple glob matching with * wildcards
 func matchGlobPattern(pattern, s string) bool {
 	// Simple implementation - supports only * at the end
-	if strings.HasSuffix(pattern, "*") {
-		prefix := strings.TrimSuffix(pattern, "*")
+	if before, ok := strings.CutSuffix(pattern, "*"); ok {
+		prefix := before
 		return strings.HasPrefix(s, prefix)
 	}
 	return pattern == s

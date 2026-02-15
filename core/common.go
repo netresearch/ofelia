@@ -119,7 +119,7 @@ func (c *Context) Stop(err error) {
 }
 
 func (c *Context) Log(msg string) {
-	args := []interface{}{c.Job.GetName(), c.Execution.ID, msg}
+	args := []any{c.Job.GetName(), c.Execution.ID, msg}
 
 	switch {
 	case c.Execution.Failed:
@@ -132,7 +132,7 @@ func (c *Context) Log(msg string) {
 }
 
 func (c *Context) Warn(msg string) {
-	args := []interface{}{c.Job.GetName(), c.Execution.ID, msg}
+	args := []any{c.Job.GetName(), c.Execution.ID, msg}
 	c.Logger.Warningf(logPrefix, args...)
 }
 
@@ -291,11 +291,11 @@ func (c *middlewareContainer) Middlewares() []Middleware {
 }
 
 type Logger interface {
-	Criticalf(format string, args ...interface{})
-	Debugf(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
-	Noticef(format string, args ...interface{})
-	Warningf(format string, args ...interface{})
+	Criticalf(format string, args ...any)
+	Debugf(format string, args ...any)
+	Errorf(format string, args ...any)
+	Noticef(format string, args ...any)
+	Warningf(format string, args ...any)
 }
 
 func randomID() (string, error) {
@@ -315,7 +315,7 @@ func GetHash(t reflect.Type, v reflect.Value, hash *string) error {
 		fieldv := v.Field(i)
 		kind := field.Type.Kind()
 
-		if kind == reflect.Struct && field.Type != reflect.TypeOf(time.Duration(0)) {
+		if kind == reflect.Struct && field.Type != reflect.TypeFor[time.Duration]() {
 			if err := GetHash(field.Type, fieldv, hash); err != nil {
 				return err
 			}

@@ -19,7 +19,7 @@ type DecodeResult struct {
 
 // decodeWithMetadata decodes input into output while tracking key metadata.
 // This enables detection of unknown keys (typos) and presence-based deprecation checks.
-func decodeWithMetadata(input map[string]interface{}, output interface{}) (*DecodeResult, error) {
+func decodeWithMetadata(input map[string]any, output any) (*DecodeResult, error) {
 	var metadata mapstructure.Metadata
 
 	config := &mapstructure.DecoderConfig{
@@ -68,7 +68,7 @@ func normalizeKey(key string) string {
 }
 
 // collectInputKeys collects all keys from a map for key presence tracking
-func collectInputKeys(input map[string]interface{}) map[string]bool {
+func collectInputKeys(input map[string]any) map[string]bool {
 	keys := make(map[string]bool)
 	for k := range input {
 		keys[normalizeKey(k)] = true
@@ -96,7 +96,7 @@ func mergeUsedKeys(results ...*DecodeResult) map[string]bool {
 // recognize for the given struct value. It returns keys from mapstructure tags,
 // or lowercase field names when no tag is specified. This is used to build the
 // list of known keys for "did you mean?" suggestions when unknown keys are detected.
-func extractMapstructureKeys(v interface{}) []string {
+func extractMapstructureKeys(v any) []string {
 	return extractMapstructureKeysFromType(reflect.TypeOf(v))
 }
 
@@ -105,7 +105,7 @@ func extractMapstructureKeys(v interface{}) []string {
 // and those with the ",squash" tag option), and fields without explicit tags.
 // For embedded/squashed structs, keys are collected recursively and flattened.
 func extractMapstructureKeysFromType(t reflect.Type) []string {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -113,8 +113,8 @@ func extractMapstructureKeysFromType(t reflect.Type) []string {
 	}
 
 	keys := make([]string, 0)
-	for i := range t.NumField() {
-		field := t.Field(i)
+	for field := range t.Fields() {
+		field := field
 
 		// Skip unexported fields
 		if !field.IsExported() {

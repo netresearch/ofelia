@@ -388,7 +388,7 @@ func TestSimpleMetricsRecorder(t *testing.T) {
 		t.Errorf("Expected test.metric=42, got %v", metrics["test.metric"])
 	}
 
-	jobMetric, ok := metrics["job.test-job.last_execution"].(map[string]interface{})
+	jobMetric, ok := metrics["job.test-job.last_execution"].(map[string]any)
 	if !ok {
 		t.Error("Expected job execution metric to be recorded")
 	} else if jobMetric["success"] != true {
@@ -559,7 +559,7 @@ func TestPerformanceMetricsJobScheduledSkipped(t *testing.T) {
 	pm.RecordMemoryUsage(2 * 1024 * 1024)
 
 	// Test RecordBufferPoolStats
-	pm.RecordBufferPoolStats(map[string]interface{}{
+	pm.RecordBufferPoolStats(map[string]any{
 		"total_gets": int64(100),
 		"total_puts": int64(95),
 	})

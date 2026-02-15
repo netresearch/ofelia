@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -195,13 +196,7 @@ func (j *RunServiceJob) findTaskStatus(ctx context.Context, jobCtx *Context, ser
 
 	for _, task := range tasks {
 
-		stop := false
-		for _, stopState := range stopStates {
-			if task.Status.State == stopState {
-				stop = true
-				break
-			}
-		}
+		stop := slices.Contains(stopStates, task.Status.State)
 
 		if stop {
 			if task.Status.ContainerStatus != nil {

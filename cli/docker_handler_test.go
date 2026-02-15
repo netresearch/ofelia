@@ -491,8 +491,7 @@ func TestStartFallbackPollingAlreadyActive(t *testing.T) {
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{},
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h := &DockerHandler{
 		pollingFallback:       100 * time.Millisecond,
@@ -524,8 +523,7 @@ func TestStartFallbackPollingCancellation(t *testing.T) {
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{},
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h := &DockerHandler{
 		pollingFallback: 100 * time.Millisecond,
@@ -574,8 +572,7 @@ func TestClearEventStreamErrorStopsFallback(t *testing.T) {
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{},
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	h := &DockerHandler{
 		pollingFallback: 100 * time.Millisecond,

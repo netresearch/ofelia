@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/manifoldco/promptui"
@@ -481,10 +482,8 @@ func validateSchedule(schedule string) error {
 
 	// Check for special descriptors
 	descriptors := []string{"@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly"}
-	for _, desc := range descriptors {
-		if schedule == desc {
-			return nil
-		}
+	if slices.Contains(descriptors, schedule) {
+		return nil
 	}
 
 	// Check for @every format

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -109,12 +110,7 @@ func (v *WebhookSecurityValidator) Validate(rawURL string) error {
 
 // isAllowAll checks if the configuration allows all hosts
 func (v *WebhookSecurityValidator) isAllowAll() bool {
-	for _, h := range v.config.AllowedHosts {
-		if h == "*" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(v.config.AllowedHosts, "*")
 }
 
 // isAllowedHost checks if a hostname matches the allowed hosts list
@@ -201,8 +197,8 @@ func SecurityConfigFromGlobal(global *WebhookGlobalConfig) *WebhookSecurityConfi
 		allowedHosts = "*"
 	}
 
-	hosts := strings.Split(allowedHosts, ",")
-	for _, h := range hosts {
+	hosts := strings.SplitSeq(allowedHosts, ",")
+	for h := range hosts {
 		h = strings.TrimSpace(h)
 		if h != "" {
 			config.AllowedHosts = append(config.AllowedHosts, h)
