@@ -16,22 +16,22 @@ import (
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile          string         `long:"config" env:"OFELIA_CONFIG" default:"/etc/ofelia/config.ini"`
-	DockerFilters       []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER"`
-	DockerPollInterval  *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL"`
-	DockerUseEvents     *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS"`
-	DockerNoPoll        *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL"`
-	LogLevel            string         `long:"log-level" env:"OFELIA_LOG_LEVEL"`
-	EnablePprof         bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF"`
-	PprofAddr           string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" default:"127.0.0.1:8080"`
-	EnableWeb           bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
-	WebAddr             string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
-	WebAuthEnabled      bool           `long:"web-auth-enabled" env:"OFELIA_WEB_AUTH_ENABLED"`
-	WebUsername         string         `long:"web-username" env:"OFELIA_WEB_USERNAME"`
-	WebPasswordHash     string         `long:"web-password-hash" env:"OFELIA_WEB_PASSWORD_HASH"`
-	WebSecretKey        string         `long:"web-secret-key" env:"OFELIA_WEB_SECRET_KEY"`
-	WebTokenExpiry      int            `long:"web-token-expiry" env:"OFELIA_WEB_TOKEN_EXPIRY" default:"24"`
-	WebMaxLoginAttempts int            `long:"web-max-login-attempts" env:"OFELIA_WEB_MAX_LOGIN_ATTEMPTS" default:"5"`
+	ConfigFile          string         `long:"config" env:"OFELIA_CONFIG" description:"Path to configuration file" default:"/etc/ofelia/config.ini"`
+	DockerFilters       []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER" description:"Docker filter to restrict watched containers"`
+	DockerPollInterval  *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL" description:"Interval for polling Docker for label changes"`
+	DockerUseEvents     *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS" description:"Use Docker events to detect container changes"`
+	DockerNoPoll        *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL" description:"Disable Docker polling for label changes"`
+	LogLevel            string         `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (trace, debug, info, warning, error, fatal, panic)"`
+	EnablePprof         bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF" description:"Enable pprof profiling server"`
+	PprofAddr           string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" description:"Address for pprof server" default:"127.0.0.1:8080"`
+	EnableWeb           bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB" description:"Enable web UI server"`
+	WebAddr             string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" description:"Address for web UI server" default:":8081"`
+	WebAuthEnabled      bool           `long:"web-auth-enabled" env:"OFELIA_WEB_AUTH_ENABLED" description:"Enable authentication for web UI"`
+	WebUsername         string         `long:"web-username" env:"OFELIA_WEB_USERNAME" description:"Username for web UI authentication"`
+	WebPasswordHash     string         `long:"web-password-hash" env:"OFELIA_WEB_PASSWORD_HASH" description:"Bcrypt hash of password for web UI" default-mask:"-"`
+	WebSecretKey        string         `long:"web-secret-key" env:"OFELIA_WEB_SECRET_KEY" description:"Secret key for JWT token signing" default-mask:"-"`
+	WebTokenExpiry      int            `long:"web-token-expiry" env:"OFELIA_WEB_TOKEN_EXPIRY" description:"JWT token expiry in hours" default:"24"`
+	WebMaxLoginAttempts int            `long:"web-max-login-attempts" env:"OFELIA_WEB_MAX_LOGIN_ATTEMPTS" description:"Maximum failed login attempts before lockout" default:"5"`
 
 	scheduler       *core.Scheduler
 	pprofServer     *http.Server
