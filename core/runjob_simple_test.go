@@ -325,8 +325,8 @@ func TestRunJob_ExitCodeHandling(t *testing.T) {
 
 			if tc.expectError {
 				if tc.expectedType != nil {
-					var exitErr NonZeroExitError
-					if !errors.As(err, &exitErr) {
+					exitErr, ok := errors.AsType[NonZeroExitError](err)
+					if !ok {
 						t.Errorf("Expected NonZeroExitError, got %T", err)
 					} else if exitErr.ExitCode != tc.exitCode {
 						t.Errorf("Expected exit code %d, got %d", tc.exitCode, exitErr.ExitCode)

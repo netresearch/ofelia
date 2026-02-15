@@ -34,8 +34,8 @@ func ValidateConfig(cfg any) error {
 	}
 
 	// Convert validation errors to user-friendly format
-	var validationErrors validator.ValidationErrors
-	if !errors.As(err, &validationErrors) {
+	validationErrors, ok := errors.AsType[validator.ValidationErrors](err)
+	if !ok {
 		return fmt.Errorf("%w: %w", ErrValidationFailed, err)
 	}
 
