@@ -243,7 +243,7 @@ command = echo cron`
 
 // TestCheckResult_JSON tests CheckResult JSON marshaling
 func TestCheckResult_JSON(t *testing.T) {
-	validStatuses := []string{"pass", "fail", "skip"}
+	validStatuses := []string{statusPass, statusFail, statusSkip}
 
 	for _, status := range validStatuses {
 		check := CheckResult{
@@ -283,8 +283,8 @@ func TestDoctorReport_JSON(t *testing.T) {
 	report := &DoctorReport{
 		Healthy: true,
 		Checks: []CheckResult{
-			{Category: "Test", Name: "Check1", Status: "pass", Message: "OK"},
-			{Category: "Test", Name: "Check2", Status: "skip", Message: "Skipped"},
+			{Category: "Test", Name: "Check1", Status: statusPass, Message: "OK"},
+			{Category: "Test", Name: "Check2", Status: statusSkip, Message: "Skipped"},
 		},
 	}
 
@@ -485,9 +485,9 @@ func TestGetStatusIcon(t *testing.T) {
 		status   string
 		expected string
 	}{
-		{"pass", "✅"},
-		{"fail", "❌"},
-		{"skip", "⚠️"},
+		{statusPass, "✅"},
+		{statusFail, "❌"},
+		{statusSkip, "⚠️"},
 		{"unknown", "❓"},
 		{"", "❓"},
 		{"other", "❓"},
@@ -628,7 +628,7 @@ func TestDoctorCommand_OutputHumanWithHints(t *testing.T) {
 			{
 				Category: "Configuration",
 				Name:     "Test Check",
-				Status:   "fail",
+				Status:   statusFail,
 				Message:  "Test failure",
 				Hints:    []string{"Try doing X", "Check Y"},
 			},
