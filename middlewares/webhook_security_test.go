@@ -432,13 +432,13 @@ func TestWebhookSecurityIPv6URLs(t *testing.T) {
 	// Valid IPv6 URLs should pass basic validation
 	for _, u := range validIPv6URLs {
 		err := ValidateWebhookURLImpl(u)
-		assert.NoError(t, err, "ValidateWebhookURLImpl(%q) should succeed", u)
+		require.NoError(t, err, "ValidateWebhookURLImpl(%q) should succeed", u)
 	}
 
 	// Invalid IPv6 URLs should fail
 	for _, u := range invalidIPv6URLs {
 		err := ValidateWebhookURLImpl(u)
-		assert.Error(t, err, "ValidateWebhookURLImpl(%q) should fail for malformed IPv6", u)
+		require.Error(t, err, "ValidateWebhookURLImpl(%q) should fail for malformed IPv6", u)
 	}
 
 	// IPv6 with whitelisted host — url.Hostname() strips brackets,
@@ -448,7 +448,7 @@ func TestWebhookSecurityIPv6URLs(t *testing.T) {
 	})
 
 	err := validator.Validate("http://[::1]:8080/webhook")
-	assert.NoError(t, err, "Whitelisted IPv6 host should pass")
+	require.NoError(t, err, "Whitelisted IPv6 host should pass")
 
 	err = validator.Validate("http://[2001:db8::99]:8080/webhook")
 	assert.Error(t, err, "Non-whitelisted IPv6 host should fail")
