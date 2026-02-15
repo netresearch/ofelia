@@ -30,6 +30,9 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+// mitchellh/mapstructure is archived; redirect to the actively maintained fork.
+replace github.com/mitchellh/mapstructure v1.5.0 => github.com/go-viper/mapstructure v1.6.0
+
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
