@@ -64,3 +64,6 @@ mutation-output.txt
 # Generated test artifacts
 cover.out
 test_cron_compat
+
+# Git worktrees
+.worktrees/
