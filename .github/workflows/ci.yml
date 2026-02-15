@@ -246,7 +246,17 @@ jobs:
         uses: actions/dependency-review-action@ce3cf9537a52e8119d91fd484ab5b8a807627bf8 # v4.6.0
         with:
           fail-on-severity: high
-          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, CC0-1.0, Unlicense, Apache-2.0 AND BSD-3-Clause, BSD-3-Clause AND LicenseRef-scancode-google-patent-license-golang
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, CC0-1.0, Unlicense
+          # Packages with compound SPDX expressions (e.g. "Apache-2.0 AND BSD-3-Clause")
+          # that dependency-review-action cannot match via allow-licenses
+          allow-dependencies-licenses: >-
+            pkg:golang/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp,
+            pkg:golang/go.opentelemetry.io/otel,
+            pkg:golang/go.opentelemetry.io/otel/metric,
+            pkg:golang/go.opentelemetry.io/otel/trace,
+            pkg:golang/golang.org/x/crypto,
+            pkg:golang/golang.org/x/sys,
+            pkg:golang/golang.org/x/text
           comment-summary-in-pr: always
 
   license-check:
