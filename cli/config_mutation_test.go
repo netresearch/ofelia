@@ -92,7 +92,7 @@ func TestSectionToMap_EmptyValue(t *testing.T) {
 	require.True(t, ok)
 	strVal, isStr := val.(string)
 	assert.True(t, isStr, "empty value key should produce a string, got %T", val)
-	assert.Equal(t, "", strVal)
+	assert.Empty(t, strVal)
 }
 
 // =============================================================================

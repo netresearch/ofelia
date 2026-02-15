@@ -32,10 +32,6 @@ func (mutTestLogger) Errorf(string, ...any)    {}
 func (mutTestLogger) Noticef(string, ...any)   {}
 func (mutTestLogger) Warningf(string, ...any)  {}
 
-type mutTestJob struct{ core.BareJob }
-
-func (j *mutTestJob) Run(*core.Context) error { return nil }
-
 // --- CONDITIONALS_NEGATION at line 55: tokenExpiry == 0 -------------
 
 // TestNewServerWithAuth_TokenExpiryDefault kills the mutant that changes
@@ -189,7 +185,7 @@ func TestJobType_NonPointerUnknownType(t *testing.T) {
 	// Verify that reflect on a pointer type has empty Name().
 	ptrType := reflect.TypeOf(&customTestJob{})
 	assert.Equal(t, reflect.Pointer, ptrType.Kind())
-	assert.Equal(t, "", ptrType.Name(), "pointer types have empty Name()")
+	assert.Empty(t, ptrType.Name(), "pointer types have empty Name()")
 
 	// After Elem(), we get the concrete type name.
 	elemType := ptrType.Elem()
@@ -241,26 +237,26 @@ func TestServerTimeouts_NotMutated(t *testing.T) {
 	// Mutant with /: 5 / time.Second = 5ns (way too small)
 	// Mutant with +: 5 + time.Second = 1000000005ns ~ 1s (wrong)
 	// Mutant with -: 5 - time.Second = -999999995ns (negative!)
-	assert.True(t, httpSrv.ReadHeaderTimeout > time.Second,
+	assert.Greater(t, httpSrv.ReadHeaderTimeout, time.Second,
 		"ReadHeaderTimeout must be greater than 1 second")
-	assert.True(t, httpSrv.ReadHeaderTimeout < time.Minute,
+	assert.Less(t, httpSrv.ReadHeaderTimeout, time.Minute,
 		"ReadHeaderTimeout must be less than 1 minute")
 
 	// WriteTimeout: 60 * time.Second = 60s = 1 minute
 	// Mutant with /: 60 / time.Second = 60ns
 	// Mutant with +: 60 + time.Second = ~1s
 	// Mutant with -: 60 - time.Second = negative
-	assert.True(t, httpSrv.WriteTimeout > time.Second,
+	assert.Greater(t, httpSrv.WriteTimeout, time.Second,
 		"WriteTimeout must be greater than 1 second")
-	assert.True(t, httpSrv.WriteTimeout <= time.Minute,
+	assert.LessOrEqual(t, httpSrv.WriteTimeout, time.Minute,
 		"WriteTimeout must be at most 1 minute")
 
 	// IdleTimeout: 120 * time.Second = 120s = 2 minutes
 	// Mutant with /: 120 / time.Second = 120ns
 	// Mutant with +: 120 + time.Second = ~1s
 	// Mutant with -: 120 - time.Second = negative
-	assert.True(t, httpSrv.IdleTimeout > time.Minute,
+	assert.Greater(t, httpSrv.IdleTimeout, time.Minute,
 		"IdleTimeout must be greater than 1 minute")
-	assert.True(t, httpSrv.IdleTimeout <= 2*time.Minute,
+	assert.LessOrEqual(t, httpSrv.IdleTimeout, 2*time.Minute,
 		"IdleTimeout must be at most 2 minutes")
 }

@@ -19,9 +19,11 @@ func (m *mockLogger) Criticalf(format string, args ...any) {}
 func (m *mockLogger) Debugf(format string, args ...any) {
 	m.debugMessages = append(m.debugMessages, format)
 }
+
 func (m *mockLogger) Errorf(format string, args ...any) {
 	m.errorMessages = append(m.errorMessages, format)
 }
+
 func (m *mockLogger) Noticef(format string, args ...any) {
 	m.noticeMessages = append(m.noticeMessages, format)
 }
@@ -703,7 +705,7 @@ func TestNewEnhancedBufferPoolCreatesCorrectStandardPools(t *testing.T) {
 
 // =============================================================================
 // Kill: CONDITIONALS_NEGATION at line 271 via getPoolForSize
-// getPoolForSize should create pools for standard sizes but not non-standard.
+// Should create pools for standard sizes but not non-standard.
 // =============================================================================
 
 func TestGetPoolForSizeCreatesForStandardOnly(t *testing.T) {

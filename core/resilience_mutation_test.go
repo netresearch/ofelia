@@ -467,7 +467,7 @@ func TestRateLimiter_RefillCapBoundary(t *testing.T) {
 
 	// After refill, tokens should be exactly at capacity (5)
 	// Use all 5 tokens
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if !rl.Allow() {
 			t.Errorf("expected allow to succeed for token %d after refill to capacity", i+1)
 		}

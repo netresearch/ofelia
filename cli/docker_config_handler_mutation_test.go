@@ -404,7 +404,7 @@ func TestShutdown_WithCancelAndProvider(t *testing.T) {
 	}
 
 	err := h.Shutdown(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, cancelCalled, "cancel should have been called")
 	assert.Nil(t, h.dockerProvider, "dockerProvider should be nil after shutdown")
 }
@@ -425,7 +425,7 @@ func TestNewDockerHandler_NilContext(t *testing.T) {
 	handler, err := NewDockerHandler(nil, notifier, logger, cfg, mockProvider)
 	require.NoError(t, err)
 	require.NotNil(t, handler)
-	defer handler.Shutdown(context.Background()) //nolint:errcheck
+	defer handler.Shutdown(context.Background())
 
 	// Handler should have a valid context (not nil)
 	assert.NotNil(t, handler.ctx)
@@ -454,7 +454,7 @@ func TestNewDockerHandler_PollIntervalBoundary(t *testing.T) {
 		handler, err := NewDockerHandler(context.Background(), notifier, logger, cfg, mockProvider)
 		require.NoError(t, err)
 		require.NotNil(t, handler)
-		defer handler.Shutdown(context.Background()) //nolint:errcheck
+		defer handler.Shutdown(context.Background())
 
 		// With zero intervals, no polling goroutines should start
 		assert.Equal(t, time.Duration(0), handler.configPollInterval)
@@ -477,7 +477,7 @@ func TestNewDockerHandler_PollIntervalBoundary(t *testing.T) {
 		handler, err := NewDockerHandler(context.Background(), notifier, logger, cfg, mockProvider)
 		require.NoError(t, err)
 		require.NotNil(t, handler)
-		defer handler.Shutdown(context.Background()) //nolint:errcheck
+		defer handler.Shutdown(context.Background())
 
 		assert.Equal(t, 1*time.Second, handler.configPollInterval)
 		assert.Equal(t, 1*time.Second, handler.dockerPollInterval)

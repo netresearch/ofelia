@@ -209,7 +209,7 @@ func TestSlackBuildMessage_FailedExecution(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var msg slackMessage
 		err := json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &msg)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, "Execution failed", msg.Attachments[0].Title)
 		assert.Equal(t, "#F35A00", msg.Attachments[0].Color)
 		assert.Contains(t, msg.Attachments[0].Text, "test failure")
@@ -242,7 +242,7 @@ func TestSlackBuildMessage_SkippedExecution(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var msg slackMessage
 		err := json.Unmarshal([]byte(r.FormValue(slackPayloadVar)), &msg)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, "Execution skipped", msg.Attachments[0].Title)
 		assert.Equal(t, "#FFA500", msg.Attachments[0].Color)
 		w.WriteHeader(http.StatusOK)
@@ -277,6 +277,7 @@ func (l *capturingLogger) Criticalf(format string, args ...any) {}
 func (l *capturingLogger) Debugf(format string, args ...any) {
 	l.debugs = append(l.debugs, fmt.Sprintf(format, args...))
 }
+
 func (l *capturingLogger) Errorf(format string, args ...any) {
 	l.errors = append(l.errors, fmt.Sprintf(format, args...))
 }

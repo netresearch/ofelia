@@ -488,7 +488,7 @@ func TestOutputJSON_HealthyReport(t *testing.T) {
 	}
 
 	err := cmd.outputJSON(report)
-	assert.NoError(t, err, "outputJSON must return nil for healthy report")
+	require.NoError(t, err, "outputJSON must return nil for healthy report")
 
 	// Verify JSON was output
 	messages := logger.GetMessages()
@@ -514,7 +514,7 @@ func TestOutputJSON_UnhealthyReport(t *testing.T) {
 	}
 
 	err := cmd.outputJSON(report)
-	assert.Error(t, err, "outputJSON must return error for unhealthy report")
+	require.Error(t, err, "outputJSON must return error for unhealthy report")
 	assert.Contains(t, err.Error(), "health check failed")
 }
 
@@ -539,7 +539,7 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 			},
 		}
 		err := cmd.outputHuman(report)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, lgr.HasMessage("All checks passed"),
 			"healthy report must show 'All checks passed'")
 		assert.True(t, lgr.HasMessage("1 check(s) skipped as not applicable"),
@@ -558,7 +558,7 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 			},
 		}
 		err := cmd.outputHuman(report)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.True(t, lgr.HasMessage("2 issue(s) found"),
 			"must show correct fail count")
 		assert.True(t, lgr.HasMessage("1 check(s) skipped due to blockers"),
@@ -575,7 +575,7 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 			},
 		}
 		err := cmd.outputHuman(report)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.True(t, lgr.HasMessage("1 issue(s) found"))
 		assert.False(t, lgr.HasMessage("skipped due to blockers"),
 			"must NOT show skip count when no skips")
@@ -591,7 +591,7 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 			},
 		}
 		err := cmd.outputHuman(report)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, lgr.HasMessage("All checks passed"))
 		assert.False(t, lgr.HasMessage("skipped"),
 			"must NOT show skip count when no skips")
@@ -643,7 +643,7 @@ func TestOutputHuman_CategoryNotInOrder(t *testing.T) {
 		},
 	}
 	err := cmd.outputHuman(report)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	// "UnknownCategory" is not in categoryOrder, so it should not appear
 	assert.False(t, lgr.HasMessage("UnknownCategory"),
 		"unknown categories should not appear in output")
@@ -1063,7 +1063,7 @@ func TestOutputHuman_FailCountExact(t *testing.T) {
 	}
 
 	err := cmd.outputHuman(report)
-	assert.Error(t, err)
+	require.Error(t, err)
 	// Exactly 3 failures
 	assert.True(t, lgr.HasMessage("3 issue(s) found"),
 		"must show exactly 3 failures, not any other count")
@@ -1114,7 +1114,7 @@ func TestFindConfigFile_ReturnsEmptyForNoConfig(t *testing.T) {
 	defer func() { _ = os.Chdir(origDir) }()
 
 	result := findConfigFile()
-	assert.Equal(t, "", result, "must return empty when no config files exist")
+	assert.Empty(t, result, "must return empty when no config files exist")
 }
 
 // =============================================================================

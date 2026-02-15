@@ -55,9 +55,11 @@ func (l *captureLogger) Debugf(format string, args ...any)    {}
 func (l *captureLogger) Errorf(format string, args ...any) {
 	l.errors = append(l.errors, fmt.Sprintf(format, args...))
 }
+
 func (l *captureLogger) Noticef(format string, args ...any) {
 	l.notices = append(l.notices, fmt.Sprintf(format, args...))
 }
+
 func (l *captureLogger) Warningf(format string, args ...any) {
 	l.warnings = append(l.warnings, fmt.Sprintf(format, args...))
 }
@@ -185,7 +187,6 @@ func TestRetryExecutor_SuccessNoticeAfterRetry(t *testing.T) {
 		err := executor.ExecuteWithRetry(job, ctx, func(c *Context) error {
 			return nil // succeed immediately
 		})
-
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -224,7 +225,6 @@ func TestRetryExecutor_SuccessNoticeAfterRetry(t *testing.T) {
 			}
 			return nil // succeed on second attempt
 		})
-
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
