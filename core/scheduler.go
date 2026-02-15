@@ -235,8 +235,10 @@ func (s *Scheduler) RemoveJob(j Job) error {
 		"Job deregistered (will not fire again) %q - %q - %q - ID: %v",
 		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
 	)
-	// Use O(1) removal by name if possible
+	// Use O(1) removal by name, then wait for any in-flight execution
+	// to complete before updating internal state
 	s.cron.RemoveByName(j.GetName())
+	s.cron.WaitForJobByName(j.GetName())
 	s.mu.Lock()
 	for i, job := range s.Jobs {
 		if job == j || job.GetCronJobID() == j.GetCronJobID() {
@@ -528,6 +530,8 @@ func (s *Scheduler) DisableJob(name string) error {
 	// Remove from cron without holding our lock (cron has its own lock)
 	// Use RemoveByName to properly clean up the name registry for later re-enabling
 	s.cron.RemoveByName(name)
+	// Wait for any in-flight execution to complete before updating state
+	s.cron.WaitForJobByName(name)
 
 	// Now acquire write lock to update internal state
 	s.mu.Lock()
