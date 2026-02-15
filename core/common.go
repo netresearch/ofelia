@@ -326,9 +326,8 @@ func randomID() (string, error) {
 const HashmeTagName = "hash"
 
 func GetHash(t reflect.Type, v reflect.Value, hash *string) error {
-	for i := range t.NumField() {
-		field := t.Field(i)
-		fieldv := v.Field(i)
+	for field := range t.Fields() {
+		fieldv := v.FieldByIndex(field.Index)
 		kind := field.Type.Kind()
 
 		if kind == reflect.Struct && field.Type != reflect.TypeFor[time.Duration]() {
