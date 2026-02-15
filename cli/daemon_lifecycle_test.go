@@ -129,9 +129,10 @@ func (m *mockDockerProvider) Close() error {
 	return nil
 }
 
-type mockDockerLabelsUpdate struct{}
+type mockDockerContainersUpdate struct{}
 
-func (m *mockDockerLabelsUpdate) dockerLabelsUpdate(labels map[string]map[string]string) {}
+func (m *mockDockerContainersUpdate) dockerContainersUpdate(containers []DockerContainerInfo) {
+}
 
 func getAvailableAddress() string {
 	listener, err := net.Listen("tcp", ":0")
@@ -153,11 +154,11 @@ func TestSuccessfulBootStartShutdown(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
-			notifier:           &mockDockerLabelsUpdate{},
+			notifier:           &mockDockerContainersUpdate{},
 			logger:             logger,
 			configPollInterval: cfg.ConfigPollInterval,
 			useEvents:          cfg.UseEvents,
@@ -206,7 +207,7 @@ func TestBootFailureInvalidConfig(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker initialization failed")
 	}
 
@@ -225,7 +226,7 @@ func TestBootDockerConnectionFailure(t *testing.T) {
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
 	dockerError := errors.New("cannot connect to Docker daemon")
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, dockerError
 	}
 
@@ -293,11 +294,11 @@ func TestWebServerStartup(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
-			notifier:           &mockDockerLabelsUpdate{},
+			notifier:           &mockDockerContainersUpdate{},
 			logger:             logger,
 			configPollInterval: cfg.ConfigPollInterval,
 			useEvents:          cfg.UseEvents,
@@ -436,11 +437,11 @@ func TestConfigurationOptionApplication(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
-			notifier:           &mockDockerLabelsUpdate{},
+			notifier:           &mockDockerContainersUpdate{},
 			logger:             logger,
 			configPollInterval: cfg.ConfigPollInterval,
 			useEvents:          cfg.UseEvents,
@@ -479,11 +480,11 @@ func TestConcurrentServerStartup(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
-			notifier:           &mockDockerLabelsUpdate{},
+			notifier:           &mockDockerContainersUpdate{},
 			logger:             logger,
 			configPollInterval: cfg.ConfigPollInterval,
 			useEvents:          cfg.UseEvents,
@@ -526,7 +527,7 @@ func TestResourceCleanupOnFailure(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker init failed")
 	}
 
@@ -547,11 +548,11 @@ func TestHealthCheckerInitialization(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
-			notifier:           &mockDockerLabelsUpdate{},
+			notifier:           &mockDockerContainersUpdate{},
 			logger:             logger,
 			configPollInterval: cfg.ConfigPollInterval,
 			useEvents:          cfg.UseEvents,
@@ -610,11 +611,11 @@ func TestCompleteExecuteWorkflow(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
-			notifier:           &mockDockerLabelsUpdate{},
+			notifier:           &mockDockerContainersUpdate{},
 			logger:             logger,
 			configPollInterval: cfg.ConfigPollInterval,
 			useEvents:          cfg.UseEvents,

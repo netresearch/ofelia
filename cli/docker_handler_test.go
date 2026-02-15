@@ -3,7 +3,7 @@ package cli
 // SPDX-License-Identifier: MIT
 
 import (
-	// dummyNotifier implements dockerLabelsUpdate for testing
+	// dummyNotifier implements dockerContainersUpdate for testing
 	"context"
 	"io"
 	"os"
@@ -18,15 +18,16 @@ import (
 	"github.com/netresearch/ofelia/core/domain"
 )
 
-// dummyNotifier implements dockerLabelsUpdate
+// dummyNotifier implements dockerContainersUpdate
 type dummyNotifier struct{}
 
-func (d *dummyNotifier) dockerLabelsUpdate(labels map[string]map[string]string) {}
+func (d *dummyNotifier) dockerContainersUpdate(containers []DockerContainerInfo) {}
 
 // mockDockerProviderForHandler implements core.DockerProvider for handler tests
 type mockDockerProviderForHandler struct {
-	containers []domain.Container
-	pingErr    error
+	containers      []domain.Container
+	pingErr         error
+	LastListOptions domain.ListOptions // records last ListContainers opts for tests
 }
 
 func (m *mockDockerProviderForHandler) CreateContainer(ctx context.Context, config *domain.ContainerConfig, name string) (string, error) {
@@ -50,6 +51,7 @@ func (m *mockDockerProviderForHandler) InspectContainer(ctx context.Context, con
 }
 
 func (m *mockDockerProviderForHandler) ListContainers(ctx context.Context, opts domain.ListOptions) ([]domain.Container, error) {
+	m.LastListOptions = opts
 	return m.containers, nil
 }
 
@@ -164,7 +166,7 @@ func addExecJobsToScheduler(cfg *Config) {
 func assertKeepsIniJobs(t *testing.T, cfg *Config, jobsCount func() int) {
 	t.Helper()
 	assert.Len(t, cfg.sh.Entries(), 1)
-	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+	cfg.dockerContainersUpdate([]DockerContainerInfo{})
 	assert.Equal(t, 1, jobsCount())
 	assert.Len(t, cfg.sh.Entries(), 1)
 }
@@ -193,35 +195,38 @@ func TestNewDockerHandlerErrorPing(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestGetDockerLabelsInvalidFilter verifies that GetDockerLabels returns an error on invalid filter strings
-func TestGetDockerLabelsInvalidFilter(t *testing.T) {
+// TestGetDockerContainersInvalidFilter verifies that GetDockerContainers returns an error on invalid filter strings
+func TestGetDockerContainersInvalidFilter(t *testing.T) {
 	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{}
 	h := &DockerHandler{filters: []string{"invalidfilter"}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
-	_, err := h.GetDockerLabels()
+	_, err := h.GetDockerContainers()
 	require.Error(t, err)
 	assert.Regexp(t, `(?s)invalid docker filter "invalidfilter".*key=value format.*`, err.Error())
 }
 
-// TestGetDockerLabelsNoContainers verifies that GetDockerLabels returns ErrNoContainerWithOfeliaEnabled when no containers match
-func TestGetDockerLabelsNoContainers(t *testing.T) {
+// TestGetDockerContainersNoContainers verifies that GetDockerContainers returns ErrNoContainerWithOfeliaEnabled when no containers match
+func TestGetDockerContainersNoContainers(t *testing.T) {
 	t.Parallel()
 	// Mock provider returning empty container list
 	mockProvider := &mockDockerProviderForHandler{containers: []domain.Container{}}
 
 	h := &DockerHandler{filters: []string{}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
-	_, err := h.GetDockerLabels()
+	_, err := h.GetDockerContainers()
 	assert.Equal(t, ErrNoContainerWithOfeliaEnabled, err)
 }
 
-// TestGetDockerLabelsValid verifies that GetDockerLabels filters and returns only ofelia-prefixed labels
-func TestGetDockerLabelsValid(t *testing.T) {
+// TestGetDockerContainersValid verifies that GetDockerContainers filters and returns only ofelia-prefixed labels
+func TestGetDockerContainersValid(t *testing.T) {
 	t.Parallel()
 	// Mock provider returning one container with mixed labels
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{
 			{
 				Name: "cont1",
+				State: domain.ContainerState{
+					Running: false,
+				},
 				Labels: map[string]string{
 					"ofelia.enabled":               "true",
 					"ofelia.job-exec.foo.schedule": "@every 1s",
@@ -233,17 +238,61 @@ func TestGetDockerLabelsValid(t *testing.T) {
 	}
 
 	h := &DockerHandler{filters: []string{}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
-	labels, err := h.GetDockerLabels()
+	labels, err := h.GetDockerContainers()
 	require.NoError(t, err)
 
-	expected := map[string]map[string]string{
-		"cont1": {
+	expected := []DockerContainerInfo{{
+		Name:  "cont1",
+		State: domain.ContainerState{Running: false},
+		Labels: map[string]string{
 			"ofelia.enabled":               "true",
 			"ofelia.job-exec.foo.schedule": "@every 1s",
 			"ofelia.job-run.bar.schedule":  "@every 2s",
 		},
-	}
+	}}
 	assert.Equal(t, expected, labels)
+}
+
+// TestGetDockerContainersIncludeStoppedFalse verifies that GetDockerContainers calls ListContainers with All: false when includeStopped is false
+func TestGetDockerContainersIncludeStoppedFalse(t *testing.T) {
+	t.Parallel()
+	mockProvider := &mockDockerProviderForHandler{
+		containers: []domain.Container{
+			{
+				Name:   "cont1",
+				State:  domain.ContainerState{Running: true},
+				Labels: map[string]string{"ofelia.enabled": "true", "ofelia.job-run.foo.schedule": "@every 1s"},
+			},
+		},
+	}
+	h := &DockerHandler{
+		filters: []string{}, logger: &TestLogger{}, ctx: context.Background(),
+		dockerProvider: mockProvider, includeStopped: false,
+	}
+	_, err := h.GetDockerContainers()
+	require.NoError(t, err)
+	assert.False(t, mockProvider.LastListOptions.All, "ListContainers should be called with All: false when includeStopped is false")
+}
+
+// TestGetDockerContainersIncludeStoppedTrue verifies that GetDockerContainers calls ListContainers with All: true when includeStopped is true
+func TestGetDockerContainersIncludeStoppedTrue(t *testing.T) {
+	t.Parallel()
+	mockProvider := &mockDockerProviderForHandler{
+		containers: []domain.Container{
+			{
+				Name:   "cont1",
+				State:  domain.ContainerState{Running: false},
+				Labels: map[string]string{"ofelia.enabled": "true", "ofelia.job-run.foo.schedule": "@every 1s"},
+			},
+		},
+	}
+	h := &DockerHandler{
+		filters: []string{}, logger: &TestLogger{}, ctx: context.Background(),
+		dockerProvider: mockProvider, includeStopped: true,
+	}
+	_, err := h.GetDockerContainers()
+	require.NoError(t, err)
+	assert.True(t, mockProvider.LastListOptions.All, "ListContainers should be called with All: true when includeStopped is true")
 }
 
 // TestWatchConfigInvalidInterval verifies that watchConfig exits immediately when
@@ -279,9 +328,9 @@ func TestWatchConfigInvalidInterval(t *testing.T) {
 	}
 }
 
-// TestDockerLabelsUpdateKeepsIniRunJobs verifies that RunJobs defined via INI
-// remain when dockerLabelsUpdate receives no labeled containers.
-func TestDockerLabelsUpdateKeepsIniRunJobs(t *testing.T) {
+// TestDockerContainersUpdateKeepsIniRunJobs verifies that RunJobs defined via INI
+// remain when dockerContainersUpdate receives no containers.
+func TestDockerContainersUpdateKeepsIniRunJobs(t *testing.T) {
 	cfg := newBaseConfig()
 
 	cfg.RunJobs["ini-job"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}
@@ -291,9 +340,9 @@ func TestDockerLabelsUpdateKeepsIniRunJobs(t *testing.T) {
 	assertKeepsIniJobs(t, cfg, func() int { return len(cfg.RunJobs) })
 }
 
-// TestDockerLabelsUpdateKeepsIniExecJobs verifies that ExecJobs defined via INI
-// remain when dockerLabelsUpdate receives no labeled containers.
-func TestDockerLabelsUpdateKeepsIniExecJobs(t *testing.T) {
+// TestDockerContainersUpdateKeepsIniExecJobs verifies that ExecJobs defined via INI
+// remain when dockerContainersUpdate receives no containers.
+func TestDockerContainersUpdateKeepsIniExecJobs(t *testing.T) {
 	cfg := newBaseConfig()
 
 	cfg.ExecJobs["ini-exec"] = &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}

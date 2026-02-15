@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	defaults "github.com/creasty/defaults"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/middlewares"
 	"github.com/netresearch/ofelia/test"
 )
@@ -190,65 +192,104 @@ func TestConfigIni(t *testing.T) {
 	}
 }
 
+func buildSingleContainer(container DockerContainerInfo, labels map[string]string) DockerContainerInfo {
+	result := DockerContainerInfo{
+		Name:    container.Name,
+		Created: container.Created,
+		State:   container.State,
+		Labels:  labels,
+	}
+	return result
+}
+
+func buildContainers(container DockerContainerInfo, labels map[string]string) []DockerContainerInfo {
+	result := []DockerContainerInfo{buildSingleContainer(container, labels)}
+	return result
+}
+
+func buildTwoContainers(container1 DockerContainerInfo, labels1 map[string]string, container2 DockerContainerInfo, labels2 map[string]string) []DockerContainerInfo {
+	result := []DockerContainerInfo{buildSingleContainer(container1, labels1), buildSingleContainer(container2, labels2)}
+	return result
+}
+
 func TestLabelsConfig(t *testing.T) {
 	t.Parallel()
 
+	someContainerInfo := DockerContainerInfo{
+		Name:  "some",
+		State: domain.ContainerState{Running: true},
+	}
+	otherContainerInfo := DockerContainerInfo{
+		Name:  "other",
+		State: domain.ContainerState{Running: true},
+	}
+	notRunningContainerInfo := DockerContainerInfo{
+		Name:    "not-running",
+		Created: time.Now().Add(-time.Minute * 2),
+		State:   domain.ContainerState{Running: false},
+	}
+	otherNotRunningContainerInfo := DockerContainerInfo{
+		Name:    "other-not-running",
+		Created: time.Now().Add(-time.Minute * 3), // Older than notRunningContainerInfo
+		State:   domain.ContainerState{Running: false},
+	}
+
 	testcases := []struct {
-		Labels         map[string]map[string]string
+		Containers     []DockerContainerInfo
 		ExpectedConfig Config
 		Comment        string
 	}{
 		{
-			Labels:         map[string]map[string]string{},
+			Containers:     []DockerContainerInfo{},
 			ExpectedConfig: Config{},
-			Comment:        "No labels, no config",
+			Comment:        "No containers, no config",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
 					"label1": "1",
 					"label2": "2",
 				},
-			},
+			),
 			ExpectedConfig: Config{},
 			Comment:        "No required label, no config",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "true",
 					"label2":      "2",
 				},
-			},
+			),
 			ExpectedConfig: Config{},
 			Comment:        "No prefixed labels, no config",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "false",
 					labelPrefix + "." + jobLocal + ".job1.schedule": "everyday! yey!",
 				},
-			},
+			),
 			ExpectedConfig: Config{},
 			Comment:        "With prefixed labels, but without required label still no config",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "true",
 					labelPrefix + "." + jobLocal + ".job1.schedule": "everyday! yey!",
 					labelPrefix + "." + jobLocal + ".job1.command":  "rm -rf *test*",
 					labelPrefix + "." + jobLocal + ".job2.schedule": "everynanosecond! yey!",
 					labelPrefix + "." + jobLocal + ".job2.command":  "ls -al *test*",
 				},
-			},
+			),
 			ExpectedConfig: Config{},
 			Comment:        "No service label, no 'local' jobs",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildTwoContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobLocal + ".job1.schedule":      "schedule1",
@@ -258,7 +299,7 @@ func TestLabelsConfig(t *testing.T) {
 					labelPrefix + "." + jobServiceRun + ".job3.schedule": "schedule3",
 					labelPrefix + "." + jobServiceRun + ".job3.command":  "command3",
 				},
-				"other": {
+				otherContainerInfo, map[string]string{
 					requiredLabel: "true",
 					labelPrefix + "." + jobLocal + ".job4.schedule":      "schedule4",
 					labelPrefix + "." + jobLocal + ".job4.command":       "command4",
@@ -267,7 +308,7 @@ func TestLabelsConfig(t *testing.T) {
 					labelPrefix + "." + jobServiceRun + ".job6.schedule": "schedule6",
 					labelPrefix + "." + jobServiceRun + ".job6.command":  "command6",
 				},
-			},
+			),
 			ExpectedConfig: Config{
 				LocalJobs: map[string]*LocalJobConfig{
 					"job1": {LocalJob: core.LocalJob{BareJob: core.BareJob{
@@ -283,7 +324,7 @@ func TestLabelsConfig(t *testing.T) {
 					"job5": {RunJob: core.RunJob{BareJob: core.BareJob{
 						Schedule: "schedule5",
 						Command:  "command5",
-					}}},
+					}, Container: "other"}},
 				},
 				ServiceJobs: map[string]*RunServiceConfig{
 					"job3": {RunServiceJob: core.RunServiceJob{BareJob: core.BareJob{
@@ -292,22 +333,22 @@ func TestLabelsConfig(t *testing.T) {
 					}}},
 				},
 			},
-			Comment: "Local/Run/Service jobs from non-service container ignored",
+			Comment: "Local/Service jobs from non-service container ignored",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildTwoContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobExec + ".job1.schedule": "schedule1",
 					labelPrefix + "." + jobExec + ".job1.command":  "command1",
 				},
-				"other": {
+				otherContainerInfo, map[string]string{
 					requiredLabel: "true",
 					labelPrefix + "." + jobExec + ".job2.schedule": "schedule2",
 					labelPrefix + "." + jobExec + ".job2.command":  "command2",
 				},
-			},
+			),
 			ExpectedConfig: Config{
 				ExecJobs: map[string]*ExecJobConfig{
 					"some.job1": {ExecJob: core.ExecJob{BareJob: core.BareJob{
@@ -326,15 +367,15 @@ func TestLabelsConfig(t *testing.T) {
 			Comment: "Exec jobs from non-service container, saves container name to be able to exect to",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobExec + ".job1.schedule":   "schedule1",
 					labelPrefix + "." + jobExec + ".job1.command":    "command1",
 					labelPrefix + "." + jobExec + ".job1.no-overlap": "true",
 				},
-			},
+			),
 			ExpectedConfig: Config{
 				ExecJobs: map[string]*ExecJobConfig{
 					"some.job1": {
@@ -349,8 +390,8 @@ func TestLabelsConfig(t *testing.T) {
 			Comment: "Test job with 'no-overlap' set",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobRun + ".job1.schedule": "schedule1",
@@ -360,7 +401,7 @@ func TestLabelsConfig(t *testing.T) {
 					labelPrefix + "." + jobRun + ".job2.command":  "command2",
 					labelPrefix + "." + jobRun + ".job2.volume":   `["/test/tmp:/test/tmp:ro", "/test/tmp:/test/tmp:rw"]`,
 				},
-			},
+			),
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
 					"job1": {
@@ -386,8 +427,8 @@ func TestLabelsConfig(t *testing.T) {
 			Comment: "Test run job with volumes",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobRun + ".job1.schedule":    "schedule1",
@@ -397,7 +438,7 @@ func TestLabelsConfig(t *testing.T) {
 					labelPrefix + "." + jobRun + ".job2.command":     "command2",
 					labelPrefix + "." + jobRun + ".job2.environment": `["KEY1=value1", "KEY2=value2"]`,
 				},
-			},
+			),
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
 					"job1": {
@@ -423,8 +464,8 @@ func TestLabelsConfig(t *testing.T) {
 			Comment: "Test run job with environment variables",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobRun + ".job1.schedule":     "schedule1",
@@ -434,7 +475,7 @@ func TestLabelsConfig(t *testing.T) {
 					labelPrefix + "." + jobRun + ".job2.command":      "command2",
 					labelPrefix + "." + jobRun + ".job2.volumes-from": `["test321", "test456"]`,
 				},
-			},
+			),
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
 					"job1": {
@@ -460,14 +501,14 @@ func TestLabelsConfig(t *testing.T) {
 			Comment: "Test run job with volumes-from",
 		},
 		{
-			Labels: map[string]map[string]string{
-				"some": {
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
 					requiredLabel: "true",
 					serviceLabel:  "true",
 					labelPrefix + "." + jobRun + ".job1.schedule":   "schedule1",
 					labelPrefix + "." + jobRun + ".job1.entrypoint": "",
 				},
-			},
+			),
 			ExpectedConfig: Config{
 				RunJobs: map[string]*RunJobConfig{
 					"job1": {
@@ -480,6 +521,133 @@ func TestLabelsConfig(t *testing.T) {
 			},
 			Comment: "Test run job with entrypoint override",
 		},
+		{
+			Containers: buildContainers(
+				someContainerInfo, map[string]string{
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule": "schedule1",
+					labelPrefix + "." + jobRun + ".job1.command":  "command1",
+				},
+			),
+			ExpectedConfig: Config{
+				RunJobs: map[string]*RunJobConfig{
+					"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "schedule1",
+						Command:  "command1",
+					}, Container: someContainerInfo.Name}},
+				},
+			},
+			Comment: "Run jobs from non-service container are not ignored",
+		},
+		{
+			Containers: buildTwoContainers(
+				someContainerInfo, map[string]string{
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule":  "schedule1",
+					labelPrefix + "." + jobRun + ".job1.command":   "command1",
+					labelPrefix + "." + jobRun + ".job1.container": "not-some-container",
+				},
+				otherContainerInfo, map[string]string{
+					requiredLabel: "true",
+					serviceLabel:  "true",
+					labelPrefix + "." + jobRun + ".job2.schedule":  "schedule2",
+					labelPrefix + "." + jobRun + ".job2.command":   "command2",
+					labelPrefix + "." + jobRun + ".job2.container": "another-one",
+				},
+			),
+			ExpectedConfig: Config{
+				RunJobs: map[string]*RunJobConfig{
+					"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "schedule1",
+						Command:  "command1",
+					}, Container: "not-some-container"}},
+					"job2": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "schedule2",
+						Command:  "command2",
+					}, Container: "another-one"}},
+				},
+			},
+			Comment: "Run jobs from non-service container respect the specified container name",
+		},
+		{
+			Containers: buildContainers(
+				notRunningContainerInfo, map[string]string{
+					requiredLabel: "true",
+					labelPrefix + "." + jobExec + ".job1.schedule":        "schedule1",
+					labelPrefix + "." + jobExec + ".job1.command":         "command1",
+					labelPrefix + "." + jobExec + ".job1.container":       "not-some-container",
+					labelPrefix + "." + jobRun + ".job2.schedule":         "schedule2",
+					labelPrefix + "." + jobRun + ".job2.command":          "command2",
+					labelPrefix + "." + jobServiceRun + ".job3.schedule":  "schedule3",
+					labelPrefix + "." + jobServiceRun + ".job3.command":   "command3",
+					labelPrefix + "." + jobServiceRun + ".job3.container": "another-one",
+					labelPrefix + "." + jobLocal + ".job4.schedule":       "schedule4",
+					labelPrefix + "." + jobLocal + ".job4.command":        "command4",
+					labelPrefix + "." + jobLocal + ".job4.container":      "another-one",
+				},
+			),
+			ExpectedConfig: Config{
+				RunJobs: map[string]*RunJobConfig{
+					"job2": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "schedule2",
+						Command:  "command2",
+					}, Container: "not-running"}},
+				},
+			},
+			Comment: "Only run jobs are allowed on non-running containers",
+		},
+		{
+			Containers: buildTwoContainers(
+				someContainerInfo, map[string]string{
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule": "running-schedule",
+					labelPrefix + "." + jobRun + ".job1.command":  "running-command",
+				},
+				notRunningContainerInfo, map[string]string{
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule",
+					labelPrefix + "." + jobRun + ".job1.command":  "stopped-command",
+				},
+			),
+			ExpectedConfig: Config{
+				RunJobs: map[string]*RunJobConfig{
+					"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "running-schedule",
+						Command:  "running-command",
+					}, Container: someContainerInfo.Name}},
+				},
+			},
+			Comment: "Run jobs from running container take precedence over jobs from stopped container",
+		},
+		{
+			Containers: buildTwoContainers(
+				otherNotRunningContainerInfo, map[string]string{
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule2",
+					labelPrefix + "." + jobRun + ".job1.command":  "stopped-command2",
+					labelPrefix + "." + jobRun + ".job2.schedule": "stopped-schedule3",
+					labelPrefix + "." + jobRun + ".job2.command":  "stopped-command3",
+				},
+				notRunningContainerInfo, map[string]string{
+					requiredLabel: "true",
+					labelPrefix + "." + jobRun + ".job1.schedule": "stopped-schedule1",
+					labelPrefix + "." + jobRun + ".job1.command":  "stopped-command1",
+				},
+			),
+			ExpectedConfig: Config{
+				RunJobs: map[string]*RunJobConfig{
+					"job1": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "stopped-schedule1",
+						Command:  "stopped-command1",
+					}, Container: notRunningContainerInfo.Name}},
+					"job2": {RunJob: core.RunJob{BareJob: core.BareJob{
+						Schedule: "stopped-schedule3",
+						Command:  "stopped-command3",
+					}, Container: otherNotRunningContainerInfo.Name}},
+				},
+			},
+			Comment: "Only one run job with a unique name is allowed from stopped containers. The job from the newer container takes precedence.",
+		},
 	}
 
 	for _, tc := range testcases {
@@ -487,7 +655,7 @@ func TestLabelsConfig(t *testing.T) {
 			conf := Config{}
 			conf.logger = test.NewTestLogger()
 			conf.Global.AllowHostJobsFromLabels = true
-			err := conf.buildFromDockerLabels(tc.Labels)
+			err := conf.buildFromDockerContainers(tc.Containers)
 			require.NoError(t, err)
 			setJobSource(&conf, JobSourceLabel)
 			setJobSource(&tc.ExpectedConfig, JobSourceLabel)

@@ -106,7 +106,7 @@ func TestExecJobConfig_dockerOpsInitialization(t *testing.T) {
 	// Before setting client, dockerOps should be nil
 	// (We can't check this directly as it's private)
 
-	// Simulate what happens in registerAllJobs, dockerLabelsUpdate, and iniConfigUpdate
+	// Simulate what happens in registerAllJobs, dockerContainersUpdate, and iniConfigUpdate
 	// In a real scenario, this would be a real Docker client
 	// For this test, we just verify the method exists and doesn't panic with nil client
 	job.InitializeRuntimeFields()

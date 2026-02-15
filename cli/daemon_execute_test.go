@@ -14,7 +14,7 @@ func TestDaemonCommand_Execute_BootError(t *testing.T) {
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 
@@ -48,7 +48,7 @@ func TestDaemonCommand_Config(t *testing.T) {
 	// Set up mock to return a valid config
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		mockProvider := &mockDockerProviderForHandler{}
 		return orig(ctx, notifier, logger, cfg, mockProvider)
 	}
