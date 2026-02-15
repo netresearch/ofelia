@@ -168,9 +168,9 @@ jobs:
         run: go build ./...
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@7119f3d5ddced62a10a044847a6c6bb0f7a5e76a # v7.0.0
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7.0.1
         with:
-          version: v2.6.2
+          version: v2.9.0
           args: --timeout=5m
           only-new-issues: false
 
@@ -246,7 +246,11 @@ jobs:
         uses: actions/dependency-review-action@ce3cf9537a52e8119d91fd484ab5b8a807627bf8 # v4.6.0
         with:
           fail-on-severity: high
-          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, CC0-1.0, Unlicense
+          # Individual licenses + compound SPDX expressions reported by GitHub's dependency graph
+          allow-licenses: >-
+            MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, CC0-1.0, Unlicense,
+            Apache-2.0 AND BSD-3-Clause,
+            BSD-3-Clause AND LicenseRef-scancode-google-patent-license-golang
           comment-summary-in-pr: always
 
   license-check:
