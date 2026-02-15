@@ -357,7 +357,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@45c373516f557556c15d420e3f5e0aa3d64366bc # v3.31.9
+        uses: github/codeql-action/init@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
         with:
           languages: go
 
@@ -365,10 +365,10 @@ jobs:
         run: go mod download
 
       - name: Build
-        uses: github/codeql-action/autobuild@45c373516f557556c15d420e3f5e0aa3d64366bc # v3.31.9
+        uses: github/codeql-action/autobuild@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@45c373516f557556c15d420e3f5e0aa3d64366bc # v3.31.9
+        uses: github/codeql-action/analyze@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
 
   gosec:
     name: gosec
@@ -639,7 +639,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: 1
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@45c373516f557556c15d420e3f5e0aa3d64366bc # v3.31.9
+        uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
         if: always()  # Upload even if vulnerabilities found (exit-code: 1)
         with:
           sarif_file: trivy-results.sarif
