@@ -550,6 +550,8 @@ func (s *Scheduler) DisableJob(name string) error {
 }
 
 // EnableJob schedules a previously disabled job.
+// Uses go-cron's UpsertJob for atomic create-or-update, eliminating the
+// previous polling retry loop that waited for RemoveByName to take effect.
 func (s *Scheduler) EnableJob(name string) error {
 	s.mu.Lock()
 	j, idx := getJob(s.Disabled, name)
@@ -560,20 +562,36 @@ func (s *Scheduler) EnableJob(name string) error {
 	s.Disabled = append(s.Disabled[:idx], s.Disabled[idx+1:]...)
 	s.mu.Unlock()
 
-	backoff := time.Millisecond
-	for range 10 {
-		entry := s.cron.EntryByName(name)
-		if !entry.Valid() {
-			break
-		}
-		s.clock.Sleep(backoff)
-		backoff *= 2
-		if backoff > 100*time.Millisecond {
-			backoff = 100 * time.Millisecond
-		}
+	if IsTriggeredSchedule(j.GetSchedule()) {
+		// Triggered-only jobs aren't scheduled in cron; just restore state
+		j.Use(s.Middlewares()...)
+		s.mu.Lock()
+		s.Jobs = append(s.Jobs, j)
+		s.jobsByName[j.GetName()] = j
+		s.mu.Unlock()
+		return nil
 	}
 
-	return s.AddJob(j)
+	j.Use(s.Middlewares()...)
+
+	opts := []cron.JobOption{cron.WithName(j.GetName())}
+	if j.ShouldRunOnStartup() {
+		opts = append(opts, cron.WithRunImmediately())
+	}
+
+	id, err := s.cron.UpsertJob(j.GetSchedule(), &jobWrapper{s, j}, opts...)
+	if err != nil {
+		return fmt.Errorf("enable job: %w", err)
+	}
+	j.SetCronJobID(uint64(id))
+
+	s.mu.Lock()
+	s.Jobs = append(s.Jobs, j)
+	s.jobsByName[j.GetName()] = j
+	s.mu.Unlock()
+
+	s.Logger.Noticef("Job re-enabled %q - %q - ID: %v", j.GetName(), j.GetSchedule(), id)
+	return nil
 }
 
 // jobWrapper wraps a Job to manage running and waiting via the Scheduler.
