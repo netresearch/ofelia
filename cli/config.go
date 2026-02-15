@@ -311,7 +311,7 @@ func (c *Config) InitializeApp() error {
 	if err := c.initDockerHandler(); err != nil {
 		return err
 	}
-	c.mergeJobsFromDockerLabels()
+	c.mergeJobsFromDockerContainers()
 	c.registerAllJobs()
 	return nil
 }
@@ -346,7 +346,7 @@ func (c *Config) initDockerHandler() error {
 	return err
 }
 
-func (c *Config) mergeJobsFromDockerLabels() {
+func (c *Config) mergeJobsFromDockerContainers() {
 	dockerContainers, err := c.dockerHandler.GetDockerContainers()
 	if err != nil {
 		return
