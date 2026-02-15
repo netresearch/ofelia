@@ -134,20 +134,17 @@ func canRunJobOnContainer(jobType string, jobName string, containerName string, 
 		checkJobTypeAllowedOnStoppedContainer(jobType, jobName, containerName, isRunning, logger)
 }
 
-// applyLabelToJobMaps updates the appropriate job map for the given label.
+// applyJobParameterToJobMaps updates the appropriate job map for the given parameter.
 // It is extracted to keep splitContainersLabelsIntoJobMapsByType cyclomatic complexity under the linter limit.
-func applyLabelToJobMaps(
-	jobType, jobName, jobParam, scopedName, containerName, paramValue string,
-	isService bool,
+func applyJobParameterToJobMaps(
+	jobType, jobName, jobParam, paramValue string,
+	scopedJobName string,
 	execJobs, localJobs, containerRunJobs, serviceJobs, composeJobs map[string]map[string]interface{},
 ) {
 	switch jobType {
 	case jobExec:
-		ensureJob(execJobs, scopedName)
-		setJobParam(execJobs[scopedName], jobParam, paramValue)
-		if !isService && execJobs[scopedName]["container"] == nil {
-			execJobs[scopedName]["container"] = containerName
-		}
+		ensureJob(execJobs, scopedJobName)
+		setJobParam(execJobs[scopedJobName], jobParam, paramValue)
 	case jobLocal:
 		ensureJob(localJobs, jobName)
 		setJobParam(localJobs[jobName], jobParam, paramValue)
@@ -157,9 +154,6 @@ func applyLabelToJobMaps(
 	case jobRun:
 		ensureJob(containerRunJobs, jobName)
 		setJobParam(containerRunJobs[jobName], jobParam, paramValue)
-		if !isService && containerRunJobs[jobName]["container"] == nil {
-			containerRunJobs[jobName]["container"] = containerName
-		}
 	case jobCompose:
 		ensureJob(composeJobs, jobName)
 		setJobParam(composeJobs[jobName], jobParam, paramValue)
@@ -216,16 +210,17 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 		labelSet := containerInfo.Labels
 		isService := hasServiceLabel(labelSet)
 
-		// New run jobs for the container
-		// We merge them into the existing run jobs later based on the container running state.
-		// This helps us to avoid duplicate job definitions for the same job name and prefer jobs from the running container.
+		// New jobs for the container
+		// We merge them into the existing jobs later.
+		// This allows to have the prescedence of the set `image` parameter over the propagated by default `container` parameter.
 		containerRunJobs := make(map[string]map[string]interface{})
+		containerExecJobs := make(map[string]map[string]interface{})
 
-		for k, v := range labelSet {
+		for k, jobParamValue := range labelSet {
 			parts := strings.Split(k, ".")
 			if len(parts) < 4 {
 				if isService {
-					globalConfigs[parts[1]] = v
+					globalConfigs[parts[1]] = jobParamValue
 				}
 				continue
 			}
@@ -241,16 +236,35 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 				continue
 			}
 
-			applyLabelToJobMaps(jobType, jobName, jobParam, scopedName, containerName, v, isService,
-				execJobs, localJobs, containerRunJobs, serviceJobs, composeJobs)
+			applyJobParameterToJobMaps(jobType, jobName, jobParam, jobParamValue, scopedName,
+				containerExecJobs, localJobs, containerRunJobs, serviceJobs, composeJobs)
 		}
 
-		// Merge new run jobs into existing run jobs
-		// If the container is running, use the new run jobs and overwrite the existing run jobs.
-		// If the container is stopped, use the existing run jobs if possible and do not overwrite them.
+		if !isService {
+			addContainerNameToJobsIfNeeded(containerExecJobs, containerName)
+			addContainerNameToJobsIfNeeded(containerRunJobs, containerName)
+		}
+
+		// Merge new jobs into existing jobs
+		// `job-exec` - do not overwrite existing jobs with new jobs, only add new jobs.
+		// There could not be dupes since the scoped name must be unique.
+		execJobs = mergeJobMaps(execJobs, containerExecJobs, false)
+
+		// `job-run` - overwrite existing jobs with new jobs if the container is running.
 		runJobs = mergeJobMaps(runJobs, containerRunJobs, containerRunning)
 	}
 	return
+}
+
+func addContainerNameToJobsIfNeeded(jobs map[string]map[string]interface{}, containerName string) {
+	for _, job := range jobs {
+		if _, hasImage := job["image"]; hasImage {
+			continue
+		}
+		if _, hasContainer := job["container"]; !hasContainer {
+			job["container"] = containerName
+		}
+	}
 }
 
 // mergeJobMaps merges two maps into a new map.
