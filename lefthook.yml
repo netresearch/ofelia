@@ -38,26 +38,30 @@ pre-commit:
     yaml-lint:
       glob: "*.{yml,yaml}"
       run: |
-        staged=$(git diff --cached --name-only --diff-filter=d | grep -E '\.(yml|yaml)$' || true)
-        [ -z "$staged" ] && exit 0
-        for f in $staged; do
-          if ! python3 -c "import yaml; yaml.safe_load(open('$f'))" 2>&1; then
-            echo "❌ Invalid YAML: $f"
-            exit 1
-          fi
-        done
+        if ! python3 -c "import yaml" 2>/dev/null; then
+          echo "⚠️  python3/PyYAML not found, skipping YAML lint"
+          exit 0
+        fi
+        python3 -c "
+        import yaml, sys
+        for f in sys.argv[1:]:
+            try:
+                list(yaml.safe_load_all(open(f)))
+            except yaml.YAMLError as e:
+                print(f'❌ Invalid YAML: {f}')
+                print(e)
+                sys.exit(1)
+        " {staged_files}
 
     actionlint:
       glob: ".github/workflows/*.{yml,yaml}"
       run: |
-        staged=$(git diff --cached --name-only --diff-filter=d | grep -E '^\.github/workflows/.*\.(yml|yaml)$' || true)
-        [ -z "$staged" ] && exit 0
-        if command -v actionlint >/dev/null 2>&1; then
-          echo "$staged" | xargs actionlint
-        else
+        if ! command -v actionlint >/dev/null 2>&1; then
           echo "⚠️  actionlint not found, skipping workflow lint"
           echo "   Install: go install github.com/rhysd/actionlint/cmd/actionlint@latest"
+          exit 0
         fi
+        actionlint {staged_files}
 
     secrets:
       run: |
