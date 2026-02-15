@@ -33,32 +33,32 @@ func NewTestLogger(verbose ...bool) *Logger {
 }
 
 // Criticalf logs a critical message
-func (l *Logger) Criticalf(s string, v ...interface{}) {
+func (l *Logger) Criticalf(s string, v ...any) {
 	l.log("CRITICAL", s, v...)
 }
 
 // Errorf logs an error message
-func (l *Logger) Errorf(s string, v ...interface{}) {
+func (l *Logger) Errorf(s string, v ...any) {
 	l.log("ERROR", s, v...)
 }
 
 // Warningf logs a warning message
-func (l *Logger) Warningf(s string, v ...interface{}) {
+func (l *Logger) Warningf(s string, v ...any) {
 	l.log("WARN", s, v...)
 }
 
 // Noticef logs a notice message
-func (l *Logger) Noticef(s string, v ...interface{}) {
+func (l *Logger) Noticef(s string, v ...any) {
 	l.log("NOTICE", s, v...)
 }
 
 // Infof logs an info message
-func (l *Logger) Infof(s string, v ...interface{}) {
+func (l *Logger) Infof(s string, v ...any) {
 	l.log("INFO", s, v...)
 }
 
 // Debugf logs a debug message
-func (l *Logger) Debugf(s string, v ...interface{}) {
+func (l *Logger) Debugf(s string, v ...any) {
 	l.log("DEBUG", s, v...)
 }
 
@@ -75,7 +75,7 @@ func (l *Logger) Warn(s string) { l.Warningf("%s", s) }
 func (l *Logger) Log(s string)  { l.Infof("%s", s) }
 
 // log is the internal logging method
-func (l *Logger) log(level, format string, v ...interface{}) {
+func (l *Logger) log(level, format string, v ...any) {
 	msg := fmt.Sprintf(format, v...)
 
 	l.mu.Lock()

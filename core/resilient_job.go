@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -215,7 +216,7 @@ func (rje *ResilientJobExecutor) ResetCircuitBreaker() {
 
 // JobMetricsRecorder interface for recording job-specific metrics
 type JobMetricsRecorder interface {
-	RecordMetric(name string, value interface{})
+	RecordMetric(name string, value any)
 	RecordJobExecution(jobName string, success bool, duration time.Duration)
 	RecordRetryAttempt(jobName string, attempt int, success bool)
 }
@@ -223,18 +224,18 @@ type JobMetricsRecorder interface {
 // SimpleMetricsRecorder provides a basic implementation of JobMetricsRecorder
 type SimpleMetricsRecorder struct {
 	mu      sync.RWMutex
-	metrics map[string]interface{}
+	metrics map[string]any
 }
 
 // NewSimpleMetricsRecorder creates a new simple metrics recorder
 func NewSimpleMetricsRecorder() *SimpleMetricsRecorder {
 	return &SimpleMetricsRecorder{
-		metrics: make(map[string]interface{}),
+		metrics: make(map[string]any),
 	}
 }
 
 // RecordMetric records a generic metric
-func (smr *SimpleMetricsRecorder) RecordMetric(name string, value interface{}) {
+func (smr *SimpleMetricsRecorder) RecordMetric(name string, value any) {
 	smr.mu.Lock()
 	defer smr.mu.Unlock()
 	smr.metrics[name] = value
@@ -246,7 +247,7 @@ func (smr *SimpleMetricsRecorder) RecordJobExecution(jobName string, success boo
 	defer smr.mu.Unlock()
 
 	key := fmt.Sprintf("job.%s.last_execution", jobName)
-	smr.metrics[key] = map[string]interface{}{
+	smr.metrics[key] = map[string]any{
 		"success":  success,
 		"duration": duration.Seconds(),
 		"time":     time.Now(),
@@ -259,21 +260,19 @@ func (smr *SimpleMetricsRecorder) RecordRetryAttempt(jobName string, attempt int
 	defer smr.mu.Unlock()
 
 	key := fmt.Sprintf("job.%s.retry.attempt_%d", jobName, attempt)
-	smr.metrics[key] = map[string]interface{}{
+	smr.metrics[key] = map[string]any{
 		"success": success,
 		"time":    time.Now(),
 	}
 }
 
 // GetMetrics returns all recorded metrics
-func (smr *SimpleMetricsRecorder) GetMetrics() map[string]interface{} {
+func (smr *SimpleMetricsRecorder) GetMetrics() map[string]any {
 	smr.mu.RLock()
 	defer smr.mu.RUnlock()
 
 	// Create a copy to avoid race conditions
-	result := make(map[string]interface{})
-	for k, v := range smr.metrics {
-		result[k] = v
-	}
+	result := make(map[string]any)
+	maps.Copy(result, smr.metrics)
 	return result
 }

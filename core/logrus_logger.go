@@ -15,7 +15,7 @@ type LogrusAdapter struct {
 
 var _ Logger = (*LogrusAdapter)(nil)
 
-func (l *LogrusAdapter) logf(level logrus.Level, format string, args ...interface{}) {
+func (l *LogrusAdapter) logf(level logrus.Level, format string, args ...any) {
 	var frame *runtime.Frame
 	if pc, file, line, ok := runtime.Caller(2); ok {
 		frame = &runtime.Frame{PC: pc, File: file, Line: line, Function: runtime.FuncForPC(pc).Name()}
@@ -34,22 +34,22 @@ func (l *LogrusAdapter) logf(level logrus.Level, format string, args ...interfac
 	entry.Logf(level, format, args...)
 }
 
-func (l *LogrusAdapter) Criticalf(format string, args ...interface{}) {
+func (l *LogrusAdapter) Criticalf(format string, args ...any) {
 	l.logf(logrus.FatalLevel, format, args...)
 }
 
-func (l *LogrusAdapter) Debugf(format string, args ...interface{}) {
+func (l *LogrusAdapter) Debugf(format string, args ...any) {
 	l.logf(logrus.DebugLevel, format, args...)
 }
 
-func (l *LogrusAdapter) Errorf(format string, args ...interface{}) {
+func (l *LogrusAdapter) Errorf(format string, args ...any) {
 	l.logf(logrus.ErrorLevel, format, args...)
 }
 
-func (l *LogrusAdapter) Noticef(format string, args ...interface{}) {
+func (l *LogrusAdapter) Noticef(format string, args ...any) {
 	l.logf(logrus.InfoLevel, format, args...)
 }
 
-func (l *LogrusAdapter) Warningf(format string, args ...interface{}) {
+func (l *LogrusAdapter) Warningf(format string, args ...any) {
 	l.logf(logrus.WarnLevel, format, args...)
 }

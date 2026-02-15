@@ -44,11 +44,11 @@ func TestJobFromRequestLocal(t *testing.T) {
 
 type testLogger struct{}
 
-func (testLogger) Criticalf(string, ...interface{}) {}
-func (testLogger) Debugf(string, ...interface{})    {}
-func (testLogger) Errorf(string, ...interface{})    {}
-func (testLogger) Noticef(string, ...interface{})   {}
-func (testLogger) Warningf(string, ...interface{})  {}
+func (testLogger) Criticalf(string, ...any) {}
+func (testLogger) Debugf(string, ...any)    {}
+func (testLogger) Errorf(string, ...any)    {}
+func (testLogger) Noticef(string, ...any)   {}
+func (testLogger) Warningf(string, ...any)  {}
 
 type simpleJob struct{ core.BareJob }
 

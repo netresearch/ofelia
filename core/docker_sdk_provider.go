@@ -499,13 +499,13 @@ func (p *SDKDockerProvider) recordError(name string) {
 	}
 }
 
-func (p *SDKDockerProvider) logNotice(format string, args ...interface{}) {
+func (p *SDKDockerProvider) logNotice(format string, args ...any) {
 	if p.logger != nil {
 		p.logger.Noticef(format, args...)
 	}
 }
 
-func (p *SDKDockerProvider) logDebug(format string, args ...interface{}) {
+func (p *SDKDockerProvider) logDebug(format string, args ...any) {
 	if p.logger != nil {
 		p.logger.Debugf(format, args...)
 	}

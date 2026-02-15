@@ -20,7 +20,7 @@ func TestGetHash_SupportedKinds(t *testing.T) {
 
 	var h string
 	val := &hashJob{Str: "x", Num: 7, Flg: true}
-	err := GetHash(reflect.TypeOf(val).Elem(), reflect.ValueOf(val).Elem(), &h)
+	err := GetHash(reflect.TypeFor[hashJob](), reflect.ValueOf(val).Elem(), &h)
 	require.NoError(t, err)
 	assert.NotEmpty(t, h)
 }

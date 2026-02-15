@@ -558,14 +558,12 @@ func TestBulkheadGetMetrics(t *testing.T) {
 	// Execute some operations
 	var wg sync.WaitGroup
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			b.Execute(ctx, func() error {
 				time.Sleep(20 * time.Millisecond)
 				return nil
 			})
-		}()
+		})
 	}
 
 	// Let operations start

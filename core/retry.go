@@ -140,12 +140,9 @@ func (re *RetryExecutor) calculateDelay(config RetryConfig, attempt int) time.Du
 
 	if config.RetryExponential {
 		// Exponential backoff: delay * 2^attempt
-		delayMs = int(float64(config.RetryDelayMs) * math.Pow(2, float64(attempt)))
-
-		// Cap at maximum delay
-		if delayMs > config.RetryMaxDelayMs {
-			delayMs = config.RetryMaxDelayMs
-		}
+		delayMs = min(
+			// Cap at maximum delay
+			int(float64(config.RetryDelayMs)*math.Pow(2, float64(attempt))), config.RetryMaxDelayMs)
 	}
 
 	return time.Duration(delayMs) * time.Millisecond

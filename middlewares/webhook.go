@@ -422,7 +422,7 @@ type PresetDataForTemplate struct {
 }
 
 // buildWebhookDataWithPreset adds preset data to webhook data for templates that reference it
-func (w *Webhook) buildWebhookDataWithPreset(ctx *core.Context) map[string]interface{} {
+func (w *Webhook) buildWebhookDataWithPreset(ctx *core.Context) map[string]any {
 	data := w.buildWebhookData(ctx)
 
 	// Default link text if link is provided but text is not
@@ -431,7 +431,7 @@ func (w *Webhook) buildWebhookDataWithPreset(ctx *core.Context) map[string]inter
 		linkText = "View Details"
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"Job":       data.Job,
 		"Execution": data.Execution,
 		"Host":      data.Host,
@@ -447,7 +447,7 @@ func (w *Webhook) buildWebhookDataWithPreset(ctx *core.Context) map[string]inter
 }
 
 // RenderBodyWithPreset renders the body template with both webhook data and preset config
-func (p *Preset) RenderBodyWithPreset(data map[string]interface{}) (string, error) {
+func (p *Preset) RenderBodyWithPreset(data map[string]any) (string, error) {
 	if p.Body == "" {
 		return "", nil
 	}

@@ -32,7 +32,7 @@ command = echo test
 			expectedError: false,
 			checkOutput: func(output string) bool {
 				// Should be valid JSON
-				var result map[string]interface{}
+				var result map[string]any
 				return json.Unmarshal([]byte(output), &result) == nil
 			},
 		},
@@ -56,7 +56,7 @@ invalid = true
 `,
 			expectedError: false,
 			checkOutput: func(output string) bool {
-				var result map[string]interface{}
+				var result map[string]any
 				return json.Unmarshal([]byte(output), &result) == nil
 			},
 		},
@@ -78,7 +78,7 @@ command = echo service
 `,
 			expectedError: false,
 			checkOutput: func(output string) bool {
-				var result map[string]interface{}
+				var result map[string]any
 				if err := json.Unmarshal([]byte(output), &result); err != nil {
 					return false
 				}

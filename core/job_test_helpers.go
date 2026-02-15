@@ -13,23 +13,23 @@ type MockLogger struct {
 	logs []string
 }
 
-func (m *MockLogger) Criticalf(format string, args ...interface{}) {
+func (m *MockLogger) Criticalf(format string, args ...any) {
 	m.logs = append(m.logs, "CRITICAL: "+format)
 }
 
-func (m *MockLogger) Debugf(format string, args ...interface{}) {
+func (m *MockLogger) Debugf(format string, args ...any) {
 	m.logs = append(m.logs, "DEBUG: "+format)
 }
 
-func (m *MockLogger) Errorf(format string, args ...interface{}) {
+func (m *MockLogger) Errorf(format string, args ...any) {
 	m.logs = append(m.logs, "ERROR: "+format)
 }
 
-func (m *MockLogger) Noticef(format string, args ...interface{}) {
+func (m *MockLogger) Noticef(format string, args ...any) {
 	m.logs = append(m.logs, "NOTICE: "+format)
 }
 
-func (m *MockLogger) Warningf(format string, args ...interface{}) {
+func (m *MockLogger) Warningf(format string, args ...any) {
 	m.logs = append(m.logs, "WARNING: "+format)
 }
 

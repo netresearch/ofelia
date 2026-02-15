@@ -17,7 +17,7 @@ func TestDecodeWithMetadata_BasicDecode(t *testing.T) {
 		Count int    `mapstructure:"count"`
 	}
 
-	input := map[string]interface{}{
+	input := map[string]any{
 		"name":  "test",
 		"count": 42,
 	}
@@ -41,7 +41,7 @@ func TestDecodeWithMetadata_UnusedKeys(t *testing.T) {
 		Name string `mapstructure:"name"`
 	}
 
-	input := map[string]interface{}{
+	input := map[string]any{
 		"name":    "test",
 		"unknown": "value",
 		"typo":    123,
@@ -66,7 +66,7 @@ func TestDecodeWithMetadata_CaseInsensitive(t *testing.T) {
 		PollInterval int `mapstructure:"poll-interval"`
 	}
 
-	input := map[string]interface{}{
+	input := map[string]any{
 		"Poll-Interval": 30,
 	}
 
@@ -86,7 +86,7 @@ func TestDecodeWithMetadata_WeakTyping(t *testing.T) {
 		Enabled bool `mapstructure:"enabled"`
 	}
 
-	input := map[string]interface{}{
+	input := map[string]any{
 		"count":   "42",   // string to int
 		"enabled": "true", // string to bool
 	}
@@ -144,7 +144,7 @@ func TestMergeUsedKeys(t *testing.T) {
 func TestCollectInputKeys(t *testing.T) {
 	t.Parallel()
 
-	input := map[string]interface{}{
+	input := map[string]any{
 		"poll-interval": 30,
 		"Poll-Interval": 30, // duplicate with different case
 		"no-poll":       true,

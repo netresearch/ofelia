@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"runtime"
 	"sync"
@@ -40,13 +41,13 @@ func (l LogLevel) String() string {
 
 // LogEntry represents a structured log entry
 type LogEntry struct {
-	Timestamp     time.Time              `json:"timestamp"`
-	Level         string                 `json:"level"`
-	Message       string                 `json:"message"`
-	Fields        map[string]interface{} `json:"fields,omitempty"`
-	Caller        string                 `json:"caller,omitempty"`
-	StackTrace    string                 `json:"stackTrace,omitempty"`
-	CorrelationID string                 `json:"correlationId,omitempty"`
+	Timestamp     time.Time      `json:"timestamp"`
+	Level         string         `json:"level"`
+	Message       string         `json:"message"`
+	Fields        map[string]any `json:"fields,omitempty"`
+	Caller        string         `json:"caller,omitempty"`
+	StackTrace    string         `json:"stackTrace,omitempty"`
+	CorrelationID string         `json:"correlationId,omitempty"`
 }
 
 // StructuredLogger provides structured logging capabilities
@@ -54,7 +55,7 @@ type StructuredLogger struct {
 	mu            sync.RWMutex
 	level         LogLevel
 	output        io.Writer
-	fields        map[string]interface{}
+	fields        map[string]any
 	correlationID string
 	includeCaller bool
 	jsonFormat    bool
@@ -65,7 +66,7 @@ func NewStructuredLogger() *StructuredLogger {
 	return &StructuredLogger{
 		level:         InfoLevel,
 		output:        os.Stdout,
-		fields:        make(map[string]interface{}),
+		fields:        make(map[string]any),
 		includeCaller: true,
 		jsonFormat:    true,
 	}
@@ -93,14 +94,12 @@ func (l *StructuredLogger) SetJSONFormat(enabled bool) {
 }
 
 // WithField creates a new logger with an additional field
-func (l *StructuredLogger) WithField(key string, value interface{}) *StructuredLogger {
+func (l *StructuredLogger) WithField(key string, value any) *StructuredLogger {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	newFields := make(map[string]interface{})
-	for k, v := range l.fields {
-		newFields[k] = v
-	}
+	newFields := make(map[string]any)
+	maps.Copy(newFields, l.fields)
 	newFields[key] = value
 
 	return &StructuredLogger{
@@ -114,17 +113,13 @@ func (l *StructuredLogger) WithField(key string, value interface{}) *StructuredL
 }
 
 // WithFields creates a new logger with additional fields
-func (l *StructuredLogger) WithFields(fields map[string]interface{}) *StructuredLogger {
+func (l *StructuredLogger) WithFields(fields map[string]any) *StructuredLogger {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	newFields := make(map[string]interface{})
-	for k, v := range l.fields {
-		newFields[k] = v
-	}
-	for k, v := range fields {
-		newFields[k] = v
-	}
+	newFields := make(map[string]any)
+	maps.Copy(newFields, l.fields)
+	maps.Copy(newFields, fields)
 
 	return &StructuredLogger{
 		level:         l.level,
@@ -153,7 +148,7 @@ func (l *StructuredLogger) WithCorrelationID(id string) *StructuredLogger {
 }
 
 // log writes a log entry
-func (l *StructuredLogger) log(level LogLevel, message string, fields map[string]interface{}) {
+func (l *StructuredLogger) log(level LogLevel, message string, fields map[string]any) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
@@ -165,19 +160,15 @@ func (l *StructuredLogger) log(level LogLevel, message string, fields map[string
 		Timestamp:     time.Now(),
 		Level:         level.String(),
 		Message:       message,
-		Fields:        make(map[string]interface{}),
+		Fields:        make(map[string]any),
 		CorrelationID: l.correlationID,
 	}
 
 	// Merge logger fields
-	for k, v := range l.fields {
-		entry.Fields[k] = v
-	}
+	maps.Copy(entry.Fields, l.fields)
 
 	// Merge provided fields
-	for k, v := range fields {
-		entry.Fields[k] = v
-	}
+	maps.Copy(entry.Fields, fields)
 
 	// Add caller information
 	if l.includeCaller {
@@ -222,12 +213,12 @@ func (l *StructuredLogger) Debug(message string) {
 }
 
 // Debugf logs a formatted debug message
-func (l *StructuredLogger) Debugf(format string, args ...interface{}) {
+func (l *StructuredLogger) Debugf(format string, args ...any) {
 	l.log(DebugLevel, fmt.Sprintf(format, args...), nil)
 }
 
 // DebugWithFields logs a debug message with fields
-func (l *StructuredLogger) DebugWithFields(message string, fields map[string]interface{}) {
+func (l *StructuredLogger) DebugWithFields(message string, fields map[string]any) {
 	l.log(DebugLevel, message, fields)
 }
 
@@ -237,12 +228,12 @@ func (l *StructuredLogger) Info(message string) {
 }
 
 // Infof logs a formatted info message
-func (l *StructuredLogger) Infof(format string, args ...interface{}) {
+func (l *StructuredLogger) Infof(format string, args ...any) {
 	l.log(InfoLevel, fmt.Sprintf(format, args...), nil)
 }
 
 // InfoWithFields logs an info message with fields
-func (l *StructuredLogger) InfoWithFields(message string, fields map[string]interface{}) {
+func (l *StructuredLogger) InfoWithFields(message string, fields map[string]any) {
 	l.log(InfoLevel, message, fields)
 }
 
@@ -252,12 +243,12 @@ func (l *StructuredLogger) Warn(message string) {
 }
 
 // Warnf logs a formatted warning message
-func (l *StructuredLogger) Warnf(format string, args ...interface{}) {
+func (l *StructuredLogger) Warnf(format string, args ...any) {
 	l.log(WarnLevel, fmt.Sprintf(format, args...), nil)
 }
 
 // WarnWithFields logs a warning message with fields
-func (l *StructuredLogger) WarnWithFields(message string, fields map[string]interface{}) {
+func (l *StructuredLogger) WarnWithFields(message string, fields map[string]any) {
 	l.log(WarnLevel, message, fields)
 }
 
@@ -267,12 +258,12 @@ func (l *StructuredLogger) Error(message string) {
 }
 
 // Errorf logs a formatted error message
-func (l *StructuredLogger) Errorf(format string, args ...interface{}) {
+func (l *StructuredLogger) Errorf(format string, args ...any) {
 	l.log(ErrorLevel, fmt.Sprintf(format, args...), nil)
 }
 
 // ErrorWithFields logs an error message with fields
-func (l *StructuredLogger) ErrorWithFields(message string, fields map[string]interface{}) {
+func (l *StructuredLogger) ErrorWithFields(message string, fields map[string]any) {
 	l.log(ErrorLevel, message, fields)
 }
 
@@ -285,14 +276,14 @@ func (l *StructuredLogger) Fatal(message string) {
 
 // Fatalf logs a formatted fatal message. Note: Does not exit automatically.
 // Caller should handle the fatal condition appropriately.
-func (l *StructuredLogger) Fatalf(format string, args ...interface{}) {
+func (l *StructuredLogger) Fatalf(format string, args ...any) {
 	l.log(FatalLevel, fmt.Sprintf(format, args...), nil)
 	// Removed os.Exit(1) - let caller decide how to handle fatal errors
 }
 
 // FatalWithFields logs a fatal message with fields. Note: Does not exit automatically.
 // Caller should handle the fatal condition appropriately.
-func (l *StructuredLogger) FatalWithFields(message string, fields map[string]interface{}) {
+func (l *StructuredLogger) FatalWithFields(message string, fields map[string]any) {
 	l.log(FatalLevel, message, fields)
 	// Removed os.Exit(1) - let caller decide how to handle fatal errors
 }
@@ -309,7 +300,7 @@ type JobLogger struct {
 func NewJobLogger(jobID, jobName string) *JobLogger {
 	logger := NewStructuredLogger()
 	return &JobLogger{
-		StructuredLogger: logger.WithFields(map[string]interface{}{
+		StructuredLogger: logger.WithFields(map[string]any{
 			"job_id":   jobID,
 			"job_name": jobName,
 		}),
@@ -325,7 +316,7 @@ func (jl *JobLogger) SetMetricsCollector(metrics MetricsCollector) {
 
 // LogStart logs job start
 func (jl *JobLogger) LogStart() {
-	jl.InfoWithFields("Job started", map[string]interface{}{
+	jl.InfoWithFields("Job started", map[string]any{
 		"event": "job_start",
 	})
 
@@ -338,7 +329,7 @@ func (jl *JobLogger) LogStart() {
 
 // LogComplete logs job completion
 func (jl *JobLogger) LogComplete(duration time.Duration, success bool) {
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"event":    "job_complete",
 		"duration": duration.Seconds(),
 		"success":  success,
@@ -365,7 +356,7 @@ func (jl *JobLogger) LogComplete(duration time.Duration, success bool) {
 
 // LogProgress logs job progress
 func (jl *JobLogger) LogProgress(message string, percentComplete float64) {
-	jl.InfoWithFields(message, map[string]interface{}{
+	jl.InfoWithFields(message, map[string]any{
 		"event":    "job_progress",
 		"progress": percentComplete,
 	})
@@ -378,7 +369,7 @@ func (jl *JobLogger) LogProgress(message string, percentComplete float64) {
 
 // LogError logs an error with context
 func (jl *JobLogger) LogError(err error, context string) {
-	jl.ErrorWithFields("Job error occurred", map[string]interface{}{
+	jl.ErrorWithFields("Job error occurred", map[string]any{
 		"event":   "job_error",
 		"error":   err.Error(),
 		"context": context,
@@ -391,7 +382,7 @@ func (jl *JobLogger) LogError(err error, context string) {
 
 // LogRetry logs a retry attempt
 func (jl *JobLogger) LogRetry(attempt int, maxAttempts int, err error) {
-	jl.WarnWithFields("Retrying job execution", map[string]interface{}{
+	jl.WarnWithFields("Retrying job execution", map[string]any{
 		"event":        "job_retry",
 		"attempt":      attempt,
 		"max_attempts": maxAttempts,

@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -12,7 +13,7 @@ import (
 // ValidationError represents a configuration validation error
 type ValidationError struct {
 	Field   string
-	Value   interface{}
+	Value   any
 	Message string
 }
 
@@ -45,7 +46,7 @@ func NewValidator() *Validator {
 }
 
 // AddError adds a validation error
-func (v *Validator) AddError(field string, value interface{}, message string) {
+func (v *Validator) AddError(field string, value any, message string) {
 	v.errors = append(v.errors, ValidationError{
 		Field:   field,
 		Value:   value,
@@ -175,10 +176,8 @@ func (v *Validator) ValidateEnum(field string, value string, allowed []string) {
 		return
 	}
 
-	for _, a := range allowed {
-		if value == a {
-			return
-		}
+	if slices.Contains(allowed, value) {
+		return
 	}
 
 	v.AddError(field, value, fmt.Sprintf("must be one of: %s", strings.Join(allowed, ", ")))
@@ -198,12 +197,12 @@ func (v *Validator) ValidatePath(field string, value string) {
 
 // ConfigValidator validates complete configuration
 type Validator2 struct {
-	config    interface{}
+	config    any
 	sanitizer *Sanitizer
 }
 
 // NewConfigValidator creates a configuration validator
-func NewConfigValidator(config interface{}) *Validator2 {
+func NewConfigValidator(config any) *Validator2 {
 	return &Validator2{
 		config:    config,
 		sanitizer: NewSanitizer(),
@@ -225,9 +224,9 @@ func (cv *Validator2) Validate() error {
 }
 
 // validateStruct recursively validates struct fields based on tags
-func (cv *Validator2) validateStruct(v *Validator, obj interface{}, path string) {
+func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
 	val := reflect.ValueOf(obj)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return
 		}
@@ -291,7 +290,7 @@ func (cv *Validator2) validateField(v *Validator, field reflect.Value, path stri
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
 		reflect.Array, reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
-		reflect.Ptr, reflect.Struct, reflect.UnsafePointer:
+		reflect.Pointer, reflect.Struct, reflect.UnsafePointer:
 		// These types are not currently validated or are handled elsewhere (e.g., structs)
 		// No validation needed for these field types in this context
 	default:
@@ -487,10 +486,5 @@ func (cv *Validator2) isValidAddress(addr string) bool {
 func (cv *Validator2) isValidLogLevel(level string) bool {
 	validLevels := []string{"debug", "info", "notice", "warning", "error", "critical"}
 	level = strings.ToLower(level)
-	for _, valid := range validLevels {
-		if level == valid {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(validLevels, level)
 }

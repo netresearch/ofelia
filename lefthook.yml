@@ -35,6 +35,34 @@ pre-commit:
           exit 1
         fi
 
+    yaml-lint:
+      glob: "*.{yml,yaml}"
+      run: |
+        if ! python3 -c "import yaml" 2>/dev/null; then
+          echo "⚠️  python3/PyYAML not found, skipping YAML lint"
+          exit 0
+        fi
+        python3 -c "
+        import yaml, sys
+        for f in sys.argv[1:]:
+            try:
+                list(yaml.safe_load_all(open(f)))
+            except yaml.YAMLError as e:
+                print(f'❌ Invalid YAML: {f}')
+                print(e)
+                sys.exit(1)
+        " {staged_files}
+
+    actionlint:
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: |
+        if ! command -v actionlint >/dev/null 2>&1; then
+          echo "⚠️  actionlint not found, skipping workflow lint"
+          echo "   Install: go install github.com/rhysd/actionlint/cmd/actionlint@latest"
+          exit 0
+        fi
+        actionlint {staged_files}
+
     secrets:
       run: |
         code_files=$(git diff --cached --name-only | grep -E '\.(go|js|ts|py|java|rb|php)$' || true)

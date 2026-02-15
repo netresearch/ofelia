@@ -106,8 +106,7 @@ func main() {
 	)
 
 	if _, err := parser.ParseArgs(args); err != nil {
-		var flagErr *flags.Error
-		if errors.As(err, &flagErr) {
+		if flagErr, ok := errors.AsType[*flags.Error](err); ok {
 			if flagErr.Type == flags.ErrHelp {
 				return
 			}

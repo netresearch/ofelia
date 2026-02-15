@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"runtime"
 	"sync"
@@ -198,9 +199,7 @@ func (hc *HealthChecker) checkSystemResources() {
 func (hc *HealthChecker) GetHealth() HealthResponse {
 	hc.mu.RLock()
 	checks := make(map[string]HealthCheck)
-	for k, v := range hc.checks {
-		checks[k] = v
-	}
+	maps.Copy(checks, hc.checks)
 	hc.mu.RUnlock()
 
 	// Determine overall status

@@ -20,7 +20,7 @@ import (
 type Server struct {
 	addr         string
 	scheduler    *core.Scheduler
-	config       interface{}
+	config       any
 	srv          *http.Server
 	origins      map[string]string
 	provider     core.DockerProvider
@@ -36,11 +36,11 @@ func (s *Server) HTTPServer() *http.Server { return s.srv }
 // GetHTTPServer returns the underlying http.Server for graceful shutdown support
 func (s *Server) GetHTTPServer() *http.Server { return s.srv }
 
-func NewServer(addr string, s *core.Scheduler, cfg interface{}, provider core.DockerProvider) *Server {
+func NewServer(addr string, s *core.Scheduler, cfg any, provider core.DockerProvider) *Server {
 	return NewServerWithAuth(addr, s, cfg, provider, nil)
 }
 
-func NewServerWithAuth(addr string, s *core.Scheduler, cfg interface{}, provider core.DockerProvider, authCfg *SecureAuthConfig) *Server {
+func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.DockerProvider, authCfg *SecureAuthConfig) *Server {
 	server := &Server{
 		addr:       addr,
 		scheduler:  s,
@@ -196,12 +196,12 @@ type apiJob struct {
 	Config   json.RawMessage `json:"config"`
 }
 
-func jobOrigin(cfg interface{}, name string) string {
+func jobOrigin(cfg any, name string) string {
 	if cfg == nil {
 		return ""
 	}
 	v := reflect.ValueOf(cfg)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	if v.Kind() != reflect.Struct {
@@ -213,7 +213,7 @@ func jobOrigin(cfg interface{}, name string) string {
 		if m.IsValid() && m.Kind() == reflect.Map {
 			jv := m.MapIndex(reflect.ValueOf(name))
 			if jv.IsValid() {
-				if jv.Kind() == reflect.Ptr {
+				if jv.Kind() == reflect.Pointer {
 					jv = jv.Elem()
 				}
 				src := jv.FieldByName("JobSource")
@@ -247,7 +247,7 @@ func jobType(j core.Job) string {
 		return "compose"
 	default:
 		t := reflect.TypeOf(j)
-		if t.Kind() == reflect.Ptr {
+		if t.Kind() == reflect.Pointer {
 			t = t.Elem()
 		}
 		return strings.ToLower(t.Name())
@@ -512,13 +512,13 @@ func (s *Server) configHandler(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(cfg)
 }
 
-func stripJobs(cfg interface{}) interface{} {
+func stripJobs(cfg any) any {
 	if cfg == nil {
 		return nil
 	}
 	v := reflect.ValueOf(cfg)
 	isPtr := false
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 		isPtr = true
 	}
@@ -617,7 +617,7 @@ func (s *Server) authStatusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if s.authConfig == nil || !s.authConfig.Enabled {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"authEnabled":   false,
 			"authenticated": true,
 		})
@@ -626,7 +626,7 @@ func (s *Server) authStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	token := extractToken(r)
 	if token == "" {
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"authEnabled":   true,
 			"authenticated": false,
 		})
@@ -634,7 +634,7 @@ func (s *Server) authStatusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data, valid := s.tokenManager.ValidateToken(token)
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"authEnabled":   true,
 		"authenticated": valid,
 		"username":      data.Username,
@@ -692,8 +692,8 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 
 func extractToken(r *http.Request) string {
 	authHeader := r.Header.Get("Authorization")
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
+	if after, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
+		return after
 	}
 
 	cookie, err := r.Cookie("auth_token")

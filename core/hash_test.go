@@ -14,7 +14,7 @@ func TestGetHashSimple(t *testing.T) {
 	}
 	val := S{A: "foo", B: 42, C: true}
 	var h string
-	if err := GetHash(reflect.TypeOf(val), reflect.ValueOf(val), &h); err != nil {
+	if err := GetHash(reflect.TypeFor[S](), reflect.ValueOf(val), &h); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := "foo42true"
@@ -33,7 +33,7 @@ func TestGetHashNested(t *testing.T) {
 	}
 	val := Outer{Inner: Inner{X: "bar"}}
 	var h string
-	if err := GetHash(reflect.TypeOf(val), reflect.ValueOf(val), &h); err != nil {
+	if err := GetHash(reflect.TypeFor[Outer](), reflect.ValueOf(val), &h); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := "bar"
@@ -49,7 +49,7 @@ func TestGetHashUnsupported(t *testing.T) {
 	}
 	val := Bad{F: 3.14}
 	var h string
-	if err := GetHash(reflect.TypeOf(val), reflect.ValueOf(val), &h); err == nil {
+	if err := GetHash(reflect.TypeFor[Bad](), reflect.ValueOf(val), &h); err == nil {
 		t.Errorf("expected error on unsupported type")
 	}
 }

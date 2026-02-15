@@ -421,7 +421,7 @@ import (
 func TestSaveMiddleware(t *testing.T) {
     config := &middlewares.SaveConfig{
         SaveFolder:      t.TempDir(),
-        SaveOnlyOnError: middlewares.BoolPtr(false),
+        SaveOnlyOnError: new(false),
     }
 
     middleware := middlewares.NewSave(config)

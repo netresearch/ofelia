@@ -27,10 +27,7 @@ func TestRateLimiter(t *testing.T) {
 	var rateLimitedCount int32
 
 	for range 20 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			req.RemoteAddr = "127.0.0.1:1234" // Same IP for all requests
 			w := httptest.NewRecorder()
@@ -40,7 +37,7 @@ func TestRateLimiter(t *testing.T) {
 			if w.Code == http.StatusTooManyRequests {
 				atomic.AddInt32(&rateLimitedCount, 1)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

@@ -41,7 +41,7 @@ func NewMail(c *MailConfig) core.Middleware {
 		// Parse custom subject template if provided
 		if c.EmailSubject != "" {
 			tmpl := template.New("custom-mail-subject")
-			tmpl.Funcs(map[string]interface{}{
+			tmpl.Funcs(map[string]any{
 				"status": executionLabel,
 			})
 			if parsed, err := tmpl.Parse(c.EmailSubject); err == nil {
@@ -114,7 +114,7 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 	}
 
 	msg.Attach(base+".stderr.json", mail.SetCopyFunc(func(w io.Writer) error {
-		js, _ := json.MarshalIndent(map[string]interface{}{
+		js, _ := json.MarshalIndent(map[string]any{
 			"Job":       ctx.Job,
 			"Execution": ctx.Execution,
 		}, "", "  ")
@@ -169,7 +169,7 @@ func (m *Mail) body(ctx *core.Context) string {
 var mailBodyTemplate, mailSubjectTemplate *template.Template
 
 func init() {
-	f := map[string]interface{}{
+	f := map[string]any{
 		"status": executionLabel,
 	}
 

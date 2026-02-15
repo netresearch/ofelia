@@ -52,7 +52,7 @@ func TestStructuredFields(t *testing.T) {
 	logger.SetJSONFormat(true)
 
 	// Log with fields
-	logger.InfoWithFields("test message", map[string]interface{}{
+	logger.InfoWithFields("test message", map[string]any{
 		"user_id": 123,
 		"action":  "login",
 		"success": true,
@@ -94,7 +94,7 @@ func TestLoggerChaining(t *testing.T) {
 	jobLogger := logger.
 		WithField("service", "ofelia").
 		WithField("version", "1.0.0").
-		WithFields(map[string]interface{}{
+		WithFields(map[string]any{
 			"environment": "production",
 			"region":      "us-east-1",
 		})
@@ -108,7 +108,7 @@ func TestLoggerChaining(t *testing.T) {
 	}
 
 	// Check all fields are present
-	expectedFields := map[string]interface{}{
+	expectedFields := map[string]any{
 		"service":     "ofelia",
 		"version":     "1.0.0",
 		"environment": "production",
@@ -212,7 +212,7 @@ func TestTextFormat(t *testing.T) {
 	logger.SetOutput(&buf)
 	logger.SetJSONFormat(false) // Use text format
 
-	logger.InfoWithFields("user login", map[string]interface{}{
+	logger.InfoWithFields("user login", map[string]any{
 		"user": "admin",
 		"ip":   "192.168.1.1",
 	})
@@ -319,7 +319,7 @@ func TestAllLogLevelsWithFields(t *testing.T) {
 	logger.SetJSONFormat(true)
 	logger.SetLevel(DebugLevel) // Enable all levels
 
-	testFields := map[string]interface{}{
+	testFields := map[string]any{
 		"test_key": "test_value",
 		"count":    42,
 	}
@@ -464,7 +464,7 @@ func TestFatalLogging(t *testing.T) {
 		{
 			name: "FatalWithFields",
 			logFunc: func() {
-				logger.FatalWithFields("system crash", map[string]interface{}{
+				logger.FatalWithFields("system crash", map[string]any{
 					"error_code": 500,
 					"component":  "core",
 				})

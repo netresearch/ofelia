@@ -119,14 +119,14 @@ func TestRunJob_ContainerNameLogic(t *testing.T) {
 		{
 			name:          "use_container_name_when_specified",
 			jobName:       "my-job",
-			containerName: stringPtr("custom-container"),
+			containerName: new("custom-container"),
 			expectedName:  "custom-container",
 			description:   "Should use ContainerName when specified",
 		},
 		{
 			name:          "use_empty_string_when_container_name_empty",
 			jobName:       "my-job",
-			containerName: stringPtr(""),
+			containerName: new(""),
 			expectedName:  "",
 			description:   "Should use empty string when ContainerName is explicitly empty (Docker assigns random name)",
 		},
@@ -269,7 +269,7 @@ func TestRunJob_ExitCodeHandling(t *testing.T) {
 		name         string
 		exitCode     int
 		expectError  bool
-		expectedType interface{}
+		expectedType any
 	}{
 		{
 			name:         "success_exit_0",
@@ -325,8 +325,8 @@ func TestRunJob_ExitCodeHandling(t *testing.T) {
 
 			if tc.expectError {
 				if tc.expectedType != nil {
-					var exitErr NonZeroExitError
-					if !errors.As(err, &exitErr) {
+					exitErr, ok := errors.AsType[NonZeroExitError](err)
+					if !ok {
 						t.Errorf("Expected NonZeroExitError, got %T", err)
 					} else if exitErr.ExitCode != tc.exitCode {
 						t.Errorf("Expected exit code %d, got %d", tc.exitCode, exitErr.ExitCode)
@@ -549,10 +549,6 @@ func TestRunJob_Validate(t *testing.T) {
 }
 
 // Helper functions for testing
-
-func stringPtr(s string) *string {
-	return &s
-}
 
 func parseBool(s string) (bool, error) {
 	switch s {

@@ -470,8 +470,7 @@ func TestSDKDockerProviderFindNetworkByName(t *testing.T) {
 
 func TestSDKDockerProviderSubscribeEvents(t *testing.T) {
 	provider, mockClient := newTestProvider()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	events := mockClient.Events().(*mock.EventService)
 
@@ -618,15 +617,15 @@ type testLogger struct {
 	debugs  []string
 }
 
-func (l *testLogger) Criticalf(format string, args ...interface{}) {}
-func (l *testLogger) Debugf(format string, args ...interface{}) {
+func (l *testLogger) Criticalf(format string, args ...any) {}
+func (l *testLogger) Debugf(format string, args ...any) {
 	l.debugs = append(l.debugs, format)
 }
-func (l *testLogger) Errorf(format string, args ...interface{}) {}
-func (l *testLogger) Noticef(format string, args ...interface{}) {
+func (l *testLogger) Errorf(format string, args ...any) {}
+func (l *testLogger) Noticef(format string, args ...any) {
 	l.notices = append(l.notices, format)
 }
-func (l *testLogger) Warningf(format string, args ...interface{}) {}
+func (l *testLogger) Warningf(format string, args ...any) {}
 
 type testMetrics struct {
 	operations []string

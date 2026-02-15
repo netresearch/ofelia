@@ -3,6 +3,7 @@ package middlewares
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -180,10 +181,8 @@ func IsSemanticVersion(version string) bool {
 func IsBranch(version string) bool {
 	// Common branch patterns
 	branches := []string{"main", "master", "develop", "dev", "staging", "production"}
-	for _, b := range branches {
-		if version == b {
-			return true
-		}
+	if slices.Contains(branches, version) {
+		return true
 	}
 
 	// Feature branch pattern

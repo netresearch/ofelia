@@ -367,7 +367,25 @@ func (c *DockerHandler) watchEvents() {
 		}
 
 		eventCh, errCh := c.dockerProvider.SubscribeEvents(c.ctx, domain.EventFilter{
-			Filters: map[string][]string{"type": {"container"}},
+			Filters: map[string][]string{
+				"type":  {"container"},
+				"label": {"ofelia.enabled=true"},
+				"event": {
+					// Lifecycle events
+					domain.EventActionCreate,
+					domain.EventActionStart,
+					domain.EventActionRestart,
+					domain.EventActionStop,
+					domain.EventActionKill,
+					domain.EventActionDie,
+					domain.EventActionDestroy,
+					// Management events
+					domain.EventActionPause,
+					domain.EventActionUnpause,
+					domain.EventActionRename,
+					domain.EventActionUpdate,
+				},
+			},
 		})
 
 		// Inner loop: process events until error or shutdown
@@ -392,10 +410,7 @@ func (c *DockerHandler) watchEvents() {
 				case <-time.After(backoff):
 				}
 				// Increase backoff for next failure (capped at maxBackoff)
-				backoff = time.Duration(float64(backoff) * backoffFactor)
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
+				backoff = min(time.Duration(float64(backoff)*backoffFactor), maxBackoff)
 				break innerLoop // Exit inner loop to reconnect
 			case _, ok := <-eventCh:
 				if !ok {

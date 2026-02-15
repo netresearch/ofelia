@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -180,18 +181,10 @@ func TestConfigIni(t *testing.T) {
 			expectedWithDefaults.logger = nil
 			conf.logger = nil
 
-			for name, job := range tc.ExpectedConfig.ExecJobs {
-				expectedWithDefaults.ExecJobs[name] = job
-			}
-			for name, job := range tc.ExpectedConfig.RunJobs {
-				expectedWithDefaults.RunJobs[name] = job
-			}
-			for name, job := range tc.ExpectedConfig.ServiceJobs {
-				expectedWithDefaults.ServiceJobs[name] = job
-			}
-			for name, job := range tc.ExpectedConfig.LocalJobs {
-				expectedWithDefaults.LocalJobs[name] = job
-			}
+			maps.Copy(expectedWithDefaults.ExecJobs, tc.ExpectedConfig.ExecJobs)
+			maps.Copy(expectedWithDefaults.RunJobs, tc.ExpectedConfig.RunJobs)
+			maps.Copy(expectedWithDefaults.ServiceJobs, tc.ExpectedConfig.ServiceJobs)
+			maps.Copy(expectedWithDefaults.LocalJobs, tc.ExpectedConfig.LocalJobs)
 			setJobSource(expectedWithDefaults, JobSourceINI)
 
 			assert.Equal(t, expectedWithDefaults, conf, "Test %q failed", tc.Comment)
@@ -844,7 +837,7 @@ func TestMergeMailDefaults(t *testing.T) {
 	cfg.Global.MailConfig.SMTPTLSSkipVerify = true
 	cfg.Global.MailConfig.EmailTo = "global@example.com"
 	cfg.Global.MailConfig.EmailFrom = "sender@example.com"
-	cfg.Global.MailConfig.MailOnlyOnError = middlewares.BoolPtr(true)
+	cfg.Global.MailConfig.MailOnlyOnError = new(true)
 
 	jobMail := middlewares.MailConfig{
 		// MailOnlyOnError not set (nil) — should inherit global=true
@@ -865,7 +858,7 @@ func TestMergeMailDefaults(t *testing.T) {
 		SMTPHost:        "job-smtp.example.com",
 		SMTPPort:        465,
 		EmailTo:         "job@example.com",
-		MailOnlyOnError: middlewares.BoolPtr(true),
+		MailOnlyOnError: new(true),
 	}
 	cfg.mergeMailDefaults(&jobMail2)
 
@@ -893,10 +886,10 @@ func TestMergeSlackDefaults(t *testing.T) {
 
 	cfg := NewConfig(&TestLogger{})
 	cfg.Global.SlackConfig.SlackWebhook = "https://hooks.slack.com/services/global"
-	cfg.Global.SlackConfig.SlackOnlyOnError = middlewares.BoolPtr(true)
+	cfg.Global.SlackConfig.SlackOnlyOnError = new(true)
 
 	jobSlack := middlewares.SlackConfig{
-		SlackOnlyOnError: middlewares.BoolPtr(true),
+		SlackOnlyOnError: new(true),
 	}
 	cfg.mergeSlackDefaults(&jobSlack)
 
@@ -917,9 +910,9 @@ func TestMergeSlackDefaults(t *testing.T) {
 	// Global=false should not override job=true
 	cfg3 := NewConfig(&TestLogger{})
 	cfg3.Global.SlackConfig.SlackWebhook = "https://hooks.slack.com/services/global"
-	cfg3.Global.SlackConfig.SlackOnlyOnError = middlewares.BoolPtr(false)
+	cfg3.Global.SlackConfig.SlackOnlyOnError = new(false)
 	jobSlack3 := middlewares.SlackConfig{
-		SlackOnlyOnError: middlewares.BoolPtr(true),
+		SlackOnlyOnError: new(true),
 	}
 	cfg3.mergeSlackDefaults(&jobSlack3)
 	require.NotNil(t, jobSlack3.SlackOnlyOnError)
@@ -965,7 +958,7 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 
 	// Global=true, Job=nil (not set) → Job inherits true
 	cfg1 := NewConfig(&TestLogger{})
-	cfg1.Global.MailConfig.MailOnlyOnError = middlewares.BoolPtr(true)
+	cfg1.Global.MailConfig.MailOnlyOnError = new(true)
 	jobMail1 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
 	cfg1.mergeMailDefaults(&jobMail1)
 	require.NotNil(t, jobMail1.MailOnlyOnError, "Global mail-only-on-error=true should propagate to job")
@@ -973,10 +966,10 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 
 	// Global=false, Job=true → Job keeps true
 	cfg2 := NewConfig(&TestLogger{})
-	cfg2.Global.MailConfig.MailOnlyOnError = middlewares.BoolPtr(false)
+	cfg2.Global.MailConfig.MailOnlyOnError = new(false)
 	jobMail2 := middlewares.MailConfig{
 		SMTPHost:        "mail.example.com",
-		MailOnlyOnError: middlewares.BoolPtr(true),
+		MailOnlyOnError: new(true),
 	}
 	cfg2.mergeMailDefaults(&jobMail2)
 	require.NotNil(t, jobMail2.MailOnlyOnError)
@@ -984,10 +977,10 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 
 	// Global=true, Job=false (explicitly) → Job keeps false (explicit override)
 	cfg3 := NewConfig(&TestLogger{})
-	cfg3.Global.MailConfig.MailOnlyOnError = middlewares.BoolPtr(true)
+	cfg3.Global.MailConfig.MailOnlyOnError = new(true)
 	jobMail3 := middlewares.MailConfig{
 		SMTPHost:        "mail.example.com",
-		MailOnlyOnError: middlewares.BoolPtr(false),
+		MailOnlyOnError: new(false),
 	}
 	cfg3.mergeMailDefaults(&jobMail3)
 	require.NotNil(t, jobMail3.MailOnlyOnError)
@@ -1001,10 +994,10 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 
 	// Global=true, Job=true → Job stays true
 	cfg5 := NewConfig(&TestLogger{})
-	cfg5.Global.MailConfig.MailOnlyOnError = middlewares.BoolPtr(true)
+	cfg5.Global.MailConfig.MailOnlyOnError = new(true)
 	jobMail5 := middlewares.MailConfig{
 		SMTPHost:        "mail.example.com",
-		MailOnlyOnError: middlewares.BoolPtr(true),
+		MailOnlyOnError: new(true),
 	}
 	cfg5.mergeMailDefaults(&jobMail5)
 	require.NotNil(t, jobMail5.MailOnlyOnError)
@@ -1036,7 +1029,7 @@ func TestMergeSaveDefaults(t *testing.T) {
 
 	cfg := NewConfig(&TestLogger{})
 	cfg.Global.SaveConfig.SaveFolder = "/var/log/ofelia"
-	cfg.Global.SaveConfig.SaveOnlyOnError = middlewares.BoolPtr(true)
+	cfg.Global.SaveConfig.SaveOnlyOnError = new(true)
 
 	// Job without save settings inherits from global
 	jobSave := middlewares.SaveConfig{}
@@ -1053,7 +1046,7 @@ func TestMergeSaveDefaults(t *testing.T) {
 	assert.True(t, *jobSave2.SaveOnlyOnError, "SaveOnlyOnError should still inherit")
 
 	// Job can explicitly override to false
-	jobSave3 := middlewares.SaveConfig{SaveOnlyOnError: middlewares.BoolPtr(false)}
+	jobSave3 := middlewares.SaveConfig{SaveOnlyOnError: new(false)}
 	cfg.mergeSaveDefaults(&jobSave3)
 	require.NotNil(t, jobSave3.SaveOnlyOnError)
 	assert.False(t, *jobSave3.SaveOnlyOnError, "Job explicit false should NOT be overridden by global true")

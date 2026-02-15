@@ -33,8 +33,7 @@ func TestLocalBuildCommandMissingBinary(t *testing.T) {
 		t.Fatalf("expected error for missing binary")
 	}
 	// ensure error originates from LookPath
-	execErr := &exec.Error{}
-	if !errors.As(err, &execErr) {
+	if _, ok := errors.AsType[*exec.Error](err); !ok {
 		// not all platforms return *exec.Error, so allow any error
 		_ = err
 	}

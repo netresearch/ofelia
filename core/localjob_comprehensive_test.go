@@ -65,8 +65,7 @@ func TestLocalJob_Run_NonZeroExit(t *testing.T) {
 	}
 
 	// The underlying error should be an exit error
-	var exitError *exec.ExitError
-	if !errors.As(err, &exitError) {
+	if _, ok := errors.AsType[*exec.ExitError](err); !ok {
 		t.Errorf("Expected underlying error to be ExitError, got: %T", err)
 	}
 }
