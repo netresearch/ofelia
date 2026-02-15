@@ -91,7 +91,7 @@ func canRunServiceJob(jobType string, jobName string, containerName string, isSe
 	case jobRun, jobExec, jobCompose:
 		return true
 	}
-	logger.Warningf("Unknown job type %s found in container. Skipping", jobType, containerName)
+	logger.Warningf("Unknown job type %s found in container %s. Skipping", jobType, containerName)
 	return false
 }
 
@@ -111,7 +111,7 @@ func canRunJobInStoppedContainer(jobType string, jobName string, containerName s
 	case jobRun:
 		return true
 	}
-	logger.Warningf("Unknown job type %s found in container. Skipping", jobType, containerName)
+	logger.Warningf("Unknown job type %s found in container %s. Skipping", jobType, containerName)
 	return false
 }
 
