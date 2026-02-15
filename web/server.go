@@ -191,6 +191,7 @@ type apiJob struct {
 	Type     string          `json:"type"`
 	Schedule string          `json:"schedule"`
 	Command  string          `json:"command"`
+	Running  bool            `json:"running"`
 	LastRun  *apiExecution   `json:"lastRun,omitempty"`
 	Origin   string          `json:"origin"`
 	Config   json.RawMessage `json:"config"`
@@ -285,6 +286,7 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 			Type:     jobType(job),
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
+			Running:  s.scheduler.IsJobRunning(job.GetName()),
 			LastRun:  execInfo,
 			Origin:   origin,
 			Config:   cfgBytes,

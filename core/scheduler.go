@@ -579,6 +579,16 @@ func (s *Scheduler) IsRunning() bool {
 	return s.cron.IsRunning()
 }
 
+// IsJobRunning reports whether the named job has any invocations currently in
+// flight. Returns false if no job with the given name exists or the scheduler
+// has no cron instance.
+func (s *Scheduler) IsJobRunning(name string) bool {
+	if s.cron == nil {
+		return false
+	}
+	return s.cron.IsJobRunningByName(name)
+}
+
 type jobWrapper struct {
 	s *Scheduler
 	j Job
