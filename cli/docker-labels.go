@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -38,17 +39,17 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d host-based local jobs from container labels. "+
 				"Host job execution from container labels is disabled for security. "+
 				"This prevents container-to-host privilege escalation attacks.", len(localJobs))
-			localJobs = make(map[string]map[string]interface{})
+			localJobs = make(map[string]map[string]any)
 		}
 		if len(composeJobs) > 0 {
 			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d host-based compose jobs from container labels. "+
 				"Host job execution from container labels is disabled for security. "+
 				"This prevents container-to-host privilege escalation attacks.", len(composeJobs))
-			composeJobs = make(map[string]map[string]interface{})
+			composeJobs = make(map[string]map[string]any)
 		}
 	}
 
-	decodeInto := func(src map[string]map[string]interface{}, dst any) error {
+	decodeInto := func(src map[string]map[string]any, dst any) error {
 		if len(src) == 0 {
 			return nil
 		}
@@ -139,7 +140,7 @@ func canRunJobOnContainer(jobType string, jobName string, containerName string, 
 func applyJobParameterToJobMaps(
 	jobType, jobName, jobParam, paramValue string,
 	scopedJobName string,
-	execJobs, localJobs, containerRunJobs, serviceJobs, composeJobs map[string]map[string]interface{},
+	execJobs, localJobs, containerRunJobs, serviceJobs, composeJobs map[string]map[string]any,
 ) {
 	switch jobType {
 	case jobExec:
@@ -192,15 +193,15 @@ func sortContainers(containers []DockerContainerInfo) []DockerContainerInfo {
 
 // splitContainersLabelsIntoJobMapsByType partitions container labels and parses values into per-type job maps.
 func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerContainerInfo) (
-	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]interface{},
-	globalConfigs map[string]interface{},
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]any,
+	globalConfigs map[string]any,
 ) {
-	execJobs = make(map[string]map[string]interface{})
-	localJobs = make(map[string]map[string]interface{})
-	runJobs = make(map[string]map[string]interface{})
-	serviceJobs = make(map[string]map[string]interface{})
-	composeJobs = make(map[string]map[string]interface{})
-	globalConfigs = make(map[string]interface{})
+	execJobs = make(map[string]map[string]any)
+	localJobs = make(map[string]map[string]any)
+	runJobs = make(map[string]map[string]any)
+	serviceJobs = make(map[string]map[string]any)
+	composeJobs = make(map[string]map[string]any)
+	globalConfigs = make(map[string]any)
 
 	sortedContainers := sortContainers(containers)
 
@@ -213,8 +214,8 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 		// New jobs for the container
 		// We merge them into the existing jobs later.
 		// This allows to have the prescedence of the set `image` parameter over the propagated by default `container` parameter.
-		containerRunJobs := make(map[string]map[string]interface{})
-		containerExecJobs := make(map[string]map[string]interface{})
+		containerRunJobs := make(map[string]map[string]any)
+		containerExecJobs := make(map[string]map[string]any)
 
 		for k, jobParamValue := range labelSet {
 			parts := strings.Split(k, ".")
@@ -256,7 +257,7 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 	return
 }
 
-func addContainerNameToJobsIfNeeded(jobs map[string]map[string]interface{}, containerName string) {
+func addContainerNameToJobsIfNeeded(jobs map[string]map[string]any, containerName string) {
 	for _, job := range jobs {
 		if _, hasImage := job["image"]; hasImage {
 			continue
@@ -272,9 +273,7 @@ func addContainerNameToJobsIfNeeded(jobs map[string]map[string]interface{}, cont
 func mergeJobMaps[K comparable, V any](left map[K]V, right map[K]V, useRightIfExists bool) map[K]V {
 	result := make(map[K]V, len(left))
 	// Copy left map to new
-	for k, v := range left {
-		result[k] = v
-	}
+	maps.Copy(result, left)
 	// Merge right map into new
 	for k, v := range right {
 		_, exists := result[k]
@@ -308,9 +307,9 @@ func getJobPrefix(labels map[string]string, containerName string) string {
 	return containerName
 }
 
-func ensureJob(m map[string]map[string]interface{}, name string) {
+func ensureJob(m map[string]map[string]any, name string) {
 	if _, ok := m[name]; !ok {
-		m[name] = make(map[string]interface{})
+		m[name] = make(map[string]any)
 	}
 }
 
@@ -324,7 +323,7 @@ func markJobSource[J interface{ SetJobSource(JobSource) }](m map[string]J, src J
 	}
 }
 
-func setJobParam(params map[string]interface{}, paramName, paramVal string) {
+func setJobParam(params map[string]any, paramName, paramVal string) {
 	switch strings.ToLower(paramName) {
 	case "volume", "environment", "volumes-from", "depends-on", "on-success", "on-failure":
 		arr := []string{} // allow providing JSON arr of volume mounts or dependency lists
