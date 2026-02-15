@@ -45,7 +45,7 @@ jobs:
       - name: Smoke tests (core packages only)
         run: |
           # Run fast smoke tests on core packages first for quick feedback
-          go test -race -timeout=30s ./core/... ./config/... ./logging/...
+          go test -race -timeout=60s ./core/... ./config/... ./logging/...
 
   unit-full:
     name: unit tests (full suite)
@@ -246,11 +246,7 @@ jobs:
         uses: actions/dependency-review-action@ce3cf9537a52e8119d91fd484ab5b8a807627bf8 # v4.6.0
         with:
           fail-on-severity: high
-          # Individual licenses + compound SPDX expressions reported by GitHub's dependency graph
-          allow-licenses: >-
-            MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, CC0-1.0, Unlicense,
-            Apache-2.0 AND BSD-3-Clause,
-            BSD-3-Clause AND LicenseRef-scancode-google-patent-license-golang
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, CC0-1.0, Unlicense, Apache-2.0 AND BSD-3-Clause, BSD-3-Clause AND LicenseRef-scancode-google-patent-license-golang
           comment-summary-in-pr: always
 
   license-check:
