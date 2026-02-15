@@ -56,7 +56,7 @@ func TestPerformanceMetricsDockerOperations(t *testing.T) {
 	}
 
 	// Verify latencies
-	latencies, ok := dockerMetrics["latencies"].(map[string]map[string]interface{})
+	latencies, ok := dockerMetrics["latencies"].(map[string]map[string]any)
 	if !ok {
 		t.Fatal("Latencies not found")
 	}
@@ -131,7 +131,7 @@ func TestPerformanceMetricsJobExecution(t *testing.T) {
 	}
 
 	// Verify job details
-	jobDetails, ok := jobMetrics["job_details"].(map[string]interface{})
+	jobDetails, ok := jobMetrics["job_details"].(map[string]any)
 	if !ok {
 		t.Fatal("job_details not found")
 	}
@@ -141,7 +141,7 @@ func TestPerformanceMetricsJobExecution(t *testing.T) {
 		t.Fatal("job1 details not found")
 	}
 
-	job1Map, ok := job1.(map[string]interface{})
+	job1Map, ok := job1.(map[string]any)
 	if !ok {
 		t.Fatal("job1 is not a map")
 	}
@@ -174,7 +174,7 @@ func TestPerformanceMetricsConcurrentJobs(t *testing.T) {
 
 	// Get system metrics
 	metrics := pm.GetMetrics()
-	systemMetrics, ok := metrics["system"].(map[string]interface{})
+	systemMetrics, ok := metrics["system"].(map[string]any)
 	if !ok {
 		t.Fatal("system metrics not found")
 	}
@@ -201,7 +201,7 @@ func TestPerformanceMetricsMemoryUsage(t *testing.T) {
 	pm.RecordMemoryUsage(2 * 1024 * 1024) // 2MB
 
 	metrics := pm.GetMetrics()
-	systemMetrics, ok := metrics["system"].(map[string]interface{})
+	systemMetrics, ok := metrics["system"].(map[string]any)
 	if !ok {
 		t.Fatal("system metrics not found")
 	}
@@ -223,7 +223,7 @@ func TestPerformanceMetricsBufferPoolStats(t *testing.T) {
 	pm := NewPerformanceMetrics()
 
 	// Record buffer pool stats
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"total_gets": int64(100),
 		"total_puts": int64(95),
 		"hit_rate":   float64(85.5),
@@ -234,7 +234,7 @@ func TestPerformanceMetricsBufferPoolStats(t *testing.T) {
 
 	// Get buffer pool metrics
 	metrics := pm.GetMetrics()
-	bufferMetrics, ok := metrics["buffer_pool"].(map[string]interface{})
+	bufferMetrics, ok := metrics["buffer_pool"].(map[string]any)
 	if !ok {
 		t.Fatal("buffer_pool metrics not found")
 	}
@@ -260,7 +260,7 @@ func TestPerformanceMetricsCustomMetrics(t *testing.T) {
 	pm.RecordCustomMetric("count_metric", int64(42))
 
 	metrics := pm.GetMetrics()
-	customMetrics, ok := metrics["custom"].(map[string]interface{})
+	customMetrics, ok := metrics["custom"].(map[string]any)
 	if !ok {
 		t.Fatal("custom metrics not found")
 	}
@@ -289,7 +289,7 @@ func TestPerformanceMetricsReset(t *testing.T) {
 
 	// Verify metrics exist
 	metrics := pm.GetMetrics()
-	dockerMetrics := metrics["docker"].(map[string]interface{})
+	dockerMetrics := metrics["docker"].(map[string]any)
 	if dockerMetrics["total_operations"].(int64) != 1 {
 		t.Error("Metrics not recorded before reset")
 	}
@@ -299,14 +299,14 @@ func TestPerformanceMetricsReset(t *testing.T) {
 
 	// Verify metrics are cleared
 	metrics = pm.GetMetrics()
-	dockerMetrics = metrics["docker"].(map[string]interface{})
+	dockerMetrics = metrics["docker"].(map[string]any)
 
 	totalOps, ok := dockerMetrics["total_operations"].(int64)
 	if !ok || totalOps != 0 {
 		t.Errorf("Expected total_operations=0 after reset, got %v", dockerMetrics["total_operations"])
 	}
 
-	jobMetrics := metrics["jobs"].(map[string]interface{})
+	jobMetrics := metrics["jobs"].(map[string]any)
 	totalExecuted, ok := jobMetrics["total_executed"].(int64)
 	if !ok || totalExecuted != 0 {
 		t.Errorf("Expected total_executed=0 after reset, got %v", jobMetrics["total_executed"])
@@ -357,7 +357,7 @@ func TestPerformanceMetricsContainerEvents(t *testing.T) {
 	pm.RecordContainerMonitorFallback()
 
 	metrics := pm.GetMetrics()
-	containerMetrics, ok := metrics["container"].(map[string]interface{})
+	containerMetrics, ok := metrics["container"].(map[string]any)
 	if !ok {
 		t.Fatal("container metrics not found")
 	}
@@ -384,7 +384,7 @@ func TestPerformanceMetricsRetries(t *testing.T) {
 	pm.RecordJobRetry("job1", 3, true)  // Third attempt succeeded
 
 	metrics := pm.GetMetrics()
-	retryMetrics, ok := metrics["retries"].(map[string]interface{})
+	retryMetrics, ok := metrics["retries"].(map[string]any)
 	if !ok {
 		t.Fatal("retry metrics not found")
 	}
@@ -394,7 +394,7 @@ func TestPerformanceMetricsRetries(t *testing.T) {
 		t.Fatal("job1 retry metrics not found")
 	}
 
-	job1Map, ok := job1Retries.(map[string]interface{})
+	job1Map, ok := job1Retries.(map[string]any)
 	if !ok {
 		t.Fatal("job1 retries is not a map")
 	}

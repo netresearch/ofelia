@@ -116,7 +116,7 @@ type T struct {
 }
 
 // Errorf records an error (does not fail immediately).
-func (t *T) Errorf(format string, args ...interface{}) {
+func (t *T) Errorf(format string, args ...any) {
 	t.errors = append(t.errors, fmt.Sprintf(format, args...))
 }
 

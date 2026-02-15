@@ -23,7 +23,7 @@ func TestCronUtilsInfoForwardsArgs(t *testing.T) {
 	if call.format != expectedFormat {
 		t.Errorf("expected format %q, got %q", expectedFormat, call.format)
 	}
-	wantArgs := []interface{}{"msg", "a", 1, "b", 2}
+	wantArgs := []any{"msg", "a", 1, "b", 2}
 	if !reflect.DeepEqual(call.args, wantArgs) {
 		t.Errorf("expected args %v, got %v", wantArgs, call.args)
 	}
@@ -45,7 +45,7 @@ func TestCronUtilsErrorForwardsArgs(t *testing.T) {
 	if call.format != expectedFormat {
 		t.Errorf("expected format %q, got %q", expectedFormat, call.format)
 	}
-	wantArgs := []interface{}{"fail", "error", err, "k", "v"}
+	wantArgs := []any{"fail", "error", err, "k", "v"}
 	if !reflect.DeepEqual(call.args, wantArgs) {
 		t.Errorf("expected args %v, got %v", wantArgs, call.args)
 	}

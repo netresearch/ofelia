@@ -193,10 +193,7 @@ func (pr *ProgressReporter) Step(stepNum int, message string) {
 // renderProgressBar creates a visual progress bar
 func (pr *ProgressReporter) renderProgressBar(percent float64) string {
 	barWidth := 20
-	filled := int(percent / 100.0 * float64(barWidth))
-	if filled > barWidth {
-		filled = barWidth
-	}
+	filled := min(int(percent/100.0*float64(barWidth)), barWidth)
 
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 	return fmt.Sprintf("%s %.0f%%", bar, percent)

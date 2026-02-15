@@ -162,6 +162,6 @@ type mockTB struct {
 
 func (m *mockTB) Helper() {}
 
-func (m *mockTB) Errorf(format string, args ...interface{}) {
+func (m *mockTB) Errorf(format string, args ...any) {
 	m.failed = true
 }

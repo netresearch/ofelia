@@ -30,8 +30,8 @@ func (j *TestJob) Called() int { return int(j.called.Load()) }
 
 type TestLogger struct{}
 
-func (*TestLogger) Criticalf(string, ...interface{}) {}
-func (*TestLogger) Debugf(string, ...interface{})    {}
-func (*TestLogger) Errorf(string, ...interface{})    {}
-func (*TestLogger) Noticef(string, ...interface{})   {}
-func (*TestLogger) Warningf(string, ...interface{})  {}
+func (*TestLogger) Criticalf(string, ...any) {}
+func (*TestLogger) Debugf(string, ...any)    {}
+func (*TestLogger) Errorf(string, ...any)    {}
+func (*TestLogger) Noticef(string, ...any)   {}
+func (*TestLogger) Warningf(string, ...any)  {}

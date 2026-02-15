@@ -186,6 +186,6 @@ func (e NonZeroExitError) Error() string {
 
 // IsNonZeroExitError checks if the error is a non-zero exit code error
 func IsNonZeroExitError(err error) bool {
-	var exitErr NonZeroExitError
-	return errors.As(err, &exitErr)
+	_, ok := errors.AsType[NonZeroExitError](err)
+	return ok
 }

@@ -27,11 +27,11 @@ const (
 
 type stubLogger struct{}
 
-func (stubLogger) Criticalf(string, ...interface{}) {}
-func (stubLogger) Debugf(string, ...interface{})    {}
-func (stubLogger) Errorf(string, ...interface{})    {}
-func (stubLogger) Noticef(string, ...interface{})   {}
-func (stubLogger) Warningf(string, ...interface{})  {}
+func (stubLogger) Criticalf(string, ...any) {}
+func (stubLogger) Debugf(string, ...any)    {}
+func (stubLogger) Errorf(string, ...any)    {}
+func (stubLogger) Noticef(string, ...any)   {}
+func (stubLogger) Warningf(string, ...any)  {}
 
 type testJob struct{ core.BareJob }
 
@@ -776,7 +776,7 @@ func TestRegisterHealthEndpoints(t *testing.T) {
 			t.Errorf("expected status 200, got %d", w.Code)
 		}
 
-		var response map[string]interface{}
+		var response map[string]any
 		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,15 +27,15 @@ func init() {
 }
 
 // ValidateConfig validates a configuration struct using struct tags
-func ValidateConfig(cfg interface{}) error {
+func ValidateConfig(cfg any) error {
 	err := configValidator.Struct(cfg)
 	if err == nil {
 		return nil
 	}
 
 	// Convert validation errors to user-friendly format
-	var validationErrors validator.ValidationErrors
-	if !errors.As(err, &validationErrors) {
+	validationErrors, ok := errors.AsType[validator.ValidationErrors](err)
+	if !ok {
 		return fmt.Errorf("%w: %w", ErrValidationFailed, err)
 	}
 
@@ -97,15 +98,13 @@ func validateCron(fl validator.FieldLevel) bool {
 			"@triggered", "@manual", "@none",
 		}
 
-		for _, special := range validSpecial {
-			if value == special {
-				return true
-			}
+		if slices.Contains(validSpecial, value) {
+			return true
 		}
 
 		// Allow @every with duration
-		if strings.HasPrefix(value, "@every ") {
-			_, err := time.ParseDuration(strings.TrimPrefix(value, "@every "))
+		if after, ok := strings.CutPrefix(value, "@every "); ok {
+			_, err := time.ParseDuration(after)
 			return err == nil
 		}
 

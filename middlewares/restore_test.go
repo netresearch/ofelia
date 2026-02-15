@@ -44,11 +44,11 @@ func TestRestoreHistory_SingleExecution(t *testing.T) {
 
 	// Create a saved execution JSON file
 	execTime := time.Now().Add(-1 * time.Hour)
-	savedData := map[string]interface{}{
-		"Job": map[string]interface{}{
+	savedData := map[string]any{
+		"Job": map[string]any{
 			"Name": "test-job",
 		},
-		"Execution": map[string]interface{}{
+		"Execution": map[string]any{
 			"ID":       "exec-1",
 			"Date":     execTime,
 			"Duration": float64(5 * time.Second),
@@ -81,11 +81,11 @@ func TestRestoreHistory_MultipleExecutions(t *testing.T) {
 	// Create multiple saved execution JSON files
 	for i := range 3 {
 		execTime := time.Now().Add(-time.Duration(3-i) * time.Hour)
-		savedData := map[string]interface{}{
-			"Job": map[string]interface{}{
+		savedData := map[string]any{
+			"Job": map[string]any{
 				"Name": "test-job",
 			},
-			"Execution": map[string]interface{}{
+			"Execution": map[string]any{
 				"ID":       "exec-" + string(rune('1'+i)),
 				"Date":     execTime,
 				"Duration": float64(5 * time.Second),
@@ -118,11 +118,11 @@ func TestRestoreHistory_RespectsMaxAge(t *testing.T) {
 
 	// Create an old execution (48 hours ago)
 	oldExecTime := time.Now().Add(-48 * time.Hour)
-	oldData := map[string]interface{}{
-		"Job": map[string]interface{}{
+	oldData := map[string]any{
+		"Job": map[string]any{
 			"Name": "test-job",
 		},
-		"Execution": map[string]interface{}{
+		"Execution": map[string]any{
 			"ID":       "old-exec",
 			"Date":     oldExecTime,
 			"Duration": float64(5 * time.Second),
@@ -140,11 +140,11 @@ func TestRestoreHistory_RespectsMaxAge(t *testing.T) {
 
 	// Create a recent execution (1 hour ago)
 	recentExecTime := time.Now().Add(-1 * time.Hour)
-	recentData := map[string]interface{}{
-		"Job": map[string]interface{}{
+	recentData := map[string]any{
+		"Job": map[string]any{
 			"Name": "test-job",
 		},
-		"Execution": map[string]interface{}{
+		"Execution": map[string]any{
 			"ID":       "recent-exec",
 			"Date":     recentExecTime,
 			"Duration": float64(5 * time.Second),
@@ -172,11 +172,11 @@ func TestRestoreHistory_SkipsUnknownJobs(t *testing.T) {
 
 	// Create execution for unknown job
 	execTime := time.Now().Add(-1 * time.Hour)
-	savedData := map[string]interface{}{
-		"Job": map[string]interface{}{
+	savedData := map[string]any{
+		"Job": map[string]any{
 			"Name": "unknown-job",
 		},
-		"Execution": map[string]interface{}{
+		"Execution": map[string]any{
 			"ID":       "exec-1",
 			"Date":     execTime,
 			"Duration": float64(5 * time.Second),
@@ -216,11 +216,11 @@ func TestRestoreHistory_RespectsHistoryLimit(t *testing.T) {
 	// Create 5 executions
 	for i := range 5 {
 		execTime := time.Now().Add(-time.Duration(5-i) * time.Hour)
-		savedData := map[string]interface{}{
-			"Job": map[string]interface{}{
+		savedData := map[string]any{
+			"Job": map[string]any{
 				"Name": "test-job",
 			},
-			"Execution": map[string]interface{}{
+			"Execution": map[string]any{
 				"ID":       "exec-" + string(rune('1'+i)),
 				"Date":     execTime,
 				"Duration": float64(5 * time.Second),
@@ -249,11 +249,11 @@ func TestRestoreHistory_NeverRestoresAsRunning(t *testing.T) {
 
 	// Create execution that was "running" when saved
 	execTime := time.Now().Add(-1 * time.Hour)
-	savedData := map[string]interface{}{
-		"Job": map[string]interface{}{
+	savedData := map[string]any{
+		"Job": map[string]any{
 			"Name": "test-job",
 		},
-		"Execution": map[string]interface{}{
+		"Execution": map[string]any{
 			"ID":        "exec-1",
 			"Date":      execTime,
 			"Duration":  float64(5 * time.Second),

@@ -11,15 +11,15 @@ func NewCronUtils(l Logger) *CronUtils {
 	return &CronUtils{Logger: l}
 }
 
-func (c *CronUtils) Info(msg string, keysAndValues ...interface{}) {
+func (c *CronUtils) Info(msg string, keysAndValues ...any) {
 	format := cronFormatString(len(keysAndValues))
-	args := append([]interface{}{msg}, keysAndValues...)
+	args := append([]any{msg}, keysAndValues...)
 	c.Logger.Debugf(format, args...)
 }
 
-func (c *CronUtils) Error(err error, msg string, keysAndValues ...interface{}) {
+func (c *CronUtils) Error(err error, msg string, keysAndValues ...any) {
 	format := cronFormatString(len(keysAndValues) + 2)
-	args := append([]interface{}{msg, "error", err}, keysAndValues...)
+	args := append([]any{msg, "error", err}, keysAndValues...)
 	c.Logger.Errorf(format, args...)
 }
 

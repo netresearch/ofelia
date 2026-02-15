@@ -55,7 +55,7 @@ func TestServerWithAuthEnabled(t *testing.T) {
 			t.Errorf("expected status 200, got %d", w.Code)
 		}
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 			t.Fatalf("decode error: %v", err)
 		}
@@ -121,7 +121,7 @@ func TestLoginFlow(t *testing.T) {
 			t.Errorf("expected status 200, got %d: %s", w.Code, w.Body.String())
 		}
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 			t.Fatalf("decode error: %v", err)
 		}
@@ -211,7 +211,7 @@ func TestAuthenticatedAccess(t *testing.T) {
 		t.Fatalf("login failed: %d", loginW.Code)
 	}
 
-	var loginResp map[string]interface{}
+	var loginResp map[string]any
 	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
@@ -258,7 +258,7 @@ func TestAuthenticatedAccess(t *testing.T) {
 			t.Errorf("expected status 200, got %d", w.Code)
 		}
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		_ = json.NewDecoder(w.Body).Decode(&resp)
 
 		if resp["authenticated"] != true {
@@ -291,7 +291,7 @@ func TestLogoutFlow(t *testing.T) {
 	loginW := httptest.NewRecorder()
 	httpSrv.Handler.ServeHTTP(loginW, loginReq)
 
-	var loginResp map[string]interface{}
+	var loginResp map[string]any
 	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
@@ -335,7 +335,7 @@ func TestLogoutFlow(t *testing.T) {
 		newLoginW := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(newLoginW, newLoginReq)
 
-		var newLoginResp map[string]interface{}
+		var newLoginResp map[string]any
 		_ = json.NewDecoder(newLoginW.Body).Decode(&newLoginResp)
 		newToken := newLoginResp["token"].(string)
 
@@ -357,7 +357,7 @@ func TestLogoutFlow(t *testing.T) {
 		loginW := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(loginW, loginReq)
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		_ = json.NewDecoder(loginW.Body).Decode(&resp)
 		tkn := resp["token"].(string)
 
@@ -385,7 +385,7 @@ func TestLogoutFlow(t *testing.T) {
 		loginW := httptest.NewRecorder()
 		httpSrv.Handler.ServeHTTP(loginW, loginReq)
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		_ = json.NewDecoder(loginW.Body).Decode(&resp)
 		tkn := resp["token"].(string)
 
@@ -434,7 +434,7 @@ func TestServerWithoutAuth(t *testing.T) {
 		httpSrv.Handler.ServeHTTP(w, req)
 
 		if w.Code != http.StatusNotFound {
-			var resp map[string]interface{}
+			var resp map[string]any
 			_ = json.NewDecoder(w.Body).Decode(&resp)
 
 			if resp["authEnabled"] != false {

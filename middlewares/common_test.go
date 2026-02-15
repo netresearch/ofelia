@@ -56,8 +56,8 @@ func (j *TestJob) Run(ctx *core.Context) error {
 
 type TestLogger struct{}
 
-func (*TestLogger) Criticalf(format string, args ...interface{}) {}
-func (*TestLogger) Debugf(format string, args ...interface{})    {}
-func (*TestLogger) Errorf(format string, args ...interface{})    {}
-func (*TestLogger) Noticef(format string, args ...interface{})   {}
-func (*TestLogger) Warningf(format string, args ...interface{})  {}
+func (*TestLogger) Criticalf(format string, args ...any) {}
+func (*TestLogger) Debugf(format string, args ...any)    {}
+func (*TestLogger) Errorf(format string, args ...any)    {}
+func (*TestLogger) Noticef(format string, args ...any)   {}
+func (*TestLogger) Warningf(format string, args ...any)  {}

@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,15 +23,15 @@ type PerformanceRecorder interface {
 	// System metrics
 	RecordConcurrentJobs(count int64)
 	RecordMemoryUsage(bytes int64)
-	RecordBufferPoolStats(stats map[string]interface{})
+	RecordBufferPoolStats(stats map[string]any)
 
 	// Custom metrics
-	RecordCustomMetric(name string, value interface{})
+	RecordCustomMetric(name string, value any)
 
 	// Retrieval
-	GetMetrics() map[string]interface{}
-	GetDockerMetrics() map[string]interface{}
-	GetJobMetrics() map[string]interface{}
+	GetMetrics() map[string]any
+	GetDockerMetrics() map[string]any
+	GetJobMetrics() map[string]any
 	Reset()
 }
 
@@ -57,11 +58,11 @@ type PerformanceMetrics struct {
 	currentMemoryUsage int64
 
 	// Buffer pool metrics
-	bufferPoolStats map[string]interface{}
+	bufferPoolStats map[string]any
 	bufferMutex     sync.RWMutex
 
 	// Custom metrics
-	customMetrics map[string]interface{}
+	customMetrics map[string]any
 	customMutex   sync.RWMutex
 
 	// Retry metrics (to satisfy existing MetricsRecorder interface)
@@ -117,8 +118,8 @@ func NewPerformanceMetrics() *PerformanceMetrics {
 		dockerErrorsCount:      make(map[string]int64),
 		dockerLatencies:        make(map[string]*LatencyTracker),
 		jobExecutions:          make(map[string]*JobMetrics),
-		bufferPoolStats:        make(map[string]interface{}),
-		customMetrics:          make(map[string]interface{}),
+		bufferPoolStats:        make(map[string]any),
+		customMetrics:          make(map[string]any),
 		retryMetrics:           make(map[string]*RetryMetrics),
 		containerWaitDurations: make([]float64, 0),
 		startTime:              time.Now(),
@@ -333,22 +334,22 @@ func (pm *PerformanceMetrics) RecordMemoryUsage(bytes int64) {
 }
 
 // RecordBufferPoolStats records buffer pool performance statistics
-func (pm *PerformanceMetrics) RecordBufferPoolStats(stats map[string]interface{}) {
+func (pm *PerformanceMetrics) RecordBufferPoolStats(stats map[string]any) {
 	pm.bufferMutex.Lock()
 	pm.bufferPoolStats = stats
 	pm.bufferMutex.Unlock()
 }
 
 // RecordCustomMetric records a custom metric
-func (pm *PerformanceMetrics) RecordCustomMetric(name string, value interface{}) {
+func (pm *PerformanceMetrics) RecordCustomMetric(name string, value any) {
 	pm.customMutex.Lock()
 	pm.customMetrics[name] = value
 	pm.customMutex.Unlock()
 }
 
 // GetMetrics returns all performance metrics
-func (pm *PerformanceMetrics) GetMetrics() map[string]interface{} {
-	return map[string]interface{}{
+func (pm *PerformanceMetrics) GetMetrics() map[string]any {
+	return map[string]any{
 		"docker":      pm.GetDockerMetrics(),
 		"jobs":        pm.GetJobMetrics(),
 		"system":      pm.getSystemMetrics(),
@@ -361,7 +362,7 @@ func (pm *PerformanceMetrics) GetMetrics() map[string]interface{} {
 }
 
 // GetDockerMetrics returns Docker-specific metrics
-func (pm *PerformanceMetrics) GetDockerMetrics() map[string]interface{} {
+func (pm *PerformanceMetrics) GetDockerMetrics() map[string]any {
 	pm.dockerMutex.RLock()
 	defer pm.dockerMutex.RUnlock()
 
@@ -377,10 +378,10 @@ func (pm *PerformanceMetrics) GetDockerMetrics() map[string]interface{} {
 	}
 
 	// Build latency stats
-	latencyStats := make(map[string]map[string]interface{})
+	latencyStats := make(map[string]map[string]any)
 	for operation, tracker := range pm.dockerLatencies {
 		tracker.mutex.RLock()
-		latencyStats[operation] = map[string]interface{}{
+		latencyStats[operation] = map[string]any{
 			"count":   tracker.Count,
 			"average": tracker.Average,
 			"min":     tracker.Min,
@@ -395,7 +396,7 @@ func (pm *PerformanceMetrics) GetDockerMetrics() map[string]interface{} {
 		errorRate = float64(totalErrors) / float64(totalOps) * 100
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_operations":   totalOps,
 		"total_errors":       totalErrors,
 		"error_rate_percent": errorRate,
@@ -406,7 +407,7 @@ func (pm *PerformanceMetrics) GetDockerMetrics() map[string]interface{} {
 }
 
 // GetJobMetrics returns job execution metrics
-func (pm *PerformanceMetrics) GetJobMetrics() map[string]interface{} {
+func (pm *PerformanceMetrics) GetJobMetrics() map[string]any {
 	pm.jobMutex.RLock()
 	defer pm.jobMutex.RUnlock()
 
@@ -420,14 +421,14 @@ func (pm *PerformanceMetrics) GetJobMetrics() map[string]interface{} {
 		successRate = float64(totalExecuted-totalFailed) / float64(totalExecuted) * 100
 	}
 
-	jobStats := make(map[string]interface{})
+	jobStats := make(map[string]any)
 	for jobName, metrics := range pm.jobExecutions {
 		jobSuccessRate := float64(0)
 		if metrics.ExecutionCount > 0 {
 			jobSuccessRate = float64(metrics.SuccessCount) / float64(metrics.ExecutionCount) * 100
 		}
 
-		jobStats[jobName] = map[string]interface{}{
+		jobStats[jobName] = map[string]any{
 			"executions":     metrics.ExecutionCount,
 			"success_count":  metrics.SuccessCount,
 			"failure_count":  metrics.FailureCount,
@@ -442,7 +443,7 @@ func (pm *PerformanceMetrics) GetJobMetrics() map[string]interface{} {
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_scheduled":      totalScheduled,
 		"total_executed":       totalExecuted,
 		"total_skipped":        totalSkipped,
@@ -453,8 +454,8 @@ func (pm *PerformanceMetrics) GetJobMetrics() map[string]interface{} {
 }
 
 // getSystemMetrics returns system performance metrics
-func (pm *PerformanceMetrics) getSystemMetrics() map[string]interface{} {
-	return map[string]interface{}{
+func (pm *PerformanceMetrics) getSystemMetrics() map[string]any {
+	return map[string]any{
 		"concurrent_jobs":      atomic.LoadInt64(&pm.currentJobs),
 		"max_concurrent_jobs":  atomic.LoadInt64(&pm.maxConcurrentJobs),
 		"current_memory_usage": atomic.LoadInt64(&pm.currentMemoryUsage),
@@ -464,31 +465,29 @@ func (pm *PerformanceMetrics) getSystemMetrics() map[string]interface{} {
 }
 
 // getBufferPoolMetrics returns buffer pool metrics
-func (pm *PerformanceMetrics) getBufferPoolMetrics() map[string]interface{} {
+func (pm *PerformanceMetrics) getBufferPoolMetrics() map[string]any {
 	pm.bufferMutex.RLock()
 	defer pm.bufferMutex.RUnlock()
 
 	// Return a copy to avoid concurrent access issues
-	result := make(map[string]interface{})
-	for k, v := range pm.bufferPoolStats {
-		result[k] = v
-	}
+	result := make(map[string]any)
+	maps.Copy(result, pm.bufferPoolStats)
 	return result
 }
 
 // getRetryMetrics returns retry metrics
-func (pm *PerformanceMetrics) getRetryMetrics() map[string]interface{} {
+func (pm *PerformanceMetrics) getRetryMetrics() map[string]any {
 	pm.retryMutex.RLock()
 	defer pm.retryMutex.RUnlock()
 
-	retryStats := make(map[string]interface{})
+	retryStats := make(map[string]any)
 	for jobName, metrics := range pm.retryMetrics {
 		successRate := float64(0)
 		if metrics.TotalAttempts > 0 {
 			successRate = float64(metrics.SuccessfulRetries) / float64(metrics.TotalAttempts) * 100
 		}
 
-		retryStats[jobName] = map[string]interface{}{
+		retryStats[jobName] = map[string]any{
 			"total_attempts":     metrics.TotalAttempts,
 			"successful_retries": metrics.SuccessfulRetries,
 			"failed_retries":     metrics.FailedRetries,
@@ -501,7 +500,7 @@ func (pm *PerformanceMetrics) getRetryMetrics() map[string]interface{} {
 }
 
 // getContainerMetrics returns container monitoring metrics
-func (pm *PerformanceMetrics) getContainerMetrics() map[string]interface{} {
+func (pm *PerformanceMetrics) getContainerMetrics() map[string]any {
 	pm.containerMutex.RLock()
 	durations := make([]float64, len(pm.containerWaitDurations))
 	copy(durations, pm.containerWaitDurations)
@@ -516,7 +515,7 @@ func (pm *PerformanceMetrics) getContainerMetrics() map[string]interface{} {
 		avgWaitDuration = sum / float64(len(durations))
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_events":          atomic.LoadInt64(&pm.containerEvents),
 		"monitor_fallbacks":     atomic.LoadInt64(&pm.containerMonitorFallbacks),
 		"avg_wait_duration":     avgWaitDuration,
@@ -525,15 +524,13 @@ func (pm *PerformanceMetrics) getContainerMetrics() map[string]interface{} {
 }
 
 // getCustomMetrics returns custom metrics
-func (pm *PerformanceMetrics) getCustomMetrics() map[string]interface{} {
+func (pm *PerformanceMetrics) getCustomMetrics() map[string]any {
 	pm.customMutex.RLock()
 	defer pm.customMutex.RUnlock()
 
 	// Return a copy to avoid concurrent access issues
-	result := make(map[string]interface{})
-	for k, v := range pm.customMetrics {
-		result[k] = v
-	}
+	result := make(map[string]any)
+	maps.Copy(result, pm.customMetrics)
 	return result
 }
 
@@ -569,11 +566,11 @@ func (pm *PerformanceMetrics) Reset() {
 	atomic.StoreInt64(&pm.containerMonitorFallbacks, 0)
 
 	pm.bufferMutex.Lock()
-	pm.bufferPoolStats = make(map[string]interface{})
+	pm.bufferPoolStats = make(map[string]any)
 	pm.bufferMutex.Unlock()
 
 	pm.customMutex.Lock()
-	pm.customMetrics = make(map[string]interface{})
+	pm.customMetrics = make(map[string]any)
 	pm.customMutex.Unlock()
 
 	pm.startTime = time.Now()
@@ -587,7 +584,7 @@ func (pm *PerformanceMetrics) GetSummaryReport() string {
 	report += "===================\n\n"
 
 	// Docker metrics summary
-	if docker, ok := metrics["docker"].(map[string]interface{}); ok {
+	if docker, ok := metrics["docker"].(map[string]any); ok {
 		report += "Docker Operations:\n"
 		if totalOps, ok := docker["total_operations"].(int64); ok {
 			report += fmt.Sprintf("  Total Operations: %d\n", totalOps)
@@ -599,7 +596,7 @@ func (pm *PerformanceMetrics) GetSummaryReport() string {
 	}
 
 	// Job metrics summary
-	if jobs, ok := metrics["jobs"].(map[string]interface{}); ok {
+	if jobs, ok := metrics["jobs"].(map[string]any); ok {
 		report += "Job Execution:\n"
 		if totalExec, ok := jobs["total_executed"].(int64); ok {
 			report += fmt.Sprintf("  Total Executed: %d\n", totalExec)
@@ -611,7 +608,7 @@ func (pm *PerformanceMetrics) GetSummaryReport() string {
 	}
 
 	// System metrics summary
-	if system, ok := metrics["system"].(map[string]interface{}); ok {
+	if system, ok := metrics["system"].(map[string]any); ok {
 		report += "System Performance:\n"
 		if maxJobs, ok := system["max_concurrent_jobs"].(int64); ok {
 			report += fmt.Sprintf("  Peak Concurrent Jobs: %d\n", maxJobs)

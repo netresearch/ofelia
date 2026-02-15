@@ -1810,8 +1810,7 @@ func TestSwarmServiceAddCompletedTask(t *testing.T) {
 func TestEventServiceSubscribe(t *testing.T) {
 	client := mock.NewDockerClient()
 	events := client.Events().(*mock.EventService)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	filter := domain.EventFilter{
 		Filters: map[string][]string{"type": {"container"}},
@@ -1833,8 +1832,7 @@ func TestEventServiceSubscribe(t *testing.T) {
 func TestEventServiceSubscribeWithPredefinedEvents(t *testing.T) {
 	client := mock.NewDockerClient()
 	events := client.Events().(*mock.EventService)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Add events before subscribing
 	testEvent := domain.Event{
@@ -1866,8 +1864,7 @@ func TestEventServiceSubscribeWithPredefinedEvents(t *testing.T) {
 func TestEventServiceSubscribeWithError(t *testing.T) {
 	client := mock.NewDockerClient()
 	events := client.Events().(*mock.EventService)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	expectedErr := errors.New("subscribe failed")
 	events.SetSubscribeError(expectedErr)
@@ -1922,8 +1919,7 @@ func TestEventServiceSubscribeWithCallback(t *testing.T) {
 func TestEventServiceSubscribeWithCallbackError(t *testing.T) {
 	client := mock.NewDockerClient()
 	events := client.Events().(*mock.EventService)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	events.AddEvent(domain.Event{Type: "container"})
 
@@ -1941,8 +1937,7 @@ func TestEventServiceSubscribeWithCallbackError(t *testing.T) {
 func TestEventServiceSetEvents(t *testing.T) {
 	client := mock.NewDockerClient()
 	events := client.Events().(*mock.EventService)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	testEvents := []domain.Event{
 		{Type: "container", Action: "start"},
@@ -1970,8 +1965,7 @@ func TestEventServiceSetEvents(t *testing.T) {
 func TestEventServiceAddContainerStopEvent(t *testing.T) {
 	client := mock.NewDockerClient()
 	events := client.Events().(*mock.EventService)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	events.AddContainerStopEvent("container-123")
 
@@ -2016,8 +2010,7 @@ func TestEventServiceClearEvents(t *testing.T) {
 func TestEventServiceOnSubscribeCallback(t *testing.T) {
 	client := mock.NewDockerClient()
 	events := client.Events().(*mock.EventService)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	customEventCh := make(chan domain.Event, 1)
 	customErrCh := make(chan error, 1)

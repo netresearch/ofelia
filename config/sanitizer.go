@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -120,10 +121,8 @@ func (s *Sanitizer) ValidatePath(path string, allowedBasePath string) error {
 	}
 
 	ext := strings.ToLower(filepath.Ext(cleanPath))
-	for _, dangerous := range dangerousExtensions {
-		if ext == dangerous {
-			return fmt.Errorf("file extension %s is not allowed", ext)
-		}
+	if slices.Contains(dangerousExtensions, ext) {
+		return fmt.Errorf("file extension %s is not allowed", ext)
 	}
 
 	return nil
@@ -226,8 +225,8 @@ func (s *Sanitizer) ValidateCronExpression(expr string) error {
 		}
 
 		// Handle @every expressions
-		if strings.HasPrefix(expr, "@every ") {
-			duration := strings.TrimPrefix(expr, "@every ")
+		if after, ok := strings.CutPrefix(expr, "@every "); ok {
+			duration := after
 			// Validate duration format
 			if !regexp.MustCompile(`^\d+[smhd]$`).MatchString(duration) {
 				return fmt.Errorf("invalid @every duration format")
@@ -356,8 +355,8 @@ func (s *Sanitizer) validateCronStep(field string, minVal, maxVal int, fieldName
 
 // validateCronList validates cron list expressions like "1,3,5"
 func (s *Sanitizer) validateCronList(field string, minVal, maxVal int, fieldName string) error {
-	values := strings.Split(field, ",")
-	for _, val := range values {
+	values := strings.SplitSeq(field, ",")
+	for val := range values {
 		val = strings.TrimSpace(val)
 		intVal, err := strconv.Atoi(val)
 		if err != nil || intVal < minVal || intVal > maxVal {

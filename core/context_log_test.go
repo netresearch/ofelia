@@ -9,7 +9,7 @@ import (
 type logCall struct {
 	method string
 	format string
-	args   []interface{}
+	args   []any
 }
 
 // stubLogger implements Logger and records calls.
@@ -17,23 +17,23 @@ type stubLogger struct {
 	calls []logCall
 }
 
-func (l *stubLogger) Criticalf(format string, args ...interface{}) {
+func (l *stubLogger) Criticalf(format string, args ...any) {
 	l.calls = append(l.calls, logCall{"Criticalf", format, args})
 }
 
-func (l *stubLogger) Debugf(format string, args ...interface{}) {
+func (l *stubLogger) Debugf(format string, args ...any) {
 	l.calls = append(l.calls, logCall{"Debugf", format, args})
 }
 
-func (l *stubLogger) Errorf(format string, args ...interface{}) {
+func (l *stubLogger) Errorf(format string, args ...any) {
 	l.calls = append(l.calls, logCall{"Errorf", format, args})
 }
 
-func (l *stubLogger) Noticef(format string, args ...interface{}) {
+func (l *stubLogger) Noticef(format string, args ...any) {
 	l.calls = append(l.calls, logCall{"Noticef", format, args})
 }
 
-func (l *stubLogger) Warningf(format string, args ...interface{}) {
+func (l *stubLogger) Warningf(format string, args ...any) {
 	l.calls = append(l.calls, logCall{"Warningf", format, args})
 }
 
@@ -74,7 +74,7 @@ func TestContextLogDefault(t *testing.T) {
 	if call.format != logPrefix {
 		t.Errorf("expected format %q, got %q", logPrefix, call.format)
 	}
-	wantArgs := []interface{}{job.name, exec.ID, "hello"}
+	wantArgs := []any{job.name, exec.ID, "hello"}
 	if !reflect.DeepEqual(call.args, wantArgs) {
 		t.Errorf("expected args %v, got %v", wantArgs, call.args)
 	}
@@ -126,7 +126,7 @@ func TestContextWarn(t *testing.T) {
 	if call.method != "Warningf" {
 		t.Errorf("expected method Warningf, got %s", call.method)
 	}
-	wantArgs := []interface{}{job.name, exec.ID, "caution"}
+	wantArgs := []any{job.name, exec.ID, "caution"}
 	if !reflect.DeepEqual(call.args, wantArgs) {
 		t.Errorf("expected args %v, got %v", wantArgs, call.args)
 	}

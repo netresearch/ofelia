@@ -1,6 +1,7 @@
 package core
 
 import (
+	"maps"
 	"os"
 	"strings"
 	"time"
@@ -55,15 +56,11 @@ func getDefaultAnnotations(jobName, jobType string) map[string]string {
 func mergeAnnotations(userAnnotations []string, defaults map[string]string) map[string]string {
 	// Start with defaults
 	result := make(map[string]string)
-	for k, v := range defaults {
-		result[k] = v
-	}
+	maps.Copy(result, defaults)
 
 	// Override with user annotations
 	parsed := parseAnnotations(userAnnotations)
-	for k, v := range parsed {
-		result[k] = v
-	}
+	maps.Copy(result, parsed)
 
 	return result
 }

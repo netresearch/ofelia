@@ -536,7 +536,7 @@ func XTestSchedulerMaxConcurrentJobsConfiguration(t *testing.T) {
 		// We can't directly access the semaphore, so test by running jobs
 		if tc.expected <= 5 { // Only test small values to keep test fast
 			jobs := make([]*MockControlledJob, tc.expected+2)
-			for i := 0; i < len(jobs); i++ {
+			for i := range jobs {
 				jobs[i] = NewMockControlledJob(fmt.Sprintf("limit-job%d", i), "@daily")
 				scheduler.AddJob(jobs[i])
 			}

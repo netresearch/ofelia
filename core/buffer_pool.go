@@ -2,6 +2,8 @@ package core
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -233,7 +235,7 @@ func (ebp *EnhancedBufferPool) getPoolForSize(size int64) *sync.Pool {
 // createPoolForSize creates a new pool for the given size
 func (ebp *EnhancedBufferPool) createPoolForSize(size int64) *sync.Pool {
 	pool := &sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			buf, err := circbuf.NewBuffer(size)
 			if err != nil {
 				// Return nil instead of panicking - caller will handle
@@ -267,13 +269,7 @@ func (ebp *EnhancedBufferPool) isStandardSize(size int64) bool {
 		ebp.config.MaxSize,
 	}
 
-	for _, standardSize := range standardSizes {
-		if size == standardSize {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(standardSizes, size)
 }
 
 // trackUsage records usage of a particular buffer size for adaptive management
@@ -331,9 +327,7 @@ func (ebp *EnhancedBufferPool) adaptiveManagementWorker() {
 func (ebp *EnhancedBufferPool) performAdaptiveManagement() {
 	ebp.usageMutex.RLock()
 	usage := make(map[int64]int64)
-	for size, count := range ebp.usageTracking {
-		usage[size] = count
-	}
+	maps.Copy(usage, ebp.usageTracking)
 	ebp.usageMutex.RUnlock()
 
 	// Reset usage tracking
@@ -369,7 +363,7 @@ func (ebp *EnhancedBufferPool) performAdaptiveManagement() {
 }
 
 // GetStats returns comprehensive performance statistics
-func (ebp *EnhancedBufferPool) GetStats() map[string]interface{} {
+func (ebp *EnhancedBufferPool) GetStats() map[string]any {
 	ebp.poolsMutex.RLock()
 	poolCount := len(ebp.pools)
 	poolSizes := make([]int64, 0, len(ebp.pools))
@@ -380,9 +374,7 @@ func (ebp *EnhancedBufferPool) GetStats() map[string]interface{} {
 
 	ebp.usageMutex.RLock()
 	currentUsage := make(map[int64]int64)
-	for size, count := range ebp.usageTracking {
-		currentUsage[size] = count
-	}
+	maps.Copy(currentUsage, ebp.usageTracking)
 	ebp.usageMutex.RUnlock()
 
 	totalGets := atomic.LoadInt64(&ebp.totalGets)
@@ -393,7 +385,7 @@ func (ebp *EnhancedBufferPool) GetStats() map[string]interface{} {
 		hitRate = float64(totalGets-totalMisses) / float64(totalGets) * 100
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_gets":       totalGets,
 		"total_puts":       atomic.LoadInt64(&ebp.totalPuts),
 		"total_misses":     totalMisses,
@@ -404,7 +396,7 @@ func (ebp *EnhancedBufferPool) GetStats() map[string]interface{} {
 		"pool_count":       poolCount,
 		"pool_sizes":       poolSizes,
 		"current_usage":    currentUsage,
-		"config": map[string]interface{}{
+		"config": map[string]any{
 			"default_size": ebp.config.DefaultSize,
 			"max_size":     ebp.config.MaxSize,
 			"max_pools":    ebp.config.MaxPoolSize,

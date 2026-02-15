@@ -387,10 +387,7 @@ func (c *DockerHandler) watchEvents() {
 				case <-time.After(backoff):
 				}
 				// Increase backoff for next failure (capped at maxBackoff)
-				backoff = time.Duration(float64(backoff) * backoffFactor)
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
+				backoff = min(time.Duration(float64(backoff)*backoffFactor), maxBackoff)
 				break innerLoop // Exit inner loop to reconnect
 			case _, ok := <-eventCh:
 				if !ok {

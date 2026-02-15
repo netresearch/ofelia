@@ -319,7 +319,7 @@ func (h *SecureLoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Return tokens in response
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"token":      token,
 		"csrf_token": csrfToken,
 		"expires_in": h.tokenManager.tokenExpiry.Seconds(),

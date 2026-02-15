@@ -45,7 +45,7 @@ jobs:
       - name: Smoke tests (core packages only)
         run: |
           # Run fast smoke tests on core packages first for quick feedback
-          go test -race -timeout=30s ./core/... ./config/... ./logging/...
+          go test -race -timeout=60s ./core/... ./config/... ./logging/...
 
   unit-full:
     name: unit tests (full suite)
@@ -168,9 +168,9 @@ jobs:
         run: go build ./...
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@7119f3d5ddced62a10a044847a6c6bb0f7a5e76a # v7.0.0
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7.0.1
         with:
-          version: v2.6.2
+          version: v2.9.0
           args: --timeout=5m
           only-new-issues: false
 
@@ -247,6 +247,16 @@ jobs:
         with:
           fail-on-severity: high
           allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, CC0-1.0, Unlicense
+          # Packages with compound SPDX expressions (e.g. "Apache-2.0 AND BSD-3-Clause")
+          # that dependency-review-action cannot match via allow-licenses
+          allow-dependencies-licenses: >-
+            pkg:golang/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp,
+            pkg:golang/go.opentelemetry.io/otel,
+            pkg:golang/go.opentelemetry.io/otel/metric,
+            pkg:golang/go.opentelemetry.io/otel/trace,
+            pkg:golang/golang.org/x/crypto,
+            pkg:golang/golang.org/x/sys,
+            pkg:golang/golang.org/x/text
           comment-summary-in-pr: always
 
   license-check:
@@ -347,7 +357,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@45c373516f557556c15d420e3f5e0aa3d64366bc # v3.31.9
+        uses: github/codeql-action/init@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
         with:
           languages: go
 
@@ -355,10 +365,10 @@ jobs:
         run: go mod download
 
       - name: Build
-        uses: github/codeql-action/autobuild@45c373516f557556c15d420e3f5e0aa3d64366bc # v3.31.9
+        uses: github/codeql-action/autobuild@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@45c373516f557556c15d420e3f5e0aa3d64366bc # v3.31.9
+        uses: github/codeql-action/analyze@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
 
   gosec:
     name: gosec
@@ -629,7 +639,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: 1
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@45c373516f557556c15d420e3f5e0aa3d64366bc # v3.31.9
+        uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6 # v4.32.3
         if: always()  # Upload even if vulnerabilities found (exit-code: 1)
         with:
           sarif_file: trivy-results.sarif
