@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,25 +14,21 @@ import (
 func TestValidateExecuteValidFile(t *testing.T) {
 	t.Parallel()
 
-	file, err := os.CreateTemp("", "ofelia_valid_*.ini")
-	require.NoError(t, err)
-	defer os.Remove(file.Name())
-
+	configFile := filepath.Join(t.TempDir(), "config.ini")
 	content := `
 [job-exec "foo"]
 schedule = @every 10s
 command = echo "foo"
 `
-	_, err = file.WriteString(content)
+	err := os.WriteFile(configFile, []byte(content), 0o644)
 	require.NoError(t, err)
-	file.Close()
 
 	r, w, _ := os.Pipe()
 	oldStdout := os.Stdout
 	os.Stdout = w
 	defer func() { os.Stdout = oldStdout }()
 
-	cmd := ValidateCommand{ConfigFile: file.Name(), Logger: &TestLogger{}}
+	cmd := ValidateCommand{ConfigFile: configFile, Logger: &TestLogger{}}
 	err = cmd.Execute(nil)
 	require.NoError(t, err)
 
@@ -49,15 +46,11 @@ command = echo "foo"
 func TestValidateExecuteInvalidFile(t *testing.T) {
 	t.Parallel()
 
-	file, err := os.CreateTemp("", "ofelia_invalid_*.ini")
+	configFile := filepath.Join(t.TempDir(), "config.ini")
+	err := os.WriteFile(configFile, []byte("[job-exec \"foo\"\nschedule = @every 10s\n"), 0o644)
 	require.NoError(t, err)
-	defer os.Remove(file.Name())
 
-	_, err = file.WriteString("[job-exec \"foo\"\nschedule = @every 10s\n")
-	require.NoError(t, err)
-	file.Close()
-
-	cmd := ValidateCommand{ConfigFile: file.Name(), Logger: &TestLogger{}}
+	cmd := ValidateCommand{ConfigFile: configFile, Logger: &TestLogger{}}
 	err = cmd.Execute(nil)
 	assert.Error(t, err)
 }

@@ -103,11 +103,7 @@ func TestRegisterAllJobs(t *testing.T) {
 // TestLatestChanged tests the latestChanged function
 func TestLatestChanged(t *testing.T) {
 	t.Parallel()
-	dir, err := os.MkdirTemp("", "ofelia_latest_")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	file1 := filepath.Join(dir, "file1.ini")
 	file2 := filepath.Join(dir, "file2.ini")

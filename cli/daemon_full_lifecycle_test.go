@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -101,12 +102,7 @@ func TestDaemonCommand_ApplyOptionsNil(t *testing.T) {
 // TestDaemonCommand_Boot_WithGlobalConfigOverride tests boot with global config override
 func TestDaemonCommand_Boot_WithGlobalConfigOverride(t *testing.T) {
 	// Create temporary config file with global settings
-	tmpFile, err := os.CreateTemp("", "ofelia_boot_*.ini")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
+	configFile := filepath.Join(t.TempDir(), "config.ini")
 	configContent := `
 [global]
 enable-web = true
@@ -115,11 +111,9 @@ enable-pprof = true
 pprof-address = :7777
 log-level = info
 `
-	_, err = tmpFile.WriteString(configContent)
-	if err != nil {
-		t.Fatalf("Failed to write config: %v", err)
+	if err := os.WriteFile(configFile, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
 	}
-	tmpFile.Close()
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
@@ -130,12 +124,12 @@ log-level = info
 
 	logger := test.NewTestLogger()
 	cmd := &DaemonCommand{
-		ConfigFile: tmpFile.Name(),
+		ConfigFile: configFile,
 		Logger:     logger,
 		// No CLI flags set - should use config file values
 	}
 
-	err = cmd.boot()
+	err := cmd.boot()
 	if err != nil {
 		t.Fatalf("boot failed: %v", err)
 	}
@@ -157,22 +151,15 @@ log-level = info
 // TestDaemonCommand_Boot_CLIOverridesConfig tests CLI flags override config file
 func TestDaemonCommand_Boot_CLIOverridesConfig(t *testing.T) {
 	// Create temporary config file with global settings
-	tmpFile, err := os.CreateTemp("", "ofelia_cli_override_*.ini")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
+	configFile := filepath.Join(t.TempDir(), "config.ini")
 	configContent := `
 [global]
 enable-web = true
 web-address = :8888
 `
-	_, err = tmpFile.WriteString(configContent)
-	if err != nil {
-		t.Fatalf("Failed to write config: %v", err)
+	if err := os.WriteFile(configFile, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
 	}
-	tmpFile.Close()
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
@@ -183,13 +170,13 @@ web-address = :8888
 
 	logger := test.NewTestLogger()
 	cmd := &DaemonCommand{
-		ConfigFile: tmpFile.Name(),
+		ConfigFile: configFile,
 		Logger:     logger,
 		EnableWeb:  true,
 		WebAddr:    ":9999", // CLI flag should override config
 	}
 
-	err = cmd.boot()
+	err := cmd.boot()
 	if err != nil {
 		t.Fatalf("boot failed: %v", err)
 	}

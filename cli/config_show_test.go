@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/netresearch/ofelia/test"
@@ -91,28 +92,15 @@ command = echo service
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var configFile string
-			var cleanup func()
 
 			if tt.configContent != "" {
-				// Create temporary config file
-				tmpFile, err := os.CreateTemp("", "ofelia_show_*.ini")
-				if err != nil {
-					t.Fatalf("Failed to create temp file: %v", err)
+				configFile = filepath.Join(t.TempDir(), "config.ini")
+				if err := os.WriteFile(configFile, []byte(tt.configContent), 0o644); err != nil {
+					t.Fatalf("Failed to write config file: %v", err)
 				}
-				configFile = tmpFile.Name()
-				cleanup = func() { os.Remove(configFile) }
-				defer cleanup()
-
-				_, err = tmpFile.WriteString(tt.configContent)
-				if err != nil {
-					t.Fatalf("Failed to write temp file: %v", err)
-				}
-				tmpFile.Close()
 			} else {
 				// Use non-existent file
 				configFile = "/tmp/nonexistent_ofelia_config.ini"
-				cleanup = func() {}
-				defer cleanup()
 			}
 
 			// Capture stdout
@@ -153,12 +141,7 @@ command = echo service
 
 // TestConfigShowCommand_ExecuteWithLogLevel tests log level override
 func TestConfigShowCommand_ExecuteWithLogLevel(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "ofelia_show_loglevel_*.ini")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
+	configFile := filepath.Join(t.TempDir(), "config.ini")
 	configContent := `
 [global]
 log-level = info
@@ -168,11 +151,9 @@ schedule = @every 10s
 image = busybox
 command = echo test
 `
-	_, err = tmpFile.WriteString(configContent)
-	if err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
+	if err := os.WriteFile(configFile, []byte(configContent), 0o644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
 	}
-	tmpFile.Close()
 
 	// Capture stdout
 	oldStdout := os.Stdout
@@ -181,12 +162,12 @@ command = echo test
 
 	logger := test.NewTestLogger()
 	cmd := &ConfigShowCommand{
-		ConfigFile: tmpFile.Name(),
+		ConfigFile: configFile,
 		LogLevel:   "debug", // Override config log level
 		Logger:     logger,
 	}
 
-	err = cmd.Execute(nil)
+	err := cmd.Execute(nil)
 
 	// Restore stdout
 	w.Close()
