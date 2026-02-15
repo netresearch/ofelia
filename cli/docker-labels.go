@@ -80,45 +80,58 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 	return nil
 }
 
-// Returns true if specified job can be run on a service container, logs debug message if not.
-func canRunServiceJob(jobType string, jobName string, containerName string, isService bool, logger core.Logger) bool {
-	switch jobType {
-	case jobLocal, jobServiceRun:
-		if !isService {
-			logger.Debugf("Container %s. Job %s (%s) can be run only on service containers. Skipping", containerName, jobName, jobType)
-		}
-		return isService
-	case jobRun, jobExec, jobCompose:
+// Returns true if the job type is allowed to run on a service/non-service container.
+// `job-local` and `job-service-run` can only run on service containers.
+func checkJobTypeAllowedOnServiceContainer(jobType string, jobName string, containerName string, isService bool, logger core.Logger) bool {
+	// Any job type can run on a service container.
+	if isService {
 		return true
 	}
+
+	switch jobType {
+	case jobLocal, jobServiceRun:
+		// `job-local` and `job-service-run` can only run on service containers.
+		logger.Debugf("Container %s. Job %s (%s) can be run only on service containers. Skipping", containerName, jobName, jobType)
+		return false
+	case jobRun, jobExec, jobCompose:
+		// Other job types can run on non-service containers.
+		return true
+	}
+
 	logger.Warningf("Unknown job type %s found in container %s. Skipping", jobType, containerName)
 	return false
 }
 
-// Returns true if specified job can be run on a stopped container, logs debug message if not.
-func canRunJobInStoppedContainer(jobType string, jobName string, containerName string, isRunning bool, logger core.Logger) bool {
-	switch jobType {
-	case jobExec, jobLocal, jobServiceRun, jobCompose:
-		if !isRunning {
-			logger.Debugf(
-				"Container %s is stopped, skipping job %s (%s) from stopped container: only job-run allowed on stopped containers",
-				containerName,
-				jobName,
-				jobType,
-			)
-		}
-		return isRunning
-	case jobRun:
+// Returns true if the job type is allowed to run on a stopped/running container.
+// Only the `job-run` type can run on stopped containers.
+func checkJobTypeAllowedOnStoppedContainer(jobType string, jobName string, containerName string, isRunning bool, logger core.Logger) bool {
+	// Any job type can run on a running container.
+	if isRunning {
 		return true
 	}
+
+	switch jobType {
+	case jobRun:
+		// The `job-run` job type can run on stopped containers.
+		return true
+
+	case jobExec, jobLocal, jobServiceRun, jobCompose:
+		// Other job types cannot run on stopped containers.
+		logger.Debugf(
+			"Container %s is stopped, skipping job %s (%s) from stopped container: only job-run allowed on stopped containers",
+			containerName, jobName, jobType)
+
+		return false
+	}
+
 	logger.Warningf("Unknown job type %s found in container %s. Skipping", jobType, containerName)
 	return false
 }
 
 // Returns true if specified job can be run on a container, logs debug message if not.
 func canRunJobOnContainer(jobType string, jobName string, containerName string, isRunning bool, isService bool, logger core.Logger) bool {
-	return canRunServiceJob(jobType, jobName, containerName, isService, logger) &&
-		canRunJobInStoppedContainer(jobType, jobName, containerName, isRunning, logger)
+	return checkJobTypeAllowedOnServiceContainer(jobType, jobName, containerName, isService, logger) &&
+		checkJobTypeAllowedOnStoppedContainer(jobType, jobName, containerName, isRunning, logger)
 }
 
 // applyLabelToJobMaps updates the appropriate job map for the given label.
