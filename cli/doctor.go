@@ -41,6 +41,13 @@ func findConfigFile() string {
 	return "" // No config found
 }
 
+// Status constants for health check results.
+const (
+	statusPass = "pass"
+	statusFail = "fail"
+	statusSkip = "skip"
+)
+
 // CheckResult represents the result of a single health check
 type CheckResult struct {
 	Category string   `json:"category"`
@@ -112,7 +119,7 @@ func (c *DoctorCommand) Execute(_ []string) error {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Docker Images",
 			Name:     "Image Availability",
-			Status:   "skip",
+			Status:   statusSkip,
 			Message:  "Skipped (Docker connectivity required)",
 		})
 	}
@@ -146,7 +153,7 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 			report.Checks = append(report.Checks, CheckResult{
 				Category: "Configuration",
 				Name:     "File Exists",
-				Status:   "fail",
+				Status:   statusFail,
 				Message:  fmt.Sprintf("Config file not found: %s", c.ConfigFile),
 				Hints:    hints,
 			})
@@ -156,7 +163,7 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Configuration",
 			Name:     "File Readable",
-			Status:   "fail",
+			Status:   statusFail,
 			Message:  fmt.Sprintf("Cannot read config file: %v", err),
 			Hints: []string{
 				fmt.Sprintf("Check permissions: ls -l %s", c.ConfigFile),
@@ -169,7 +176,7 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 	report.Checks = append(report.Checks, CheckResult{
 		Category: "Configuration",
 		Name:     "File Exists",
-		Status:   "pass",
+		Status:   statusPass,
 		Message:  c.ConfigFile,
 	})
 
@@ -180,7 +187,7 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Configuration",
 			Name:     "Valid Syntax",
-			Status:   "fail",
+			Status:   statusFail,
 			Message:  fmt.Sprintf("Parse error: %v", err),
 			Hints: []string{
 				"Check INI syntax (sections, keys, values)",
@@ -193,7 +200,7 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 	report.Checks = append(report.Checks, CheckResult{
 		Category: "Configuration",
 		Name:     "Valid Syntax",
-		Status:   "pass",
+		Status:   statusPass,
 	})
 
 	// Count jobs
@@ -202,7 +209,7 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 	report.Checks = append(report.Checks, CheckResult{
 		Category: "Configuration",
 		Name:     "Jobs Defined",
-		Status:   "pass",
+		Status:   statusPass,
 		Message:  fmt.Sprintf("%d job(s) configured", jobCount),
 	})
 
@@ -213,7 +220,7 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 			report.Checks = append(report.Checks, CheckResult{
 				Category: "Configuration",
 				Name:     "Deprecated Option",
-				Status:   "fail",
+				Status:   statusFail,
 				Message:  fmt.Sprintf("'%s' is deprecated and will be removed in %s", dep.Option, dep.RemovalVersion),
 				Hints: []string{
 					fmt.Sprintf("Use %s instead", dep.Replacement),
@@ -226,7 +233,7 @@ func (c *DoctorCommand) checkConfiguration(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Configuration",
 			Name:     "Deprecated Options",
-			Status:   "pass",
+			Status:   statusPass,
 			Message:  "No deprecated options in use",
 		})
 	}
@@ -247,7 +254,7 @@ func (c *DoctorCommand) checkWebAuth(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Configuration",
 			Name:     "Web Auth Username",
-			Status:   "fail",
+			Status:   statusFail,
 			Message:  "web-auth-enabled is true but web-username is not set",
 			Hints: []string{
 				"Run 'ofelia init' to configure web authentication interactively",
@@ -262,7 +269,7 @@ func (c *DoctorCommand) checkWebAuth(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Configuration",
 			Name:     "Web Auth Password",
-			Status:   "fail",
+			Status:   statusFail,
 			Message:  "web-auth-enabled is true but web-password-hash is not set",
 			Hints: []string{
 				"Run 'ofelia hash-password' to generate a bcrypt hash",
@@ -276,7 +283,7 @@ func (c *DoctorCommand) checkWebAuth(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Configuration",
 			Name:     "Web Auth Secret Key",
-			Status:   "skip",
+			Status:   statusSkip,
 			Message:  "web-secret-key not set - tokens will not survive daemon restarts",
 			Hints: []string{
 				"Set OFELIA_WEB_SECRET_KEY for persistent sessions",
@@ -289,7 +296,7 @@ func (c *DoctorCommand) checkWebAuth(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Configuration",
 			Name:     "Web Auth",
-			Status:   "pass",
+			Status:   statusPass,
 			Message:  fmt.Sprintf("Configured for user '%s'", conf.Global.WebUsername),
 		})
 	}
@@ -312,7 +319,7 @@ func (c *DoctorCommand) checkDocker(report *DoctorReport) bool {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Docker",
 			Name:     "Connectivity",
-			Status:   "skip",
+			Status:   statusSkip,
 			Message:  "No Docker-based jobs configured",
 		})
 		return true // Not needed, so counts as OK
@@ -324,7 +331,7 @@ func (c *DoctorCommand) checkDocker(report *DoctorReport) bool {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Docker",
 			Name:     "Connectivity",
-			Status:   "fail",
+			Status:   statusFail,
 			Message:  fmt.Sprintf("Cannot connect to Docker: %v", err),
 			Hints: []string{
 				"Check Docker daemon: docker info",
@@ -343,7 +350,7 @@ func (c *DoctorCommand) checkDocker(report *DoctorReport) bool {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Docker",
 			Name:     "Connectivity",
-			Status:   "fail",
+			Status:   statusFail,
 			Message:  "Docker provider not initialized",
 			Hints: []string{
 				"Check Docker daemon: docker info",
@@ -358,7 +365,7 @@ func (c *DoctorCommand) checkDocker(report *DoctorReport) bool {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Docker",
 			Name:     "Connectivity",
-			Status:   "fail",
+			Status:   statusFail,
 			Message:  fmt.Sprintf("Docker ping failed: %v", err),
 			Hints: []string{
 				"Check daemon status (Linux: systemctl status docker, macOS/Windows: check Docker Desktop)",
@@ -371,7 +378,7 @@ func (c *DoctorCommand) checkDocker(report *DoctorReport) bool {
 	report.Checks = append(report.Checks, CheckResult{
 		Category: "Docker",
 		Name:     "Connectivity",
-		Status:   "pass",
+		Status:   statusPass,
 		Message:  "Docker daemon responding",
 	})
 
@@ -386,7 +393,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Job Schedules",
 			Name:     "Schedule Validation",
-			Status:   "skip",
+			Status:   statusSkip,
 			Message:  "Skipped (configuration validation failed)",
 		})
 		return
@@ -402,7 +409,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 			report.Checks = append(report.Checks, CheckResult{
 				Category: "Job Schedules",
 				Name:     fmt.Sprintf("job-run \"%s\"", name),
-				Status:   "fail",
+				Status:   statusFail,
 				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
 				Hints: []string{
 					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
@@ -420,7 +427,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 			report.Checks = append(report.Checks, CheckResult{
 				Category: "Job Schedules",
 				Name:     fmt.Sprintf("job-local \"%s\"", name),
-				Status:   "fail",
+				Status:   statusFail,
 				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
 				Hints: []string{
 					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
@@ -438,7 +445,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 			report.Checks = append(report.Checks, CheckResult{
 				Category: "Job Schedules",
 				Name:     fmt.Sprintf("job-exec \"%s\"", name),
-				Status:   "fail",
+				Status:   statusFail,
 				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
 				Hints: []string{
 					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
@@ -456,7 +463,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 			report.Checks = append(report.Checks, CheckResult{
 				Category: "Job Schedules",
 				Name:     fmt.Sprintf("job-service-run \"%s\"", name),
-				Status:   "fail",
+				Status:   statusFail,
 				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
 				Hints: []string{
 					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
@@ -474,7 +481,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 			report.Checks = append(report.Checks, CheckResult{
 				Category: "Job Schedules",
 				Name:     fmt.Sprintf("job-compose \"%s\"", name),
-				Status:   "fail",
+				Status:   statusFail,
 				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
 				Hints: []string{
 					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
@@ -490,7 +497,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Job Schedules",
 			Name:     "All Schedules Valid",
-			Status:   "pass",
+			Status:   statusPass,
 			Message:  fmt.Sprintf("%d schedule(s) validated", totalJobs),
 		})
 	}
@@ -513,7 +520,7 @@ func (c *DoctorCommand) checkDockerImages(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Docker Images",
 			Name:     "Image Availability",
-			Status:   "skip",
+			Status:   statusSkip,
 			Message:  "No job-run jobs configured",
 		})
 		return
@@ -538,7 +545,7 @@ func (c *DoctorCommand) checkDockerImages(report *DoctorReport) {
 			report.Checks = append(report.Checks, CheckResult{
 				Category: "Docker Images",
 				Name:     image,
-				Status:   "fail",
+				Status:   statusFail,
 				Message:  "Image not found locally",
 				Hints: []string{
 					fmt.Sprintf("Pull image: docker pull %s", image),
@@ -551,7 +558,7 @@ func (c *DoctorCommand) checkDockerImages(report *DoctorReport) {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: "Docker Images",
 			Name:     "All Images Available",
-			Status:   "pass",
+			Status:   statusPass,
 			Message:  fmt.Sprintf("%d image(s) found locally", len(imageMap)),
 		})
 	}
@@ -625,9 +632,9 @@ func (c *DoctorCommand) outputHuman(report *DoctorReport) error {
 	failCount := 0
 	skipCount := 0
 	for _, check := range report.Checks {
-		if check.Status == "fail" {
+		if check.Status == statusFail {
 			failCount++
-		} else if check.Status == "skip" {
+		} else if check.Status == statusSkip {
 			skipCount++
 		}
 	}
@@ -664,11 +671,11 @@ func getCategoryIcon(category string) string {
 // getStatusIcon returns emoji for check status
 func getStatusIcon(status string) string {
 	switch status {
-	case "pass":
+	case statusPass:
 		return "✅"
-	case "fail":
+	case statusFail:
 		return "❌"
-	case "skip":
+	case statusSkip:
 		return "⚠️"
 	default:
 		return "❓"

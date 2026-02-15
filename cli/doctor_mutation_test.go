@@ -186,7 +186,7 @@ func TestCheckConfiguration_FileNotExist(t *testing.T) {
 
 	assert.False(t, report.Healthy, "report must be unhealthy for missing config")
 	require.NotEmpty(t, report.Checks)
-	assert.Equal(t, "fail", report.Checks[0].Status)
+	assert.Equal(t, statusFail, report.Checks[0].Status)
 	assert.Equal(t, "File Exists", report.Checks[0].Name)
 }
 
@@ -245,7 +245,7 @@ func TestCheckConfiguration_ParseError(t *testing.T) {
 	foundSyntaxFail := false
 	for _, check := range report.Checks {
 		if check.Name == "Valid Syntax" {
-			assert.Equal(t, "fail", check.Status)
+			assert.Equal(t, statusFail, check.Status)
 			assert.Contains(t, check.Message, "Parse error")
 			foundSyntaxFail = true
 		}
@@ -280,9 +280,9 @@ func TestCheckConfiguration_ValidConfig(t *testing.T) {
 		}
 	}
 	require.NotNil(t, fileCheck, "must have 'File Exists' check")
-	assert.Equal(t, "pass", fileCheck.Status)
+	assert.Equal(t, statusPass, fileCheck.Status)
 	require.NotNil(t, syntaxCheck, "must have 'Valid Syntax' check")
-	assert.Equal(t, "pass", syntaxCheck.Status)
+	assert.Equal(t, statusPass, syntaxCheck.Status)
 }
 
 // TestCheckConfiguration_DeprecatedOptions targets line 155 (len(deprecations) > 0)
@@ -304,7 +304,7 @@ func TestCheckConfiguration_NoDeprecations(t *testing.T) {
 	foundDepCheck := false
 	for _, check := range report.Checks {
 		if check.Name == "Deprecated Options" {
-			assert.Equal(t, "pass", check.Status)
+			assert.Equal(t, statusPass, check.Status)
 			assert.Contains(t, check.Message, "No deprecated options")
 			foundDepCheck = true
 		}
@@ -464,7 +464,7 @@ command = echo test
 	assert.False(t, report.Healthy, "report must be unhealthy when schedule is invalid")
 	foundFail := false
 	for _, check := range report.Checks {
-		if check.Status == "fail" && check.Category == "Job Schedules" {
+		if check.Status == statusFail && check.Category == "Job Schedules" {
 			foundFail = true
 			assert.Contains(t, check.Message, "Invalid schedule")
 		}
@@ -484,7 +484,7 @@ func TestOutputJSON_HealthyReport(t *testing.T) {
 
 	report := &DoctorReport{
 		Healthy: true,
-		Checks:  []CheckResult{{Category: "Test", Name: "Check", Status: "pass"}},
+		Checks:  []CheckResult{{Category: "Test", Name: "Check", Status: statusPass}},
 	}
 
 	err := cmd.outputJSON(report)
@@ -510,7 +510,7 @@ func TestOutputJSON_UnhealthyReport(t *testing.T) {
 
 	report := &DoctorReport{
 		Healthy: false,
-		Checks:  []CheckResult{{Category: "Test", Name: "Check", Status: "fail", Message: "broken"}},
+		Checks:  []CheckResult{{Category: "Test", Name: "Check", Status: statusFail, Message: "broken"}},
 	}
 
 	err := cmd.outputJSON(report)
@@ -534,8 +534,8 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 		report := &DoctorReport{
 			Healthy: true,
 			Checks: []CheckResult{
-				{Category: "Configuration", Name: "Check1", Status: "pass"},
-				{Category: "Docker", Name: "Check2", Status: "skip", Message: "skipped"},
+				{Category: "Configuration", Name: "Check1", Status: statusPass},
+				{Category: "Docker", Name: "Check2", Status: statusSkip, Message: "skipped"},
 			},
 		}
 		err := cmd.outputHuman(report)
@@ -552,9 +552,9 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 		report := &DoctorReport{
 			Healthy: false,
 			Checks: []CheckResult{
-				{Category: "Configuration", Name: "Check1", Status: "fail", Message: "broken"},
-				{Category: "Configuration", Name: "Check2", Status: "fail", Message: "also broken"},
-				{Category: "Docker", Name: "Check3", Status: "skip", Message: "skipped"},
+				{Category: "Configuration", Name: "Check1", Status: statusFail, Message: "broken"},
+				{Category: "Configuration", Name: "Check2", Status: statusFail, Message: "also broken"},
+				{Category: "Docker", Name: "Check3", Status: statusSkip, Message: "skipped"},
 			},
 		}
 		err := cmd.outputHuman(report)
@@ -571,7 +571,7 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 		report := &DoctorReport{
 			Healthy: false,
 			Checks: []CheckResult{
-				{Category: "Configuration", Name: "Check1", Status: "fail", Message: "broken"},
+				{Category: "Configuration", Name: "Check1", Status: statusFail, Message: "broken"},
 			},
 		}
 		err := cmd.outputHuman(report)
@@ -587,7 +587,7 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 		report := &DoctorReport{
 			Healthy: true,
 			Checks: []CheckResult{
-				{Category: "Configuration", Name: "Check1", Status: "pass"},
+				{Category: "Configuration", Name: "Check1", Status: statusPass},
 			},
 		}
 		err := cmd.outputHuman(report)
@@ -609,7 +609,7 @@ func TestOutputHuman_CheckWithAndWithoutMessage(t *testing.T) {
 		report := &DoctorReport{
 			Healthy: true,
 			Checks: []CheckResult{
-				{Category: "Configuration", Name: "MyCheck", Status: "pass", Message: "detailed info"},
+				{Category: "Configuration", Name: "MyCheck", Status: statusPass, Message: "detailed info"},
 			},
 		}
 		_ = cmd.outputHuman(report)
@@ -622,7 +622,7 @@ func TestOutputHuman_CheckWithAndWithoutMessage(t *testing.T) {
 		report := &DoctorReport{
 			Healthy: true,
 			Checks: []CheckResult{
-				{Category: "Configuration", Name: "NoMsg", Status: "pass", Message: ""},
+				{Category: "Configuration", Name: "NoMsg", Status: statusPass, Message: ""},
 			},
 		}
 		_ = cmd.outputHuman(report)
@@ -638,8 +638,8 @@ func TestOutputHuman_CategoryNotInOrder(t *testing.T) {
 	report := &DoctorReport{
 		Healthy: true,
 		Checks: []CheckResult{
-			{Category: "UnknownCategory", Name: "Check1", Status: "pass"},
-			{Category: "Configuration", Name: "Check2", Status: "pass"},
+			{Category: "UnknownCategory", Name: "Check1", Status: statusPass},
+			{Category: "Configuration", Name: "Check2", Status: statusPass},
 		},
 	}
 	err := cmd.outputHuman(report)
@@ -685,14 +685,14 @@ func TestGetStatusIcon_AllBranches(t *testing.T) {
 	t.Parallel()
 
 	// Each status must return its specific icon and NOT any other
-	passIcon := getStatusIcon("pass")
+	passIcon := getStatusIcon(statusPass)
 	assert.Equal(t, "✅", passIcon)
 
-	failIcon := getStatusIcon("fail")
+	failIcon := getStatusIcon(statusFail)
 	assert.Equal(t, "❌", failIcon)
 	assert.NotEqual(t, passIcon, failIcon)
 
-	skipIcon := getStatusIcon("skip")
+	skipIcon := getStatusIcon(statusSkip)
 	assert.Equal(t, "⚠️", skipIcon)
 	assert.NotEqual(t, passIcon, skipIcon)
 	assert.NotEqual(t, failIcon, skipIcon)
@@ -732,13 +732,13 @@ web-auth-enabled = true
 	passwordFail := false
 	secretSkip := false
 	for _, check := range report.Checks {
-		if strings.Contains(check.Name, "Username") && check.Status == "fail" {
+		if strings.Contains(check.Name, "Username") && check.Status == statusFail {
 			usernameFail = true
 		}
-		if strings.Contains(check.Name, "Password") && check.Status == "fail" {
+		if strings.Contains(check.Name, "Password") && check.Status == statusFail {
 			passwordFail = true
 		}
-		if strings.Contains(check.Name, "Secret Key") && check.Status == "skip" {
+		if strings.Contains(check.Name, "Secret Key") && check.Status == statusSkip {
 			secretSkip = true
 		}
 	}
@@ -793,7 +793,7 @@ web-secret-key = mysecret
 	// Should have pass check for web auth
 	foundPass := false
 	for _, check := range report.Checks {
-		if check.Name == "Web Auth" && check.Status == "pass" {
+		if check.Name == "Web Auth" && check.Status == statusPass {
 			foundPass = true
 			assert.Contains(t, check.Message, "admin")
 		}
@@ -874,7 +874,7 @@ command = echo test
 	assert.False(t, report.Healthy, "report must be unhealthy for invalid run job schedule")
 	foundRunFail := false
 	for _, check := range report.Checks {
-		if check.Status == "fail" && strings.Contains(check.Name, "job-run") {
+		if check.Status == statusFail && strings.Contains(check.Name, "job-run") {
 			foundRunFail = true
 			assert.Contains(t, check.Message, "Invalid schedule")
 		}
@@ -904,7 +904,7 @@ command = echo test
 	assert.False(t, report.Healthy, "report must be unhealthy for invalid exec job schedule")
 	foundExecFail := false
 	for _, check := range report.Checks {
-		if check.Status == "fail" && strings.Contains(check.Name, "job-exec") {
+		if check.Status == statusFail && strings.Contains(check.Name, "job-exec") {
 			foundExecFail = true
 			assert.Contains(t, check.Message, "Invalid schedule")
 		}
@@ -935,7 +935,7 @@ command = echo test
 	assert.False(t, report.Healthy, "report must be unhealthy for invalid service job schedule")
 	foundServiceFail := false
 	for _, check := range report.Checks {
-		if check.Status == "fail" && strings.Contains(check.Name, "job-service-run") {
+		if check.Status == statusFail && strings.Contains(check.Name, "job-service-run") {
 			foundServiceFail = true
 			assert.Contains(t, check.Message, "Invalid schedule")
 		}
@@ -965,7 +965,7 @@ command = echo test
 	assert.False(t, report.Healthy, "report must be unhealthy for invalid compose job schedule")
 	foundComposeFail := false
 	for _, check := range report.Checks {
-		if check.Status == "fail" && strings.Contains(check.Name, "job-compose") {
+		if check.Status == statusFail && strings.Contains(check.Name, "job-compose") {
 			foundComposeFail = true
 			assert.Contains(t, check.Message, "Invalid schedule")
 		}
@@ -1004,8 +1004,8 @@ command = echo test
 	for _, check := range report.Checks {
 		if check.Category == "Docker" {
 			foundDockerCheck = true
-			// Should NOT be "skip" - it should attempt the check
-			assert.NotEqual(t, "skip", check.Status,
+			// Should NOT be statusSkip - it should attempt the check
+			assert.NotEqual(t, statusSkip, check.Status,
 				"run jobs should trigger Docker check, not skip")
 		}
 	}
@@ -1034,7 +1034,7 @@ command = echo test
 	// Should skip Docker check
 	foundSkip := false
 	for _, check := range report.Checks {
-		if check.Category == "Docker" && check.Status == "skip" {
+		if check.Category == "Docker" && check.Status == statusSkip {
 			foundSkip = true
 			assert.Contains(t, check.Message, "No Docker-based jobs")
 		}
@@ -1055,10 +1055,10 @@ func TestOutputHuman_FailCountExact(t *testing.T) {
 	report := &DoctorReport{
 		Healthy: false,
 		Checks: []CheckResult{
-			{Category: "Configuration", Name: "C1", Status: "fail", Message: "err1"},
-			{Category: "Configuration", Name: "C2", Status: "fail", Message: "err2"},
-			{Category: "Configuration", Name: "C3", Status: "fail", Message: "err3"},
-			{Category: "Configuration", Name: "C4", Status: "pass"},
+			{Category: "Configuration", Name: "C1", Status: statusFail, Message: "err1"},
+			{Category: "Configuration", Name: "C2", Status: statusFail, Message: "err2"},
+			{Category: "Configuration", Name: "C3", Status: statusFail, Message: "err3"},
+			{Category: "Configuration", Name: "C4", Status: statusPass},
 		},
 	}
 
@@ -1140,10 +1140,10 @@ command = echo test
 	report := &DoctorReport{Healthy: true, Checks: []CheckResult{}}
 	cmd.checkDockerImages(report)
 
-	// With no run jobs, should get a "skip" result
+	// With no run jobs, should get a statusSkip result
 	foundSkip := false
 	for _, check := range report.Checks {
-		if check.Category == "Docker Images" && check.Status == "skip" {
+		if check.Category == "Docker Images" && check.Status == statusSkip {
 			foundSkip = true
 			assert.Contains(t, check.Message, "No job-run jobs")
 		}
