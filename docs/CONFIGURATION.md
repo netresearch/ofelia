@@ -198,11 +198,11 @@ You can enable `include-stopped` via the env var **`OFELIA_DOCKER_INCLUDE_STOPPE
 
 - When `include-stopped` is true, Ofelia searches for job-run labels across **all** matching containers (running and stopped). Stopped containers are included in the label scan.
 - Only one definition per job-run **name** is kept. Definitions from **running** containers take precedence over definitions from stopped containers.
-- When two containers (both stopped) define the same job-run name, the definition from the container that is effectively processed last is used (e.g. last created or last in iteration). Avoid defining the same job-run name on multiple stopped containers if you need a predictable result.
 
 **Recommendations**
 
 - Set up **container pruning** (or a clear lifecycle for stopped containers) so that old stopped containers with Ofelia labels do not accumulate and are not used unintentionally.
+- Avoid defining the same job-run name on multiple stopped containers if you need a predictable result.
 - Prefer specifying a **Docker filter** (`--docker-filter` or `[docker]` `filters`) to limit which containers Ofelia inspects; this reduces the set of running and stopped containers considered.
 
 ## INI Configuration
