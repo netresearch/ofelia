@@ -186,7 +186,7 @@ func TestValidateCronExpressionBoundary(t *testing.T) {
 		// Invalid special expressions
 		{"@invalid", "@invalid", true},
 		{"@yearlyX", "@yearlyX", true},
-		{"@every no duration", "@every", false}, // Parser accepts @every without duration
+		{"@every no duration", "@every", true}, // go-cron requires a duration after @every
 
 		// Field count boundaries
 		{"4 fields", "* * * *", true},

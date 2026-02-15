@@ -557,12 +557,10 @@ func (c *DoctorCommand) checkDockerImages(report *DoctorReport) {
 	}
 }
 
-// validateCronSchedule validates a cron schedule expression using go-cron v0.7.0's ValidateSpec API.
+// validateCronSchedule validates a cron schedule expression using go-cron's ValidateSpec API.
 // This provides cleaner validation with proper handling of all cron formats including descriptors,
-// @every intervals, and standard cron expressions.
+// @every intervals, month/day names, wraparound ranges, and standard cron expressions.
 func validateCronSchedule(schedule string) error {
-	// Use go-cron v0.7.0's ValidateSpec for cleaner validation
-	// This handles all formats: descriptors (@daily, @hourly), @every intervals, and cron expressions
 	parseOpts := cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor
 	if err := cron.ValidateSpec(schedule, parseOpts); err != nil {
 		return fmt.Errorf("invalid cron schedule %q: %w", schedule, err)

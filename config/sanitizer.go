@@ -7,9 +7,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/netresearch/go-cron"
 )
 
 // Sanitizer provides input sanitization and validation for security
@@ -207,161 +208,19 @@ func (s *Sanitizer) ValidateDockerImage(image string) error {
 	return nil
 }
 
-// ValidateCronExpression performs thorough cron expression validation
+// ValidateCronExpression validates a cron expression using go-cron's parser.
+// This correctly handles all formats: descriptors (@daily), @every intervals,
+// standard cron expressions with optional seconds, month/day names (JAN, MON),
+// and wraparound ranges (FRI-MON).
 func (s *Sanitizer) ValidateCronExpression(expr string) error {
-	// Handle special expressions
-	if strings.HasPrefix(expr, "@") {
-		validSpecial := map[string]bool{
-			"@yearly":    true,
-			"@annually":  true,
-			"@monthly":   true,
-			"@weekly":    true,
-			"@daily":     true,
-			"@midnight":  true,
-			"@hourly":    true,
-			"@triggered": true, // triggered-only jobs (run via workflow or manual)
-			"@manual":    true, // alias for @triggered
-			"@none":      true, // alias for @triggered
-		}
-
-		// Handle @every expressions
-		if after, ok := strings.CutPrefix(expr, "@every "); ok {
-			duration := after
-			// Validate duration format
-			if !regexp.MustCompile(`^\d+[smhd]$`).MatchString(duration) {
-				return fmt.Errorf("invalid @every duration format")
-			}
-			return nil
-		}
-
-		if !validSpecial[expr] {
-			return fmt.Errorf("invalid special cron expression: %s", expr)
-		}
+	// Allow ofelia's triggered-only schedule keywords
+	if expr == "@triggered" || expr == "@manual" || expr == "@none" {
 		return nil
 	}
 
-	// Standard cron expression validation
-	fields := strings.Fields(expr)
-	if len(fields) < 5 || len(fields) > 6 {
-		return fmt.Errorf("cron expression must have 5 or 6 fields")
-	}
-
-	// Validate each field
-	limits := []struct {
-		min, max int
-		name     string
-	}{
-		{0, 59, "minute"},     // Minutes
-		{0, 23, "hour"},       // Hours
-		{1, 31, "day"},        // Day of month
-		{1, 12, "month"},      // Month
-		{0, 7, "day of week"}, // Day of week (0 and 7 are Sunday)
-	}
-
-	// If 6 fields, first is seconds
-	if len(fields) == 6 {
-		limits = append([]struct {
-			min, max int
-			name     string
-		}{{0, 59, "second"}}, limits...)
-	}
-
-	for i, field := range fields {
-		if i >= len(limits) {
-			break
-		}
-
-		if err := s.validateCronField(field, limits[i].min, limits[i].max, limits[i].name); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// validateCronField validates a single cron field
-func (s *Sanitizer) validateCronField(field string, minVal, maxVal int, fieldName string) error {
-	// Allow wildcards and question marks
-	if field == "*" || field == "?" {
-		return nil
-	}
-
-	// Check for ranges (e.g., "1-5")
-	if strings.Contains(field, "-") {
-		return s.validateCronRange(field, minVal, maxVal, fieldName)
-	}
-
-	// Check for steps (e.g., "*/5")
-	if strings.Contains(field, "/") {
-		return s.validateCronStep(field, minVal, maxVal, fieldName)
-	}
-
-	// Check for lists (e.g., "1,3,5")
-	if strings.Contains(field, ",") {
-		return s.validateCronList(field, minVal, maxVal, fieldName)
-	}
-
-	return nil
-}
-
-// validateCronRange validates cron range expressions like "1-5"
-func (s *Sanitizer) validateCronRange(field string, minVal, maxVal int, fieldName string) error {
-	parts := strings.Split(field, "-")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid range in %s field", fieldName)
-	}
-
-	// Validate both range values
-	startVal, err := strconv.Atoi(strings.TrimSpace(parts[0]))
-	if err != nil || startVal < minVal || startVal > maxVal {
-		return fmt.Errorf("invalid start value in %s field range", fieldName)
-	}
-
-	endVal, err := strconv.Atoi(strings.TrimSpace(parts[1]))
-	if err != nil || endVal < minVal || endVal > maxVal {
-		return fmt.Errorf("invalid end value in %s field range", fieldName)
-	}
-
-	if startVal >= endVal {
-		return fmt.Errorf("invalid range: start value must be less than end value in %s field", fieldName)
-	}
-
-	return nil
-}
-
-// validateCronStep validates cron step expressions like "*/5" or "0/10"
-func (s *Sanitizer) validateCronStep(field string, minVal, maxVal int, fieldName string) error {
-	parts := strings.Split(field, "/")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid step in %s field", fieldName)
-	}
-
-	// Validate step value
-	stepVal, err := strconv.Atoi(parts[1])
-	if err != nil || stepVal <= 0 {
-		return fmt.Errorf("invalid step value in %s field", fieldName)
-	}
-
-	// Validate base value (can be "*" or a number)
-	if parts[0] != "*" {
-		baseVal, err := strconv.Atoi(parts[0])
-		if err != nil || baseVal < minVal || baseVal > maxVal {
-			return fmt.Errorf("invalid base value in %s field step", fieldName)
-		}
-	}
-
-	return nil
-}
-
-// validateCronList validates cron list expressions like "1,3,5"
-func (s *Sanitizer) validateCronList(field string, minVal, maxVal int, fieldName string) error {
-	values := strings.SplitSeq(field, ",")
-	for val := range values {
-		val = strings.TrimSpace(val)
-		intVal, err := strconv.Atoi(val)
-		if err != nil || intVal < minVal || intVal > maxVal {
-			return fmt.Errorf("invalid value %s in %s field list", val, fieldName)
-		}
+	parseOpts := cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor
+	if err := cron.ValidateSpec(expr, parseOpts); err != nil {
+		return fmt.Errorf("invalid cron expression: %w", err)
 	}
 	return nil
 }
