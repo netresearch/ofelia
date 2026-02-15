@@ -219,6 +219,11 @@ linters:
           - paralleltest
           - tparallel
         path: metrics/.*_test\.go
+      # metrics package name is intentional; it does not shadow a top-level stdlib package
+      - linters:
+          - revive
+        path: metrics/
+        text: "var-naming"
       # Middlewares tests - TODO: add t.Parallel() incrementally
       - linters:
           - paralleltest
