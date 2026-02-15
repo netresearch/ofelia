@@ -155,7 +155,6 @@ See [SECURITY.md](SECURITY.md) for security policies and reporting vulnerabiliti
 Key external dependencies:
 - `github.com/docker/docker` - Docker API client
 - `github.com/netresearch/go-cron` - Cron expression parsing
-- `github.com/fsouza/go-dockerclient` - Docker client wrapper
 - `gopkg.in/ini.v1` - INI file parsing
 
 Full dependency list in `go.mod`.
