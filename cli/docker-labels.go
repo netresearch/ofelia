@@ -128,26 +128,26 @@ func applyLabelToJobMaps(
 	isService bool,
 	execJobs, localJobs, containerRunJobs, serviceJobs, composeJobs map[string]map[string]interface{},
 ) {
-	switch {
-	case jobType == jobExec:
+	switch jobType {
+	case jobExec:
 		ensureJob(execJobs, scopedName)
 		setJobParam(execJobs[scopedName], jobParam, paramValue)
 		if !isService && execJobs[scopedName]["container"] == nil {
 			execJobs[scopedName]["container"] = containerName
 		}
-	case jobType == jobLocal && isService:
+	case jobLocal:
 		ensureJob(localJobs, jobName)
 		setJobParam(localJobs[jobName], jobParam, paramValue)
-	case jobType == jobServiceRun && isService:
+	case jobServiceRun:
 		ensureJob(serviceJobs, jobName)
 		setJobParam(serviceJobs[jobName], jobParam, paramValue)
-	case jobType == jobRun:
+	case jobRun:
 		ensureJob(containerRunJobs, jobName)
 		setJobParam(containerRunJobs[jobName], jobParam, paramValue)
 		if !isService && containerRunJobs[jobName]["container"] == nil {
 			containerRunJobs[jobName]["container"] = containerName
 		}
-	case jobType == jobCompose:
+	case jobCompose:
 		ensureJob(composeJobs, jobName)
 		setJobParam(composeJobs[jobName], jobParam, paramValue)
 	}
