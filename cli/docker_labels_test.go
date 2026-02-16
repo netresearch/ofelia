@@ -4,7 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/netresearch/ofelia/core/domain"
+	"github.com/netresearch/ofelia/middlewares"
 	"github.com/netresearch/ofelia/test"
 )
 
@@ -138,4 +141,177 @@ func TestCanRunJobInStoppedContainer(t *testing.T) {
 		got := checkJobTypeAllowedOnStoppedContainer("job-unknown", "myjob", "c1", false, logger)
 		assert.False(t, got)
 	})
+}
+
+func TestSplitLabelsWebhookFromServiceContainer(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(test.NewTestLogger())
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "ofelia-service",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                       "true",
+				"ofelia.service":                       "true",
+				"ofelia.webhook.slack-alerts.preset":   "slack",
+				"ofelia.webhook.slack-alerts.id":       "T123/B456",
+				"ofelia.webhook.slack-alerts.secret":   "xoxb-secret",
+				"ofelia.webhook.slack-alerts.trigger":  "error",
+				"ofelia.webhook.discord-notify.preset": "discord",
+				"ofelia.webhook.discord-notify.url":    "https://discord.example.com/webhook",
+			},
+		},
+	}
+
+	_, _, _, _, _, _, webhookConfigs := c.splitContainersLabelsIntoJobMapsByType(containers)
+
+	require.Len(t, webhookConfigs, 2, "expected 2 webhook configs")
+
+	slack, ok := webhookConfigs["slack-alerts"]
+	require.True(t, ok, "slack-alerts webhook not found")
+	assert.Equal(t, "slack", slack["preset"])
+	assert.Equal(t, "T123/B456", slack["id"])
+	assert.Equal(t, "xoxb-secret", slack["secret"])
+	assert.Equal(t, "error", slack["trigger"])
+
+	discord, ok := webhookConfigs["discord-notify"]
+	require.True(t, ok, "discord-notify webhook not found")
+	assert.Equal(t, "discord", discord["preset"])
+	assert.Equal(t, "https://discord.example.com/webhook", discord["url"])
+}
+
+func TestWebhookLabelsIgnoredOnNonServiceContainer(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(test.NewTestLogger())
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "worker-container",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                     "true",
+				"ofelia.webhook.slack-alerts.preset": "slack",
+				"ofelia.webhook.slack-alerts.id":     "T123/B456",
+			},
+		},
+	}
+
+	_, _, _, _, _, _, webhookConfigs := c.splitContainersLabelsIntoJobMapsByType(containers)
+
+	assert.Empty(t, webhookConfigs, "webhook configs should be empty for non-service container")
+}
+
+func TestBuildFromDockerContainersWithWebhooks(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(test.NewTestLogger())
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "ofelia-service",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                      "true",
+				"ofelia.service":                      "true",
+				"ofelia.webhook.slack-alerts.preset":  "slack",
+				"ofelia.webhook.slack-alerts.id":      "T123/B456",
+				"ofelia.webhook.slack-alerts.secret":  "xoxb-secret",
+				"ofelia.webhook.slack-alerts.trigger": "error",
+				"ofelia.webhook.slack-alerts.link":    "https://logs.example.com",
+			},
+		},
+	}
+
+	err := c.buildFromDockerContainers(containers)
+	require.NoError(t, err)
+
+	require.NotNil(t, c.WebhookConfigs)
+	require.Len(t, c.WebhookConfigs.Webhooks, 1)
+
+	wh, ok := c.WebhookConfigs.Webhooks["slack-alerts"]
+	require.True(t, ok, "slack-alerts webhook not found")
+	assert.Equal(t, "slack", wh.Preset)
+	assert.Equal(t, "T123/B456", wh.ID)
+	assert.Equal(t, "xoxb-secret", wh.Secret)
+	assert.Equal(t, middlewares.TriggerError, wh.Trigger)
+	assert.Equal(t, "https://logs.example.com", wh.Link)
+	assert.Equal(t, "slack-alerts", wh.Name)
+}
+
+func TestBuildFromDockerContainersWithGlobalWebhookSettings(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(test.NewTestLogger())
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "ofelia-service",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":               "true",
+				"ofelia.service":               "true",
+				"ofelia.webhooks":              "slack-alerts",
+				"ofelia.webhook-allowed-hosts": "hooks.slack.com,ntfy.internal",
+			},
+		},
+	}
+
+	err := c.buildFromDockerContainers(containers)
+	require.NoError(t, err)
+
+	require.NotNil(t, c.WebhookConfigs)
+	assert.Equal(t, "slack-alerts", c.WebhookConfigs.Global.Webhooks)
+	assert.Equal(t, "hooks.slack.com,ntfy.internal", c.WebhookConfigs.Global.AllowedHosts)
+}
+
+func TestMultipleWebhooksFromLabels(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(test.NewTestLogger())
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "ofelia-service",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                         "true",
+				"ofelia.service":                         "true",
+				"ofelia.webhook.slack-alerts.preset":     "slack",
+				"ofelia.webhook.slack-alerts.trigger":    "error",
+				"ofelia.webhook.discord-notify.preset":   "discord",
+				"ofelia.webhook.discord-notify.trigger":  "always",
+				"ofelia.webhook.ntfy-backup.url":         "https://ntfy.sh/my-topic",
+				"ofelia.webhook.ntfy-backup.trigger":     "success",
+				"ofelia.webhook.ntfy-backup.retry-count": "5",
+				"ofelia.webhook.ntfy-backup.retry-delay": "10s",
+				"ofelia.webhook.ntfy-backup.timeout":     "30s",
+				"ofelia.webhook.ntfy-backup.link":        "https://dashboard.example.com",
+				"ofelia.webhook.ntfy-backup.link-text":   "View Dashboard",
+			},
+		},
+	}
+
+	err := c.buildFromDockerContainers(containers)
+	require.NoError(t, err)
+
+	require.NotNil(t, c.WebhookConfigs)
+	require.Len(t, c.WebhookConfigs.Webhooks, 3)
+
+	slack := c.WebhookConfigs.Webhooks["slack-alerts"]
+	require.NotNil(t, slack)
+	assert.Equal(t, "slack", slack.Preset)
+	assert.Equal(t, middlewares.TriggerError, slack.Trigger)
+
+	discord := c.WebhookConfigs.Webhooks["discord-notify"]
+	require.NotNil(t, discord)
+	assert.Equal(t, "discord", discord.Preset)
+	assert.Equal(t, middlewares.TriggerAlways, discord.Trigger)
+
+	ntfy := c.WebhookConfigs.Webhooks["ntfy-backup"]
+	require.NotNil(t, ntfy)
+	assert.Equal(t, "https://ntfy.sh/my-topic", ntfy.URL)
+	assert.Equal(t, middlewares.TriggerSuccess, ntfy.Trigger)
+	assert.Equal(t, 5, ntfy.RetryCount)
+	assert.Equal(t, "10s", ntfy.RetryDelay.String())
+	assert.Equal(t, "30s", ntfy.Timeout.String())
+	assert.Equal(t, "https://dashboard.example.com", ntfy.Link)
+	assert.Equal(t, "View Dashboard", ntfy.LinkText)
 }

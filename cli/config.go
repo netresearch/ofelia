@@ -301,7 +301,14 @@ func (c *Config) InitializeApp() error {
 	// Initialize notification deduplication if cooldown is set
 	c.initNotificationDedup()
 
-	// Initialize webhook manager if webhooks are configured
+	// Init Docker and merge labels BEFORE webhook manager, so label-defined
+	// webhooks are collected into WebhookConfigs before InitManager runs.
+	if err := c.initDockerHandler(); err != nil {
+		return err
+	}
+	c.mergeJobsFromDockerContainers()
+
+	// Initialize webhook manager after all sources (INI + labels) are collected
 	if c.WebhookConfigs != nil && len(c.WebhookConfigs.Webhooks) > 0 {
 		if err := c.WebhookConfigs.InitManager(); err != nil {
 			return fmt.Errorf("initialize webhook manager: %w", err)
@@ -310,11 +317,6 @@ func (c *Config) InitializeApp() error {
 	}
 
 	c.buildSchedulerMiddlewares(c.sh)
-
-	if err := c.initDockerHandler(); err != nil {
-		return err
-	}
-	c.mergeJobsFromDockerContainers()
 	c.registerAllJobs()
 	return nil
 }
@@ -355,8 +357,9 @@ func (c *Config) mergeJobsFromDockerContainers() {
 		return
 	}
 	parsed := Config{
-		logger: c.logger,
-		Global: c.Global, // Copy Global settings including AllowHostJobsFromLabels
+		logger:         c.logger,
+		Global:         c.Global, // Copy Global settings including AllowHostJobsFromLabels
+		WebhookConfigs: NewWebhookConfigs(),
 	}
 	_ = parsed.buildFromDockerContainers(dockerContainers)
 
@@ -364,8 +367,10 @@ func (c *Config) mergeJobsFromDockerContainers() {
 	mergeJobs(c, c.RunJobs, parsed.RunJobs, "run")
 	mergeJobs(c, c.LocalJobs, parsed.LocalJobs, "local")
 	mergeJobs(c, c.ComposeJobs, parsed.ComposeJobs, "compose")
-
 	mergeJobs(c, c.ServiceJobs, parsed.ServiceJobs, "service")
+
+	// Merge webhook configs from labels (INI takes precedence)
+	mergeWebhookConfigs(c, parsed.WebhookConfigs)
 }
 
 // mergeJobs copies jobs from src into dst while respecting INI precedence.
@@ -666,8 +671,9 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	c.logger.Debug("dockerContainersUpdate started")
 
 	parsedLabelConfig := Config{
-		logger: c.logger,
-		Global: c.Global, // Copy Global settings including AllowHostJobsFromLabels
+		logger:         c.logger,
+		Global:         c.Global, // Copy Global settings including AllowHostJobsFromLabels
+		WebhookConfigs: NewWebhookConfigs(),
 	}
 	_ = parsedLabelConfig.buildFromDockerContainers(containers)
 
@@ -736,6 +742,9 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
 	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, servicePrep, JobSourceLabel, "service")
 	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
+
+	// Sync webhook configs from labels
+	c.syncWebhookConfigs(parsedLabelConfig.WebhookConfigs)
 
 	// Handle deprecated configuration options in parsed labels: migrate then warn
 	ResetDeprecationWarnings()
