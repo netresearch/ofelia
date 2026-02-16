@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/test"
 )
@@ -75,11 +77,7 @@ command = up -d
 func TestBuildFromFile_WithGlobPattern(t *testing.T) {
 	t.Parallel()
 	// Create temporary directory
-	dir, err := os.MkdirTemp("", "ofelia_glob_test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	// Create multiple config files
 	file1Content := `
@@ -166,11 +164,7 @@ func TestBuildFromFile_NonExistentFile(t *testing.T) {
 func TestIniConfigUpdate_WithChangedFiles(t *testing.T) {
 	t.Parallel()
 	// This test verifies the file change detection logic
-	dir, err := os.MkdirTemp("", "ofelia_update_test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	configFile := filepath.Join(dir, "config.ini")
 	initialContent := `
@@ -459,38 +453,21 @@ func TestResolveConfigFiles(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
-		setup   func() (string, func())
 		wantErr bool
 		wantMin int // minimum number of files expected
 	}{
 		{
-			name: "single file",
-			setup: func() (string, func()) {
-				tmpFile, _ := os.CreateTemp("", "ofelia_*.ini")
-				path := tmpFile.Name()
-				tmpFile.Close()
-				return path, func() { os.Remove(path) }
-			},
+			name:    "single file",
 			wantErr: false,
 			wantMin: 1,
 		},
 		{
-			name: "glob pattern with multiple files",
-			setup: func() (string, func()) {
-				dir, _ := os.MkdirTemp("", "ofelia_resolve_")
-				os.WriteFile(filepath.Join(dir, "a.ini"), []byte(""), 0o644)
-				os.WriteFile(filepath.Join(dir, "b.ini"), []byte(""), 0o644)
-				pattern := filepath.Join(dir, "*.ini")
-				return pattern, func() { os.RemoveAll(dir) }
-			},
+			name:    "glob pattern with multiple files",
 			wantErr: false,
 			wantMin: 2,
 		},
 		{
-			name: "non-existent file returns pattern as literal",
-			setup: func() (string, func()) {
-				return "/nonexistent/file.ini", func() {}
-			},
+			name:    "non-existent file returns pattern as literal",
 			wantErr: false,
 			wantMin: 1, // returns the pattern itself
 		},
@@ -499,8 +476,20 @@ func TestResolveConfigFiles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			pattern, cleanup := tt.setup()
-			defer cleanup()
+			var pattern string
+			switch tt.name {
+			case "single file":
+				path := filepath.Join(t.TempDir(), "ofelia.ini")
+				require.NoError(t, os.WriteFile(path, []byte(""), 0o644))
+				pattern = path
+			case "glob pattern with multiple files":
+				dir := t.TempDir()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "a.ini"), []byte(""), 0o644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "b.ini"), []byte(""), 0o644))
+				pattern = filepath.Join(dir, "*.ini")
+			default:
+				pattern = "/nonexistent/file.ini"
+			}
 
 			files, err := resolveConfigFiles(pattern)
 

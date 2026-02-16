@@ -52,6 +52,29 @@ func decodeWithMetadata(input map[string]any, output any) (*DecodeResult, error)
 	return result, nil
 }
 
+// weakDecodeConsistent decodes input into output using the same options as
+// decodeWithMetadata (case-insensitive matching, weak typing) but accepts any
+// input type. This is used for Docker label decoding where the input shape is
+// map[string]map[string]any rather than flat map[string]any.
+func weakDecodeConsistent(input, output any) error {
+	config := &mapstructure.DecoderConfig{
+		Result:           output,
+		WeaklyTypedInput: true,
+		TagName:          "mapstructure",
+		MatchName:        caseInsensitiveMatch,
+	}
+
+	decoder, err := mapstructure.NewDecoder(config)
+	if err != nil {
+		return fmt.Errorf("create decoder: %w", err)
+	}
+
+	if err := decoder.Decode(input); err != nil {
+		return fmt.Errorf("decode: %w", err)
+	}
+	return nil
+}
+
 // caseInsensitiveMatch matches map keys to struct fields case-insensitively
 func caseInsensitiveMatch(mapKey, fieldName string) bool {
 	return strings.EqualFold(normalizeKey(mapKey), normalizeKey(fieldName))

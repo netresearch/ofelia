@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -178,7 +179,7 @@ func (wo *WorkflowOrchestrator) JobStarted(jobName string, executionID string) {
 }
 
 // JobCompleted marks a job as completed and triggers dependent jobs
-func (wo *WorkflowOrchestrator) JobCompleted(jobName string, executionID string, success bool) {
+func (wo *WorkflowOrchestrator) JobCompleted(ctx context.Context, jobName string, executionID string, success bool) {
 	execution := wo.getOrCreateExecution(executionID)
 	execution.mu.Lock()
 	delete(execution.RunningJobs, jobName)
@@ -193,11 +194,11 @@ func (wo *WorkflowOrchestrator) JobCompleted(jobName string, executionID string,
 	execution.mu.Unlock()
 
 	// Trigger dependent jobs
-	wo.triggerDependentJobs(jobName, executionID, success)
+	wo.triggerDependentJobs(ctx, jobName, executionID, success)
 }
 
 // triggerDependentJobs triggers jobs that depend on the completed job
-func (wo *WorkflowOrchestrator) triggerDependentJobs(jobName string, executionID string, success bool) {
+func (wo *WorkflowOrchestrator) triggerDependentJobs(ctx context.Context, jobName string, executionID string, success bool) {
 	wo.mu.RLock()
 	node, exists := wo.dependencies[jobName]
 	wo.mu.RUnlock()
@@ -217,7 +218,7 @@ func (wo *WorkflowOrchestrator) triggerDependentJobs(jobName string, executionID
 	for _, triggerJob := range jobsToTrigger {
 		if wo.CanExecute(triggerJob, executionID) {
 			wo.logger.Noticef("Triggering job %s from workflow", triggerJob)
-			_ = wo.scheduler.RunJob(triggerJob)
+			_ = wo.scheduler.RunJob(ctx, triggerJob)
 		}
 	}
 
@@ -226,7 +227,7 @@ func (wo *WorkflowOrchestrator) triggerDependentJobs(jobName string, executionID
 		for _, dependent := range node.Dependents {
 			if wo.CanExecute(dependent, executionID) {
 				wo.logger.Noticef("Dependency satisfied, triggering job %s", dependent)
-				_ = wo.scheduler.RunJob(dependent)
+				_ = wo.scheduler.RunJob(ctx, dependent)
 			}
 		}
 	}

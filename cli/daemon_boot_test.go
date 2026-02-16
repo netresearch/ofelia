@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,16 +27,12 @@ func newMemoryLogger(level logrus.Level) (*logtest.Hook, core.Logger) {
 func TestBootLogsConfigError(t *testing.T) {
 	// Note: Not parallel - modifies global newDockerHandler
 
-	tmpFile, err := os.CreateTemp("", "ofelia_bad_*.ini")
+	configFile := filepath.Join(t.TempDir(), "config.ini")
+	err := os.WriteFile(configFile, []byte("[global\nno-overlap = true\n"), 0o644)
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-
-	_, err = tmpFile.WriteString("[global\nno-overlap = true\n")
-	require.NoError(t, err)
-	tmpFile.Close()
 
 	backend, logger := newMemoryLogger(logrus.DebugLevel)
-	cmd := &DaemonCommand{ConfigFile: tmpFile.Name(), Logger: logger, LogLevel: "DEBUG"}
+	cmd := &DaemonCommand{ConfigFile: configFile, Logger: logger, LogLevel: "DEBUG"}
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
@@ -57,16 +54,12 @@ func TestBootLogsConfigError(t *testing.T) {
 func TestBootLogsConfigErrorSuppressed(t *testing.T) {
 	// Note: Not parallel - modifies global newDockerHandler
 
-	tmpFile, err := os.CreateTemp("", "ofelia_bad_*.ini")
+	configFile := filepath.Join(t.TempDir(), "config.ini")
+	err := os.WriteFile(configFile, []byte("[global\nno-overlap = true\n"), 0o644)
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-
-	_, err = tmpFile.WriteString("[global\nno-overlap = true\n")
-	require.NoError(t, err)
-	tmpFile.Close()
 
 	backend, logger := newMemoryLogger(logrus.InfoLevel)
-	cmd := &DaemonCommand{ConfigFile: tmpFile.Name(), Logger: logger, LogLevel: "INFO"}
+	cmd := &DaemonCommand{ConfigFile: configFile, Logger: logger, LogLevel: "INFO"}
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
@@ -88,11 +81,7 @@ func TestBootLogsConfigErrorSuppressed(t *testing.T) {
 func TestBootLogsMissingConfig(t *testing.T) {
 	// Note: Not parallel - modifies global newDockerHandler
 
-	tmpFile, err := os.CreateTemp("", "ofelia_missing_*.ini")
-	require.NoError(t, err)
-	path := tmpFile.Name()
-	tmpFile.Close()
-	os.Remove(path)
+	path := filepath.Join(t.TempDir(), "nonexistent.ini")
 
 	backend, logger := newMemoryLogger(logrus.DebugLevel)
 	cmd := &DaemonCommand{ConfigFile: path, Logger: logger, LogLevel: "DEBUG"}
@@ -117,11 +106,7 @@ func TestBootLogsMissingConfig(t *testing.T) {
 func TestBootLogsMissingConfigIncludesFilename(t *testing.T) {
 	// Note: Not parallel - modifies global newDockerHandler
 
-	tmpFile, err := os.CreateTemp("", "ofelia_missing_*.ini")
-	require.NoError(t, err)
-	path := tmpFile.Name()
-	tmpFile.Close()
-	os.Remove(path)
+	path := filepath.Join(t.TempDir(), "nonexistent.ini")
 
 	backend, logger := newMemoryLogger(logrus.DebugLevel)
 	cmd := &DaemonCommand{ConfigFile: path, Logger: logger, LogLevel: "DEBUG"}

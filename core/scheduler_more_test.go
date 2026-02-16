@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestSchedulerDisableEnable(t *testing.T) {
 	sc := NewScheduler(&TestLogger{})
@@ -166,7 +169,7 @@ func TestSchedulerTriggeredJobRunManually(t *testing.T) {
 	defer sc.Stop()
 
 	// Run the job manually - should succeed
-	if err := sc.RunJob("run-me"); err != nil {
+	if err := sc.RunJob(context.Background(), "run-me"); err != nil {
 		t.Errorf("RunJob should succeed for triggered job: %v", err)
 	}
 }

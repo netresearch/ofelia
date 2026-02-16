@@ -679,21 +679,17 @@ func TestBuildFromStringError(t *testing.T) {
 func TestBuildFromFile(t *testing.T) {
 	t.Parallel()
 
-	tmpFile, err := os.CreateTemp("", "ofelia_test_*.ini")
-	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-
+	configFile := filepath.Join(t.TempDir(), "config.ini")
 	content := `
 [ job-run "foo" ]
 schedule = @every 5s
 image = alpine
 command = echo test123
 `
-	_, _ = tmpFile.WriteString(content)
-	err = tmpFile.Close()
+	err := os.WriteFile(configFile, []byte(content), 0o644)
 	require.NoError(t, err)
 
-	conf, err := BuildFromFile(tmpFile.Name(), &TestLogger{})
+	conf, err := BuildFromFile(configFile, &TestLogger{})
 	require.NoError(t, err)
 	assert.Len(t, conf.RunJobs, 1)
 	job, ok := conf.RunJobs["foo"]
@@ -705,12 +701,10 @@ command = echo test123
 func TestBuildFromFileGlob(t *testing.T) {
 	t.Parallel()
 
-	dir, err := os.MkdirTemp("", "ofelia_glob")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	file1 := filepath.Join(dir, "a.ini")
-	err = os.WriteFile(file1, []byte("[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"), 0o644)
+	err := os.WriteFile(file1, []byte("[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo foo\n"), 0o644)
 	require.NoError(t, err)
 
 	file2 := filepath.Join(dir, "b.ini")

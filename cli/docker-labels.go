@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mitchellh/mapstructure"
-
 	"github.com/netresearch/ofelia/core"
 )
 
@@ -28,8 +26,12 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals := c.splitContainersLabelsIntoJobMapsByType(containers)
 
 	if len(globals) > 0 {
-		if err := mapstructure.WeakDecode(globals, &c.Global); err != nil {
+		result, err := decodeWithMetadata(globals, &c.Global)
+		if err != nil {
 			return fmt.Errorf("decode global labels: %w", err)
+		}
+		if c.logger != nil && len(result.UnusedKeys) > 0 {
+			c.logger.Warningf("Unknown global label keys (possible typo): %v", result.UnusedKeys)
 		}
 	}
 
@@ -53,7 +55,7 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 		if len(src) == 0 {
 			return nil
 		}
-		return mapstructure.WeakDecode(src, dst)
+		return weakDecodeConsistent(src, dst)
 	}
 
 	if err := decodeInto(execJobs, &c.ExecJobs); err != nil {

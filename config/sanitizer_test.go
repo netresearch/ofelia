@@ -741,9 +741,9 @@ func TestValidateCronFieldThroughExpression(t *testing.T) {
 			wantError: false,
 		},
 		{
-			name:      "invalid range - start greater than end",
-			expr:      "5-1 * * * *", // start > end
-			wantError: true,
+			name:      "wraparound range - start greater than end",
+			expr:      "5-1 * * * *", // go-cron supports wraparound ranges
+			wantError: false,
 		},
 		{
 			name:      "valid step",

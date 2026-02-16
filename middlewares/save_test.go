@@ -134,10 +134,7 @@ func TestSaveCreatesSaveFolder(t *testing.T) {
 	t.Parallel()
 	ctx, job := setupSaveTestContext(t)
 
-	dir, err := os.MkdirTemp("", "save")
-	require.NoError(t, err)
-	os.RemoveAll(dir)
-	defer os.RemoveAll(dir)
+	dir := filepath.Join(t.TempDir(), "save-subdir")
 
 	ctx.Start()
 	ctx.Stop(nil)

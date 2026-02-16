@@ -16,23 +16,23 @@ import (
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile           string         `long:"config" env:"OFELIA_CONFIG" default:"/etc/ofelia/config.ini"`
-	DockerFilters        []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER"`
-	DockerPollInterval   *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL"`
-	DockerUseEvents      *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS"`
-	DockerNoPoll         *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL"`
-	DockerIncludeStopped *bool          `long:"docker-include-stopped" env:"OFELIA_DOCKER_INCLUDE_STOPPED"`
-	LogLevel             string         `long:"log-level" env:"OFELIA_LOG_LEVEL"`
-	EnablePprof          bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF"`
-	PprofAddr            string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" default:"127.0.0.1:8080"`
-	EnableWeb            bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB"`
-	WebAddr              string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" default:":8081"`
-	WebAuthEnabled       bool           `long:"web-auth-enabled" env:"OFELIA_WEB_AUTH_ENABLED"`
-	WebUsername          string         `long:"web-username" env:"OFELIA_WEB_USERNAME"`
-	WebPasswordHash      string         `long:"web-password-hash" env:"OFELIA_WEB_PASSWORD_HASH"`
-	WebSecretKey         string         `long:"web-secret-key" env:"OFELIA_WEB_SECRET_KEY"`
-	WebTokenExpiry       int            `long:"web-token-expiry" env:"OFELIA_WEB_TOKEN_EXPIRY" default:"24"`
-	WebMaxLoginAttempts  int            `long:"web-max-login-attempts" env:"OFELIA_WEB_MAX_LOGIN_ATTEMPTS" default:"5"`
+	ConfigFile           string         `long:"config" env:"OFELIA_CONFIG" description:"Config file path" default:"/etc/ofelia/config.ini"`
+	DockerFilters        []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER" description:"Docker container filter"`
+	DockerPollInterval   *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL" description:"Docker label poll interval"`
+	DockerUseEvents      *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS" description:"Use Docker events for changes"`
+	DockerNoPoll         *bool          `long:"docker-no-poll" env:"OFELIA_DOCKER_NO_POLL" description:"Disable Docker label polling"`
+	DockerIncludeStopped *bool          `long:"docker-include-stopped" env:"OFELIA_DOCKER_INCLUDE_STOPPED" description:"Include stopped containers when reading Docker labels"` //nolint:revive
+	LogLevel             string         `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Log level (trace,debug,info,warn,error)"`
+	EnablePprof          bool           `long:"enable-pprof" env:"OFELIA_ENABLE_PPROF" description:"Enable pprof server"`
+	PprofAddr            string         `long:"pprof-address" env:"OFELIA_PPROF_ADDRESS" description:"Pprof addr" default:"127.0.0.1:8080"`
+	EnableWeb            bool           `long:"enable-web" env:"OFELIA_ENABLE_WEB" description:"Enable web UI"`
+	WebAddr              string         `long:"web-address" env:"OFELIA_WEB_ADDRESS" description:"Web UI address" default:":8081"`
+	WebAuthEnabled       bool           `long:"web-auth-enabled" env:"OFELIA_WEB_AUTH_ENABLED" description:"Enable web UI auth"`
+	WebUsername          string         `long:"web-username" env:"OFELIA_WEB_USERNAME" description:"Web UI auth username"`
+	WebPasswordHash      string         `long:"web-password-hash" env:"OFELIA_WEB_PASSWORD_HASH" description:"Bcrypt hash" default-mask:"-"`
+	WebSecretKey         string         `long:"web-secret-key" env:"OFELIA_WEB_SECRET_KEY" description:"JWT signing key" default-mask:"-"`
+	WebTokenExpiry       int            `long:"web-token-expiry" env:"OFELIA_WEB_TOKEN_EXPIRY" description:"Token expiry hours" default:"24"` //nolint:revive
+	WebMaxLoginAttempts  int            `long:"web-max-login-attempts" env:"OFELIA_WEB_MAX_LOGIN_ATTEMPTS" description:"Lockout" default:"5"` //nolint:revive
 
 	scheduler       *core.Scheduler
 	pprofServer     *http.Server

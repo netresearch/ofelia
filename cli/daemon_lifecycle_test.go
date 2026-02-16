@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -190,17 +191,13 @@ func TestSuccessfulBootStartShutdown(t *testing.T) {
 }
 
 func TestBootFailureInvalidConfig(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "ofelia_invalid_*.ini")
+	configFile := filepath.Join(t.TempDir(), "config.ini")
+	err := os.WriteFile(configFile, []byte("[global\ninvalid-section-header\nkey = value"), 0o644)
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-
-	_, err = tmpFile.WriteString("[global\ninvalid-section-header\nkey = value")
-	require.NoError(t, err)
-	tmpFile.Close()
 
 	_, logger := newMemoryLogger(logrus.DebugLevel)
 	cmd := &DaemonCommand{
-		ConfigFile: tmpFile.Name(),
+		ConfigFile: configFile,
 		Logger:     logger,
 	}
 

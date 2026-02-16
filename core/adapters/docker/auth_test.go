@@ -102,11 +102,7 @@ func TestConfigAuthProvider_GetEncodedAuth_Empty(t *testing.T) {
 
 func TestConfigAuthProvider_GetAuthConfig_ValidConfig(t *testing.T) {
 	// Create temp dir with mock config.json
-	tmpDir, err := os.MkdirTemp("", "docker-config-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
 
 	// Write mock config.json with basic auth
 	configJSON := `{
@@ -163,11 +159,7 @@ func TestConfigAuthProvider_GetAuthConfig_ValidConfig(t *testing.T) {
 
 func TestConfigAuthProvider_GetEncodedAuth_ValidConfig(t *testing.T) {
 	// Create temp dir with mock config.json
-	tmpDir, err := os.MkdirTemp("", "docker-config-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
 
 	// Write mock config.json
 	configJSON := `{
@@ -212,11 +204,7 @@ func TestConfigAuthProvider_Logging(t *testing.T) {
 	logger := &mockLogger{}
 
 	// Test with valid config dir - should log debug message when credentials found
-	tmpDir, err := os.MkdirTemp("", "docker-config-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
 
 	// Write mock config.json with auth
 	configJSON := `{

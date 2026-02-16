@@ -6,160 +6,133 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
 )
 
-// BenchmarkContainerCreate measures container creation performance (go-dockerclient).
-func BenchmarkContainerCreate(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
+func newBenchClient(b *testing.B) *client.Client {
+	b.Helper()
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		b.Skipf("Docker not available: %v", err)
 	}
+	return cli
+}
+
+func createBenchContainer(b *testing.B, cli *client.Client, name string, cmd []string) string {
+	b.Helper()
+	ctx := context.Background()
+	resp, err := cli.ContainerCreate(ctx, &container.Config{
+		Image: "alpine:latest",
+		Cmd:   cmd,
+	}, nil, nil, nil, name)
+	if err != nil {
+		b.Fatalf("Create failed: %v", err)
+	}
+	return resp.ID
+}
+
+func removeBenchContainer(b *testing.B, cli *client.Client, id string) {
+	b.Helper()
+	_ = cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: true})
+}
+
+// BenchmarkContainerCreate measures container creation performance.
+func BenchmarkContainerCreate(b *testing.B) {
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		name := fmt.Sprintf("bench-create-%d-%d", time.Now().UnixNano(), i)
-		container, err := client.CreateContainer(docker.CreateContainerOptions{
-			Name: name,
-			Config: &docker.Config{
-				Image: "alpine:latest",
-				Cmd:   []string{"true"},
-			},
-		})
+		resp, err := cli.ContainerCreate(ctx, &container.Config{
+			Image: "alpine:latest",
+			Cmd:   []string{"true"},
+		}, nil, nil, nil, name)
 		if err != nil {
 			b.Fatalf("Create failed: %v", err)
 		}
-		// Cleanup
-		_ = client.RemoveContainer(docker.RemoveContainerOptions{
-			ID:    container.ID,
-			Force: true,
-		})
+		removeBenchContainer(b, cli, resp.ID)
 	}
 }
 
-// BenchmarkContainerStartStop measures container start/stop cycle (go-dockerclient).
+// BenchmarkContainerStartStop measures container start/stop cycle.
 func BenchmarkContainerStartStop(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
-	// Pre-create container
 	name := fmt.Sprintf("bench-startstop-%d", time.Now().UnixNano())
-	container, err := client.CreateContainer(docker.CreateContainerOptions{
-		Name: name,
-		Config: &docker.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"sleep", "300"},
-		},
-	})
-	if err != nil {
-		b.Fatalf("Create failed: %v", err)
-	}
-	defer client.RemoveContainer(docker.RemoveContainerOptions{
-		ID:    container.ID,
-		Force: true,
-	})
+	id := createBenchContainer(b, cli, name, []string{"sleep", "300"})
+	defer removeBenchContainer(b, cli, id)
+
+	timeout := 5
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := client.StartContainer(container.ID, nil); err != nil {
+		if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
 			b.Fatalf("Start failed: %v", err)
 		}
-		if err := client.StopContainer(container.ID, 5); err != nil {
+		if err := cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout}); err != nil {
 			b.Fatalf("Stop failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkContainerInspect measures container inspection performance (go-dockerclient).
+// BenchmarkContainerInspect measures container inspection performance.
 func BenchmarkContainerInspect(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
-	// Pre-create container
 	name := fmt.Sprintf("bench-inspect-%d", time.Now().UnixNano())
-	container, err := client.CreateContainer(docker.CreateContainerOptions{
-		Name: name,
-		Config: &docker.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"true"},
-		},
-	})
-	if err != nil {
-		b.Fatalf("Create failed: %v", err)
-	}
-	defer client.RemoveContainer(docker.RemoveContainerOptions{
-		ID:    container.ID,
-		Force: true,
-	})
+	id := createBenchContainer(b, cli, name, []string{"true"})
+	defer removeBenchContainer(b, cli, id)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := client.InspectContainer(container.ID)
-		if err != nil {
+		if _, err := cli.ContainerInspect(ctx, id); err != nil {
 			b.Fatalf("Inspect failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkContainerList measures container listing performance (go-dockerclient).
+// BenchmarkContainerList measures container listing performance.
 func BenchmarkContainerList(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := client.ListContainers(docker.ListContainersOptions{All: true})
-		if err != nil {
+		if _, err := cli.ContainerList(ctx, container.ListOptions{All: true}); err != nil {
 			b.Fatalf("List failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkExecRun measures exec run performance (go-dockerclient).
+// BenchmarkExecRun measures exec run performance.
 func BenchmarkExecRun(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
-	// Pre-create and start container
 	name := fmt.Sprintf("bench-exec-%d", time.Now().UnixNano())
-	container, err := client.CreateContainer(docker.CreateContainerOptions{
-		Name: name,
-		Config: &docker.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"sleep", "300"},
-		},
-	})
-	if err != nil {
-		b.Fatalf("Create failed: %v", err)
-	}
-	defer client.RemoveContainer(docker.RemoveContainerOptions{
-		ID:    container.ID,
-		Force: true,
-	})
+	id := createBenchContainer(b, cli, name, []string{"sleep", "300"})
+	defer removeBenchContainer(b, cli, id)
 
-	if err := client.StartContainer(container.ID, nil); err != nil {
+	if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
 		b.Fatalf("Start failed: %v", err)
 	}
-	defer client.StopContainer(container.ID, 5)
+	timeout := 5
+	defer func() { _ = cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout}) }()
 
-	// Wait for container to be ready
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		exec, err := client.CreateExec(docker.CreateExecOptions{
-			Container:    container.ID,
+		execResp, err := cli.ContainerExecCreate(ctx, id, container.ExecOptions{
 			Cmd:          []string{"echo", "benchmark"},
 			AttachStdout: true,
 			AttachStderr: true,
@@ -168,54 +141,36 @@ func BenchmarkExecRun(b *testing.B) {
 			b.Fatalf("CreateExec failed: %v", err)
 		}
 
-		var stdout, stderr bytes.Buffer
-		err = client.StartExec(exec.ID, docker.StartExecOptions{
-			OutputStream: &stdout,
-			ErrorStream:  &stderr,
-		})
+		attach, err := cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{})
 		if err != nil {
-			b.Fatalf("StartExec failed: %v", err)
+			b.Fatalf("AttachExec failed: %v", err)
 		}
+		_, _ = io.Copy(&bytes.Buffer{}, attach.Reader)
+		attach.Close()
 	}
 }
 
-// BenchmarkExecRunParallel measures parallel exec performance (go-dockerclient).
+// BenchmarkExecRunParallel measures parallel exec performance.
 func BenchmarkExecRunParallel(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
-	// Pre-create and start container
 	name := fmt.Sprintf("bench-exec-parallel-%d", time.Now().UnixNano())
-	container, err := client.CreateContainer(docker.CreateContainerOptions{
-		Name: name,
-		Config: &docker.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"sleep", "300"},
-		},
-	})
-	if err != nil {
-		b.Fatalf("Create failed: %v", err)
-	}
-	defer client.RemoveContainer(docker.RemoveContainerOptions{
-		ID:    container.ID,
-		Force: true,
-	})
+	id := createBenchContainer(b, cli, name, []string{"sleep", "300"})
+	defer removeBenchContainer(b, cli, id)
 
-	if err := client.StartContainer(container.ID, nil); err != nil {
+	if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
 		b.Fatalf("Start failed: %v", err)
 	}
-	defer client.StopContainer(container.ID, 5)
+	timeout := 5
+	defer func() { _ = cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout}) }()
 
-	// Wait for container to be ready
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			exec, err := client.CreateExec(docker.CreateExecOptions{
-				Container:    container.ID,
+			execResp, err := cli.ContainerExecCreate(ctx, id, container.ExecOptions{
 				Cmd:          []string{"echo", "benchmark"},
 				AttachStdout: true,
 				AttachStderr: true,
@@ -225,166 +180,130 @@ func BenchmarkExecRunParallel(b *testing.B) {
 				return
 			}
 
-			var stdout, stderr bytes.Buffer
-			err = client.StartExec(exec.ID, docker.StartExecOptions{
-				OutputStream: &stdout,
-				ErrorStream:  &stderr,
-			})
+			attach, err := cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{})
 			if err != nil {
-				b.Errorf("StartExec failed: %v", err)
+				b.Errorf("AttachExec failed: %v", err)
 				return
 			}
+			_, _ = io.Copy(&bytes.Buffer{}, attach.Reader)
+			attach.Close()
 		}
 	})
 }
 
-// BenchmarkImageExists measures image existence check performance (go-dockerclient).
+// BenchmarkImageExists measures image existence check performance.
 func BenchmarkImageExists(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := client.InspectImage("alpine:latest")
-		if err != nil && err != docker.ErrNoSuchImage {
+		_, _, err := cli.ImageInspectWithRaw(ctx, "alpine:latest")
+		if err != nil {
 			b.Fatalf("InspectImage failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkImageList measures image listing performance (go-dockerclient).
+// BenchmarkImageList measures image listing performance.
 func BenchmarkImageList(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := client.ListImages(docker.ListImagesOptions{All: true})
-		if err != nil {
+		if _, err := cli.ImageList(ctx, image.ListOptions{All: true}); err != nil {
 			b.Fatalf("ListImages failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkSystemPing measures Docker ping performance (go-dockerclient).
+// BenchmarkSystemPing measures Docker ping performance.
 func BenchmarkSystemPing(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := client.Ping(); err != nil {
+		if _, err := cli.Ping(ctx); err != nil {
 			b.Fatalf("Ping failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkSystemInfo measures Docker info retrieval performance (go-dockerclient).
+// BenchmarkSystemInfo measures Docker info retrieval performance.
 func BenchmarkSystemInfo(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := client.Info()
-		if err != nil {
+		if _, err := cli.Info(ctx); err != nil {
 			b.Fatalf("Info failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkContainerFullLifecycle measures complete container lifecycle (go-dockerclient).
+// BenchmarkContainerFullLifecycle measures complete container lifecycle.
 func BenchmarkContainerFullLifecycle(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
-
+	cli := newBenchClient(b)
 	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		name := fmt.Sprintf("bench-lifecycle-%d-%d", time.Now().UnixNano(), i)
 
-		// Create
-		container, err := client.CreateContainer(docker.CreateContainerOptions{
-			Name: name,
-			Config: &docker.Config{
-				Image: "alpine:latest",
-				Cmd:   []string{"echo", "done"},
-			},
-		})
+		resp, err := cli.ContainerCreate(ctx, &container.Config{
+			Image: "alpine:latest",
+			Cmd:   []string{"echo", "done"},
+		}, nil, nil, nil, name)
 		if err != nil {
 			b.Fatalf("Create failed: %v", err)
 		}
 
-		// Start
-		if err := client.StartContainer(container.ID, nil); err != nil {
+		if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 			b.Fatalf("Start failed: %v", err)
 		}
 
-		// Wait
-		_, _ = client.WaitContainerWithContext(container.ID, ctx)
+		statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+		select {
+		case <-statusCh:
+		case err := <-errCh:
+			if err != nil {
+				b.Fatalf("Wait failed: %v", err)
+			}
+		}
 
-		// Remove
-		if err := client.RemoveContainer(docker.RemoveContainerOptions{
-			ID:    container.ID,
-			Force: true,
-		}); err != nil {
+		if err := cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true}); err != nil {
 			b.Fatalf("Remove failed: %v", err)
 		}
 	}
 }
 
-// BenchmarkExecJobSimulation simulates a typical ExecJob workload (go-dockerclient).
+// BenchmarkExecJobSimulation simulates a typical ExecJob workload.
 func BenchmarkExecJobSimulation(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
+	cli := newBenchClient(b)
+	ctx := context.Background()
 
-	// Pre-create and start container (simulating target container)
 	name := fmt.Sprintf("bench-execjob-%d", time.Now().UnixNano())
-	container, err := client.CreateContainer(docker.CreateContainerOptions{
-		Name: name,
-		Config: &docker.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"sleep", "300"},
-		},
-	})
-	if err != nil {
-		b.Fatalf("Create failed: %v", err)
-	}
-	defer client.RemoveContainer(docker.RemoveContainerOptions{
-		ID:    container.ID,
-		Force: true,
-	})
+	id := createBenchContainer(b, cli, name, []string{"sleep", "300"})
+	defer removeBenchContainer(b, cli, id)
 
-	if err := client.StartContainer(container.ID, nil); err != nil {
+	if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
 		b.Fatalf("Start failed: %v", err)
 	}
-	defer client.StopContainer(container.ID, 5)
+	timeout := 5
+	defer func() { _ = cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout}) }()
 
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// Simulate ExecJob: inspect + exec + capture output
-		_, err := client.InspectContainer(container.ID)
-		if err != nil {
+		if _, err := cli.ContainerInspect(ctx, id); err != nil {
 			b.Fatalf("Inspect failed: %v", err)
 		}
 
-		exec, err := client.CreateExec(docker.CreateExecOptions{
-			Container:    container.ID,
+		execResp, err := cli.ContainerExecCreate(ctx, id, container.ExecOptions{
 			Cmd:          []string{"sh", "-c", "echo 'job output'; echo 'error' >&2"},
 			AttachStdout: true,
 			AttachStderr: true,
@@ -393,66 +312,52 @@ func BenchmarkExecJobSimulation(b *testing.B) {
 			b.Fatalf("CreateExec failed: %v", err)
 		}
 
-		var stdout, stderr bytes.Buffer
-		err = client.StartExec(exec.ID, docker.StartExecOptions{
-			OutputStream: &stdout,
-			ErrorStream:  &stderr,
-		})
+		attach, err := cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{})
 		if err != nil {
-			b.Fatalf("StartExec failed: %v", err)
+			b.Fatalf("AttachExec failed: %v", err)
 		}
+		_, _ = io.Copy(&bytes.Buffer{}, attach.Reader)
+		attach.Close()
 	}
 }
 
-// BenchmarkRunJobSimulation simulates a typical RunJob workload (go-dockerclient).
+// BenchmarkRunJobSimulation simulates a typical RunJob workload.
 func BenchmarkRunJobSimulation(b *testing.B) {
-	client, err := docker.NewClientFromEnv()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
-
+	cli := newBenchClient(b)
 	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// Simulate RunJob: check image + create + start + wait + remove
 		name := fmt.Sprintf("bench-runjob-%d-%d", time.Now().UnixNano(), i)
 
-		// Check image exists
-		_, err := client.InspectImage("alpine:latest")
-		if err != nil && err != docker.ErrNoSuchImage {
+		_, _, err := cli.ImageInspectWithRaw(ctx, "alpine:latest")
+		if err != nil {
 			b.Fatalf("Image check failed: %v", err)
 		}
 
-		// Create container
-		container, err := client.CreateContainer(docker.CreateContainerOptions{
-			Name: name,
-			Config: &docker.Config{
-				Image: "alpine:latest",
-				Cmd:   []string{"sh", "-c", "echo 'job output'"},
-			},
-		})
+		resp, err := cli.ContainerCreate(ctx, &container.Config{
+			Image: "alpine:latest",
+			Cmd:   []string{"sh", "-c", "echo 'job output'"},
+		}, nil, nil, nil, name)
 		if err != nil {
 			b.Fatalf("Create failed: %v", err)
 		}
 
-		// Start
-		if err := client.StartContainer(container.ID, nil); err != nil {
-			client.RemoveContainer(docker.RemoveContainerOptions{
-				ID:    container.ID,
-				Force: true,
-			})
+		if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+			_ = cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
 			b.Fatalf("Start failed: %v", err)
 		}
 
-		// Wait
-		_, _ = client.WaitContainerWithContext(container.ID, ctx)
+		statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+		select {
+		case <-statusCh:
+		case err := <-errCh:
+			if err != nil {
+				b.Fatalf("Wait failed: %v", err)
+			}
+		}
 
-		// Remove
-		if err := client.RemoveContainer(docker.RemoveContainerOptions{
-			ID:    container.ID,
-			Force: true,
-		}); err != nil {
+		if err := cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true}); err != nil {
 			b.Fatalf("Remove failed: %v", err)
 		}
 	}

@@ -15,15 +15,12 @@ type SystemInfo struct {
 	SystemStatus       [][2]string
 	MemoryLimit        bool
 	SwapLimit          bool
-	KernelMemory       bool
 	CPUCfsPeriod       bool
 	CPUCfsQuota        bool
 	CPUShares          bool
 	CPUSet             bool
 	PidsLimit          bool
 	IPv4Forwarding     bool
-	BridgeNfIptables   bool
-	BridgeNfIP6tables  bool
 	Debug              bool
 	NFd                int
 	OomKillDisable     bool

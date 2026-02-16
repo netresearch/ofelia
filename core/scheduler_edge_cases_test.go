@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -113,15 +114,15 @@ func TestSchedulerErrorHandling(t *testing.T) {
 	defer scheduler.Stop()
 
 	// Run jobs and verify scheduler remains stable
-	if err := scheduler.RunJob("panic-job"); err != nil {
+	if err := scheduler.RunJob(context.Background(), "panic-job"); err != nil {
 		t.Logf("RunJob for panic job returned error (expected): %v", err)
 	}
 
-	if err := scheduler.RunJob("error-job"); err != nil {
+	if err := scheduler.RunJob(context.Background(), "error-job"); err != nil {
 		t.Logf("RunJob for error job returned error: %v", err)
 	}
 
-	if err := scheduler.RunJob("normal-job"); err != nil {
+	if err := scheduler.RunJob(context.Background(), "normal-job"); err != nil {
 		t.Errorf("RunJob for normal job should not error: %v", err)
 	}
 
@@ -148,7 +149,7 @@ func TestSchedulerInvalidJobOperations(t *testing.T) {
 		t.Error("EnableJob should fail for non-existent job")
 	}
 
-	if err := scheduler.RunJob("non-existent"); err == nil {
+	if err := scheduler.RunJob(context.Background(), "non-existent"); err == nil {
 		t.Error("RunJob should fail for non-existent job")
 	}
 
@@ -213,7 +214,7 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 					scheduler.GetJob(jobName)
 
 				case 1: // Run job
-					scheduler.RunJob(jobName)
+					scheduler.RunJob(context.Background(), jobName)
 
 				case 2: // Disable job
 					scheduler.DisableJob(jobName)
@@ -263,9 +264,9 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 		t.Fatalf("Failed to start scheduler: %v", err)
 	}
 
-	go scheduler.RunJob("long-job-1")
-	go scheduler.RunJob("long-job-2")
-	go scheduler.RunJob("long-job-3")
+	go scheduler.RunJob(context.Background(), "long-job-1")
+	go scheduler.RunJob(context.Background(), "long-job-2")
+	go scheduler.RunJob(context.Background(), "long-job-3")
 
 	testutil.Eventually(t, func() bool {
 		return longJob1.GetRunCount() > 0 && longJob2.GetRunCount() > 0 && longJob3.GetRunCount() > 0
@@ -321,7 +322,7 @@ func TestSchedulerMaxConcurrentJobsEdgeCases(t *testing.T) {
 	defer scheduler.Stop()
 
 	for i := range numJobs {
-		go scheduler.RunJob(fmt.Sprintf("limit-job-%d", i))
+		go scheduler.RunJob(context.Background(), fmt.Sprintf("limit-job-%d", i))
 	}
 
 	testutil.Eventually(t, func() bool {

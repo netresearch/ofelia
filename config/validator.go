@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/netresearch/go-cron"
 )
 
 // ValidationError represents a configuration validation error
@@ -123,50 +125,22 @@ func (v *Validator) ValidateEmail(field string, value string) {
 	}
 }
 
-// ValidateCronExpression validates a cron expression
+// ValidateCronExpression validates a cron expression using go-cron's parser.
+// This handles all formats: descriptors (@daily), @every intervals, standard
+// cron expressions with optional seconds, month/day names, and wraparound ranges.
 func (v *Validator) ValidateCronExpression(field string, value string) {
 	if value == "" {
 		return
 	}
 
-	// Basic cron validation (5 or 6 fields)
-	// This is a simplified check - a full parser would be more thorough
-	parts := strings.Fields(value)
-
-	// Allow special expressions
-	if strings.HasPrefix(value, "@") {
-		validSpecial := []string{
-			"@yearly", "@annually", "@monthly", "@weekly",
-			"@daily", "@midnight", "@hourly", "@every",
-			"@triggered", "@manual", "@none", // triggered-only jobs
-		}
-
-		isValid := false
-		for _, special := range validSpecial {
-			if value == special || strings.HasPrefix(value, special+" ") {
-				isValid = true
-				break
-			}
-		}
-
-		if !isValid {
-			v.AddError(field, value, "invalid special cron expression")
-		}
+	// Allow ofelia's triggered-only schedule keywords
+	if value == "@triggered" || value == "@manual" || value == "@none" {
 		return
 	}
 
-	if len(parts) < 5 || len(parts) > 6 {
-		v.AddError(field, value, "must have 5 or 6 fields")
-		return
-	}
-
-	// Validate each field has valid characters
-	cronRegex := regexp.MustCompile(`^[\d\*\-,/]+$`)
-	for _, part := range parts {
-		if !cronRegex.MatchString(part) && part != "?" {
-			v.AddError(field, value, "contains invalid characters")
-			return
-		}
+	parseOpts := cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor
+	if err := cron.ValidateSpec(value, parseOpts); err != nil {
+		v.AddError(field, value, fmt.Sprintf("invalid cron expression: %v", err))
 	}
 }
 
@@ -238,9 +212,8 @@ func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
 	}
 
 	typ := val.Type()
-	for i := range val.NumField() {
-		field := val.Field(i)
-		fieldType := typ.Field(i)
+	for fieldType := range typ.Fields() {
+		field := val.FieldByIndex(fieldType.Index)
 		fieldName := fieldType.Name
 
 		// Build field path for nested structs
@@ -250,7 +223,7 @@ func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
 		}
 
 		// Skip unexported fields
-		if !field.CanInterface() {
+		if !fieldType.IsExported() {
 			continue
 		}
 
