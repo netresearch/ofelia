@@ -658,7 +658,9 @@ func TestLabelsConfig(t *testing.T) {
 			setJobSource(&tc.ExpectedConfig, JobSourceLabel)
 
 			conf.logger = nil
+			conf.WebhookConfigs = nil
 			tc.ExpectedConfig.logger = nil
+			tc.ExpectedConfig.WebhookConfigs = nil
 			tc.ExpectedConfig.Global.AllowHostJobsFromLabels = true
 
 			assert.Equal(t, tc.ExpectedConfig, conf, "Test %q failed", tc.Comment)

@@ -22,7 +22,7 @@ const (
 )
 
 func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) error {
-	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals := c.splitContainersLabelsIntoJobMapsByType(containers)
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals, webhookLabels := c.splitContainersLabelsIntoJobMapsByType(containers)
 
 	if len(globals) > 0 {
 		result, err := decodeWithMetadata(globals, &c.Global)
@@ -32,7 +32,13 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 		if c.logger != nil && len(result.UnusedKeys) > 0 {
 			c.logger.Warn(fmt.Sprintf("Unknown global label keys (possible typo): %v", result.UnusedKeys))
 		}
+
+		// Apply global webhook labels (e.g., ofelia.webhooks=discord)
+		applyGlobalWebhookLabels(c, globals)
 	}
+
+	// Build webhook configs from labels (e.g., ofelia.webhook.slack-alerts.preset=slack)
+	buildWebhookConfigsFromLabels(c, webhookLabels)
 
 	// Security check: filter out host-based jobs from container labels unless explicitly allowed
 	if !c.Global.AllowHostJobsFromLabels {
@@ -197,6 +203,7 @@ func sortContainers(containers []DockerContainerInfo) []DockerContainerInfo {
 func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerContainerInfo) (
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]any,
 	globalConfigs map[string]any,
+	webhookConfigs map[string]map[string]string,
 ) {
 	execJobs = make(map[string]map[string]any)
 	localJobs = make(map[string]map[string]any)
@@ -204,6 +211,7 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 	serviceJobs = make(map[string]map[string]any)
 	composeJobs = make(map[string]map[string]any)
 	globalConfigs = make(map[string]any)
+	webhookConfigs = make(map[string]map[string]string)
 
 	sortedContainers := sortContainers(containers)
 
@@ -228,6 +236,19 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 				continue
 			}
 			jobType, jobName, jobParam := parts[1], parts[2], parts[3]
+
+			// Intercept webhook labels (e.g., ofelia.webhook.slack-alerts.preset=slack)
+			// Webhook labels are only processed from service containers.
+			if jobType == "webhook" {
+				if isService {
+					if _, ok := webhookConfigs[jobName]; !ok {
+						webhookConfigs[jobName] = make(map[string]string)
+					}
+					webhookConfigs[jobName][jobParam] = jobParamValue
+				}
+				continue
+			}
+
 			scopedName := jobName
 			if jobType == jobExec {
 				// Use Docker Compose service name if available, fallback to container name
