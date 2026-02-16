@@ -120,6 +120,12 @@ services:
       # Global settings via labels (on Ofelia container with ofelia.service=true)
       ofelia.slack-webhook: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
       ofelia.slack-only-on-error: "true"
+      # Webhook notifications (recommended over deprecated slack-webhook)
+      ofelia.webhook.slack.preset: "slack"
+      ofelia.webhook.slack.id: "T00000000/B00000000000"
+      ofelia.webhook.slack.secret: "XXXXXXXXXXXXXXXXXXXXXXXX"
+      ofelia.webhook.slack.trigger: "error"
+      ofelia.webhooks: "slack"
       # job-run can be defined on Ofelia container
       ofelia.job-run.cleanup.schedule: "@daily"
       ofelia.job-run.cleanup.image: "alpine:latest"
@@ -145,6 +151,7 @@ services:
 | Global notifications | Labels on Ofelia container | Requires `ofelia.service=true` |
 | job-exec | Labels on target container | Container auto-detected |
 | job-run, job-local, job-service-run | Labels on Ofelia container | Requires `ofelia.service=true` |
+| Webhook definitions | Labels on Ofelia container | Requires `ofelia.service=true` |
 
 **Available Environment Variables**:
 
@@ -420,6 +427,38 @@ labels:
   ofelia.job-exec.backup.user: "root"
 ```
 
+### Webhook Labels
+
+Define named webhooks using Docker labels on the **service container** (`ofelia.service: "true"`):
+
+```yaml
+labels:
+  ofelia.enabled: "true"
+  ofelia.service: "true"
+
+  # Define a webhook: ofelia.webhook.NAME.PROPERTY
+  ofelia.webhook.slack-alerts.preset: slack
+  ofelia.webhook.slack-alerts.id: "T00000000/B00000000000"
+  ofelia.webhook.slack-alerts.secret: "XXXXXXXXXXXXXXXXXXXXXXXX"
+  ofelia.webhook.slack-alerts.trigger: error
+
+  # Global webhook settings
+  ofelia.webhooks: "slack-alerts"
+  ofelia.webhook-allowed-hosts: "hooks.slack.com"
+```
+
+Assign webhooks to jobs on any container:
+
+```yaml
+labels:
+  ofelia.enabled: "true"
+  ofelia.job-exec.backup.schedule: "@daily"
+  ofelia.job-exec.backup.command: "pg_dump mydb"
+  ofelia.job-exec.backup.webhooks: "slack-alerts"
+```
+
+> See [Webhook Documentation](./webhooks.md) for all parameters and presets.
+
 ### Complete Example
 
 ```yaml
@@ -462,7 +501,7 @@ services:
 
 ### Global Settings in Docker Compose
 
-Docker labels configure **jobs only**, not global settings like logging or output storage. For global configuration in Docker Compose, use environment variables on the Ofelia container:
+Docker labels configure **jobs and webhooks**, but not global settings like logging or output storage. For global configuration in Docker Compose, use environment variables on the Ofelia container:
 
 ```yaml
 version: '3.8'
@@ -506,6 +545,8 @@ services:
 | Save only on error | ❌ No | ❌ No | ✅ `save-only-on-error` |
 | Docker host | ❌ No | ❌ No | ✅ `docker-host` |
 | Web UI | ❌ No | ✅ `OFELIA_ENABLE_WEB` | ✅ `enable-web` |
+| Webhook definitions | ✅ `ofelia.webhook.NAME.*` | ❌ No | ✅ `[webhook "NAME"]` |
+| Webhook assignment | ✅ `ofelia.job-*.NAME.webhooks` | ❌ No | ✅ `webhooks` in job section |
 
 **Note**: For output capture (`save-folder`, `save-only-on-error`), use an INI configuration file. These settings require file system paths and are not available via environment variables or labels.
 
