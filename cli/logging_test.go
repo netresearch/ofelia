@@ -1,88 +1,47 @@
 package cli
 
 import (
+	"log/slog"
 	"testing"
 
-	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestApplyLogLevel(t *testing.T) {
 	tests := []struct {
-		name      string
-		level     string
-		expectErr bool
-		expected  logrus.Level
+		name     string
+		input    string
+		expected slog.Level
+		wantErr  bool
 	}{
-		{
-			name:      "valid debug level",
-			level:     "debug",
-			expectErr: false,
-			expected:  logrus.DebugLevel,
-		},
-		{
-			name:      "valid info level",
-			level:     "info",
-			expectErr: false,
-			expected:  logrus.InfoLevel,
-		},
-		{
-			name:      "valid warning level",
-			level:     "warning",
-			expectErr: false,
-			expected:  logrus.WarnLevel,
-		},
-		{
-			name:      "valid error level",
-			level:     "error",
-			expectErr: false,
-			expected:  logrus.ErrorLevel,
-		},
-		{
-			name:      "empty level",
-			level:     "",
-			expectErr: false,
-			expected:  logrus.InfoLevel, // Should not change current level
-		},
-		{
-			name:      "invalid level",
-			level:     "invalid",
-			expectErr: true,
-			expected:  logrus.InfoLevel, // Should not change current level
-		},
-		{
-			name:      "typo in debug",
-			level:     "degub",
-			expectErr: true,
-			expected:  logrus.InfoLevel,
-		},
-		{
-			name:      "case insensitive",
-			level:     "DEBUG",
-			expectErr: false,
-			expected:  logrus.DebugLevel,
-		},
+		{name: "debug", input: "debug", expected: slog.LevelDebug},
+		{name: "info", input: "info", expected: slog.LevelInfo},
+		{name: "warn", input: "warn", expected: slog.LevelWarn},
+		{name: "warning", input: "warning", expected: slog.LevelWarn},
+		{name: "error", input: "error", expected: slog.LevelError},
+		{name: "empty is noop", input: "", expected: slog.LevelInfo},
+		{name: "invalid", input: "bogus", wantErr: true},
+		{name: "notice maps to info", input: "notice", expected: slog.LevelInfo},
+		{name: "trace maps to debug", input: "trace", expected: slog.LevelDebug},
+		{name: "fatal maps to error", input: "fatal", expected: slog.LevelError},
+		{name: "panic maps to error", input: "panic", expected: slog.LevelError},
+		{name: "critical maps to error", input: "critical", expected: slog.LevelError},
+		{name: "case insensitive DEBUG", input: "DEBUG", expected: slog.LevelDebug},
+		{name: "typo in debug", input: "degub", wantErr: true},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Reset to info level before each test
-			logrus.SetLevel(logrus.InfoLevel)
-
-			err := ApplyLogLevel(tt.level)
-
-			if tt.expectErr && err == nil {
-				t.Errorf("Expected error for level %q, but got none", tt.level)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			lv := &slog.LevelVar{}
+			lv.Set(slog.LevelInfo)
+			err := ApplyLogLevel(tc.input, lv)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
 			}
-
-			if !tt.expectErr && err != nil {
-				t.Errorf("Unexpected error for level %q: %v", tt.level, err)
-			}
-
-			if !tt.expectErr {
-				currentLevel := logrus.GetLevel()
-				if currentLevel != tt.expected {
-					t.Errorf("Expected level %v, got %v", tt.expected, currentLevel)
-				}
+			require.NoError(t, err)
+			if tc.input != "" {
+				assert.Equal(t, tc.expected, lv.Level())
 			}
 		})
 	}

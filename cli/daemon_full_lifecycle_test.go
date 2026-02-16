@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,7 +17,7 @@ func TestDaemonCommand_Execute_WithStartError(t *testing.T) {
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		mockProvider := &mockDockerProviderForHandler{}
 		return orig(ctx, notifier, logger, cfg, mockProvider)
 	}
@@ -123,7 +124,7 @@ log-level = info
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		mockProvider := &mockDockerProviderForHandler{}
 		return orig(ctx, notifier, logger, cfg, mockProvider)
 	}
@@ -169,7 +170,7 @@ web-address = :8888
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		mockProvider := &mockDockerProviderForHandler{}
 		return orig(ctx, notifier, logger, cfg, mockProvider)
 	}

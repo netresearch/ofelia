@@ -362,7 +362,7 @@ func (cv *Validator2) validateAddressField(v *Validator, path string, str string
 // validateLogLevelField validates log level fields
 func (cv *Validator2) validateLogLevelField(v *Validator, path string, str string) {
 	if !cv.isValidLogLevel(str) {
-		v.AddError(path, str, "invalid log level (use: debug, info, warning, error, critical)")
+		v.AddError(path, str, "invalid log level (use: debug, info, warn, error)")
 	}
 }
 
@@ -457,7 +457,7 @@ func (cv *Validator2) isValidAddress(addr string) bool {
 
 // isValidLogLevel checks if a log level is valid
 func (cv *Validator2) isValidLogLevel(level string) bool {
-	validLevels := []string{"debug", "info", "notice", "warning", "error", "critical"}
+	validLevels := []string{"debug", "trace", "info", "notice", "warn", "warning", "error", "fatal", "panic", "critical"}
 	level = strings.ToLower(level)
 	return slices.Contains(validLevels, level)
 }

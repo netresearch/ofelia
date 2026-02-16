@@ -5,10 +5,9 @@ package core
 import (
 	"context"
 	"io"
+	"log/slog"
 	"strings"
 	"testing"
-
-	"github.com/sirupsen/logrus"
 
 	"github.com/netresearch/ofelia/core/adapters/mock"
 	"github.com/netresearch/ofelia/core/domain"
@@ -89,12 +88,9 @@ func TestExecJob_WorkingDir_Integration(t *testing.T) {
 				t.Fatalf("Failed to create execution: %v", err)
 			}
 
-			logger := logrus.New()
-			logger.SetLevel(logrus.WarnLevel)
-
 			ctx := &Context{
 				Execution: execution,
-				Logger:    &LogrusAdapter{Logger: logger},
+				Logger:    slog.New(slog.DiscardHandler),
 			}
 
 			// Run the job
@@ -163,12 +159,9 @@ func TestExecJob_WorkingDir_WithCommands_Integration(t *testing.T) {
 			t.Fatalf("Failed to create execution: %v", err)
 		}
 
-		logger := logrus.New()
-		logger.SetLevel(logrus.WarnLevel)
-
 		err = job1.Run(&Context{
 			Execution: exec1,
-			Logger:    &LogrusAdapter{Logger: logger},
+			Logger:    slog.New(slog.DiscardHandler),
 		})
 		if err != nil {
 			t.Fatalf("Failed to create file: %v", err)
@@ -192,7 +185,7 @@ func TestExecJob_WorkingDir_WithCommands_Integration(t *testing.T) {
 
 		err = job2.Run(&Context{
 			Execution: exec2,
-			Logger:    &LogrusAdapter{Logger: logger},
+			Logger:    slog.New(slog.DiscardHandler),
 		})
 		if err != nil {
 			t.Fatalf("File not found in working directory: %v", err)

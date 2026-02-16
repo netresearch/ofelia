@@ -13,13 +13,11 @@ import (
 	"github.com/netresearch/ofelia/core"
 )
 
-// TestLogger is defined in common_test.go
-
 func TestRestoreHistory_EmptyFolder(t *testing.T) {
 	dir := t.TempDir()
 	job := &core.BareJob{Name: "test-job", HistoryLimit: 10}
 
-	err := RestoreHistory(dir, 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err := RestoreHistory(dir, 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	require.NoError(t, err)
 	assert.Empty(t, job.GetHistory())
 }
@@ -27,14 +25,14 @@ func TestRestoreHistory_EmptyFolder(t *testing.T) {
 func TestRestoreHistory_NoFolder(t *testing.T) {
 	job := &core.BareJob{Name: "test-job", HistoryLimit: 10}
 
-	err := RestoreHistory("", 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err := RestoreHistory("", 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	assert.NoError(t, err)
 }
 
 func TestRestoreHistory_NonExistentFolder(t *testing.T) {
 	job := &core.BareJob{Name: "test-job", HistoryLimit: 10}
 
-	err := RestoreHistory("/nonexistent/folder/path", 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err := RestoreHistory("/nonexistent/folder/path", 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	assert.NoError(t, err)
 }
 
@@ -64,7 +62,7 @@ func TestRestoreHistory_SingleExecution(t *testing.T) {
 	err = os.WriteFile(filename, jsonData, 0o600)
 	require.NoError(t, err)
 
-	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	require.NoError(t, err)
 
 	history := job.GetHistory()
@@ -102,7 +100,7 @@ func TestRestoreHistory_MultipleExecutions(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	err := RestoreHistory(dir, 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err := RestoreHistory(dir, 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	require.NoError(t, err)
 
 	history := job.GetHistory()
@@ -158,7 +156,7 @@ func TestRestoreHistory_RespectsMaxAge(t *testing.T) {
 	require.NoError(t, err)
 
 	// Restore with 24h max age - should only get recent execution
-	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	require.NoError(t, err)
 
 	history := job.GetHistory()
@@ -190,7 +188,7 @@ func TestRestoreHistory_SkipsUnknownJobs(t *testing.T) {
 	err := os.WriteFile(filename, jsonData, 0o600)
 	require.NoError(t, err)
 
-	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	require.NoError(t, err)
 	assert.Empty(t, job.GetHistory())
 }
@@ -204,7 +202,7 @@ func TestRestoreHistory_SkipsInvalidJSON(t *testing.T) {
 	err := os.WriteFile(filename, []byte("not valid json"), 0o600)
 	require.NoError(t, err)
 
-	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	require.NoError(t, err)
 	assert.Empty(t, job.GetHistory())
 }
@@ -235,7 +233,7 @@ func TestRestoreHistory_RespectsHistoryLimit(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	err := RestoreHistory(dir, 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err := RestoreHistory(dir, 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	require.NoError(t, err)
 
 	history := job.GetHistory()
@@ -268,7 +266,7 @@ func TestRestoreHistory_NeverRestoresAsRunning(t *testing.T) {
 	err := os.WriteFile(filename, jsonData, 0o600)
 	require.NoError(t, err)
 
-	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, &TestLogger{})
+	err = RestoreHistory(dir, 24*time.Hour, []core.Job{job}, newDiscardLogger())
 	require.NoError(t, err)
 
 	history := job.GetHistory()

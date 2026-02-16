@@ -22,7 +22,7 @@
 - Test with race detection: `go test -race ./web/...`
 
 ## Code style & conventions
-- Use `core.Logger` for all logging, never direct `log` package
+- Use `*slog.Logger` from stdlib `log/slog` for all logging
 - HTTP handlers follow standard `http.HandlerFunc` pattern
 - Middleware chaining for authentication and logging
 - JSON responses use proper HTTP status codes

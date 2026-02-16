@@ -105,7 +105,7 @@ func TestSlackDedupSuppressesDuplicateErrors(t *testing.T) {
 	dedup := NewNotificationDedup(time.Hour)
 
 	job := &TestJob{}
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -144,7 +144,7 @@ func TestSlackDedupAllowsSuccessNotifications(t *testing.T) {
 	dedup := NewNotificationDedup(time.Hour)
 
 	job := &TestJob{}
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, _ := core.NewExecution()
 	ctx := core.NewContext(sh, job, e)
 
@@ -173,7 +173,7 @@ func TestSlackNoDedupWhenNotConfigured(t *testing.T) {
 	defer ts.Close()
 
 	job := &TestJob{}
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, _ := core.NewExecution()
 	ctx := core.NewContext(sh, job, e)
 

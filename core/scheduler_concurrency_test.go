@@ -121,7 +121,7 @@ func (j *MockControlledJob) SetShouldError(shouldError bool, message string) {
 // TestSchedulerConcurrentJobExecution tests the scheduler's ability to manage concurrent job execution
 // DISABLED: Test hangs due to MockControlledJob synchronization issues - needs investigation
 func XTestSchedulerConcurrentJobExecution(t *testing.T) {
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 	scheduler.SetMaxConcurrentJobs(2) // Allow only 2 concurrent jobs
 
 	// Create 4 controlled jobs
@@ -212,7 +212,7 @@ func XTestSchedulerConcurrentJobExecution(t *testing.T) {
 // TestSchedulerJobSemaphoreLimiting tests that the job semaphore properly limits concurrent execution
 // DISABLED: Test hangs due to MockControlledJob synchronization issues - needs investigation
 func XTestSchedulerJobSemaphoreLimiting(t *testing.T) {
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 	maxJobs := 3
 	scheduler.SetMaxConcurrentJobs(maxJobs)
 
@@ -286,7 +286,7 @@ func XTestSchedulerJobSemaphoreLimiting(t *testing.T) {
 // TestSchedulerJobManagementOperations tests AddJob, RemoveJob, EnableJob, DisableJob
 func TestSchedulerJobManagementOperations(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	job1 := NewMockControlledJob("job1", "@daily")
 	job2 := NewMockControlledJob("job2", "@hourly")
@@ -367,7 +367,7 @@ func TestSchedulerJobManagementOperations(t *testing.T) {
 // TestSchedulerGracefulShutdown tests that scheduler waits for running jobs during shutdown
 func TestSchedulerGracefulShutdown(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	longRunningJob := NewMockControlledJob("long-job", "@every 1s")
 
@@ -419,7 +419,7 @@ func TestSchedulerGracefulShutdown(t *testing.T) {
 // TestSchedulerRaceConditions tests for race conditions in job state management
 func TestSchedulerRaceConditions(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 	scheduler.SetMaxConcurrentJobs(5)
 
 	// Create jobs for concurrent operations
@@ -516,7 +516,7 @@ func TestSchedulerRaceConditions(t *testing.T) {
 // TestSchedulerMaxConcurrentJobsConfiguration tests SetMaxConcurrentJobs
 // DISABLED: Test hangs due to MockControlledJob synchronization issues - needs investigation
 func XTestSchedulerMaxConcurrentJobsConfiguration(t *testing.T) {
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	// Test setting various limits
 	testCases := []struct {
@@ -585,7 +585,7 @@ func XTestSchedulerMaxConcurrentJobsConfiguration(t *testing.T) {
 // TestSchedulerJobLookupOperations tests GetJob and GetDisabledJob
 func TestSchedulerJobLookupOperations(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	job1 := NewMockControlledJob("lookup-job1", "@daily")
 	job2 := NewMockControlledJob("lookup-job2", "@hourly")
@@ -633,7 +633,7 @@ func TestSchedulerJobLookupOperations(t *testing.T) {
 // TestSchedulerEmptyScheduleError tests error handling for jobs with empty schedules
 func TestSchedulerEmptyScheduleError(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	invalidJob := NewMockControlledJob("invalid-job", "")
 
@@ -654,7 +654,7 @@ func TestSchedulerEmptyScheduleError(t *testing.T) {
 // TestSchedulerWorkflowIntegration tests basic workflow orchestrator integration
 func TestSchedulerWorkflowIntegration(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	// Create jobs that could have dependencies (using BareJob for dependency support)
 	job1 := &BareJob{

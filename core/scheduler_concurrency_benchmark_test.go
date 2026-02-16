@@ -53,7 +53,7 @@ func BenchmarkSchedulerConcurrency(b *testing.B) {
 
 	for _, tc := range testCases {
 		b.Run(fmt.Sprintf("concurrent_%d_jobs_%d_duration_%v", tc.maxConcurrent, tc.numJobs, tc.duration), func(b *testing.B) {
-			scheduler := NewScheduler(&TestLogger{})
+			scheduler := NewScheduler(newDiscardLogger())
 			scheduler.SetMaxConcurrentJobs(tc.maxConcurrent)
 
 			// Create jobs
@@ -105,7 +105,7 @@ func BenchmarkSchedulerConcurrency(b *testing.B) {
 
 // BenchmarkSchedulerMemoryUsage benchmarks memory usage under high concurrency
 func BenchmarkSchedulerMemoryUsage(b *testing.B) {
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 	scheduler.SetMaxConcurrentJobs(50)
 
 	// Create a reasonable number of jobs for memory testing
@@ -140,7 +140,7 @@ func BenchmarkSchedulerJobManagement(b *testing.B) {
 
 	for _, op := range operations {
 		b.Run(op, func(b *testing.B) {
-			scheduler := NewScheduler(&TestLogger{})
+			scheduler := NewScheduler(newDiscardLogger())
 
 			if err := scheduler.Start(); err != nil {
 				b.Fatalf("Failed to start scheduler: %v", err)
@@ -212,7 +212,7 @@ func BenchmarkSchedulerSemaphoreContention(b *testing.B) {
 
 	for _, size := range semaphoreSizes {
 		b.Run(fmt.Sprintf("semaphore_%d", size), func(b *testing.B) {
-			scheduler := NewScheduler(&TestLogger{})
+			scheduler := NewScheduler(newDiscardLogger())
 			scheduler.SetMaxConcurrentJobs(size)
 
 			// Create jobs that will compete for semaphore slots
@@ -256,7 +256,7 @@ func BenchmarkSchedulerLookupOperations(b *testing.B) {
 	for _, count := range jobCounts {
 		b.Run(fmt.Sprintf("lookup_%d_jobs", count), func(b *testing.B) {
 			// Create a fresh scheduler for each sub-benchmark
-			scheduler := NewScheduler(&TestLogger{})
+			scheduler := NewScheduler(newDiscardLogger())
 
 			// Populate jobs
 			for i := range count {

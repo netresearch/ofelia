@@ -313,7 +313,7 @@ func TestCheckWithKeys_WarnsViaLogger(t *testing.T) {
 		},
 	}
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	registry := &DeprecationRegistry{
 		warnings: make(map[string]bool),
 		logger:   logger,
@@ -322,7 +322,7 @@ func TestCheckWithKeys_WarnsViaLogger(t *testing.T) {
 
 	require.Len(t, found, 1)
 	assert.Equal(t, "poll-interval", found[0].Option)
-	assert.True(t, logger.HasWarning("DEPRECATED"),
+	assert.True(t, handler.HasWarning("DEPRECATED"),
 		"CheckWithKeys must log a DEPRECATED warning via the logger")
 }
 
@@ -337,7 +337,7 @@ func TestCheckWithKeys_WarnsViaLogger(t *testing.T) {
 func TestLogWarning_WithMessage(t *testing.T) {
 	t.Parallel()
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	registry := &DeprecationRegistry{
 		warnings: make(map[string]bool),
 		logger:   logger,
@@ -354,9 +354,9 @@ func TestLogWarning_WithMessage(t *testing.T) {
 	registry.logWarning(dep)
 
 	// Verify the logger received the deprecation warning
-	assert.True(t, logger.HasWarning("DEPRECATED"),
+	assert.True(t, handler.HasWarning("DEPRECATED"),
 		"logWarning must log via logger")
-	assert.True(t, logger.HasWarning("test-option-with-message"),
+	assert.True(t, handler.HasWarning("test-option-with-message"),
 		"logWarning must include the option name in the logger output")
 }
 
@@ -366,7 +366,7 @@ func TestLogWarning_WithMessage(t *testing.T) {
 func TestLogWarning_WithoutMessage(t *testing.T) {
 	t.Parallel()
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	registry := &DeprecationRegistry{
 		warnings: make(map[string]bool),
 		logger:   logger,
@@ -382,9 +382,9 @@ func TestLogWarning_WithoutMessage(t *testing.T) {
 	registry.logWarning(dep)
 
 	// Verify logger still gets the base warning
-	assert.True(t, logger.HasWarning("DEPRECATED"),
+	assert.True(t, handler.HasWarning("DEPRECATED"),
 		"logWarning must log via logger even with empty Message")
-	assert.True(t, logger.HasWarning("test-option-no-message"),
+	assert.True(t, handler.HasWarning("test-option-no-message"),
 		"logWarning must include option name")
 }
 
@@ -417,7 +417,7 @@ func TestLogWarning_MessageAffectsOutput(t *testing.T) {
 
 	// Now verify actual logWarning behavior difference:
 	// Create two registries and log warnings with/without Message
-	loggerWithMsg := test.NewTestLogger()
+	loggerWithMsg, handlerWithMsg := test.NewTestLoggerWithHandler()
 	regWithMsg := &DeprecationRegistry{
 		warnings: make(map[string]bool),
 		logger:   loggerWithMsg,
@@ -429,7 +429,7 @@ func TestLogWarning_MessageAffectsOutput(t *testing.T) {
 		Message:        "Use X instead of Y.",
 	})
 
-	loggerNoMsg := test.NewTestLogger()
+	loggerNoMsg, handlerNoMsg := test.NewTestLoggerWithHandler()
 	regNoMsg := &DeprecationRegistry{
 		warnings: make(map[string]bool),
 		logger:   loggerNoMsg,
@@ -442,8 +442,8 @@ func TestLogWarning_MessageAffectsOutput(t *testing.T) {
 	})
 
 	// Both should have the base DEPRECATED warning
-	assert.True(t, loggerWithMsg.HasWarning("DEPRECATED"))
-	assert.True(t, loggerNoMsg.HasWarning("DEPRECATED"))
+	assert.True(t, handlerWithMsg.HasWarning("DEPRECATED"))
+	assert.True(t, handlerNoMsg.HasWarning("DEPRECATED"))
 
 	// The logger output itself is the same format (Warningf), but the stderr
 	// output differs. We verify that the function doesn't panic with either path.
@@ -463,7 +463,7 @@ func TestLogWarning_DeprecationRegistryCheck_WithSlackWebhook(t *testing.T) {
 	cfg := &Config{}
 	cfg.Global.SlackConfig.SlackWebhook = "https://hooks.slack.com/test"
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	registry := &DeprecationRegistry{
 		warnings: make(map[string]bool),
 		logger:   logger,
@@ -481,8 +481,8 @@ func TestLogWarning_DeprecationRegistryCheck_WithSlackWebhook(t *testing.T) {
 		}
 	}
 	require.True(t, hasSlack)
-	assert.True(t, logger.HasWarning("DEPRECATED"))
-	assert.True(t, logger.HasWarning("slack-webhook"))
+	assert.True(t, handler.HasWarning("DEPRECATED"))
+	assert.True(t, handler.HasWarning("slack-webhook"))
 }
 
 // =============================================================================

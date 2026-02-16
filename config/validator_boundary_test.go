@@ -289,10 +289,13 @@ func TestValidator2IsValidLogLevel(t *testing.T) {
 		{"INFO uppercase", "INFO", true},
 		{"Warning mixed", "Warning", true},
 
+		// Valid levels (aliases accepted by ApplyLogLevel)
+		{"trace", "trace", true},
+		{"fatal", "fatal", true},
+		{"warn", "warn", true},
+		{"panic", "panic", true},
+
 		// Invalid levels
-		{"trace", "trace", false},
-		{"fatal", "fatal", false},
-		{"warn", "warn", false},
 		{"empty", "", false},
 		{"random", "random", false},
 		{"verbose", "verbose", false},

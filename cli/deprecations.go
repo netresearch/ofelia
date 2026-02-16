@@ -2,11 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
-
-	"github.com/netresearch/ofelia/core"
 )
 
 // Deprecation defines a deprecated configuration option
@@ -43,7 +42,7 @@ type Deprecation struct {
 type DeprecationRegistry struct {
 	mu       sync.Mutex
 	warnings map[string]bool // tracks what's been warned this cycle
-	logger   core.Logger
+	logger   *slog.Logger
 }
 
 // Global deprecation registry instance
@@ -147,7 +146,7 @@ See documentation: https://github.com/netresearch/ofelia#webhook-notifications`,
 }
 
 // SetLogger sets the logger for deprecation warnings
-func (r *DeprecationRegistry) SetLogger(logger core.Logger) {
+func (r *DeprecationRegistry) SetLogger(logger *slog.Logger) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.logger = logger
@@ -243,8 +242,8 @@ func (r *DeprecationRegistry) logWarning(dep Deprecation) {
 
 	// Also log via logger if available
 	if r.logger != nil {
-		r.logger.Warningf("DEPRECATED: '%s' is deprecated and will be removed in %s. Use %s instead.",
-			dep.Option, dep.RemovalVersion, dep.Replacement)
+		r.logger.Warn(fmt.Sprintf("DEPRECATED: '%s' is deprecated and will be removed in %s. Use %s instead.",
+			dep.Option, dep.RemovalVersion, dep.Replacement))
 	}
 }
 

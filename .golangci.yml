@@ -50,8 +50,8 @@ linters:
       rules:
         main:
           deny:
-            - pkg: log
-              desc: use core.Logger (logrus via core adapter)
+            - pkg: github.com/sirupsen/logrus
+              desc: replaced by stdlib log/slog
     forbidigo:
       forbid:
         - pattern: ^fmt\.Print.*$
@@ -179,11 +179,12 @@ linters:
           - paralleltest
           - tparallel
         path: _benchmark_test\.go
-      # Integration tests often share state
+      # Integration tests often share state; constructors don't need context
       - linters:
           - paralleltest
           - tparallel
-        path: _integration_test\.go
+          - contextcheck
+        path: integration_test\.go
       # Mutation tests - generated structure, TODO: add t.Parallel() later
       - linters:
           - paralleltest
@@ -204,11 +205,6 @@ linters:
           - paralleltest
           - tparallel
         path: config/.*_test\.go
-      # Logging tests - TODO: add t.Parallel() incrementally
-      - linters:
-          - paralleltest
-          - tparallel
-        path: logging/.*_test\.go
       # Web tests - TODO: add t.Parallel() incrementally
       - linters:
           - paralleltest
@@ -229,6 +225,11 @@ linters:
           - paralleltest
           - tparallel
         path: middlewares/.*_test\.go
+      # E2e tests manage shared scheduler state
+      - linters:
+          - paralleltest
+          - tparallel
+        path: e2e/.*_test\.go
     paths:
       - third_party$
       - builtin$

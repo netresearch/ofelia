@@ -62,11 +62,10 @@ ofelia/
 - **[Health Checks](../web/health.go)**: Liveness and readiness probes
 - **[Middleware](../web/middleware.go)**: HTTP request processing
 
-### 4. Monitoring (`metrics/` & `logging/`)
+### 4. Monitoring (`metrics/`)
 
 - **[Prometheus Metrics](../metrics/prometheus.go)**: Job and system metrics
-- **[Structured Logging](../logging/structured.go)**: JSON/text logging with context
-- **[Job Logger](../logging/structured.go#L291)**: Job-specific logging with metrics
+- **Structured Logging**: stdlib `log/slog` (used directly, no wrapper)
 
 ### 5. Middlewares (`middlewares/`)
 

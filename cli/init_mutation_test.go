@@ -5,10 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"gopkg.in/ini.v1"
-
-	"github.com/netresearch/ofelia/core"
 )
 
 // TestValidateScheduleMutationCoverage provides comprehensive tests targeting
@@ -371,11 +368,9 @@ func TestSaveConfigMutationCoverage(t *testing.T) {
 			tmpDir := t.TempDir()
 			outputPath := filepath.Join(tmpDir, "test.ini")
 
-			logger := logrus.New()
-			logger.SetLevel(logrus.PanicLevel)
 			cmd := &InitCommand{
 				Output: outputPath,
-				Logger: &core.LogrusAdapter{Logger: logger},
+				Logger: discardLogger(),
 			}
 
 			if err := cmd.saveConfig(tt.config); err != nil {
@@ -396,11 +391,9 @@ func TestSaveConfigDirectoryCreation(t *testing.T) {
 		tmpDir := t.TempDir()
 		deepPath := filepath.Join(tmpDir, "a", "b", "c", "d", "e", "config.ini")
 
-		logger := logrus.New()
-		logger.SetLevel(logrus.PanicLevel)
 		cmd := &InitCommand{
 			Output: deepPath,
-			Logger: &core.LogrusAdapter{Logger: logger},
+			Logger: discardLogger(),
 		}
 
 		config := &initConfig{
@@ -422,11 +415,9 @@ func TestSaveConfigDirectoryCreation(t *testing.T) {
 		tmpDir := t.TempDir()
 		outputPath := filepath.Join(tmpDir, "config.ini")
 
-		logger := logrus.New()
-		logger.SetLevel(logrus.PanicLevel)
 		cmd := &InitCommand{
 			Output: outputPath,
-			Logger: &core.LogrusAdapter{Logger: logger},
+			Logger: discardLogger(),
 		}
 
 		config := &initConfig{

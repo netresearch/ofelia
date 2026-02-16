@@ -334,11 +334,11 @@ pull = always
 ### A09:2021 - Security Logging and Monitoring Failures
 **Protection**: Comprehensive logging and monitoring
 
-- ✅ **Structured Logging** ([logging/structured.go](../logging/structured.go)):
+- ✅ **Structured Logging** (stdlib `log/slog`):
   - All authentication attempts logged
   - Failed login tracking
   - Command execution logging
-  - Error correlation IDs
+  - Source location via `AddSource: true`
 
 - ✅ **Security Event Logging**:
   ```go

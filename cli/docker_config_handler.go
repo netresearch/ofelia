@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
@@ -22,7 +23,7 @@ type DockerHandler struct {
 	filters        []string
 	dockerProvider core.DockerProvider // SDK-based provider
 	notifier       dockerContainersUpdate
-	logger         core.Logger
+	logger         *slog.Logger
 
 	// Separated configuration options
 	configPollInterval time.Duration // For INI file watching
@@ -63,7 +64,7 @@ func (c *DockerHandler) GetDockerProvider() core.DockerProvider {
 
 // resolveConfig validates configuration and returns resolved values.
 // Deprecation migrations are handled centrally by cli/deprecations.go during config loading.
-func resolveConfig(cfg *DockerConfig, logger core.Logger) (configPoll, dockerPoll, fallback time.Duration, useEvents bool) {
+func resolveConfig(cfg *DockerConfig, logger *slog.Logger) (configPoll, dockerPoll, fallback time.Duration, useEvents bool) {
 	// Read values (already migrated by ApplyDeprecationMigrations during config load)
 	configPoll = cfg.ConfigPollInterval
 	dockerPoll = cfg.DockerPollInterval
@@ -72,7 +73,7 @@ func resolveConfig(cfg *DockerConfig, logger core.Logger) (configPoll, dockerPol
 
 	// Warn if both events and explicit container polling are enabled
 	if useEvents && dockerPoll > 0 {
-		logger.Warningf("WARNING: Both Docker events and container polling are enabled. " +
+		logger.Warn("WARNING: Both Docker events and container polling are enabled. " +
 			"This is usually wasteful. Consider disabling container polling (docker-poll-interval=0) " +
 			"and relying on events with polling-fallback for resilience.")
 	}
@@ -83,7 +84,7 @@ func resolveConfig(cfg *DockerConfig, logger core.Logger) (configPoll, dockerPol
 func NewDockerHandler(
 	ctx context.Context, //nolint:contextcheck // external callers provide base context; we derive cancelable child
 	notifier dockerContainersUpdate,
-	logger core.Logger,
+	logger *slog.Logger,
 	cfg *DockerConfig,
 	provider core.DockerProvider,
 ) (*DockerHandler, error) {
@@ -180,10 +181,10 @@ func (c *DockerHandler) watchConfig() {
 			return
 		case <-ticker.C:
 			if cfg, ok := c.notifier.(*Config); ok {
-				cfg.logger.Debugf("checking config file %s", cfg.configPath)
+				cfg.logger.Debug(fmt.Sprintf("checking config file %s", cfg.configPath))
 				if err := cfg.iniConfigUpdate(); err != nil {
 					if !errors.Is(err, os.ErrNotExist) {
-						c.logger.Warningf("%v", err)
+						c.logger.Warn(fmt.Sprintf("%v", err))
 					}
 				}
 			}
@@ -224,7 +225,7 @@ func (c *DockerHandler) startFallbackPolling() {
 	c.fallbackCancel = fallbackCancel
 	c.mu.Unlock()
 
-	c.logger.Warningf("Starting fallback container polling at %v interval due to event stream failure", c.pollingFallback)
+	c.logger.Warn(fmt.Sprintf("Starting fallback container polling at %v interval due to event stream failure", c.pollingFallback))
 
 	ticker := time.NewTicker(c.pollingFallback)
 	defer ticker.Stop()
@@ -236,7 +237,7 @@ func (c *DockerHandler) startFallbackPolling() {
 			c.fallbackPollingActive = false
 			c.fallbackCancel = nil
 			c.mu.Unlock()
-			c.logger.Noticef("Stopped fallback container polling (events recovered)")
+			c.logger.Info("Stopped fallback container polling (events recovered)")
 			return
 		case <-ticker.C:
 			c.refreshContainerLabels()
@@ -248,7 +249,7 @@ func (c *DockerHandler) startFallbackPolling() {
 func (c *DockerHandler) refreshContainerLabels() {
 	labels, err := c.GetDockerContainers()
 	if err != nil && !errors.Is(err, ErrNoContainerWithOfeliaEnabled) {
-		c.logger.Debugf("%v", err)
+		c.logger.Debug(fmt.Sprintf("%v", err))
 	}
 	c.notifier.dockerContainersUpdate(labels)
 }
@@ -331,7 +332,7 @@ func (c *DockerHandler) handleEventStreamError() {
 	c.mu.Unlock()
 
 	if c.pollingFallback == 0 {
-		c.logger.Errorf("Docker event stream failed. " +
+		c.logger.Error("Docker event stream failed. " +
 			"Container changes will NOT be detected. " +
 			"Set 'polling-fallback' or 'docker-poll-interval'.")
 	}
@@ -400,7 +401,7 @@ func (c *DockerHandler) watchEvents() {
 					break innerLoop
 				}
 				if err != nil {
-					c.logger.Warningf("Docker event stream error, reconnecting in %v: %v", backoff, err)
+					c.logger.Warn(fmt.Sprintf("Docker event stream error, reconnecting in %v: %v", backoff, err))
 					c.handleEventStreamError()
 				}
 				// Wait with backoff before reconnecting
@@ -434,7 +435,7 @@ func (c *DockerHandler) Shutdown(ctx context.Context) error {
 	// Close SDK provider if it was created
 	if c.dockerProvider != nil {
 		if err := c.dockerProvider.Close(); err != nil {
-			c.logger.Warningf("Error closing Docker provider: %v", err)
+			c.logger.Warn(fmt.Sprintf("Error closing Docker provider: %v", err))
 		}
 		c.dockerProvider = nil
 	}

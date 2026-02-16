@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,11 +10,15 @@ import (
 	"github.com/netresearch/ofelia/core"
 )
 
+func newDiscardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
+
 // setupTestContext creates a fresh test context for middleware tests
 func setupTestContext(t *testing.T) (*core.Context, *TestJob) {
 	t.Helper()
 	job := &TestJob{}
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	return core.NewContext(sh, job, e), job
@@ -53,11 +58,3 @@ type TestJobConfig struct {
 func (j *TestJob) Run(ctx *core.Context) error {
 	return nil
 }
-
-type TestLogger struct{}
-
-func (*TestLogger) Criticalf(format string, args ...any) {}
-func (*TestLogger) Debugf(format string, args ...any)    {}
-func (*TestLogger) Errorf(format string, args ...any)    {}
-func (*TestLogger) Noticef(format string, args ...any)   {}
-func (*TestLogger) Warningf(format string, args ...any)  {}

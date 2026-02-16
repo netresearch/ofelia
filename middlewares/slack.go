@@ -73,7 +73,7 @@ func (m *Slack) Run(ctx *core.Context) error {
 	if shouldNotify {
 		// Check deduplication - suppress duplicate error notifications
 		if m.Dedup != nil && ctx.Execution.Failed && !m.Dedup.ShouldNotify(ctx) {
-			ctx.Logger.Debugf("Slack notification suppressed (duplicate within cooldown)")
+			ctx.Logger.Debug("Slack notification suppressed (duplicate within cooldown)")
 			return err
 		}
 		m.pushMessage(ctx)
@@ -94,24 +94,24 @@ func (m *Slack) pushMessage(ctx *core.Context) {
 	// Build request with context and validate URL
 	u, err := url.Parse(m.SlackWebhook)
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		ctx.Logger.Errorf("Slack webhook URL is invalid: %q", m.SlackWebhook)
+		ctx.Logger.Error(fmt.Sprintf("Slack webhook URL is invalid: %q", m.SlackWebhook))
 		return
 	}
 	ctxReq, cancel := context.WithTimeout(context.Background(), m.Client.Timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctxReq, http.MethodPost, u.String(), strings.NewReader(values.Encode()))
 	if err != nil {
-		ctx.Logger.Errorf("Slack request build error: %q", err)
+		ctx.Logger.Error(fmt.Sprintf("Slack request build error: %q", err))
 		return
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r, err := m.Client.Do(req)
 	if err != nil {
-		ctx.Logger.Errorf("Slack error calling %q error: %q", m.SlackWebhook, err)
+		ctx.Logger.Error(fmt.Sprintf("Slack error calling %q error: %q", m.SlackWebhook, err))
 	} else {
 		defer r.Body.Close()
 		if r.StatusCode != http.StatusOK {
-			ctx.Logger.Errorf("Slack error non-200 status code calling %q", m.SlackWebhook)
+			ctx.Logger.Error(fmt.Sprintf("Slack error non-200 status code calling %q", m.SlackWebhook))
 		}
 	}
 }

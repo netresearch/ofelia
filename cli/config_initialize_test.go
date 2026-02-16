@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/domain"
+	"github.com/netresearch/ofelia/test"
 )
 
 type mockDockerProviderForInit struct {
@@ -127,7 +129,7 @@ func TestInitializeAppSuccess(t *testing.T) {
 	// Note: Not parallel - modifies global newDockerHandler
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{
 			ctx:                ctx,
 			filters:            cfg.Filters,
@@ -141,7 +143,7 @@ func TestInitializeAppSuccess(t *testing.T) {
 		}, nil
 	}
 
-	cfg := NewConfig(&TestLogger{})
+	cfg := NewConfig(test.NewTestLogger())
 	cfg.Docker.Filters = []string{}
 	err := cfg.InitializeApp()
 	require.NoError(t, err)
@@ -152,7 +154,7 @@ func TestInitializeAppSuccess(t *testing.T) {
 func TestInitializeAppLabelConflict(t *testing.T) {
 	// Note: Not parallel - modifies global newDockerHandler
 	const iniStr = "[job-run \"foo\"]\nschedule = @every 5s\nimage = busybox\ncommand = echo ini\n"
-	cfg, err := BuildFromString(iniStr, &TestLogger{})
+	cfg, err := BuildFromString(iniStr, test.NewTestLogger())
 	require.NoError(t, err)
 
 	mockProvider := &mockDockerProviderForInit{
@@ -171,7 +173,7 @@ func TestInitializeAppLabelConflict(t *testing.T) {
 
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{
 			ctx:                ctx,
 			filters:            cfg.Filters,
@@ -182,7 +184,7 @@ func TestInitializeAppLabelConflict(t *testing.T) {
 		}, nil
 	}
 
-	cfg.logger = &TestLogger{}
+	cfg.logger = test.NewTestLogger()
 	err = cfg.InitializeApp()
 	require.NoError(t, err)
 	assert.Len(t, cfg.RunJobs, 1)
@@ -195,7 +197,7 @@ func TestInitializeAppLabelConflict(t *testing.T) {
 func TestInitializeAppComposeConflict(t *testing.T) {
 	// Note: Not parallel - modifies global newDockerHandler
 	iniStr := "[job-compose \"foo\"]\nschedule = @daily\nfile = docker-compose.yml\n"
-	cfg, err := BuildFromString(iniStr, &TestLogger{})
+	cfg, err := BuildFromString(iniStr, test.NewTestLogger())
 	require.NoError(t, err)
 
 	mockProvider := &mockDockerProviderForInit{
@@ -213,11 +215,11 @@ func TestInitializeAppComposeConflict(t *testing.T) {
 
 	origFactory := newDockerHandler
 	defer func() { newDockerHandler = origFactory }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return &DockerHandler{ctx: ctx, filters: cfg.Filters, notifier: notifier, logger: logger, dockerProvider: mockProvider, configPollInterval: 0}, nil
 	}
 
-	cfg.logger = &TestLogger{}
+	cfg.logger = test.NewTestLogger()
 	err = cfg.InitializeApp()
 	require.NoError(t, err)
 	j, ok := cfg.ComposeJobs["foo"]

@@ -1,178 +1,153 @@
 package test
 
 import (
-	"fmt"
+	"context"
+	"log/slog"
 	"strings"
 	"sync"
 )
 
-// TestLogger is a shared test logger implementation for use across test suites.
-// It implements the core.Logger interface and provides methods to capture and verify log output.
-type Logger struct {
-	mu       sync.RWMutex
-	messages []LogEntry
-	verbose  bool // If true, print logs to stdout during tests
+// Handler is a slog.Handler that captures log records for test assertions.
+type Handler struct {
+	mu      sync.RWMutex
+	records []LogEntry
+	level   slog.Level
 }
 
-// LogEntry represents a single log message with its level
+// LogEntry represents a single log message with its level.
 type LogEntry struct {
 	Level   string
 	Message string
 }
 
-// NewTestLogger creates a new test logger
-func NewTestLogger(verbose ...bool) *Logger {
-	v := false
-	if len(verbose) > 0 {
-		v = verbose[0]
-	}
-	return &Logger{
-		messages: make([]LogEntry, 0),
-		verbose:  v,
+// NewHandler creates a new test handler that captures all log levels.
+func NewHandler() *Handler {
+	return &Handler{
+		records: make([]LogEntry, 0),
+		level:   slog.LevelDebug, // capture everything
 	}
 }
 
-// Criticalf logs a critical message
-func (l *Logger) Criticalf(s string, v ...any) {
-	l.log("CRITICAL", s, v...)
+// Enabled implements slog.Handler.
+func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= h.level
 }
 
-// Errorf logs an error message
-func (l *Logger) Errorf(s string, v ...any) {
-	l.log("ERROR", s, v...)
-}
+// Handle implements slog.Handler.
+func (h *Handler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
-// Warningf logs a warning message
-func (l *Logger) Warningf(s string, v ...any) {
-	l.log("WARN", s, v...)
-}
-
-// Noticef logs a notice message
-func (l *Logger) Noticef(s string, v ...any) {
-	l.log("NOTICE", s, v...)
-}
-
-// Infof logs an info message
-func (l *Logger) Infof(s string, v ...any) {
-	l.log("INFO", s, v...)
-}
-
-// Debugf logs a debug message
-func (l *Logger) Debugf(s string, v ...any) {
-	l.log("DEBUG", s, v...)
-}
-
-// Deprecated methods for backward compatibility
-func (l *Logger) Error(s string)   { l.Errorf("%s", s) }
-func (l *Logger) Warning(s string) { l.Warningf("%s", s) }
-func (l *Logger) Notice(s string)  { l.Noticef("%s", s) }
-func (l *Logger) Info(s string)    { l.Infof("%s", s) }
-func (l *Logger) Debug(s string)   { l.Debugf("%s", s) }
-
-// Shortened names for brevity
-func (l *Logger) Err(s string)  { l.Errorf("%s", s) }
-func (l *Logger) Warn(s string) { l.Warningf("%s", s) }
-func (l *Logger) Log(s string)  { l.Infof("%s", s) }
-
-// log is the internal logging method
-func (l *Logger) log(level, format string, v ...any) {
-	msg := fmt.Sprintf(format, v...)
-
-	l.mu.Lock()
-	l.messages = append(l.messages, LogEntry{
-		Level:   level,
-		Message: msg,
+	h.records = append(h.records, LogEntry{
+		Level:   r.Level.String(),
+		Message: r.Message,
 	})
-	l.mu.Unlock()
-
-	// Verbose output is disabled to avoid using forbidden fmt.Print functions
+	return nil
 }
 
-// GetMessages returns all logged messages
-func (l *Logger) GetMessages() []LogEntry {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+// WithAttrs implements slog.Handler.
+func (h *Handler) WithAttrs(_ []slog.Attr) slog.Handler {
+	return h
+}
 
-	result := make([]LogEntry, len(l.messages))
-	copy(result, l.messages)
+// WithGroup implements slog.Handler.
+func (h *Handler) WithGroup(_ string) slog.Handler {
+	return h
+}
+
+// NewTestLogger creates a *slog.Logger backed by a capturing handler.
+// The returned logger can be passed anywhere a *slog.Logger is expected.
+// If you need to inspect captured log messages, use NewTestLoggerWithHandler instead.
+func NewTestLogger() *slog.Logger {
+	return slog.New(NewHandler())
+}
+
+// NewTestLoggerWithHandler creates a *slog.Logger and returns both the logger
+// and its Handler, allowing tests to inspect captured log messages.
+func NewTestLoggerWithHandler() (*slog.Logger, *Handler) {
+	h := NewHandler()
+	return slog.New(h), h
+}
+
+// GetMessages returns all logged messages.
+func (h *Handler) GetMessages() []LogEntry {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	result := make([]LogEntry, len(h.records))
+	copy(result, h.records)
 	return result
 }
 
-// HasMessage checks if a message containing the substring was logged
-func (l *Logger) HasMessage(substr string) bool {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	for _, entry := range l.messages {
-		if strings.Contains(entry.Message, substr) {
+// HasMessage checks if any message containing substr was logged.
+func (h *Handler) HasMessage(substr string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, e := range h.records {
+		if strings.Contains(e.Message, substr) {
 			return true
 		}
 	}
 	return false
 }
 
-// HasError checks if an error containing the substring was logged
-func (l *Logger) HasError(substr string) bool {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	for _, entry := range l.messages {
-		if entry.Level == "ERROR" && strings.Contains(entry.Message, substr) {
+// HasError checks if an error message containing substr was logged.
+func (h *Handler) HasError(substr string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, e := range h.records {
+		if e.Level == "ERROR" && strings.Contains(e.Message, substr) {
 			return true
 		}
 	}
 	return false
 }
 
-// HasWarning checks if a warning containing the substring was logged
-func (l *Logger) HasWarning(substr string) bool {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	for _, entry := range l.messages {
-		if entry.Level == "WARN" && strings.Contains(entry.Message, substr) {
+// HasWarning checks if a warning message containing substr was logged.
+func (h *Handler) HasWarning(substr string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, e := range h.records {
+		if e.Level == "WARN" && strings.Contains(e.Message, substr) {
 			return true
 		}
 	}
 	return false
 }
 
-// Clear clears all logged messages
-func (l *Logger) Clear() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.messages = l.messages[:0]
+// Clear clears all captured messages.
+func (h *Handler) Clear() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = h.records[:0]
 }
 
-// MessageCount returns the number of logged messages
-func (l *Logger) MessageCount() int {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return len(l.messages)
+// MessageCount returns the total number of captured messages.
+func (h *Handler) MessageCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.records)
 }
 
-// ErrorCount returns the number of error messages
-func (l *Logger) ErrorCount() int {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
+// ErrorCount returns the number of error messages.
+func (h *Handler) ErrorCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	count := 0
-	for _, entry := range l.messages {
-		if entry.Level == "ERROR" {
+	for _, e := range h.records {
+		if e.Level == "ERROR" {
 			count++
 		}
 	}
 	return count
 }
 
-// WarningCount returns the number of warning messages
-func (l *Logger) WarningCount() int {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
+// WarningCount returns the number of warning messages.
+func (h *Handler) WarningCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	count := 0
-	for _, entry := range l.messages {
-		if entry.Level == "WARN" {
+	for _, e := range h.records {
+		if e.Level == "WARN" {
 			count++
 		}
 	}

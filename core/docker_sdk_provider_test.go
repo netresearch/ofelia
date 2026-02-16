@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -612,20 +614,57 @@ func TestSDKDockerProviderWaitContainerContextCanceled(t *testing.T) {
 
 // Test with logger and metrics
 
-type testLogger struct {
-	notices []string
-	debugs  []string
+// sdkTestHandler is a slog.Handler that captures log records for testing.
+type sdkTestHandler struct {
+	mu      sync.Mutex
+	records []sdkTestRecord
 }
 
-func (l *testLogger) Criticalf(format string, args ...any) {}
-func (l *testLogger) Debugf(format string, args ...any) {
-	l.debugs = append(l.debugs, format)
+type sdkTestRecord struct {
+	level   slog.Level
+	message string
 }
-func (l *testLogger) Errorf(format string, args ...any) {}
-func (l *testLogger) Noticef(format string, args ...any) {
-	l.notices = append(l.notices, format)
+
+func (h *sdkTestHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+
+func (h *sdkTestHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, sdkTestRecord{level: r.Level, message: r.Message})
+	return nil
 }
-func (l *testLogger) Warningf(format string, args ...any) {}
+
+func (h *sdkTestHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *sdkTestHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *sdkTestHandler) infoMessages() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var msgs []string
+	for _, r := range h.records {
+		if r.level == slog.LevelInfo {
+			msgs = append(msgs, r.message)
+		}
+	}
+	return msgs
+}
+
+func (h *sdkTestHandler) debugMessages() []string { //nolint:unused // kept for future test assertions
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var msgs []string
+	for _, r := range h.records {
+		if r.level == slog.LevelDebug {
+			msgs = append(msgs, r.message)
+		}
+	}
+	return msgs
+}
+
+func newSDKTestLogger() (*slog.Logger, *sdkTestHandler) {
+	handler := &sdkTestHandler{}
+	return slog.New(handler), handler
+}
 
 type testMetrics struct {
 	operations []string
@@ -651,7 +690,7 @@ func (m *testMetrics) RecordJobScheduled(jobName string)                        
 
 func TestSDKDockerProviderWithLogger(t *testing.T) {
 	mockClient := mock.NewDockerClient()
-	logger := &testLogger{}
+	logger, handler := newSDKTestLogger()
 	provider := core.NewSDKDockerProviderFromClient(mockClient, logger, nil)
 	ctx := context.Background()
 
@@ -660,8 +699,8 @@ func TestSDKDockerProviderWithLogger(t *testing.T) {
 		t.Fatalf("CreateContainer() error = %v", err)
 	}
 
-	if len(logger.notices) != 1 {
-		t.Errorf("logger.notices = %d, want 1", len(logger.notices))
+	if len(handler.infoMessages()) != 1 {
+		t.Errorf("info messages = %d, want 1", len(handler.infoMessages()))
 	}
 }
 

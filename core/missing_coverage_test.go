@@ -1,11 +1,9 @@
 package core
 
 import (
-	"bytes"
+	"log/slog"
 	"testing"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // TestBareJobRun tests the BareJob.Run() function that currently has 0% coverage
@@ -19,7 +17,7 @@ func TestBareJobRun(t *testing.T) {
 	}
 
 	// Create test scheduler and context
-	logger := &LogrusAdapter{Logger: logrus.New()}
+	logger := slog.New(slog.DiscardHandler)
 	scheduler := NewScheduler(logger)
 
 	exec, err := NewExecution()
@@ -209,110 +207,6 @@ func TestResetMiddlewares(t *testing.T) {
 	}
 }
 
-// TestLogrusAdapterCriticalf tests the LogrusAdapter.Criticalf() function
-func TestLogrusAdapterCriticalf(t *testing.T) {
-	t.Parallel()
-
-	// Create a logger that writes to a buffer so we can verify output
-	logger := logrus.New()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	logger.SetLevel(logrus.FatalLevel)
-
-	adapter := &LogrusAdapter{Logger: logger}
-
-	// Note: Criticalf uses FatalLevel which would call os.Exit(1) in production
-	// but logrus.New() doesn't actually exit in tests when there's no ExitFunc set
-	adapter.Criticalf("test critical message: %s", "arg1")
-
-	// Verify something was logged (the exact format depends on logrus settings)
-	// The important thing is that the function executed without panic
-}
-
-// TestLogrusAdapterDebugf tests the LogrusAdapter.Debugf() function
-func TestLogrusAdapterDebugf(t *testing.T) {
-	t.Parallel()
-
-	logger := logrus.New()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	logger.SetLevel(logrus.DebugLevel)
-
-	adapter := &LogrusAdapter{Logger: logger}
-	adapter.Debugf("test debug message: %s", "debug_arg")
-
-	output := buf.String()
-	if len(output) == 0 {
-		t.Error("Expected debug message to be logged")
-	}
-	if !bytes.Contains(buf.Bytes(), []byte("test debug message")) {
-		t.Errorf("Expected output to contain 'test debug message', got: %s", output)
-	}
-}
-
-// TestLogrusAdapterErrorf tests the LogrusAdapter.Errorf() function
-func TestLogrusAdapterErrorf(t *testing.T) {
-	t.Parallel()
-
-	logger := logrus.New()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	logger.SetLevel(logrus.ErrorLevel)
-
-	adapter := &LogrusAdapter{Logger: logger}
-	adapter.Errorf("test error message: %d", 42)
-
-	output := buf.String()
-	if len(output) == 0 {
-		t.Error("Expected error message to be logged")
-	}
-	if !bytes.Contains(buf.Bytes(), []byte("test error message")) {
-		t.Errorf("Expected output to contain 'test error message', got: %s", output)
-	}
-}
-
-// TestLogrusAdapterWarningf tests the LogrusAdapter.Warningf() function
-func TestLogrusAdapterWarningf(t *testing.T) {
-	t.Parallel()
-
-	logger := logrus.New()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	logger.SetLevel(logrus.WarnLevel)
-
-	adapter := &LogrusAdapter{Logger: logger}
-	adapter.Warningf("test warning message: %v", true)
-
-	output := buf.String()
-	if len(output) == 0 {
-		t.Error("Expected warning message to be logged")
-	}
-	if !bytes.Contains(buf.Bytes(), []byte("test warning message")) {
-		t.Errorf("Expected output to contain 'test warning message', got: %s", output)
-	}
-}
-
-// TestLogrusAdapterNoticef tests the LogrusAdapter.Noticef() function
-func TestLogrusAdapterNoticef(t *testing.T) {
-	t.Parallel()
-
-	logger := logrus.New()
-	var buf bytes.Buffer
-	logger.SetOutput(&buf)
-	logger.SetLevel(logrus.InfoLevel)
-
-	adapter := &LogrusAdapter{Logger: logger}
-	adapter.Noticef("test notice message: %s %d", "arg", 123)
-
-	output := buf.String()
-	if len(output) == 0 {
-		t.Error("Expected notice message to be logged")
-	}
-	if !bytes.Contains(buf.Bytes(), []byte("test notice message")) {
-		t.Errorf("Expected output to contain 'test notice message', got: %s", output)
-	}
-}
-
 // TestResilientJobExecutorSetters tests the setter functions on ResilientJobExecutor
 func TestResilientJobExecutorSetters(t *testing.T) {
 	t.Parallel()
@@ -401,7 +295,7 @@ func TestSetGlobalBufferPoolLogger(t *testing.T) {
 	t.Parallel()
 
 	// Create a test logger
-	logger := &LogrusAdapter{Logger: logrus.New()}
+	logger := slog.New(slog.DiscardHandler)
 
 	// Should not panic - just sets the logger
 	SetGlobalBufferPoolLogger(logger)
@@ -414,7 +308,7 @@ func TestSetGlobalBufferPoolLogger(t *testing.T) {
 func TestRetryExecutorSetMetricsRecorder(t *testing.T) {
 	t.Parallel()
 
-	logger := &LogrusAdapter{Logger: logrus.New()}
+	logger := slog.New(slog.DiscardHandler)
 	executor := NewRetryExecutor(logger)
 
 	if executor == nil {
@@ -669,7 +563,7 @@ func TestPerformanceMetricsGetJobMetrics(t *testing.T) {
 func TestSchedulerSetMetricsRecorder(t *testing.T) {
 	t.Parallel()
 
-	logger := &LogrusAdapter{Logger: logrus.New()}
+	logger := slog.New(slog.DiscardHandler)
 	scheduler := NewScheduler(logger)
 
 	// Set metrics recorder
@@ -684,7 +578,7 @@ func TestSchedulerSetMetricsRecorder(t *testing.T) {
 func TestSchedulerEntries(t *testing.T) {
 	t.Parallel()
 
-	logger := &LogrusAdapter{Logger: logrus.New()}
+	logger := slog.New(slog.DiscardHandler)
 	scheduler := NewScheduler(logger)
 
 	// Get entries - should return empty list for new scheduler
@@ -701,7 +595,7 @@ func TestSchedulerEntries(t *testing.T) {
 func TestWorkflowOrchestratorCleanupOldExecutions(t *testing.T) {
 	t.Parallel()
 
-	logger := &LogrusAdapter{Logger: logrus.New()}
+	logger := slog.New(slog.DiscardHandler)
 	scheduler := NewScheduler(logger)
 	orchestrator := NewWorkflowOrchestrator(scheduler, logger)
 

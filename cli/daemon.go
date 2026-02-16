@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // #nosec G108
@@ -40,7 +41,8 @@ type DaemonCommand struct {
 	dockerHandler   *DockerHandler
 	config          *Config
 	done            chan struct{}
-	Logger          core.Logger
+	Logger          *slog.Logger
+	LevelVar        *slog.LevelVar
 	shutdownManager *core.ShutdownManager
 	healthChecker   *web.HealthChecker
 }
@@ -62,8 +64,8 @@ func (c *DaemonCommand) boot() (err error) {
 	c.done = make(chan struct{})
 
 	// Apply CLI log level before reading config
-	if err := ApplyLogLevel(c.LogLevel); err != nil {
-		c.Logger.Errorf("Failed to apply log level: %v", err)
+	if err := ApplyLogLevel(c.LogLevel, c.LevelVar); err != nil {
+		c.Logger.Error(fmt.Sprintf("Failed to apply log level: %v", err))
 		return fmt.Errorf("invalid log level configuration: %w", err)
 	}
 
@@ -73,10 +75,11 @@ func (c *DaemonCommand) boot() (err error) {
 	// Always try to read the config file, as there are options such as globals or some tasks that can be specified there and not in docker
 	config, err := BuildFromFile(c.ConfigFile, c.Logger)
 	if err != nil {
-		c.Logger.Warningf("Could not load config file %q: %v", c.ConfigFile, err)
+		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
 		// Create an empty config if loading failed
 		config = NewConfig(c.Logger)
 	}
+	config.levelVar = c.LevelVar
 	c.applyOptions(config)
 	c.applyConfigDefaults(config)
 
@@ -88,14 +91,14 @@ func (c *DaemonCommand) boot() (err error) {
 	}
 
 	if c.LogLevel == "" {
-		if err := ApplyLogLevel(config.Global.LogLevel); err != nil {
-			c.Logger.Warningf("Failed to apply config log level (using default): %v", err)
+		if err := ApplyLogLevel(config.Global.LogLevel, c.LevelVar); err != nil {
+			c.Logger.Warn(fmt.Sprintf("Failed to apply config log level (using default): %v", err))
 		}
 	}
 
 	err = config.InitializeApp()
 	if err != nil {
-		c.Logger.Criticalf("Can't start the app: %v", err)
+		c.Logger.Error(fmt.Sprintf("Can't start the app: %v", err))
 	}
 	// Re-apply CLI/environment options so they override Docker labels
 	c.applyOptions(config)
@@ -133,7 +136,7 @@ func (c *DaemonCommand) boot() (err error) {
 			}
 
 			if c.WebSecretKey == "" {
-				c.Logger.Warningf("⚠️  No web-secret-key provided. " +
+				c.Logger.Warn("No web-secret-key provided. " +
 					"Auth tokens will not survive daemon restarts. " +
 					"Set OFELIA_WEB_SECRET_KEY for persistent sessions.")
 			}
@@ -174,10 +177,10 @@ func (c *DaemonCommand) start() error {
 	}()
 
 	// Start scheduler with progress feedback
-	c.Logger.Noticef("Starting scheduler...")
+	c.Logger.Info("Starting scheduler...")
 
 	if err := c.scheduler.Start(); err != nil {
-		c.Logger.Errorf("❌ Failed to start scheduler")
+		c.Logger.Error("Failed to start scheduler")
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
 		return fmt.Errorf("failed to start scheduler: %w\n  → Check all job schedules are valid cron expressions\n  → Verify no duplicate job names exist\n  → Use 'ofelia validate --config=%q' to check configuration\n  → Check Docker daemon is running if using Docker jobs\n  → Review logs above for specific job errors", err, c.ConfigFile)
 	}
@@ -187,14 +190,14 @@ func (c *DaemonCommand) start() error {
 		jobCount = len(c.config.RunJobs) + len(c.config.LocalJobs) +
 			len(c.config.ExecJobs) + len(c.config.ServiceJobs) + len(c.config.ComposeJobs)
 	}
-	c.Logger.Noticef("✅ Scheduler started with %d job(s)", jobCount)
+	c.Logger.Info("Scheduler started", "jobCount", jobCount)
 
 	if c.EnablePprof {
-		c.Logger.Noticef("Starting pprof server on %s...", c.PprofAddr)
+		c.Logger.Info(fmt.Sprintf("Starting pprof server on %s...", c.PprofAddr))
 		pprofErrChan := make(chan error, 1)
 		go func() {
 			if err := c.pprofServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-				c.Logger.Errorf("Error starting HTTP server: %v", err)
+				c.Logger.Error(fmt.Sprintf("Error starting HTTP server: %v", err))
 				pprofErrChan <- err
 				close(c.done)
 			}
@@ -204,20 +207,20 @@ func (c *DaemonCommand) start() error {
 		defer cancel()
 
 		if err := waitForServerWithErrChan(ctx, c.PprofAddr, pprofErrChan); err != nil {
-			c.Logger.Errorf("❌ pprof server failed to start: %v", err)
+			c.Logger.Error(fmt.Sprintf("pprof server failed to start: %v", err))
 			return fmt.Errorf("pprof server startup failed: %w", err)
 		}
-		c.Logger.Noticef("✅ pprof server ready on %s", c.PprofAddr)
+		c.Logger.Info(fmt.Sprintf("pprof server ready on %s", c.PprofAddr))
 	} else {
-		c.Logger.Noticef("pprof server disabled")
+		c.Logger.Info("pprof server disabled")
 	}
 
 	if c.EnableWeb {
-		c.Logger.Noticef("Starting web server on %s...", c.WebAddr)
+		c.Logger.Info(fmt.Sprintf("Starting web server on %s...", c.WebAddr))
 		webErrChan := make(chan error, 1)
 		go func() {
 			if err := c.webServer.Start(); err != nil {
-				c.Logger.Errorf("Error starting web server: %v", err)
+				c.Logger.Error(fmt.Sprintf("Error starting web server: %v", err))
 				webErrChan <- err
 				close(c.done)
 			}
@@ -227,15 +230,15 @@ func (c *DaemonCommand) start() error {
 		defer cancel()
 
 		if err := waitForServerWithErrChan(ctx, c.WebAddr, webErrChan); err != nil {
-			c.Logger.Errorf("❌ web server failed to start: %v", err)
+			c.Logger.Error(fmt.Sprintf("web server failed to start: %v", err))
 			return fmt.Errorf("web server startup failed: %w", err)
 		}
-		c.Logger.Noticef("✅ Web UI ready at http://%s", c.WebAddr)
+		c.Logger.Info(fmt.Sprintf("Web UI ready at http://%s", c.WebAddr))
 	} else {
-		c.Logger.Noticef("web server disabled")
+		c.Logger.Info("web server disabled")
 	}
 
-	c.Logger.Noticef("🚀 Ofelia is now running. Press Ctrl+C to stop.")
+	c.Logger.Info("Ofelia is now running. Press Ctrl+C to stop.")
 
 	return nil
 }
@@ -371,7 +374,7 @@ func (c *DaemonCommand) restoreJobHistory(config *Config) {
 	saveFolder := config.Global.SaveConfig.SaveFolder
 	maxAge := config.Global.SaveConfig.GetRestoreHistoryMaxAge()
 	if err := middlewares.RestoreHistory(saveFolder, maxAge, c.scheduler.Jobs, c.Logger); err != nil {
-		c.Logger.Warningf("Failed to restore job history: %v", err)
+		c.Logger.Warn(fmt.Sprintf("Failed to restore job history: %v", err))
 	}
 }
 

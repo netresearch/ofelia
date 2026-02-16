@@ -67,7 +67,7 @@ func (j *RunServiceJob) Run(ctx *Context) error {
 		return err
 	}
 
-	ctx.Logger.Noticef("Created service %s for job %s\n", svcID, j.Name)
+	ctx.Logger.Info(fmt.Sprintf("Created service %s for job %s", svcID, j.Name))
 
 	if err := j.watchContainer(bgCtx, ctx, svcID); err != nil {
 		return err
@@ -129,7 +129,7 @@ const (
 func (j *RunServiceJob) watchContainer(ctx context.Context, jobCtx *Context, svcID string) error {
 	exitCode := ExitCodeSwarmError
 
-	jobCtx.Logger.Noticef("Checking for service ID %s (%s) termination\n", svcID, j.Name)
+	jobCtx.Logger.Info(fmt.Sprintf("Checking for service ID %s (%s) termination", svcID, j.Name))
 
 	svc, err := j.Provider.InspectService(ctx, svcID)
 	if err != nil {
@@ -164,7 +164,7 @@ func (j *RunServiceJob) watchContainer(ctx context.Context, jobCtx *Context, svc
 
 	wg.Wait()
 
-	jobCtx.Logger.Noticef("Service ID %s (%s) has completed with exit code %d\n", svcID, j.Name, exitCode)
+	jobCtx.Logger.Info(fmt.Sprintf("Service ID %s (%s) has completed with exit code %d", svcID, j.Name, exitCode))
 	return err
 }
 
@@ -177,7 +177,7 @@ func (j *RunServiceJob) findTaskStatus(ctx context.Context, jobCtx *Context, ser
 		Filters: taskFilters,
 	})
 	if err != nil {
-		jobCtx.Logger.Errorf("Failed to find task for service %s. Considering the task terminated: %s\n", serviceID, err.Error())
+		jobCtx.Logger.Error(fmt.Sprintf("Failed to find task for service %s. Considering the task terminated: %s", serviceID, err.Error()))
 		return 0, false
 	}
 
@@ -223,8 +223,8 @@ func (j *RunServiceJob) deleteService(ctx context.Context, jobCtx *Context, svcI
 	if err != nil {
 		// Log warning but don't return error if service is already gone
 		if isNotFoundError(err) {
-			jobCtx.Logger.Warningf("Service %s cannot be removed. An error may have happened, "+
-				"or it might have been removed by another process", svcID)
+			jobCtx.Logger.Warn(fmt.Sprintf("Service %s cannot be removed. An error may have happened, "+
+				"or it might have been removed by another process", svcID))
 			return nil
 		}
 		return fmt.Errorf("remove service %s: %w", svcID, err)

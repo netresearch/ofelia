@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"log/slog"
 	"testing"
 	"time"
 
@@ -286,7 +287,7 @@ func TestSyncJobMap_SkipsINIJobsWhenSyncingLabels(t *testing.T) {
 func TestSyncJobMap_INIOverridesLabel(t *testing.T) {
 	t.Parallel()
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cfg := NewConfig(logger)
 	cfg.sh = core.NewScheduler(logger)
 	cfg.buildSchedulerMiddlewares(cfg.sh)
@@ -320,14 +321,14 @@ func TestSyncJobMap_INIOverridesLabel(t *testing.T) {
 	assert.Len(t, cfg.ExecJobs, 1)
 	assert.Equal(t, JobSourceINI, cfg.ExecJobs["shared"].GetJobSource())
 	assert.Equal(t, "@every 10s", cfg.ExecJobs["shared"].GetSchedule())
-	assert.True(t, logger.HasWarning("overriding label-defined"))
+	assert.True(t, handler.HasWarning("overriding label-defined"))
 }
 
 // TestSyncJobMap_LabelIgnoredWhenINIExists targets line 595-597.
 func TestSyncJobMap_LabelIgnoredWhenINIExists(t *testing.T) {
 	t.Parallel()
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cfg := NewConfig(logger)
 	cfg.sh = core.NewScheduler(logger)
 	cfg.buildSchedulerMiddlewares(cfg.sh)
@@ -361,11 +362,11 @@ func TestSyncJobMap_LabelIgnoredWhenINIExists(t *testing.T) {
 	assert.Len(t, cfg.ExecJobs, 1)
 	assert.Equal(t, JobSourceINI, cfg.ExecJobs["shared"].GetJobSource())
 	assert.Equal(t, "@every 5s", cfg.ExecJobs["shared"].GetSchedule())
-	assert.True(t, logger.HasWarning("ignoring label-defined"))
+	assert.True(t, handler.HasWarning("ignoring label-defined"))
 }
 
 // =============================================================================
-// dockerLabelsUpdate mutation tests (lines 662-741)
+// dockerContainersUpdate mutation tests (lines 662-741)
 // =============================================================================
 
 // TestDockerLabelsUpdate_SecurityWarning targets the AllowHostJobsFromLabels
@@ -373,7 +374,7 @@ func TestSyncJobMap_LabelIgnoredWhenINIExists(t *testing.T) {
 func TestDockerLabelsUpdate_SecurityWarning(t *testing.T) {
 	t.Parallel()
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cfg := NewConfig(logger)
 	cfg.logger = logger
 	cfg.Global.AllowHostJobsFromLabels = true
@@ -395,7 +396,7 @@ func TestDockerLabelsUpdate_SecurityWarning(t *testing.T) {
 	}
 
 	cfg.dockerContainersUpdate(containers)
-	assert.True(t, logger.HasWarning("SECURITY WARNING"),
+	assert.True(t, handler.HasWarning("SECURITY WARNING"),
 		"Security warning must be logged when local jobs are synced from labels")
 }
 
@@ -404,7 +405,7 @@ func TestDockerLabelsUpdate_SecurityWarning(t *testing.T) {
 func TestDockerLabelsUpdate_NoSecurityWarningWhenDisabled(t *testing.T) {
 	t.Parallel()
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cfg := NewConfig(logger)
 	cfg.logger = logger
 	cfg.Global.AllowHostJobsFromLabels = false
@@ -427,8 +428,8 @@ func TestDockerLabelsUpdate_NoSecurityWarningWhenDisabled(t *testing.T) {
 
 	cfg.dockerContainersUpdate(containers)
 	// With AllowHostJobsFromLabels=false, the security warning path shouldn't fire
-	// (though local jobs will be blocked by buildFromDockerLabels)
-	assert.False(t, logger.HasWarning("SECURITY WARNING"),
+	// (though local jobs will be blocked by buildFromDockerContainers)
+	assert.False(t, handler.HasWarning("SECURITY WARNING"),
 		"No security warning should be logged when AllowHostJobsFromLabels is false")
 }
 
@@ -437,7 +438,7 @@ func TestDockerLabelsUpdate_NoSecurityWarningWhenDisabled(t *testing.T) {
 func TestDockerLabelsUpdate_NoWarningWithoutHostJobs(t *testing.T) {
 	t.Parallel()
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cfg := NewConfig(logger)
 	cfg.logger = logger
 	cfg.Global.AllowHostJobsFromLabels = true
@@ -459,7 +460,7 @@ func TestDockerLabelsUpdate_NoWarningWithoutHostJobs(t *testing.T) {
 	}
 
 	cfg.dockerContainersUpdate(containers)
-	assert.False(t, logger.HasWarning("SECURITY WARNING"),
+	assert.False(t, handler.HasWarning("SECURITY WARNING"),
 		"No security warning when only exec jobs (no local/compose) are synced")
 }
 
@@ -520,7 +521,7 @@ func TestReplaceIfChanged_ValidationFailReturnsEarlyFalse(t *testing.T) {
 func TestMergeJobs_INIPrecedence(t *testing.T) {
 	t.Parallel()
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cfg := NewConfig(logger)
 
 	cfg.ExecJobs = map[string]*ExecJobConfig{
@@ -540,7 +541,7 @@ func TestMergeJobs_INIPrecedence(t *testing.T) {
 	mergeJobs(cfg, cfg.ExecJobs, labelJobs, "exec")
 	assert.Len(t, cfg.ExecJobs, 1)
 	assert.Equal(t, "@every 5s", cfg.ExecJobs["job1"].GetSchedule(), "INI job must not be overridden")
-	assert.True(t, logger.HasWarning("ignoring label-defined"),
+	assert.True(t, handler.HasWarning("ignoring label-defined"),
 		"should log warning about ignoring label job")
 }
 
@@ -608,23 +609,23 @@ func TestInitNotificationDedup_ZeroCooldown(t *testing.T) {
 // (if res == nil). With nil result, the function must return immediately without logging.
 func TestLogUnknownKeyWarnings_NilRes(t *testing.T) {
 	t.Parallel()
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	logUnknownKeyWarnings(logger, "test.ini", nil)
-	assert.Empty(t, logger.GetMessages(), "nil result should produce no log messages")
+	assert.Empty(t, handler.GetMessages(), "nil result should produce no log messages")
 }
 
 // TestLogUnknownKeyWarnings_WithUnknownGlobal targets the non-nil path at line 182
 // and ensures unknown global keys are logged.
 func TestLogUnknownKeyWarnings_WithUnknownGlobal(t *testing.T) {
 	t.Parallel()
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	res := &parseResult{
 		unknownGlobal: []string{"unknown-key"},
 	}
 	logUnknownKeyWarnings(logger, "test.ini", res)
-	assert.True(t, logger.HasWarning("Unknown configuration key 'unknown-key'"),
+	assert.True(t, handler.HasWarning("Unknown configuration key 'unknown-key'"),
 		"unknown global key should be logged as warning")
-	assert.True(t, logger.HasWarning("[global]"),
+	assert.True(t, handler.HasWarning("[global]"),
 		"warning should mention [global] section")
 }
 
@@ -632,28 +633,28 @@ func TestLogUnknownKeyWarnings_WithUnknownGlobal(t *testing.T) {
 // (if filename != ""). With empty filename, the warning format should differ.
 func TestLogJobUnknownKeyWarnings_EmptyFilename(t *testing.T) {
 	t.Parallel()
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	unknownJobs := []jobUnknownKeys{
 		{JobType: "job-exec", JobName: "test", UnknownKeys: []string{"badkey"}},
 	}
 	logJobUnknownKeyWarnings(logger, unknownJobs, "")
-	assert.True(t, logger.HasWarning("Unknown configuration key 'badkey'"),
+	assert.True(t, handler.HasWarning("Unknown configuration key 'badkey'"),
 		"unknown job key should be logged")
-	assert.False(t, logger.HasWarning(" of "),
+	assert.False(t, handler.HasWarning(" of "),
 		"empty filename should not include 'of <filename>' in message")
 }
 
 // TestLogJobUnknownKeyWarnings_WithFilename targets the true branch at line 204.
 func TestLogJobUnknownKeyWarnings_WithFilename(t *testing.T) {
 	t.Parallel()
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	unknownJobs := []jobUnknownKeys{
 		{JobType: "job-exec", JobName: "test", UnknownKeys: []string{"badkey"}},
 	}
 	logJobUnknownKeyWarnings(logger, unknownJobs, "myconfig.ini")
-	assert.True(t, logger.HasWarning("Unknown configuration key 'badkey'"),
+	assert.True(t, handler.HasWarning("Unknown configuration key 'badkey'"),
 		"unknown job key should be logged")
-	assert.True(t, logger.HasWarning("myconfig.ini"),
+	assert.True(t, handler.HasWarning("myconfig.ini"),
 		"filename should be included in warning message")
 }
 
@@ -663,47 +664,47 @@ func TestLogJobUnknownKeyWarnings_WithSuggestion(t *testing.T) {
 
 	t.Run("with_filename_and_suggestion", func(t *testing.T) {
 		t.Parallel()
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		// "schedul" is close enough to "schedule" to trigger a suggestion
 		unknownJobs := []jobUnknownKeys{
 			{JobType: "job-exec", JobName: "test", UnknownKeys: []string{"schedul"}},
 		}
 		logJobUnknownKeyWarnings(logger, unknownJobs, "config.ini")
-		assert.True(t, logger.HasWarning("did you mean"),
+		assert.True(t, handler.HasWarning("did you mean"),
 			"close misspelling should produce 'did you mean' suggestion")
 	})
 
 	t.Run("without_filename_and_suggestion", func(t *testing.T) {
 		t.Parallel()
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		unknownJobs := []jobUnknownKeys{
 			{JobType: "job-exec", JobName: "test", UnknownKeys: []string{"schedul"}},
 		}
 		logJobUnknownKeyWarnings(logger, unknownJobs, "")
-		assert.True(t, logger.HasWarning("did you mean"),
+		assert.True(t, handler.HasWarning("did you mean"),
 			"close misspelling should produce 'did you mean' suggestion without filename")
 	})
 
 	t.Run("with_filename_no_suggestion", func(t *testing.T) {
 		t.Parallel()
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		// "zzzzzzz" is too far from any known key to suggest
 		unknownJobs := []jobUnknownKeys{
 			{JobType: "job-exec", JobName: "test", UnknownKeys: []string{"zzzzzzz"}},
 		}
 		logJobUnknownKeyWarnings(logger, unknownJobs, "config.ini")
-		assert.True(t, logger.HasWarning("typo?"),
+		assert.True(t, handler.HasWarning("typo?"),
 			"far-off key should produce 'typo?' message")
 	})
 
 	t.Run("without_filename_no_suggestion", func(t *testing.T) {
 		t.Parallel()
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		unknownJobs := []jobUnknownKeys{
 			{JobType: "job-exec", JobName: "test", UnknownKeys: []string{"zzzzzzz"}},
 		}
 		logJobUnknownKeyWarnings(logger, unknownJobs, "")
-		assert.True(t, logger.HasWarning("typo?"),
+		assert.True(t, handler.HasWarning("typo?"),
 			"far-off key should produce 'typo?' message without filename")
 	})
 }
@@ -891,7 +892,7 @@ func TestInitializeApp_WebhookConfigsEmptyWebhooks(t *testing.T) {
 }
 
 // =============================================================================
-// mergeJobsFromDockerLabels error handling (line 351)
+// mergeJobsFromDockerContainers error handling (line 351)
 // =============================================================================
 
 // =============================================================================
@@ -917,29 +918,32 @@ func TestInjectDedup_WithDedup(t *testing.T) {
 }
 
 // =============================================================================
-// ApplyLogLevel in dockerLabelsUpdate (line 793)
+// ApplyLogLevel in iniConfigUpdate (line 793)
 // =============================================================================
 
 // TestApplyLogLevel_InvalidReturnsWarning targets CONDITIONALS_NEGATION at
-// line 793 (err := ApplyLogLevel) in the dockerLabelsUpdate function.
+// line 793 (err := ApplyLogLevel) in the iniConfigUpdate function.
 func TestApplyLogLevel_InvalidLevel(t *testing.T) {
 	t.Parallel()
 
 	t.Run("invalid level logs warning", func(t *testing.T) {
 		t.Parallel()
-		err := ApplyLogLevel("INVALID")
+		lv := &slog.LevelVar{}
+		err := ApplyLogLevel("INVALID", lv)
 		assert.Error(t, err, "invalid log level should return error")
 	})
 
 	t.Run("valid level succeeds", func(t *testing.T) {
 		t.Parallel()
-		err := ApplyLogLevel("debug")
+		lv := &slog.LevelVar{}
+		err := ApplyLogLevel("debug", lv)
 		assert.NoError(t, err, "valid log level should succeed")
 	})
 
 	t.Run("empty level succeeds", func(t *testing.T) {
 		t.Parallel()
-		err := ApplyLogLevel("")
+		lv := &slog.LevelVar{}
+		err := ApplyLogLevel("", lv)
 		assert.NoError(t, err, "empty log level should succeed (use default)")
 	})
 }

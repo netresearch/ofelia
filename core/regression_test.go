@@ -54,7 +54,7 @@ func TestMemoryRegressionPrevention(t *testing.T) {
 // TestSchedulerConcurrencyLimit ensures job concurrency limiting works
 func TestSchedulerConcurrencyLimit(t *testing.T) {
 	// Use a simple logger implementation for testing
-	s := NewScheduler(&LogrusAdapter{})
+	s := NewScheduler(newDiscardLogger())
 
 	// Verify default limit is set
 	if s.maxConcurrentJobs == 0 {

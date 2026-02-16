@@ -19,7 +19,7 @@ func generateTestHash(password string) string {
 }
 
 func TestServerWithAuthEnabled(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	authCfg := &webpkg.SecureAuthConfig{
 		Enabled:      true,
 		Username:     "admin",
@@ -96,7 +96,7 @@ func TestServerWithAuthEnabled(t *testing.T) {
 }
 
 func TestLoginFlow(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	authCfg := &webpkg.SecureAuthConfig{
 		Enabled:      true,
 		Username:     "testuser",
@@ -181,7 +181,7 @@ func TestLoginFlow(t *testing.T) {
 }
 
 func TestAuthenticatedAccess(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	job := &testJob{}
 	job.Name = "auth-test-job"
 	job.Schedule = "@daily"
@@ -271,7 +271,7 @@ func TestAuthenticatedAccess(t *testing.T) {
 }
 
 func TestLogoutFlow(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	authCfg := &webpkg.SecureAuthConfig{
 		Enabled:      true,
 		Username:     "admin",
@@ -408,7 +408,7 @@ func TestLogoutFlow(t *testing.T) {
 }
 
 func TestServerWithoutAuth(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	job := &testJob{}
 	job.Name = "no-auth-job"
 	job.Schedule = "@daily"
@@ -445,7 +445,7 @@ func TestServerWithoutAuth(t *testing.T) {
 }
 
 func TestCSRFTokenEndpoint(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	authCfg := &webpkg.SecureAuthConfig{
 		Enabled:      true,
 		Username:     "admin",
@@ -479,7 +479,7 @@ func TestCSRFTokenEndpoint(t *testing.T) {
 }
 
 func TestAuthConfigDefaults(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 
 	t.Run("token_expiry_defaults_to_24_when_zero", func(t *testing.T) {
 		authCfg := &webpkg.SecureAuthConfig{

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,7 +20,6 @@ import (
 )
 
 const (
-	logFormat     = "%{time} %{color} %{shortfile} ▶ %{level}%{color:reset} %{message}"
 	jobExec       = "job-exec"
 	jobRun        = "job-run"
 	jobServiceRun = "job-service-run"
@@ -41,7 +41,7 @@ type Config struct {
 		middlewares.SlackConfig `mapstructure:",squash"`
 		middlewares.SaveConfig  `mapstructure:",squash"`
 		middlewares.MailConfig  `mapstructure:",squash"`
-		LogLevel                string        `gcfg:"log-level" mapstructure:"log-level" validate:"omitempty,oneof=debug info notice warning error critical"` //nolint:revive
+		LogLevel                string        `gcfg:"log-level" mapstructure:"log-level" validate:"omitempty,oneof=debug info notice trace warn warning error fatal panic critical"` //nolint:revive
 		EnableWeb               bool          `gcfg:"enable-web" mapstructure:"enable-web" default:"false"`
 		WebAddr                 string        `gcfg:"web-address" mapstructure:"web-address" default:":8081"`
 		WebAuthEnabled          bool          `gcfg:"web-auth-enabled" mapstructure:"web-auth-enabled" default:"false"`
@@ -76,12 +76,13 @@ type Config struct {
 	configModTime     time.Time
 	sh                *core.Scheduler
 	dockerHandler     *DockerHandler
-	logger            core.Logger
+	logger            *slog.Logger
+	levelVar          *slog.LevelVar
 	notificationDedup *middlewares.NotificationDedup
 	WebhookConfigs    *WebhookConfigs
 }
 
-func NewConfig(logger core.Logger) *Config {
+func NewConfig(logger *slog.Logger) *Config {
 	c := &Config{
 		ExecJobs:       make(map[string]*ExecJobConfig),
 		RunJobs:        make(map[string]*RunJobConfig),
@@ -114,7 +115,7 @@ func resolveConfigFiles(pattern string) ([]string, error) {
 // BuildFromFile builds a scheduler using the config from one or multiple files.
 // The filename may include glob patterns. When multiple files are matched,
 // they are parsed in lexical order and merged.
-func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
+func BuildFromFile(filename string, logger *slog.Logger) (*Config, error) {
 	files, err := resolveConfigFiles(filename)
 	if err != nil {
 		return nil, err
@@ -153,7 +154,7 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 				latest = info.ModTime()
 			}
 		}
-		logger.Debugf("loaded config file %s", f)
+		logger.Debug("loaded config file", "file", f)
 	}
 	c.configPath = filename
 	c.configFiles = files
@@ -178,16 +179,18 @@ func BuildFromFile(filename string, logger core.Logger) (*Config, error) {
 }
 
 // logUnknownKeyWarnings logs warnings for unknown configuration keys
-func logUnknownKeyWarnings(logger core.Logger, filename string, res *parseResult) {
+func logUnknownKeyWarnings(logger *slog.Logger, filename string, res *parseResult) {
 	if res == nil {
 		return
 	}
 
 	for _, key := range res.unknownGlobal {
-		logger.Warningf("Unknown configuration key '%s' in [global] section of %s (typo?)", key, filename)
+		logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [global] section (typo?)", key),
+			"key", key, "file", filename)
 	}
 	for _, key := range res.unknownDocker {
-		logger.Warningf("Unknown configuration key '%s' in [docker] section of %s (typo?)", key, filename)
+		logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [docker] section (typo?)", key),
+			"key", key, "file", filename)
 	}
 
 	// Log warnings for unknown keys in job sections
@@ -196,26 +199,26 @@ func logUnknownKeyWarnings(logger core.Logger, filename string, res *parseResult
 
 // logJobUnknownKeyWarnings logs warnings for unknown keys in job sections with
 // "did you mean?" suggestions. If filename is non-empty, it is included in the message.
-func logJobUnknownKeyWarnings(logger core.Logger, unknownJobs []jobUnknownKeys, filename string) {
+func logJobUnknownKeyWarnings(logger *slog.Logger, unknownJobs []jobUnknownKeys, filename string) {
 	for _, job := range unknownJobs {
 		knownKeys := getKnownKeysForJobType(job.JobType)
 		for _, key := range job.UnknownKeys {
 			suggestion := findClosestMatch(key, knownKeys)
 			if filename != "" {
 				if suggestion != "" {
-					logger.Warningf("Unknown configuration key '%s' in [%s \"%s\"] of %s (did you mean '%s'?)",
-						key, job.JobType, job.JobName, filename, suggestion)
+					logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] of %s (did you mean '%s'?)",
+						key, job.JobType, job.JobName, filename, suggestion))
 				} else {
-					logger.Warningf("Unknown configuration key '%s' in [%s \"%s\"] of %s (typo?)",
-						key, job.JobType, job.JobName, filename)
+					logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] of %s (typo?)",
+						key, job.JobType, job.JobName, filename))
 				}
 			} else {
 				if suggestion != "" {
-					logger.Warningf("Unknown configuration key '%s' in [%s \"%s\"] (did you mean '%s'?)",
-						key, job.JobType, job.JobName, suggestion)
+					logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] (did you mean '%s'?)",
+						key, job.JobType, job.JobName, suggestion))
 				} else {
-					logger.Warningf("Unknown configuration key '%s' in [%s \"%s\"] (typo?)",
-						key, job.JobType, job.JobName)
+					logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] (typo?)",
+						key, job.JobType, job.JobName))
 				}
 			}
 		}
@@ -246,7 +249,7 @@ func getKnownKeysForJobType(jobType string) []string {
 // newDockerHandler allows overriding Docker handler creation (e.g., for testing)
 var newDockerHandler = NewDockerHandler
 
-func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
+func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 	c := NewConfig(logger)
 	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, []byte(configStr))
 	if err != nil {
@@ -264,10 +267,10 @@ func BuildFromString(configStr string, logger core.Logger) (*Config, error) {
 
 		// Log warnings for unknown keys
 		for _, key := range parseRes.unknownGlobal {
-			logger.Warningf("Unknown configuration key '%s' in [global] section (typo?)", key)
+			logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [global] section (typo?)", key))
 		}
 		for _, key := range parseRes.unknownDocker {
-			logger.Warningf("Unknown configuration key '%s' in [docker] section (typo?)", key)
+			logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [docker] section (typo?)", key))
 		}
 
 		// Log warnings for unknown keys in job sections (empty filename for string-based config)
@@ -303,7 +306,7 @@ func (c *Config) InitializeApp() error {
 		if err := c.WebhookConfigs.InitManager(); err != nil {
 			return fmt.Errorf("initialize webhook manager: %w", err)
 		}
-		c.logger.Noticef("Webhook notification system initialized with %d webhooks", len(c.WebhookConfigs.Webhooks))
+		c.logger.Info("Webhook notification system initialized", "count", len(c.WebhookConfigs.Webhooks))
 	}
 
 	c.buildSchedulerMiddlewares(c.sh)
@@ -329,7 +332,7 @@ func (c *Config) initNotificationDedup() {
 	c.Global.SlackConfig.Dedup = c.notificationDedup
 	c.Global.MailConfig.Dedup = c.notificationDedup
 
-	c.logger.Noticef("Notification deduplication enabled with cooldown: %s", c.Global.NotificationCooldown)
+	c.logger.Info(fmt.Sprintf("Notification deduplication enabled with cooldown: %s", c.Global.NotificationCooldown))
 }
 
 // getWebhookManager returns the webhook manager if initialized, nil otherwise
@@ -369,7 +372,7 @@ func (c *Config) mergeJobsFromDockerContainers() {
 func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind string) {
 	for name, j := range src {
 		if existing, ok := dst[name]; ok && existing.GetJobSource() == JobSourceINI {
-			c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", kind, name)
+			c.logger.Warn(fmt.Sprintf("ignoring label-defined %s job %q because an INI job with the same name exists", kind, name))
 			continue
 		}
 		dst[name] = j
@@ -590,10 +593,10 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 			case cur.GetJobSource() == source:
 				continue
 			case source == JobSourceINI && cur.GetJobSource() == JobSourceLabel:
-				c.logger.Warningf("overriding label-defined %s job %q with INI job", jobKind, name)
+				c.logger.Warn(fmt.Sprintf("overriding label-defined %s job %q with INI job", jobKind, name))
 				_ = c.sh.RemoveJob(cur)
 			case source == JobSourceLabel && cur.GetJobSource() == JobSourceINI:
-				c.logger.Warningf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name)
+				c.logger.Warn(fmt.Sprintf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name))
 				continue
 			default:
 				continue
@@ -610,19 +613,19 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 	// Validate job configuration if the job type supports it
 	if v, ok := any(newJob).(validatable); ok {
 		if err := v.Validate(); err != nil {
-			c.logger.Errorf("Job %q configuration error: %v", name, err)
+			c.logger.Error("Job configuration error", "job", name, "error", err)
 			return false
 		}
 	}
 
 	newHash, err1 := newJob.Hash()
 	if err1 != nil {
-		c.logger.Errorf("hash calculation failed: %v", err1)
+		c.logger.Error(fmt.Sprintf("hash calculation failed: %v", err1))
 		return false
 	}
 	oldHash, err2 := oldJob.Hash()
 	if err2 != nil {
-		c.logger.Errorf("hash calculation failed: %v", err2)
+		c.logger.Error(fmt.Sprintf("hash calculation failed: %v", err2))
 		return false
 	}
 	if newHash == oldHash {
@@ -649,7 +652,7 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 	// Validate job configuration if the job type supports it
 	if v, ok := any(j).(validatable); ok {
 		if err := v.Validate(); err != nil {
-			c.logger.Errorf("Job %q configuration error: %v", name, err)
+			c.logger.Error(fmt.Sprintf("Job %q configuration error: %v", name, err))
 			return
 		}
 	}
@@ -660,7 +663,7 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 }
 
 func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
-	c.logger.Debugf("dockerContainersUpdate started")
+	c.logger.Debug("dockerContainersUpdate started")
 
 	parsedLabelConfig := Config{
 		logger: c.logger,
@@ -725,8 +728,8 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 		localCount := len(parsedLabelConfig.LocalJobs)
 		composeCount := len(parsedLabelConfig.ComposeJobs)
 		if localCount > 0 || composeCount > 0 {
-			c.logger.Warningf("SECURITY WARNING: Syncing host-based jobs from container labels (%d local, %d compose). "+
-				"This allows containers to execute arbitrary commands on the host system.", localCount, composeCount)
+			c.logger.Warn(fmt.Sprintf("SECURITY WARNING: Syncing host-based jobs from container labels (%d local, %d compose). "+
+				"This allows containers to execute arbitrary commands on the host system.", localCount, composeCount))
 		}
 	}
 
@@ -755,13 +758,13 @@ func (c *Config) iniConfigUpdate() error {
 		return err
 	}
 	for _, f := range files {
-		c.logger.Debugf("checking config file %s", f)
+		c.logger.Debug(fmt.Sprintf("checking config file %s", f))
 	}
 	if !changed {
-		c.logger.Debugf("config not changed")
+		c.logger.Debug("config not changed")
 		return nil
 	}
-	c.logger.Debugf("reloading config files from %s", strings.Join(files, ", "))
+	c.logger.Debug(fmt.Sprintf("reloading config files from %s", strings.Join(files, ", ")))
 
 	parsed, err := BuildFromFile(c.configPath, c.logger)
 	if err != nil {
@@ -770,7 +773,7 @@ func (c *Config) iniConfigUpdate() error {
 	globalChanged := !reflect.DeepEqual(parsed.Global, c.Global)
 	c.configFiles = files
 	c.configModTime = latest
-	c.logger.Debugf("applied config files from %s", strings.Join(files, ", "))
+	c.logger.Debug(fmt.Sprintf("applied config files from %s", strings.Join(files, ", ")))
 	if globalChanged {
 		c.Global = parsed.Global
 		c.sh.ResetMiddlewares()
@@ -790,8 +793,8 @@ func (c *Config) iniConfigUpdate() error {
 				j.Use(c.sh.Middlewares()...)
 			}
 		}
-		if err := ApplyLogLevel(c.Global.LogLevel); err != nil {
-			c.logger.Warningf("Failed to apply global log level (using default): %v", err)
+		if err := ApplyLogLevel(c.Global.LogLevel, c.levelVar); err != nil {
+			c.logger.Warn(fmt.Sprintf("Failed to apply global log level (using default): %v", err))
 		}
 	}
 

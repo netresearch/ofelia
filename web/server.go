@@ -57,7 +57,7 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 		}
 		tm, err := NewSecureTokenManager(authCfg.SecretKey, tokenExpiry)
 		if err != nil {
-			s.Logger.Errorf("failed to initialize token manager: %v", err)
+			s.Logger.Error("failed to initialize token manager", "error", err)
 			return nil
 		}
 		server.tokenManager = tm
@@ -95,7 +95,7 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 
 	uiFS, err := fs.Sub(static.UI, "ui")
 	if err != nil {
-		server.scheduler.Logger.Errorf("failed to load UI subdirectory: %v", err)
+		server.scheduler.Logger.Error(fmt.Sprintf("failed to load UI subdirectory: %v", err))
 		return nil
 	}
 	mux.Handle("/", http.FileServer(http.FS(uiFS)))

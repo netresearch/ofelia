@@ -5,10 +5,10 @@ package core
 import (
 	"context"
 	"io"
+	"log/slog"
 	"testing"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -140,16 +140,14 @@ func TestRunJob_Run(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := &Context{Job: job, Execution: exec}
-	logger := logrus.New()
-	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
-	ctx.Logger = &LogrusAdapter{Logger: logger}
+	ctx.Logger = slog.New(slog.DiscardHandler)
 
 	err = job.Run(ctx)
 	require.NoError(t, err)
 
 	// Verify container was created with correct parameters
 	containers := h.mockClient.Containers().(*mock.ContainerService)
-	assert.True(t, len(containers.CreateCalls) > 0, "expected container to be created")
+	assert.NotEmpty(t, containers.CreateCalls, "expected container to be created")
 }
 
 func TestRunJob_RunFailed(t *testing.T) {
@@ -180,15 +178,13 @@ func TestRunJob_RunFailed(t *testing.T) {
 	require.NoError(t, err)
 
 	jobCtx := &Context{Job: job, Execution: exec}
-	logger := logrus.New()
-	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
-	jobCtx.Logger = &LogrusAdapter{Logger: logger}
+	jobCtx.Logger = slog.New(slog.DiscardHandler)
 
 	jobCtx.Start()
 	err = job.Run(jobCtx)
 	jobCtx.Stop(err)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.True(t, jobCtx.Execution.Failed)
 }
 
@@ -211,16 +207,14 @@ func TestRunJob_RunWithEntrypoint(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := &Context{Job: job, Execution: exec}
-	logger := logrus.New()
-	logger.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
-	ctx.Logger = &LogrusAdapter{Logger: logger}
+	ctx.Logger = slog.New(slog.DiscardHandler)
 
 	err = job.Run(ctx)
 	require.NoError(t, err)
 
 	// Verify container was created
 	containers := h.mockClient.Containers().(*mock.ContainerService)
-	assert.True(t, len(containers.CreateCalls) > 0, "expected container to be created")
+	assert.NotEmpty(t, containers.CreateCalls, "expected container to be created")
 }
 
 func TestRunJob_ParseRepositoryTagBareImage(t *testing.T) {

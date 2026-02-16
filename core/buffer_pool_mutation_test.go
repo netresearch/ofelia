@@ -1,6 +1,10 @@
 package core
 
 import (
+	"context"
+	"log/slog"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -8,30 +12,83 @@ import (
 	"github.com/armon/circbuf"
 )
 
-// mockLogger implements Logger for testing purposes.
-type mockLogger struct {
-	debugMessages  []string
-	errorMessages  []string
-	noticeMessages []string
+// slogCapture is a slog.Handler that captures log records for testing.
+type slogCapture struct {
+	mu       sync.Mutex
+	messages []capturedMsg
 }
 
-func (m *mockLogger) Criticalf(format string, args ...any) {}
-func (m *mockLogger) Debugf(format string, args ...any) {
-	m.debugMessages = append(m.debugMessages, format)
+type capturedMsg struct {
+	level   slog.Level
+	message string
 }
 
-func (m *mockLogger) Errorf(format string, args ...any) {
-	m.errorMessages = append(m.errorMessages, format)
+func (h *slogCapture) Enabled(_ context.Context, _ slog.Level) bool { return true }
+
+func (h *slogCapture) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.messages = append(h.messages, capturedMsg{level: r.Level, message: r.Message})
+	return nil
 }
 
-func (m *mockLogger) Noticef(format string, args ...any) {
-	m.noticeMessages = append(m.noticeMessages, format)
+func (h *slogCapture) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *slogCapture) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *slogCapture) debugMessages() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var result []string
+	for _, m := range h.messages {
+		if m.level == slog.LevelDebug {
+			result = append(result, m.message)
+		}
+	}
+	return result
 }
-func (m *mockLogger) Warningf(format string, args ...any) {}
+
+func (h *slogCapture) infoMessages() []string { //nolint:unused // kept for future test assertions
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var result []string
+	for _, m := range h.messages {
+		if m.level == slog.LevelInfo {
+			result = append(result, m.message)
+		}
+	}
+	return result
+}
+
+func (h *slogCapture) hasDebugContaining(substr string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, m := range h.messages {
+		if m.level == slog.LevelDebug && strings.Contains(m.message, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *slogCapture) hasInfoContaining(substr string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, m := range h.messages {
+		if m.level == slog.LevelInfo && strings.Contains(m.message, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func newCapturingLogger() (*slog.Logger, *slogCapture) {
+	h := &slogCapture{}
+	return slog.New(h), h
+}
 
 // newTestPool creates a small, deterministic pool for mutation testing.
 // ShrinkInterval=0 disables background goroutine; EnablePrewarming=false avoids prewarm.
-func newTestPool(logger Logger) *EnhancedBufferPool {
+func newTestPool(logger *slog.Logger) *EnhancedBufferPool {
 	config := &EnhancedBufferPoolConfig{
 		MinSize:          1024,
 		DefaultSize:      4096,
@@ -444,7 +501,7 @@ func TestIsStandardSizeNegation(t *testing.T) {
 
 func TestPrewarmPoolsPopulatesBuffers(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger, handler := newCapturingLogger()
 
 	config := &EnhancedBufferPoolConfig{
 		MinSize:          1024,
@@ -462,7 +519,7 @@ func TestPrewarmPoolsPopulatesBuffers(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// After prewarming, logger should have debug messages about pre-warmed pools
-	if len(logger.debugMessages) == 0 {
+	if len(handler.debugMessages()) == 0 {
 		t.Error("expected debug messages from prewarming, got none")
 	}
 
@@ -491,7 +548,7 @@ func TestPrewarmPoolsPopulatesBuffers(t *testing.T) {
 // The logger should report the correct number of successfully pre-warmed buffers.
 func TestPrewarmPoolsSuccessfulBufferCount(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger := slog.New(slog.DiscardHandler)
 
 	config := &EnhancedBufferPoolConfig{
 		MinSize:          1024,
@@ -535,7 +592,7 @@ func TestPrewarmPoolsSuccessfulBufferCount(t *testing.T) {
 // Test that prewarming is skipped when EnablePrewarming is false.
 func TestPrewarmPoolsSkippedWhenDisabled(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger, handler := newCapturingLogger()
 
 	config := &EnhancedBufferPoolConfig{
 		MinSize:          1024,
@@ -550,10 +607,8 @@ func TestPrewarmPoolsSkippedWhenDisabled(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// Should NOT have debug messages about prewarming
-	for _, msg := range logger.debugMessages {
-		if msg == "Pre-warmed pool for size %d with %d/%d buffers" {
-			t.Error("prewarming debug message found despite EnablePrewarming=false")
-		}
+	if handler.hasDebugContaining("Pre-warmed pool for size") {
+		t.Error("prewarming debug message found despite EnablePrewarming=false")
 	}
 }
 
@@ -744,7 +799,7 @@ func TestGetPoolForSizeCreatesForStandardOnly(t *testing.T) {
 
 func TestPrewarmSuccessfulBuffersIncrement(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger := slog.New(slog.DiscardHandler)
 
 	config := &EnhancedBufferPoolConfig{
 		MinSize:          1024,
@@ -795,7 +850,7 @@ func TestPrewarmSuccessfulBuffersIncrement(t *testing.T) {
 
 func TestPrewarmLogsCorrectCount(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger, handler := newCapturingLogger()
 
 	config := &EnhancedBufferPoolConfig{
 		MinSize:          1024,
@@ -813,15 +868,8 @@ func TestPrewarmLogsCorrectCount(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// Verify that debug messages were generated (logger != nil path)
-	found := false
-	for _, msg := range logger.debugMessages {
-		if msg == "Pre-warmed pool for size %d with %d/%d buffers" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected 'Pre-warmed pool' debug message, got messages: %v", logger.debugMessages)
+	if !handler.hasDebugContaining("Pre-warmed pool for size") {
+		t.Errorf("expected 'Pre-warmed pool' debug message, got messages: %v", handler.debugMessages())
 	}
 }
 
@@ -834,7 +882,7 @@ func TestPrewarmLogsCorrectCount(t *testing.T) {
 
 func TestPrewarmPoolsWithLogger(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger, handler := newCapturingLogger()
 
 	config := &EnhancedBufferPoolConfig{
 		MinSize:          1024,
@@ -852,7 +900,7 @@ func TestPrewarmPoolsWithLogger(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// With logger != nil, debug messages should have been produced
-	if len(logger.debugMessages) == 0 {
+	if len(handler.debugMessages()) == 0 {
 		t.Error("expected debug messages from prewarming with non-nil logger")
 	}
 }
@@ -939,7 +987,7 @@ func TestGetStatsFieldValues(t *testing.T) {
 
 func TestPerformAdaptiveManagement(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger := slog.New(slog.DiscardHandler)
 	ebp := newTestPool(logger)
 	defer ebp.Shutdown()
 
@@ -963,7 +1011,7 @@ func TestPerformAdaptiveManagement(t *testing.T) {
 
 func TestPerformAdaptiveManagementNoUsage(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger, handler := newCapturingLogger()
 	ebp := newTestPool(logger)
 	defer ebp.Shutdown()
 
@@ -971,10 +1019,8 @@ func TestPerformAdaptiveManagementNoUsage(t *testing.T) {
 	ebp.performAdaptiveManagement()
 
 	// Verify no debug messages about utilization (since totalUsage == 0)
-	for _, msg := range logger.debugMessages {
-		if msg == "Buffer pool size %d has low utilization: %.2f%%" {
-			t.Error("should not log utilization when totalUsage is 0")
-		}
+	if handler.hasDebugContaining("has low utilization") {
+		t.Error("should not log utilization when totalUsage is 0")
 	}
 }
 
@@ -1070,7 +1116,7 @@ func TestGetUsesDefaultSize(t *testing.T) {
 
 func TestCreatePoolForSizeWithLogger(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger, handler := newCapturingLogger()
 
 	config := &EnhancedBufferPoolConfig{
 		MinSize:          1024,
@@ -1085,7 +1131,7 @@ func TestCreatePoolForSizeWithLogger(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// Logger should have recorded pool creation debug messages
-	if len(logger.debugMessages) == 0 {
+	if len(handler.debugMessages()) == 0 {
 		t.Error("expected debug messages from pool creation with EnableMetrics=true")
 	}
 }
@@ -1175,7 +1221,7 @@ func TestDefaultEnhancedBufferPoolConfigValues(t *testing.T) {
 
 func TestShutdownClearsPools(t *testing.T) {
 	t.Parallel()
-	logger := &mockLogger{}
+	logger, handler := newCapturingLogger()
 	config := &EnhancedBufferPoolConfig{
 		MinSize:          1024,
 		DefaultSize:      4096,
@@ -1205,16 +1251,9 @@ func TestShutdownClearsPools(t *testing.T) {
 		t.Errorf("expected 0 pools after shutdown, got %d", afterCount)
 	}
 
-	// Verify logger received shutdown message
-	found := false
-	for _, msg := range logger.noticeMessages {
-		if msg == "Enhanced buffer pool shutdown complete" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("expected shutdown notice message")
+	// Verify logger received shutdown message (was Noticef, now Info in slog)
+	if !handler.hasInfoContaining("Enhanced buffer pool shutdown complete") {
+		t.Error("expected shutdown info message")
 	}
 }
 

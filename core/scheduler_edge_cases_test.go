@@ -85,7 +85,7 @@ func (j *ErrorJob) GetRunCount() int {
 // TestSchedulerErrorHandling tests scheduler's handling of job errors and panics
 func TestSchedulerErrorHandling(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 	scheduler.SetMaxConcurrentJobs(3)
 
 	// Create jobs with different error conditions
@@ -138,7 +138,7 @@ func TestSchedulerErrorHandling(t *testing.T) {
 // TestSchedulerInvalidJobOperations tests scheduler's handling of invalid operations
 func TestSchedulerInvalidJobOperations(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	// Test operations on non-existent jobs
 	if err := scheduler.DisableJob("non-existent"); err == nil {
@@ -169,7 +169,7 @@ func TestSchedulerInvalidJobOperations(t *testing.T) {
 // TestSchedulerConcurrentOperations tests concurrent scheduler operations for race conditions
 func TestSchedulerConcurrentOperations(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 	scheduler.SetMaxConcurrentJobs(5)
 
 	// Reduced worker count to avoid CI timeouts with race detector
@@ -246,7 +246,7 @@ func TestSchedulerConcurrentOperations(t *testing.T) {
 // TestSchedulerStopDuringJobExecution tests stopping scheduler while jobs are executing
 func TestSchedulerStopDuringJobExecution(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 	scheduler.SetMaxConcurrentJobs(3)
 
 	longJob1 := NewErrorJob("long-job-1", "@daily")
@@ -303,7 +303,7 @@ func TestSchedulerStopDuringJobExecution(t *testing.T) {
 // TestSchedulerMaxConcurrentJobsEdgeCases tests edge cases for concurrent job limits
 func TestSchedulerMaxConcurrentJobsEdgeCases(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	scheduler.SetMaxConcurrentJobs(0)
 	scheduler.SetMaxConcurrentJobs(-5)
@@ -338,7 +338,7 @@ func TestSchedulerMaxConcurrentJobsEdgeCases(t *testing.T) {
 // TestSchedulerJobStateConsistency tests consistency of job states during operations
 func TestSchedulerJobStateConsistency(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	job := NewErrorJob("state-test-job", "@daily")
 
@@ -419,7 +419,7 @@ func TestSchedulerJobStateConsistency(t *testing.T) {
 // TestSchedulerWorkflowCleanup tests the workflow cleanup functionality
 func TestSchedulerWorkflowCleanup(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	// Create a job to trigger workflow orchestrator initialization
 	job := NewErrorJob("workflow-test", "@daily")
@@ -455,7 +455,7 @@ func TestSchedulerWorkflowCleanup(t *testing.T) {
 // TestSchedulerEmptyStart tests starting scheduler with no jobs
 func TestSchedulerEmptyStart(t *testing.T) {
 	t.Parallel()
-	scheduler := NewScheduler(&TestLogger{})
+	scheduler := NewScheduler(newDiscardLogger())
 
 	// Starting empty scheduler should succeed (no longer returns ErrEmptyScheduler)
 	if err := scheduler.Start(); err != nil {

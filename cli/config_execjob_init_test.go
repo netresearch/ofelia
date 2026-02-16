@@ -15,7 +15,7 @@ import (
 func TestExecJobInit_FromINIConfig(t *testing.T) {
 	t.Parallel()
 
-	mockLogger := &test.Logger{}
+	mockLogger := test.NewTestLogger()
 
 	// Create config from INI string (simulates loading from file)
 	cfg, err := BuildFromString(`
@@ -53,7 +53,7 @@ func TestExecJobInit_FromINIConfig(t *testing.T) {
 func TestExecJobInit_AfterInitializeApp(t *testing.T) {
 	t.Parallel()
 
-	mockLogger := &test.Logger{}
+	mockLogger := test.NewTestLogger()
 
 	// Create config from INI string
 	cfg, err := BuildFromString(`

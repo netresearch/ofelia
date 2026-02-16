@@ -23,7 +23,7 @@
 - Race detection: `go test -race ./core/...`
 
 ## Code style & conventions
-- Use `core.Logger` interface, never direct `log` package
+- Use `*slog.Logger` from stdlib `log/slog` for all logging
 - Context propagation: always pass context through job execution
 - Error handling: wrap with contextual information, use custom error types
 - Concurrency: proper sync primitives, avoid race conditions

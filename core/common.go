@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strconv"
 	"time"
@@ -41,7 +42,7 @@ type Job interface {
 
 type Context struct {
 	Scheduler *Scheduler
-	Logger    Logger
+	Logger    *slog.Logger
 	Job       Job
 	Execution *Execution
 	Ctx       context.Context //nolint:containedctx // intentional: propagates go-cron's per-entry context through middleware chain
@@ -135,21 +136,21 @@ func (c *Context) Stop(err error) {
 }
 
 func (c *Context) Log(msg string) {
-	args := []any{c.Job.GetName(), c.Execution.ID, msg}
+	formatted := fmt.Sprintf(logPrefix, c.Job.GetName(), c.Execution.ID, msg)
 
 	switch {
 	case c.Execution.Failed:
-		c.Logger.Errorf(logPrefix, args...)
+		c.Logger.Error(formatted)
 	case c.Execution.Skipped:
-		c.Logger.Warningf(logPrefix, args...)
+		c.Logger.Warn(formatted)
 	default:
-		c.Logger.Noticef(logPrefix, args...)
+		c.Logger.Info(formatted)
 	}
 }
 
 func (c *Context) Warn(msg string) {
-	args := []any{c.Job.GetName(), c.Execution.ID, msg}
-	c.Logger.Warningf(logPrefix, args...)
+	formatted := fmt.Sprintf(logPrefix, c.Job.GetName(), c.Execution.ID, msg)
+	c.Logger.Warn(formatted)
 }
 
 // Execution contains all the information relative to a Job execution.
@@ -304,14 +305,6 @@ func (c *middlewareContainer) Middlewares() []Middleware {
 		ms = append(ms, c.m[t])
 	}
 	return ms
-}
-
-type Logger interface {
-	Criticalf(format string, args ...any)
-	Debugf(format string, args ...any)
-	Errorf(format string, args ...any)
-	Noticef(format string, args ...any)
-	Warningf(format string, args ...any)
 }
 
 func randomID() (string, error) {

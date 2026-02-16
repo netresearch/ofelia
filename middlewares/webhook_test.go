@@ -195,7 +195,7 @@ func TestWebhook_SendsRequest(t *testing.T) {
 	job.Name = "test-job"
 	job.Command = "echo hello"
 
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 
@@ -251,7 +251,7 @@ func TestWebhook_Retry(t *testing.T) {
 	job.Name = "test-job"
 	job.Command = "echo hello"
 
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 
@@ -332,7 +332,7 @@ func TestWebhook_BuildWebhookData_Success(t *testing.T) {
 	job.Name = "test-job"
 	job.Command = "echo hello"
 
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 
@@ -367,7 +367,7 @@ func TestWebhook_BuildWebhookData_Error(t *testing.T) {
 	job.Name = "failing-job"
 	job.Command = "exit 1"
 
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 

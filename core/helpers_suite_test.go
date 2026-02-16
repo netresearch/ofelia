@@ -1,6 +1,7 @@
 package core
 
 import (
+	"log/slog"
 	"sync/atomic"
 	"time"
 )
@@ -28,10 +29,6 @@ func (j *TestJob) Run(ctx *Context) error {
 
 func (j *TestJob) Called() int { return int(j.called.Load()) }
 
-type TestLogger struct{}
-
-func (*TestLogger) Criticalf(string, ...any) {}
-func (*TestLogger) Debugf(string, ...any)    {}
-func (*TestLogger) Errorf(string, ...any)    {}
-func (*TestLogger) Noticef(string, ...any)   {}
-func (*TestLogger) Warningf(string, ...any)  {}
+func newDiscardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}

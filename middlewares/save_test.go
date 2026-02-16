@@ -33,7 +33,7 @@ func setupSaveTestContext(t *testing.T) (*core.Context, *TestJob) {
 		},
 	}
 
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 

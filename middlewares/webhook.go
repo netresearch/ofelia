@@ -107,13 +107,13 @@ func (w *Webhook) Run(ctx *core.Context) error {
 
 	// Check deduplication - suppress duplicate error notifications
 	if w.Config.Dedup != nil && ctx.Execution.Failed && !w.Config.Dedup.ShouldNotify(ctx) {
-		ctx.Logger.Debugf("Webhook %q notification suppressed (duplicate within cooldown)", w.Config.Name)
+		ctx.Logger.Debug(fmt.Sprintf("Webhook %q notification suppressed (duplicate within cooldown)", w.Config.Name))
 		return err
 	}
 
 	// Send webhook with retry logic
 	if webhookErr := w.sendWithRetry(ctx); webhookErr != nil {
-		ctx.Logger.Errorf("Webhook %q: %v", w.Config.Name, webhookErr)
+		ctx.Logger.Error("Webhook error", "webhook", w.Config.Name, "error", webhookErr)
 	}
 
 	return err
@@ -125,14 +125,14 @@ func (w *Webhook) sendWithRetry(ctx *core.Context) error {
 
 	for attempt := 0; attempt <= w.Config.RetryCount; attempt++ {
 		if attempt > 0 {
-			ctx.Logger.Debugf("Webhook %q: retry attempt %d/%d after %v",
-				w.Config.Name, attempt, w.Config.RetryCount, w.Config.RetryDelay)
+			ctx.Logger.Debug(fmt.Sprintf("Webhook %q: retry attempt %d/%d after %v",
+				w.Config.Name, attempt, w.Config.RetryCount, w.Config.RetryDelay))
 			time.Sleep(w.Config.RetryDelay)
 		}
 
 		if err := w.send(ctx); err != nil {
 			lastErr = err
-			ctx.Logger.Debugf("Webhook %q: attempt %d failed: %v", w.Config.Name, attempt+1, err)
+			ctx.Logger.Debug(fmt.Sprintf("Webhook %q: attempt %d failed: %v", w.Config.Name, attempt+1, err))
 			continue
 		}
 
@@ -196,7 +196,7 @@ func (w *Webhook) send(ctx *core.Context) error {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	ctx.Logger.Debugf("Webhook %q sent successfully to %s", w.Config.Name, targetURL)
+	ctx.Logger.Debug(fmt.Sprintf("Webhook %q sent successfully to %s", w.Config.Name, targetURL))
 	return nil
 }
 

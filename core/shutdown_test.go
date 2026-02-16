@@ -9,7 +9,7 @@ import (
 )
 
 func TestShutdownManager(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	sm := NewShutdownManager(logger, 5*time.Second)
 
 	if sm == nil {
@@ -28,7 +28,7 @@ func TestShutdownManager(t *testing.T) {
 }
 
 func TestShutdownHooks(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	sm := NewShutdownManager(logger, 2*time.Second)
 
 	// Track hook execution with mutex for concurrent access
@@ -96,7 +96,7 @@ func TestShutdownHooks(t *testing.T) {
 }
 
 func TestShutdownTimeout(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	sm := NewShutdownManager(logger, 100*time.Millisecond)
 
 	// Register a hook that takes too long
@@ -130,7 +130,7 @@ func TestShutdownTimeout(t *testing.T) {
 }
 
 func TestShutdownWithErrors(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	sm := NewShutdownManager(logger, 1*time.Second)
 
 	// Register hooks, some with errors
@@ -161,7 +161,7 @@ func TestShutdownWithErrors(t *testing.T) {
 }
 
 func TestShutdownChan(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	sm := NewShutdownManager(logger, 1*time.Second)
 
 	shutdownChan := sm.ShutdownChan()
@@ -189,7 +189,7 @@ func TestShutdownChan(t *testing.T) {
 }
 
 func TestDoubleShutdown(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	sm := NewShutdownManager(logger, 1*time.Second)
 
 	// First shutdown should succeed
@@ -208,7 +208,7 @@ func TestDoubleShutdown(t *testing.T) {
 }
 
 func TestGracefulScheduler(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	scheduler := NewScheduler(logger)
 	sm := NewShutdownManager(logger, 2*time.Second)
 
@@ -231,7 +231,7 @@ func TestGracefulScheduler(t *testing.T) {
 }
 
 func TestJobRunDuringShutdown(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	scheduler := NewScheduler(logger)
 	sm := NewShutdownManager(logger, 2*time.Second)
 	gs := NewGracefulScheduler(scheduler, sm)

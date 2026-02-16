@@ -1,15 +1,18 @@
 package cli
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"gopkg.in/ini.v1"
-
-	"github.com/netresearch/ofelia/core"
 )
+
+// discardLogger returns a silent logger for tests that don't need log inspection.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
 
 // TestValidateSchedule tests the schedule validation function
 func TestValidateSchedule(t *testing.T) {
@@ -331,11 +334,9 @@ func TestSaveConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := logrus.New()
-			logger.SetLevel(logrus.PanicLevel)
 			cmd := &InitCommand{
 				Output: tt.output,
-				Logger: &core.LogrusAdapter{Logger: logger},
+				Logger: discardLogger(),
 			}
 
 			if err := cmd.saveConfig(tt.config); err != nil {
@@ -364,11 +365,9 @@ func TestSaveConfigCreatesDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	nestedPath := filepath.Join(tmpDir, "nested", "deep", "config.ini")
 
-	logger := logrus.New()
-	logger.SetLevel(logrus.PanicLevel)
 	cmd := &InitCommand{
 		Output: nestedPath,
-		Logger: &core.LogrusAdapter{Logger: logger},
+		Logger: discardLogger(),
 	}
 
 	config := &initConfig{

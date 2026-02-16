@@ -2,6 +2,7 @@ package web
 
 import (
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -15,22 +16,16 @@ import (
 	"github.com/netresearch/ofelia/static"
 )
 
+func newDiscardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
+
 // Tests targeting surviving mutants in server.go.
 //
 // CONDITIONALS_NEGATION at line 55:  tokenExpiry == 0
 // CONDITIONALS_NEGATION at line 163: err == nil
 // CONDITIONALS_NEGATION at line 251: t.Kind() == reflect.Pointer
 // ARITHMETIC_BASE at lines 114-116:  timeout multiplications
-
-// --- helpers --------------------------------------------------------
-
-type mutTestLogger struct{}
-
-func (mutTestLogger) Criticalf(string, ...any) {}
-func (mutTestLogger) Debugf(string, ...any)    {}
-func (mutTestLogger) Errorf(string, ...any)    {}
-func (mutTestLogger) Noticef(string, ...any)   {}
-func (mutTestLogger) Warningf(string, ...any)  {}
 
 // --- CONDITIONALS_NEGATION at line 55: tokenExpiry == 0 -------------
 
@@ -42,7 +37,7 @@ func (mutTestLogger) Warningf(string, ...any)  {}
 func TestNewServerWithAuth_TokenExpiryZeroUsesDefault(t *testing.T) {
 	t.Parallel()
 
-	sched := core.NewScheduler(&mutTestLogger{})
+	sched := core.NewScheduler(newDiscardLogger())
 	authCfg := &SecureAuthConfig{
 		Enabled:      true,
 		Username:     "admin",
@@ -76,7 +71,7 @@ func TestNewServerWithAuth_TokenExpiryZeroUsesDefault(t *testing.T) {
 func TestNewServerWithAuth_TokenExpiryNonZeroPreserved(t *testing.T) {
 	t.Parallel()
 
-	sched := core.NewScheduler(&mutTestLogger{})
+	sched := core.NewScheduler(newDiscardLogger())
 	authCfg := &SecureAuthConfig{
 		Enabled:      true,
 		Username:     "admin",
@@ -115,7 +110,7 @@ func TestRegisterHealthEndpoints_UIFSSubSuccess(t *testing.T) {
 	_, err := fs.Sub(static.UI, "ui")
 	require.NoError(t, err, "static.UI should contain a 'ui' subdirectory")
 
-	sched := core.NewScheduler(&mutTestLogger{})
+	sched := core.NewScheduler(newDiscardLogger())
 	srv := NewServer("", sched, nil, nil)
 	require.NotNil(t, srv)
 
@@ -203,7 +198,7 @@ func TestJobType_NonPointerUnknownType(t *testing.T) {
 func TestServerTimeouts(t *testing.T) {
 	t.Parallel()
 
-	sched := core.NewScheduler(&mutTestLogger{})
+	sched := core.NewScheduler(newDiscardLogger())
 	srv := NewServer(":0", sched, nil, nil)
 	require.NotNil(t, srv)
 
@@ -227,7 +222,7 @@ func TestServerTimeouts(t *testing.T) {
 func TestServerTimeouts_NotMutated(t *testing.T) {
 	t.Parallel()
 
-	sched := core.NewScheduler(&mutTestLogger{})
+	sched := core.NewScheduler(newDiscardLogger())
 	srv := NewServer(":0", sched, nil, nil)
 	require.NotNil(t, srv)
 

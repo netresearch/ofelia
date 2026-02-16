@@ -14,7 +14,7 @@ func TestSchedulerAddJob(t *testing.T) {
 	job := &TestJob{}
 	job.Schedule = "@hourly"
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	err := sc.AddJob(job)
 	require.NoError(t, err)
 
@@ -29,7 +29,7 @@ func TestSchedulerStartStop(t *testing.T) {
 	job := &TestJob{}
 	job.Schedule = "@every 50ms"
 
-	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
+	sc := NewSchedulerWithOptions(newDiscardLogger(), nil, 10*time.Millisecond)
 	err := sc.AddJob(job)
 	require.NoError(t, err)
 
@@ -63,7 +63,7 @@ func TestSchedulerMergeMiddlewaresSame(t *testing.T) {
 	job.Schedule = "@every 1s"
 	job.Use(mB, mC)
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	sc.Use(mA)
 	_ = sc.AddJob(job)
 
@@ -78,7 +78,7 @@ func TestSchedulerLastRunRecorded(t *testing.T) {
 	job := &TestJob{}
 	job.Schedule = "@every 50ms"
 
-	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
+	sc := NewSchedulerWithOptions(newDiscardLogger(), nil, 10*time.Millisecond)
 	err := sc.AddJob(job)
 	require.NoError(t, err)
 
@@ -108,9 +108,9 @@ func TestSchedulerLastRunRecorded(t *testing.T) {
 func TestSchedulerWorkflowOrchestratorInit(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
-	sc.workflowOrchestrator = NewWorkflowOrchestrator(sc, &TestLogger{})
+	sc.workflowOrchestrator = NewWorkflowOrchestrator(sc, newDiscardLogger())
 	assert.NotNil(t, sc.workflowOrchestrator)
 	assert.NotNil(t, sc.workflowOrchestrator.executions)
 
@@ -130,7 +130,7 @@ func TestSchedulerCleanupTicker(t *testing.T) {
 	t.Parallel()
 
 	fakeClock := NewFakeClock(time.Now())
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	sc.SetClock(fakeClock)
 
 	assert.Equal(t, fakeClock, sc.clock)
@@ -140,7 +140,7 @@ func TestSchedulerCleanupTicker(t *testing.T) {
 func TestSchedulerSetClock(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	fakeClock := NewFakeClock(time.Now())
 
 	sc.SetClock(fakeClock)
@@ -150,7 +150,7 @@ func TestSchedulerSetClock(t *testing.T) {
 func TestSchedulerSetOnJobComplete(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	called := false
 
 	sc.SetOnJobComplete(func(_ string, _ bool) {
@@ -166,7 +166,7 @@ func TestSchedulerWithCronClock(t *testing.T) {
 	t.Parallel()
 
 	cronClock := NewCronClock(time.Now())
-	sc := NewSchedulerWithClock(&TestLogger{}, cronClock)
+	sc := NewSchedulerWithClock(newDiscardLogger(), cronClock)
 
 	job := &TestJob{}
 	job.Schedule = "@every 1h"
@@ -206,7 +206,7 @@ func TestSchedulerRunOnStartup(t *testing.T) {
 	job.Schedule = "@every 1h" // Long interval so it won't fire during test
 	job.RunOnStartup = true
 
-	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
+	sc := NewSchedulerWithOptions(newDiscardLogger(), nil, 10*time.Millisecond)
 	err := sc.AddJob(job)
 	require.NoError(t, err)
 
@@ -240,7 +240,7 @@ func TestSchedulerRunOnStartupDisabled(t *testing.T) {
 	job.Schedule = "@every 1h" // Long interval so it won't fire during test
 	job.RunOnStartup = false   // Explicitly disabled
 
-	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
+	sc := NewSchedulerWithOptions(newDiscardLogger(), nil, 10*time.Millisecond)
 	err := sc.AddJob(job)
 	require.NoError(t, err)
 
@@ -273,7 +273,7 @@ func TestSchedulerRunOnStartupMultipleJobs(t *testing.T) {
 	job3.Schedule = "@every 1h"
 	job3.RunOnStartup = false
 
-	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
+	sc := NewSchedulerWithOptions(newDiscardLogger(), nil, 10*time.Millisecond)
 	require.NoError(t, sc.AddJob(job1))
 	require.NoError(t, sc.AddJob(job2))
 	require.NoError(t, sc.AddJob(job3))
@@ -318,7 +318,7 @@ func TestSchedulerRunOnStartupNonBlocking(t *testing.T) {
 	job.Schedule = "@every 1h"
 	job.RunOnStartup = true
 
-	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
+	sc := NewSchedulerWithOptions(newDiscardLogger(), nil, 10*time.Millisecond)
 	err := sc.AddJob(job)
 	require.NoError(t, err)
 
