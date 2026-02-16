@@ -1,4 +1,4 @@
-package metrics //nolint:golint
+package metrics
 
 import (
 	"fmt"
