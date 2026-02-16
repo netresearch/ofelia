@@ -48,7 +48,7 @@ func BenchmarkContainerCreate(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		name := fmt.Sprintf("bench-create-%d-%d", time.Now().UnixNano(), i)
 		resp, err := cli.ContainerCreate(ctx, &container.Config{
 			Image: "alpine:latest",
@@ -73,7 +73,7 @@ func BenchmarkContainerStartStop(b *testing.B) {
 	timeout := 5
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
 			b.Fatalf("Start failed: %v", err)
 		}
@@ -93,7 +93,7 @@ func BenchmarkContainerInspect(b *testing.B) {
 	defer removeBenchContainer(b, cli, id)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, err := cli.ContainerInspect(ctx, id); err != nil {
 			b.Fatalf("Inspect failed: %v", err)
 		}
@@ -106,7 +106,7 @@ func BenchmarkContainerList(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, err := cli.ContainerList(ctx, container.ListOptions{All: true}); err != nil {
 			b.Fatalf("List failed: %v", err)
 		}
@@ -131,7 +131,7 @@ func BenchmarkExecRun(b *testing.B) {
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		execResp, err := cli.ContainerExecCreate(ctx, id, container.ExecOptions{
 			Cmd:          []string{"echo", "benchmark"},
 			AttachStdout: true,
@@ -197,7 +197,7 @@ func BenchmarkImageExists(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _, err := cli.ImageInspectWithRaw(ctx, "alpine:latest")
 		if err != nil {
 			b.Fatalf("InspectImage failed: %v", err)
@@ -211,7 +211,7 @@ func BenchmarkImageList(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, err := cli.ImageList(ctx, image.ListOptions{All: true}); err != nil {
 			b.Fatalf("ListImages failed: %v", err)
 		}
@@ -224,7 +224,7 @@ func BenchmarkSystemPing(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, err := cli.Ping(ctx); err != nil {
 			b.Fatalf("Ping failed: %v", err)
 		}
@@ -237,7 +237,7 @@ func BenchmarkSystemInfo(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, err := cli.Info(ctx); err != nil {
 			b.Fatalf("Info failed: %v", err)
 		}
@@ -250,7 +250,7 @@ func BenchmarkContainerFullLifecycle(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		name := fmt.Sprintf("bench-lifecycle-%d-%d", time.Now().UnixNano(), i)
 
 		resp, err := cli.ContainerCreate(ctx, &container.Config{
@@ -298,7 +298,7 @@ func BenchmarkExecJobSimulation(b *testing.B) {
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, err := cli.ContainerInspect(ctx, id); err != nil {
 			b.Fatalf("Inspect failed: %v", err)
 		}
@@ -327,7 +327,7 @@ func BenchmarkRunJobSimulation(b *testing.B) {
 	ctx := context.Background()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		name := fmt.Sprintf("bench-runjob-%d-%d", time.Now().UnixNano(), i)
 
 		_, _, err := cli.ImageInspectWithRaw(ctx, "alpine:latest")

@@ -1,43 +1,12 @@
 package core
 
 import (
-	"reflect"
+	"context"
+	"log/slog"
 	"testing"
 )
 
-// logCall records logger method calls.
-type logCall struct {
-	method string
-	format string
-	args   []any
-}
-
-// stubLogger implements Logger and records calls.
-type stubLogger struct {
-	calls []logCall
-}
-
-func (l *stubLogger) Criticalf(format string, args ...any) {
-	l.calls = append(l.calls, logCall{"Criticalf", format, args})
-}
-
-func (l *stubLogger) Debugf(format string, args ...any) {
-	l.calls = append(l.calls, logCall{"Debugf", format, args})
-}
-
-func (l *stubLogger) Errorf(format string, args ...any) {
-	l.calls = append(l.calls, logCall{"Errorf", format, args})
-}
-
-func (l *stubLogger) Noticef(format string, args ...any) {
-	l.calls = append(l.calls, logCall{"Noticef", format, args})
-}
-
-func (l *stubLogger) Warningf(format string, args ...any) {
-	l.calls = append(l.calls, logCall{"Warningf", format, args})
-}
-
-// stubJob implements Job with minimal methods.
+// stubJob implements Job with minimal methods for testing.
 type stubJob struct {
 	name string
 }
@@ -57,77 +26,85 @@ func (j *stubJob) GetCronJobID() uint64      { return 0 }
 func (j *stubJob) SetCronJobID(id uint64)    {}
 func (j *stubJob) GetHistory() []*Execution  { return nil }
 
-// TestContextLogDefault verifies that Context.Log uses Noticef when no error or skip.
+// capturingHandler is a slog.Handler that captures log records for testing.
+type capturingHandler struct {
+	records []slog.Record
+}
+
+func (h *capturingHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+
+func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.records = append(h.records, r)
+	return nil
+}
+
+func (h *capturingHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *capturingHandler) WithGroup(_ string) slog.Handler      { return h }
+
+// TestContextLogDefault verifies that Context.Log uses Info level when no error or skip.
 func TestContextLogDefault(t *testing.T) {
-	logger := &stubLogger{}
+	handler := &capturingHandler{}
+	logger := slog.New(handler)
 	job := &stubJob{name: "jobName"}
 	exec := &Execution{ID: "ID"}
 	ctx := &Context{Logger: logger, Job: job, Execution: exec}
 	ctx.Log("hello")
-	if len(logger.calls) != 1 {
-		t.Fatalf("expected 1 log call, got %d", len(logger.calls))
+	if len(handler.records) != 1 {
+		t.Fatalf("expected 1 log call, got %d", len(handler.records))
 	}
-	call := logger.calls[0]
-	if call.method != "Noticef" {
-		t.Errorf("expected method Noticef, got %s", call.method)
-	}
-	if call.format != logPrefix {
-		t.Errorf("expected format %q, got %q", logPrefix, call.format)
-	}
-	wantArgs := []any{job.name, exec.ID, "hello"}
-	if !reflect.DeepEqual(call.args, wantArgs) {
-		t.Errorf("expected args %v, got %v", wantArgs, call.args)
+	record := handler.records[0]
+	if record.Level != slog.LevelInfo {
+		t.Errorf("expected level Info, got %s", record.Level)
 	}
 }
 
-// TestContextLogError verifies that Context.Log uses Errorf when execution failed.
+// TestContextLogError verifies that Context.Log uses Error level when execution failed.
 func TestContextLogError(t *testing.T) {
-	logger := &stubLogger{}
+	handler := &capturingHandler{}
+	logger := slog.New(handler)
 	job := &stubJob{name: "jobName"}
 	exec := &Execution{ID: "ID", Failed: true}
 	ctx := &Context{Logger: logger, Job: job, Execution: exec}
 	ctx.Log("oops")
-	if len(logger.calls) != 1 {
-		t.Fatalf("expected 1 log call, got %d", len(logger.calls))
+	if len(handler.records) != 1 {
+		t.Fatalf("expected 1 log call, got %d", len(handler.records))
 	}
-	call := logger.calls[0]
-	if call.method != "Errorf" {
-		t.Errorf("expected method Errorf, got %s", call.method)
+	record := handler.records[0]
+	if record.Level != slog.LevelError {
+		t.Errorf("expected level Error, got %s", record.Level)
 	}
 }
 
-// TestContextLogSkipped verifies that Context.Log uses Warningf when execution skipped.
+// TestContextLogSkipped verifies that Context.Log uses Warn level when execution skipped.
 func TestContextLogSkipped(t *testing.T) {
-	logger := &stubLogger{}
+	handler := &capturingHandler{}
+	logger := slog.New(handler)
 	job := &stubJob{name: "jobName"}
 	exec := &Execution{ID: "ID", Skipped: true}
 	ctx := &Context{Logger: logger, Job: job, Execution: exec}
 	ctx.Log("skip")
-	if len(logger.calls) != 1 {
-		t.Fatalf("expected 1 log call, got %d", len(logger.calls))
+	if len(handler.records) != 1 {
+		t.Fatalf("expected 1 log call, got %d", len(handler.records))
 	}
-	call := logger.calls[0]
-	if call.method != "Warningf" {
-		t.Errorf("expected method Warningf, got %s", call.method)
+	record := handler.records[0]
+	if record.Level != slog.LevelWarn {
+		t.Errorf("expected level Warn, got %s", record.Level)
 	}
 }
 
-// TestContextWarn verifies that Context.Warn always uses Warningf.
+// TestContextWarn verifies that Context.Warn always uses Warn level.
 func TestContextWarn(t *testing.T) {
-	logger := &stubLogger{}
+	handler := &capturingHandler{}
+	logger := slog.New(handler)
 	job := &stubJob{name: "jobName"}
 	exec := &Execution{ID: "ID"}
 	ctx := &Context{Logger: logger, Job: job, Execution: exec}
 	ctx.Warn("caution")
-	if len(logger.calls) != 1 {
-		t.Fatalf("expected 1 log call, got %d", len(logger.calls))
+	if len(handler.records) != 1 {
+		t.Fatalf("expected 1 log call, got %d", len(handler.records))
 	}
-	call := logger.calls[0]
-	if call.method != "Warningf" {
-		t.Errorf("expected method Warningf, got %s", call.method)
-	}
-	wantArgs := []any{job.name, exec.ID, "caution"}
-	if !reflect.DeepEqual(call.args, wantArgs) {
-		t.Errorf("expected args %v, got %v", wantArgs, call.args)
+	record := handler.records[0]
+	if record.Level != slog.LevelWarn {
+		t.Errorf("expected level Warn, got %s", record.Level)
 	}
 }

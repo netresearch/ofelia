@@ -16,6 +16,7 @@ import (
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/domain"
+	"github.com/netresearch/ofelia/test"
 )
 
 // dummyNotifier implements dockerContainersUpdate
@@ -139,10 +140,10 @@ func (m *mockDockerProviderForHandler) Close() error {
 
 // newBaseConfig creates a Config with logger, docker handler, and scheduler ready
 func newBaseConfig() *Config {
-	cfg := NewConfig(&TestLogger{})
-	cfg.logger = &TestLogger{}
+	cfg := NewConfig(test.NewTestLogger())
+	cfg.logger = test.NewTestLogger()
 	cfg.dockerHandler = &DockerHandler{}
-	cfg.sh = core.NewScheduler(&TestLogger{})
+	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 	return cfg
 }
@@ -177,7 +178,7 @@ func TestBuildSDKProviderError(t *testing.T) {
 	defer os.Setenv("DOCKER_HOST", orig)
 	os.Setenv("DOCKER_HOST", "=")
 
-	h := &DockerHandler{ctx: context.Background(), logger: &TestLogger{}}
+	h := &DockerHandler{ctx: context.Background(), logger: test.NewTestLogger()}
 	_, err := h.buildSDKProvider()
 	assert.Error(t, err)
 }
@@ -190,7 +191,7 @@ func TestNewDockerHandlerErrorPing(t *testing.T) {
 	}
 
 	notifier := &dummyNotifier{}
-	handler, err := NewDockerHandler(context.Background(), notifier, &TestLogger{}, &DockerConfig{}, mockProvider)
+	handler, err := NewDockerHandler(context.Background(), notifier, test.NewTestLogger(), &DockerConfig{}, mockProvider)
 	assert.Nil(t, handler)
 	assert.Error(t, err)
 }
@@ -199,7 +200,7 @@ func TestNewDockerHandlerErrorPing(t *testing.T) {
 func TestGetDockerContainersInvalidFilter(t *testing.T) {
 	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{}
-	h := &DockerHandler{filters: []string{"invalidfilter"}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
+	h := &DockerHandler{filters: []string{"invalidfilter"}, logger: test.NewTestLogger(), ctx: context.Background(), dockerProvider: mockProvider}
 	_, err := h.GetDockerContainers()
 	require.Error(t, err)
 	assert.Regexp(t, `(?s)invalid docker filter "invalidfilter".*key=value format.*`, err.Error())
@@ -211,7 +212,7 @@ func TestGetDockerContainersNoContainers(t *testing.T) {
 	// Mock provider returning empty container list
 	mockProvider := &mockDockerProviderForHandler{containers: []domain.Container{}}
 
-	h := &DockerHandler{filters: []string{}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
+	h := &DockerHandler{filters: []string{}, logger: test.NewTestLogger(), ctx: context.Background(), dockerProvider: mockProvider}
 	_, err := h.GetDockerContainers()
 	assert.Equal(t, ErrNoContainerWithOfeliaEnabled, err)
 }
@@ -237,7 +238,7 @@ func TestGetDockerContainersValid(t *testing.T) {
 		},
 	}
 
-	h := &DockerHandler{filters: []string{}, logger: &TestLogger{}, ctx: context.Background(), dockerProvider: mockProvider}
+	h := &DockerHandler{filters: []string{}, logger: test.NewTestLogger(), ctx: context.Background(), dockerProvider: mockProvider}
 	labels, err := h.GetDockerContainers()
 	require.NoError(t, err)
 
@@ -266,7 +267,7 @@ func TestGetDockerContainersIncludeStoppedFalse(t *testing.T) {
 		},
 	}
 	h := &DockerHandler{
-		filters: []string{}, logger: &TestLogger{}, ctx: context.Background(),
+		filters: []string{}, logger: test.NewTestLogger(), ctx: context.Background(),
 		dockerProvider: mockProvider, includeStopped: false,
 	}
 	_, err := h.GetDockerContainers()
@@ -287,7 +288,7 @@ func TestGetDockerContainersIncludeStoppedTrue(t *testing.T) {
 		},
 	}
 	h := &DockerHandler{
-		filters: []string{}, logger: &TestLogger{}, ctx: context.Background(),
+		filters: []string{}, logger: test.NewTestLogger(), ctx: context.Background(),
 		dockerProvider: mockProvider, includeStopped: true,
 	}
 	_, err := h.GetDockerContainers()
@@ -299,7 +300,7 @@ func TestGetDockerContainersIncludeStoppedTrue(t *testing.T) {
 // configPollInterval is zero or negative.
 func TestWatchConfigInvalidInterval(t *testing.T) {
 	t.Parallel()
-	h := &DockerHandler{configPollInterval: 0, notifier: &dummyNotifier{}, logger: &TestLogger{}, ctx: context.Background(), cancel: func() {}}
+	h := &DockerHandler{configPollInterval: 0, notifier: &dummyNotifier{}, logger: test.NewTestLogger(), ctx: context.Background(), cancel: func() {}}
 	done := make(chan struct{})
 	go func() {
 		h.watchConfig()
@@ -313,7 +314,7 @@ func TestWatchConfigInvalidInterval(t *testing.T) {
 		t.Error("watchConfig did not return for zero interval")
 	}
 
-	h = &DockerHandler{configPollInterval: -time.Second, notifier: &dummyNotifier{}, logger: &TestLogger{}, ctx: context.Background(), cancel: func() {}}
+	h = &DockerHandler{configPollInterval: -time.Second, notifier: &dummyNotifier{}, logger: test.NewTestLogger(), ctx: context.Background(), cancel: func() {}}
 	done = make(chan struct{})
 	go func() {
 		h.watchConfig()
@@ -355,7 +356,7 @@ func TestDockerContainersUpdateKeepsIniExecJobs(t *testing.T) {
 // TestResolveConfigDefaults verifies that resolveConfig returns correct defaults
 func TestResolveConfigDefaults(t *testing.T) {
 	t.Parallel()
-	logger := &TestLogger{}
+	logger := test.NewTestLogger()
 	cfg := &DockerConfig{
 		ConfigPollInterval: 10 * time.Second,
 		DockerPollInterval: 0,
@@ -374,7 +375,7 @@ func TestResolveConfigDefaults(t *testing.T) {
 // TestResolveConfigDeprecatedPollInterval verifies backward compatibility migration
 func TestResolveConfigDeprecatedPollInterval(t *testing.T) {
 	t.Parallel()
-	logger := &TestLogger{}
+	logger := test.NewTestLogger()
 
 	// Create a full Config with the deprecated Docker options
 	fullCfg := &Config{
@@ -402,7 +403,7 @@ func TestResolveConfigDeprecatedPollInterval(t *testing.T) {
 // TestResolveConfigDeprecatedPollIntervalExplicitOverride verifies explicit options override deprecated
 func TestResolveConfigDeprecatedPollIntervalExplicitOverride(t *testing.T) {
 	t.Parallel()
-	logger := &TestLogger{}
+	logger := test.NewTestLogger()
 
 	// Create a full Config with the deprecated Docker options
 	fullCfg := &Config{
@@ -430,7 +431,7 @@ func TestResolveConfigDeprecatedPollIntervalExplicitOverride(t *testing.T) {
 // TestResolveConfigDeprecatedDisablePolling verifies no-poll migration
 func TestResolveConfigDeprecatedDisablePolling(t *testing.T) {
 	t.Parallel()
-	logger := &TestLogger{}
+	logger := test.NewTestLogger()
 
 	// Create a full Config with the deprecated Docker options
 	fullCfg := &Config{
@@ -462,7 +463,7 @@ func TestWatchContainerPollingInvalidInterval(t *testing.T) {
 	h := &DockerHandler{
 		dockerPollInterval: 0,
 		notifier:           &dummyNotifier{},
-		logger:             &TestLogger{},
+		logger:             test.NewTestLogger(),
 		ctx:                context.Background(),
 		dockerProvider:     mockProvider,
 	}
@@ -483,7 +484,7 @@ func TestWatchContainerPollingInvalidInterval(t *testing.T) {
 	h = &DockerHandler{
 		dockerPollInterval: -time.Second,
 		notifier:           &dummyNotifier{},
-		logger:             &TestLogger{},
+		logger:             test.NewTestLogger(),
 		ctx:                context.Background(),
 		dockerProvider:     mockProvider,
 	}
@@ -511,7 +512,7 @@ func TestWatchContainerPollingContextCancellation(t *testing.T) {
 	h := &DockerHandler{
 		dockerPollInterval: 100 * time.Millisecond,
 		notifier:           &dummyNotifier{},
-		logger:             &TestLogger{},
+		logger:             test.NewTestLogger(),
 		ctx:                ctx,
 		dockerProvider:     mockProvider,
 	}
@@ -545,7 +546,7 @@ func TestStartFallbackPollingAlreadyActive(t *testing.T) {
 	h := &DockerHandler{
 		pollingFallback:       100 * time.Millisecond,
 		notifier:              &dummyNotifier{},
-		logger:                &TestLogger{},
+		logger:                test.NewTestLogger(),
 		ctx:                   ctx,
 		dockerProvider:        mockProvider,
 		fallbackPollingActive: true, // Already active
@@ -577,7 +578,7 @@ func TestStartFallbackPollingCancellation(t *testing.T) {
 	h := &DockerHandler{
 		pollingFallback: 100 * time.Millisecond,
 		notifier:        &dummyNotifier{},
-		logger:          &TestLogger{},
+		logger:          test.NewTestLogger(),
 		ctx:             ctx,
 		dockerProvider:  mockProvider,
 	}
@@ -626,7 +627,7 @@ func TestClearEventStreamErrorStopsFallback(t *testing.T) {
 	h := &DockerHandler{
 		pollingFallback: 100 * time.Millisecond,
 		notifier:        &dummyNotifier{},
-		logger:          &TestLogger{},
+		logger:          test.NewTestLogger(),
 		ctx:             ctx,
 		dockerProvider:  mockProvider,
 	}

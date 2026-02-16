@@ -1,52 +1,58 @@
 package core
 
 import (
+	"context"
 	"errors"
-	"reflect"
+	"log/slog"
 	"testing"
 )
 
-// stubLogger and logCall are defined in context_log_test.go and reused here.
+// cronCaptureHandler records slog records for CronUtils tests.
+type cronCaptureHandler struct {
+	records []slog.Record
+}
+
+func (h *cronCaptureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+
+func (h *cronCaptureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.records = append(h.records, r)
+	return nil
+}
+
+func (h *cronCaptureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *cronCaptureHandler) WithGroup(_ string) slog.Handler      { return h }
 
 func TestCronUtilsInfoForwardsArgs(t *testing.T) {
-	logger := &stubLogger{}
+	handler := &cronCaptureHandler{}
+	logger := slog.New(handler)
 	cu := NewCronUtils(logger)
 	cu.Info("msg", "a", 1, "b", 2)
-	if len(logger.calls) != 1 {
-		t.Fatalf("expected 1 call, got %d", len(logger.calls))
+	if len(handler.records) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(handler.records))
 	}
-	call := logger.calls[0]
-	if call.method != "Debugf" {
-		t.Errorf("expected method Debugf, got %s", call.method)
+	record := handler.records[0]
+	if record.Level != slog.LevelDebug {
+		t.Errorf("expected level Debug, got %s", record.Level)
 	}
-	expectedFormat := cronFormatString(4)
-	if call.format != expectedFormat {
-		t.Errorf("expected format %q, got %q", expectedFormat, call.format)
-	}
-	wantArgs := []any{"msg", "a", 1, "b", 2}
-	if !reflect.DeepEqual(call.args, wantArgs) {
-		t.Errorf("expected args %v, got %v", wantArgs, call.args)
+	if record.Message != "msg" {
+		t.Errorf("expected message %q, got %q", "msg", record.Message)
 	}
 }
 
 func TestCronUtilsErrorForwardsArgs(t *testing.T) {
-	logger := &stubLogger{}
+	handler := &cronCaptureHandler{}
+	logger := slog.New(handler)
 	cu := NewCronUtils(logger)
 	err := errors.New("boom")
 	cu.Error(err, "fail", "k", "v")
-	if len(logger.calls) != 1 {
-		t.Fatalf("expected 1 call, got %d", len(logger.calls))
+	if len(handler.records) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(handler.records))
 	}
-	call := logger.calls[0]
-	if call.method != "Errorf" {
-		t.Errorf("expected method Errorf, got %s", call.method)
+	record := handler.records[0]
+	if record.Level != slog.LevelError {
+		t.Errorf("expected level Error, got %s", record.Level)
 	}
-	expectedFormat := cronFormatString(4)
-	if call.format != expectedFormat {
-		t.Errorf("expected format %q, got %q", expectedFormat, call.format)
-	}
-	wantArgs := []any{"fail", "error", err, "k", "v"}
-	if !reflect.DeepEqual(call.args, wantArgs) {
-		t.Errorf("expected args %v, got %v", wantArgs, call.args)
+	if record.Message != "fail" {
+		t.Errorf("expected message %q, got %q", "fail", record.Message)
 	}
 }

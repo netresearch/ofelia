@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,7 +19,7 @@ type ShutdownManager struct {
 	mu             sync.Mutex
 	shutdownChan   chan struct{}
 	isShuttingDown bool
-	logger         Logger
+	logger         *slog.Logger
 }
 
 // ShutdownHook is a function to be called during shutdown
@@ -29,7 +30,7 @@ type ShutdownHook struct {
 }
 
 // NewShutdownManager creates a new shutdown manager
-func NewShutdownManager(logger Logger, timeout time.Duration) *ShutdownManager {
+func NewShutdownManager(logger *slog.Logger, timeout time.Duration) *ShutdownManager {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
@@ -69,7 +70,7 @@ func (sm *ShutdownManager) ListenForShutdown() {
 
 	go func() {
 		sig := <-sigChan
-		sm.logger.Warningf("Received shutdown signal: %v", sig)
+		sm.logger.Warn(fmt.Sprintf("Received shutdown signal: %v", sig))
 		_ = sm.Shutdown()
 	}()
 }
@@ -84,7 +85,7 @@ func (sm *ShutdownManager) Shutdown() error {
 	sm.isShuttingDown = true
 	sm.mu.Unlock()
 
-	sm.logger.Noticef("Starting graceful shutdown (timeout: %v)", sm.timeout)
+	sm.logger.Info(fmt.Sprintf("Starting graceful shutdown (timeout: %v)", sm.timeout))
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), sm.timeout)
@@ -102,13 +103,13 @@ func (sm *ShutdownManager) Shutdown() error {
 		go func(h ShutdownHook) {
 			defer wg.Done()
 
-			sm.logger.Debugf("Executing shutdown hook: %s (priority: %d)", h.Name, h.Priority)
+			sm.logger.Debug(fmt.Sprintf("Executing shutdown hook: %s (priority: %d)", h.Name, h.Priority))
 
 			if err := h.Hook(ctx); err != nil {
-				sm.logger.Errorf("Shutdown hook '%s' failed: %v", h.Name, err)
+				sm.logger.Error(fmt.Sprintf("Shutdown hook '%s' failed: %v", h.Name, err))
 				errChan <- fmt.Errorf("hook %s: %w", h.Name, err)
 			} else {
-				sm.logger.Debugf("Shutdown hook '%s' completed successfully", h.Name)
+				sm.logger.Debug(fmt.Sprintf("Shutdown hook '%s' completed successfully", h.Name))
 			}
 		}(hook)
 	}
@@ -122,9 +123,9 @@ func (sm *ShutdownManager) Shutdown() error {
 
 	select {
 	case <-done:
-		sm.logger.Noticef("Graceful shutdown completed successfully")
+		sm.logger.Info("Graceful shutdown completed successfully")
 	case <-ctx.Done():
-		sm.logger.Errorf("Graceful shutdown timed out after %v", sm.timeout)
+		sm.logger.Error(fmt.Sprintf("Graceful shutdown timed out after %v", sm.timeout))
 		return ErrShutdownTimeout
 	}
 
@@ -208,14 +209,14 @@ func (gs *GracefulScheduler) RunJobWithTracking(job Job, ctx *Context) error {
 	case err := <-done:
 		return err
 	case <-jobCtx.Done():
-		gs.Scheduler.Logger.Warningf("Job %s canceled due to shutdown", job.GetName())
+		gs.Scheduler.Logger.Warn(fmt.Sprintf("Job %s canceled due to shutdown", job.GetName()))
 		return ErrJobCanceled
 	}
 }
 
 // gracefulStop stops the scheduler gracefully
 func (gs *GracefulScheduler) gracefulStop(ctx context.Context) error {
-	gs.Scheduler.Logger.Noticef("Stopping scheduler gracefully")
+	gs.Scheduler.Logger.Info("Stopping scheduler gracefully")
 
 	// Stop accepting new jobs
 	_ = gs.Scheduler.Stop()
@@ -229,11 +230,11 @@ func (gs *GracefulScheduler) gracefulStop(ctx context.Context) error {
 
 	select {
 	case <-done:
-		gs.Scheduler.Logger.Noticef("All jobs completed successfully")
+		gs.Scheduler.Logger.Info("All jobs completed successfully")
 		return nil
 	case <-ctx.Done():
 		// Count remaining jobs
-		gs.Scheduler.Logger.Warningf("Forcing shutdown with active jobs")
+		gs.Scheduler.Logger.Warn("Forcing shutdown with active jobs")
 		return ErrWaitTimeout
 	}
 }
@@ -242,11 +243,11 @@ func (gs *GracefulScheduler) gracefulStop(ctx context.Context) error {
 type GracefulServer struct {
 	server          *http.Server
 	shutdownManager *ShutdownManager
-	logger          Logger
+	logger          *slog.Logger
 }
 
 // NewGracefulServer creates a server with graceful shutdown support
-func NewGracefulServer(server *http.Server, shutdownManager *ShutdownManager, logger Logger) *GracefulServer {
+func NewGracefulServer(server *http.Server, shutdownManager *ShutdownManager, logger *slog.Logger) *GracefulServer {
 	gs := &GracefulServer{
 		server:          server,
 		shutdownManager: shutdownManager,
@@ -265,14 +266,14 @@ func NewGracefulServer(server *http.Server, shutdownManager *ShutdownManager, lo
 
 // gracefulStop stops the HTTP server gracefully
 func (gs *GracefulServer) gracefulStop(ctx context.Context) error {
-	gs.logger.Noticef("Stopping HTTP server gracefully")
+	gs.logger.Info("Stopping HTTP server gracefully")
 
 	// Stop accepting new connections
 	if err := gs.server.Shutdown(ctx); err != nil {
-		gs.logger.Errorf("HTTP server shutdown error: %v", err)
+		gs.logger.Error(fmt.Sprintf("HTTP server shutdown error: %v", err))
 		return fmt.Errorf("failed to shutdown HTTP server gracefully: %w", err)
 	}
 
-	gs.logger.Noticef("HTTP server stopped successfully")
+	gs.logger.Info("HTTP server stopped successfully")
 	return nil
 }

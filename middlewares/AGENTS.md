@@ -22,7 +22,7 @@
 - Integration tests: `go test -tags=integration ./middlewares/...`
 
 ## Code style & conventions
-- Use `core.Logger` for all logging, never direct `log` package
+- Use `*slog.Logger` from stdlib `log/slog` for all logging
 - Middleware interface: implement common patterns for extensibility
 - Configuration: use structured config with validation
 - Error handling: graceful degradation when notifications fail

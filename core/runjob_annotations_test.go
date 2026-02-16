@@ -5,11 +5,10 @@ package core
 import (
 	"context"
 	"io"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/sirupsen/logrus"
 
 	"github.com/netresearch/ofelia/core/adapters/mock"
 	"github.com/netresearch/ofelia/core/domain"
@@ -169,12 +168,9 @@ func TestRunJob_Annotations_Integration(t *testing.T) {
 				t.Fatalf("Failed to create execution: %v", err)
 			}
 
-			logger := logrus.New()
-			logger.SetLevel(logrus.WarnLevel)
-
 			ctx := &Context{
 				Execution: execution,
-				Logger:    &LogrusAdapter{Logger: logger},
+				Logger:    slog.New(slog.DiscardHandler),
 				Job:       job,
 			}
 
@@ -315,12 +311,9 @@ func TestRunJob_Annotations_EndToEnd_Integration(t *testing.T) {
 			t.Fatalf("Failed to create execution: %v", err)
 		}
 
-		logger := logrus.New()
-		logger.SetLevel(logrus.WarnLevel)
-
 		ctx := &Context{
 			Execution: execution,
-			Logger:    &LogrusAdapter{Logger: logger},
+			Logger:    slog.New(slog.DiscardHandler),
 			Job:       job,
 		}
 

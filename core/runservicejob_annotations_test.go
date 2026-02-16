@@ -46,7 +46,7 @@ func TestRunServiceJob_Annotations_Integration(t *testing.T) {
 	}
 
 	services.OnListTasks = func(ctx context.Context, opts domain.TaskListOptions) ([]domain.Task, error) {
-		tasks := make([]domain.Task, 0)
+		tasks := make([]domain.Task, 0, len(createdServices))
 		for _, svc := range createdServices {
 			tasks = append(tasks, domain.Task{
 				ID:        "task-" + svc.ID,
@@ -171,10 +171,9 @@ func TestRunServiceJob_Annotations_Integration(t *testing.T) {
 				t.Fatalf("Failed to create execution: %v", err)
 			}
 
-			logger := &MockLogger{}
 			ctx := &Context{
 				Execution: execution,
-				Logger:    logger,
+				Logger:    newDiscardLogger(),
 				Job:       job,
 			}
 
@@ -280,10 +279,9 @@ func TestRunServiceJob_Annotations_EmptyValues(t *testing.T) {
 		t.Fatalf("Failed to create execution: %v", err)
 	}
 
-	logger := &MockLogger{}
 	ctx := &Context{
 		Execution: execution,
-		Logger:    logger,
+		Logger:    newDiscardLogger(),
 		Job:       job,
 	}
 
@@ -362,10 +360,9 @@ func TestRunServiceJob_Annotations_InvalidFormat(t *testing.T) {
 		t.Fatalf("Failed to create execution: %v", err)
 	}
 
-	logger := &MockLogger{}
 	ctx := &Context{
 		Execution: execution,
-		Logger:    logger,
+		Logger:    newDiscardLogger(),
 		Job:       job,
 	}
 

@@ -3,6 +3,7 @@ package middlewares
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,7 +40,7 @@ type restoredEntry struct {
 // RestoreHistory restores job history from saved JSON files in the save folder.
 // It populates the in-memory history of jobs that support SetLastRun.
 // Only files newer than maxAge are restored.
-func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, logger core.Logger) error {
+func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, logger *slog.Logger) error {
 	if saveFolder == "" {
 		return nil
 	}
@@ -52,7 +53,7 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 	// Check if folder exists
 	info, err := os.Stat(saveFolder)
 	if os.IsNotExist(err) {
-		logger.Debugf("Save folder %q does not exist, skipping history restoration", saveFolder)
+		logger.Debug(fmt.Sprintf("Save folder %q does not exist, skipping history restoration", saveFolder))
 		return nil
 	}
 	if err != nil {
@@ -72,12 +73,12 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 	cutoff := time.Now().Add(-maxAge)
 	entries, err := parseHistoryFiles(saveFolder, cutoff, logger)
 	if err != nil {
-		logger.Warningf("Error scanning save folder: %v", err)
+		logger.Warn(fmt.Sprintf("Error scanning save folder: %v", err))
 		return nil // Don't fail startup for restore errors
 	}
 
 	if len(entries) == 0 {
-		logger.Debugf("No history files found to restore")
+		logger.Debug("No history files found to restore")
 		return nil
 	}
 
@@ -92,7 +93,7 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 	for jobName, jobEntries := range entriesByJob {
 		job, exists := jobsByName[jobName]
 		if !exists {
-			logger.Debugf("Skipping history for unknown job %q", jobName)
+			logger.Debug(fmt.Sprintf("Skipping history for unknown job %q", jobName))
 			continue
 		}
 
@@ -104,7 +105,7 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 		// Check if job supports SetLastRun
 		setter, ok := job.(interface{ SetLastRun(*core.Execution) })
 		if !ok {
-			logger.Debugf("Job %q does not support history restoration", jobName)
+			logger.Debug(fmt.Sprintf("Job %q does not support history restoration", jobName))
 			continue
 		}
 
@@ -117,14 +118,14 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 	}
 
 	if restoredCount > 0 {
-		logger.Noticef("Restored %d history entries for %d job(s) from saved files", restoredCount, restoredJobCount)
+		logger.Info(fmt.Sprintf("Restored %d history entries for %d job(s) from saved files", restoredCount, restoredJobCount))
 	}
 
 	return nil
 }
 
 // parseHistoryFiles scans the save folder for JSON files and parses them.
-func parseHistoryFiles(saveFolder string, cutoff time.Time, logger core.Logger) ([]*restoredEntry, error) {
+func parseHistoryFiles(saveFolder string, cutoff time.Time, logger *slog.Logger) ([]*restoredEntry, error) {
 	var entries []*restoredEntry
 
 	// Resolve save folder to absolute path for containment check
@@ -157,7 +158,7 @@ func parseHistoryFiles(saveFolder string, cutoff time.Time, logger core.Logger) 
 		// Parse the JSON file
 		entry, err := parseHistoryFile(absPath)
 		if err != nil {
-			logger.Debugf("Skipping invalid history file %q: %v", path, err)
+			logger.Debug(fmt.Sprintf("Skipping invalid history file %q: %v", path, err))
 			return nil
 		}
 

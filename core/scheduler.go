@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -31,7 +32,7 @@ type Scheduler struct {
 	Jobs     []Job
 	Removed  []Job
 	Disabled []Job
-	Logger   Logger
+	Logger   *slog.Logger
 
 	middlewareContainer
 	cron                 *cron.Cron
@@ -49,28 +50,30 @@ type Scheduler struct {
 	onJobComplete        func(jobName string, success bool)
 }
 
-func NewScheduler(l Logger) *Scheduler {
+func NewScheduler(l *slog.Logger) *Scheduler {
 	return NewSchedulerWithOptions(l, nil, 0)
 }
 
 // NewSchedulerWithMetrics creates a scheduler with metrics (deprecated: use NewSchedulerWithOptions)
-func NewSchedulerWithMetrics(l Logger, metricsRecorder MetricsRecorder) *Scheduler {
+func NewSchedulerWithMetrics(l *slog.Logger, metricsRecorder MetricsRecorder) *Scheduler {
 	return NewSchedulerWithOptions(l, metricsRecorder, 0)
 }
 
 // NewSchedulerWithOptions creates a scheduler with configurable minimum interval.
 // minEveryInterval of 0 uses the library default (1s). Use negative value to allow sub-second.
-func NewSchedulerWithOptions(l Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration) *Scheduler {
+func NewSchedulerWithOptions(l *slog.Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration) *Scheduler {
 	return newSchedulerInternal(l, metricsRecorder, minEveryInterval, nil)
 }
 
 // NewSchedulerWithClock creates a scheduler with a fake clock for testing.
 // This allows tests to control time advancement without real waits.
-func NewSchedulerWithClock(l Logger, cronClock *CronClock) *Scheduler {
+func NewSchedulerWithClock(l *slog.Logger, cronClock *CronClock) *Scheduler {
 	return newSchedulerInternal(l, nil, -time.Nanosecond, cronClock)
 }
 
-func newSchedulerInternal(l Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration, cronClock *CronClock) *Scheduler {
+func newSchedulerInternal(
+	l *slog.Logger, metricsRecorder MetricsRecorder, minEveryInterval time.Duration, cronClock *CronClock,
+) *Scheduler {
 	cronUtils := NewCronUtils(l)
 
 	parser := cron.FullParser()
@@ -190,10 +193,10 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 		s.Jobs = append(s.Jobs, j)
 		s.jobsByName[j.GetName()] = j
 		s.mu.Unlock()
-		s.Logger.Noticef(
+		s.Logger.Info(fmt.Sprintf(
 			"Triggered-only job registered %q - %q (will run only when triggered)",
 			j.GetName(), j.GetCommand(),
-		)
+		))
 		return nil
 	}
 
@@ -213,10 +216,10 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 
 	id, err := s.cron.AddJob(j.GetSchedule(), &jobWrapper{s, j}, opts...)
 	if err != nil {
-		s.Logger.Warningf(
+		s.Logger.Warn(fmt.Sprintf(
 			"Failed to register job %q - %q - %q",
 			j.GetName(), j.GetCommand(), j.GetSchedule(),
-		)
+		))
 		return fmt.Errorf("add cron job: %w", err)
 	}
 	j.SetCronJobID(uint64(id))
@@ -224,18 +227,18 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	s.Jobs = append(s.Jobs, j)
 	s.jobsByName[j.GetName()] = j
 	s.mu.Unlock()
-	s.Logger.Noticef(
+	s.Logger.Info(fmt.Sprintf(
 		"New job registered %q - %q - %q - ID: %v",
 		j.GetName(), j.GetCommand(), j.GetSchedule(), id,
-	)
+	))
 	return nil
 }
 
 func (s *Scheduler) RemoveJob(j Job) error {
-	s.Logger.Noticef(
+	s.Logger.Info(fmt.Sprintf(
 		"Job deregistered (will not fire again) %q - %q - %q - ID: %v",
 		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
-	)
+	))
 	// Use O(1) removal by name, then wait for any in-flight execution
 	// to complete before updating internal state
 	s.cron.RemoveByName(j.GetName())
@@ -274,7 +277,7 @@ func (s *Scheduler) RemoveJobsByTag(tag string) int {
 		for i := len(s.Jobs) - 1; i >= 0; i-- {
 			job := s.Jobs[i]
 			if job.GetCronJobID() == uint64(entry.ID) {
-				s.Logger.Noticef("Job removed by tag %q: %q", tag, job.GetName())
+				s.Logger.Info(fmt.Sprintf("Job removed by tag %q: %q", tag, job.GetName()))
 				delete(s.jobsByName, job.GetName())
 				s.Removed = append(s.Removed, job)
 				s.Jobs = append(s.Jobs[:i], s.Jobs[i+1:]...)
@@ -313,7 +316,7 @@ func (s *Scheduler) Start() error {
 
 	// Build dependency graph
 	if err := s.workflowOrchestrator.BuildDependencyGraph(s.Jobs); err != nil {
-		s.Logger.Errorf("Failed to build dependency graph: %v", err)
+		s.Logger.Error(fmt.Sprintf("Failed to build dependency graph: %v", err))
 		// Continue anyway - jobs without dependencies will still work
 	}
 
@@ -335,7 +338,7 @@ func (s *Scheduler) Start() error {
 	}
 
 	s.mu.Unlock()
-	s.Logger.Debugf("Starting scheduler")
+	s.Logger.Debug("Starting scheduler")
 	s.cron.Start()
 
 	// Fire startup execution for triggered-only jobs.
@@ -347,7 +350,7 @@ func (s *Scheduler) Start() error {
 	}
 	s.mu.Unlock()
 	for _, j := range startupTriggered {
-		s.Logger.Noticef("Running triggered-only job %q on startup", j.GetName())
+		s.Logger.Info(fmt.Sprintf("Running triggered-only job %q on startup", j.GetName()))
 		wrapper := &jobWrapper{s: s, j: j}
 		go func() {
 			defer func() {
@@ -388,10 +391,10 @@ func (s *Scheduler) StopWithTimeout(timeout time.Duration) error {
 	s.wg.Wait() // Wait for any remaining wrapper goroutines
 
 	if !completed {
-		s.Logger.Warningf("Scheduler stop timed out after %v - some jobs may still be running", timeout)
+		s.Logger.Warn(fmt.Sprintf("Scheduler stop timed out after %v - some jobs may still be running", timeout))
 		return fmt.Errorf("%w after %v", ErrSchedulerTimeout, timeout)
 	}
-	s.Logger.Debugf("Scheduler stopped gracefully")
+	s.Logger.Debug("Scheduler stopped gracefully")
 	return nil
 }
 
@@ -409,7 +412,7 @@ func (s *Scheduler) StopAndWait() {
 	s.mu.Unlock()
 
 	s.wg.Wait()
-	s.Logger.Debugf("Scheduler stopped and all jobs completed")
+	s.Logger.Debug("Scheduler stopped and all jobs completed")
 }
 
 // startWorkflowCleanup starts the background cleanup routine for workflow executions
@@ -438,7 +441,7 @@ func (s *Scheduler) startWorkflowCleanup() {
 			select {
 			case <-s.cleanupTicker.C():
 				s.workflowOrchestrator.CleanupOldExecutions(retentionDuration)
-				s.Logger.Debugf("Cleaned up workflow executions older than %v", retentionDuration)
+				s.Logger.Debug(fmt.Sprintf("Cleaned up workflow executions older than %v", retentionDuration))
 			case <-s.cleanupStop:
 				return
 			}
@@ -549,7 +552,7 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 	s.jobsByName[name] = newJob
 	s.mu.Unlock()
 
-	s.Logger.Noticef("Job updated %q - %q", name, newSchedule)
+	s.Logger.Info(fmt.Sprintf("Job updated %q - %q", name, newSchedule))
 	return nil
 }
 
@@ -626,7 +629,7 @@ func (s *Scheduler) EnableJob(name string) error {
 	s.jobsByName[j.GetName()] = j
 	s.mu.Unlock()
 
-	s.Logger.Noticef("Job re-enabled %q - %q - ID: %v", j.GetName(), j.GetSchedule(), id)
+	s.Logger.Info(fmt.Sprintf("Job re-enabled %q - %q - ID: %v", j.GetName(), j.GetSchedule(), id))
 	return nil
 }
 
@@ -671,7 +674,7 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	// Add panic recovery to handle job panics gracefully
 	defer func() {
 		if r := recover(); r != nil {
-			w.s.Logger.Errorf("Job %q panicked: %v", w.j.GetName(), r)
+			w.s.Logger.Error("Job panicked", "job", w.j.GetName(), "recover", r)
 		}
 	}()
 
@@ -679,7 +682,7 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 
 	// Check dependencies
 	if !w.s.workflowOrchestrator.CanExecute(w.j.GetName(), executionID) {
-		w.s.Logger.Debugf("Job %q skipped - dependencies not satisfied", w.j.GetName())
+		w.s.Logger.Debug(fmt.Sprintf("Job %q skipped - dependencies not satisfied", w.j.GetName()))
 		return
 	}
 
@@ -690,8 +693,8 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		defer func() { <-w.s.jobSemaphore }() // Release slot when done
 	default:
 		// No slots available, skip this execution
-		w.s.Logger.Warningf("Job %q skipped - max concurrent jobs limit reached (%d)",
-			w.j.GetName(), w.s.maxConcurrentJobs)
+		w.s.Logger.Warn(fmt.Sprintf("Job %q skipped - max concurrent jobs limit reached (%d)",
+			w.j.GetName(), w.s.maxConcurrentJobs))
 		return
 	}
 
@@ -711,7 +714,7 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 
 	e, err := NewExecution()
 	if err != nil {
-		w.s.Logger.Errorf("failed to create execution: %v", err)
+		w.s.Logger.Error(fmt.Sprintf("failed to create execution: %v", err))
 		return
 	}
 

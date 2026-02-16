@@ -3,7 +3,6 @@ package middlewares
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -14,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/test"
 )
 
 // TestSlackPushMessage_NilClient kills CONDITIONALS_NEGATION at slack.go:90
@@ -39,7 +39,7 @@ func TestSlackPushMessage_NilClient(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -79,7 +79,7 @@ func TestSlackPushMessage_ExistingClient(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -115,7 +115,7 @@ func TestSlackPushMessage_HTTPError(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -144,7 +144,7 @@ func TestSlackPushMessage_Non200Status(t *testing.T) {
 	defer ts.Close()
 
 	// Use a logger that captures errors to verify the error is logged
-	logger := &capturingLogger{}
+	logger, handler := test.NewTestLoggerWithHandler()
 
 	m := &Slack{
 		SlackConfig: SlackConfig{SlackWebhook: ts.URL},
@@ -165,9 +165,7 @@ func TestSlackPushMessage_Non200Status(t *testing.T) {
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(&called))
 	// The logger should have received an error about non-200
-	assert.NotEmpty(t, logger.errors, "non-200 status should be logged as error")
-	assert.Contains(t, logger.errors[0], "non-200",
-		"error message should mention non-200 status")
+	assert.True(t, handler.HasError("non-200"), "non-200 status should be logged as error")
 }
 
 // TestSlackPushMessage_200Status verifies success path does not log errors.
@@ -179,7 +177,7 @@ func TestSlackPushMessage_200StatusNoError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	logger := &capturingLogger{}
+	logger, handler := test.NewTestLoggerWithHandler()
 
 	m := &Slack{
 		SlackConfig: SlackConfig{SlackWebhook: ts.URL},
@@ -199,7 +197,7 @@ func TestSlackPushMessage_200StatusNoError(t *testing.T) {
 	m.pushMessage(ctx)
 
 	// On 200 OK, no error should be logged
-	assert.Empty(t, logger.errors, "200 OK should not produce error logs")
+	assert.Equal(t, 0, handler.ErrorCount(), "200 OK should not produce error logs")
 }
 
 // TestSlackBuildMessage_FailedExecution verifies failed execution message content.
@@ -225,7 +223,7 @@ func TestSlackBuildMessage_FailedExecution(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "failing-job"
 	job.Command = "exit 1"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -257,7 +255,7 @@ func TestSlackBuildMessage_SkippedExecution(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "skipped-job"
 	job.Command = "echo skip"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -266,20 +264,3 @@ func TestSlackBuildMessage_SkippedExecution(t *testing.T) {
 
 	m.pushMessage(ctx)
 }
-
-// capturingLogger captures log messages for assertions.
-type capturingLogger struct {
-	errors []string
-	debugs []string
-}
-
-func (l *capturingLogger) Criticalf(format string, args ...any) {}
-func (l *capturingLogger) Debugf(format string, args ...any) {
-	l.debugs = append(l.debugs, fmt.Sprintf(format, args...))
-}
-
-func (l *capturingLogger) Errorf(format string, args ...any) {
-	l.errors = append(l.errors, fmt.Sprintf(format, args...))
-}
-func (l *capturingLogger) Noticef(format string, args ...any)  {}
-func (l *capturingLogger) Warningf(format string, args ...any) {}

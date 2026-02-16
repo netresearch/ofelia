@@ -327,19 +327,19 @@ command = echo hello
 unknown-key = some-value
 `
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	_, err := BuildFromString(configStr, logger)
 	require.NoError(t, err)
 
 	// Should have 2 warnings: one for "schdule" (with suggestion) and one for "unknown-key"
-	assert.Equal(t, 2, logger.WarningCount(), "Expected 2 warnings for unknown keys")
-	assert.True(t, logger.HasWarning("Unknown configuration key 'schdule'"),
+	assert.Equal(t, 2, handler.WarningCount(), "Expected 2 warnings for unknown keys")
+	assert.True(t, handler.HasWarning("Unknown configuration key 'schdule'"),
 		"Should warn about 'schdule'")
-	assert.True(t, logger.HasWarning("did you mean 'schedule'"),
+	assert.True(t, handler.HasWarning("did you mean 'schedule'"),
 		"Should suggest 'schedule' for 'schdule'")
-	assert.True(t, logger.HasWarning("Unknown configuration key 'unknown-key'"),
+	assert.True(t, handler.HasWarning("Unknown configuration key 'unknown-key'"),
 		"Should warn about 'unknown-key'")
-	assert.True(t, logger.HasWarning("job-exec \"test-job\""),
+	assert.True(t, handler.HasWarning("job-exec \"test-job\""),
 		"Warning should include the job section name")
 }
 
@@ -356,16 +356,16 @@ command = echo test
 nettwork = my-network
 `
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	_, err := BuildFromString(configStr, logger)
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, logger.WarningCount(), "Expected 1 warning for unknown key")
-	assert.True(t, logger.HasWarning("Unknown configuration key 'nettwork'"),
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	assert.True(t, handler.HasWarning("Unknown configuration key 'nettwork'"),
 		"Should warn about 'nettwork'")
-	assert.True(t, logger.HasWarning("did you mean 'network'"),
+	assert.True(t, handler.HasWarning("did you mean 'network'"),
 		"Should suggest 'network' for 'nettwork'")
-	assert.True(t, logger.HasWarning("job-run \"test-run\""),
+	assert.True(t, handler.HasWarning("job-run \"test-run\""),
 		"Warning should include the job section name")
 }
 
@@ -379,16 +379,16 @@ schedule = @daily
 comnand = /usr/local/bin/backup.sh
 `
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	_, err := BuildFromString(configStr, logger)
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, logger.WarningCount(), "Expected 1 warning for unknown key")
-	assert.True(t, logger.HasWarning("Unknown configuration key 'comnand'"),
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	assert.True(t, handler.HasWarning("Unknown configuration key 'comnand'"),
 		"Should warn about 'comnand'")
-	assert.True(t, logger.HasWarning("did you mean 'command'"),
+	assert.True(t, handler.HasWarning("did you mean 'command'"),
 		"Should suggest 'command' for 'comnand'")
-	assert.True(t, logger.HasWarning("job-local \"local-test\""),
+	assert.True(t, handler.HasWarning("job-local \"local-test\""),
 		"Warning should include the job section name")
 }
 
@@ -404,16 +404,16 @@ command = echo hello
 zzz-random-key = some-value
 `
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	_, err := BuildFromString(configStr, logger)
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, logger.WarningCount(), "Expected 1 warning for unknown key")
-	assert.True(t, logger.HasWarning("Unknown configuration key 'zzz-random-key'"),
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	assert.True(t, handler.HasWarning("Unknown configuration key 'zzz-random-key'"),
 		"Should warn about 'zzz-random-key'")
-	assert.True(t, logger.HasWarning("typo?"),
+	assert.True(t, handler.HasWarning("typo?"),
 		"Should show 'typo?' when no close match found")
-	assert.False(t, logger.HasWarning("did you mean"),
+	assert.False(t, handler.HasWarning("did you mean"),
 		"Should not suggest when no close match")
 }
 
@@ -430,11 +430,11 @@ environment = FOO=bar
 no-overlap = true
 `
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	_, err := BuildFromString(configStr, logger)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, logger.WarningCount(), "Expected no warnings for valid config")
+	assert.Equal(t, 0, handler.WarningCount(), "Expected no warnings for valid config")
 }
 
 func TestJobSectionUnknownKeyWarning_MultipleJobs(t *testing.T) {
@@ -455,13 +455,13 @@ command = echo 2
 typo2 = value2
 `
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	_, err := BuildFromString(configStr, logger)
 	require.NoError(t, err)
 
-	assert.Equal(t, 2, logger.WarningCount(), "Expected 2 warnings for unknown keys in different jobs")
-	assert.True(t, logger.HasWarning("job-exec \"job1\""),
+	assert.Equal(t, 2, handler.WarningCount(), "Expected 2 warnings for unknown keys in different jobs")
+	assert.True(t, handler.HasWarning("job-exec \"job1\""),
 		"Should have warning for job1")
-	assert.True(t, logger.HasWarning("job-run \"job2\""),
+	assert.True(t, handler.HasWarning("job-run \"job2\""),
 		"Should have warning for job2")
 }

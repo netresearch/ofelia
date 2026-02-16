@@ -3,25 +3,22 @@ package cli
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/sirupsen/logrus"
-	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/test"
 )
 
-func newMemoryLogger(level logrus.Level) (*logtest.Hook, core.Logger) {
-	logger := logrus.New()
-	logger.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
-	logger.SetLevel(level)
-	hook := logtest.NewLocal(logger)
-	return hook, &core.LogrusAdapter{Logger: logger}
+func newMemoryLogger(level slog.Level) (*test.Handler, *slog.Logger) {
+	h := test.NewHandler()
+	return h, slog.New(h)
 }
 
 func TestBootLogsConfigError(t *testing.T) {
@@ -31,20 +28,20 @@ func TestBootLogsConfigError(t *testing.T) {
 	err := os.WriteFile(configFile, []byte("[global\nno-overlap = true\n"), 0o644)
 	require.NoError(t, err)
 
-	backend, logger := newMemoryLogger(logrus.DebugLevel)
+	backend, logger := newMemoryLogger(slog.LevelDebug)
 	cmd := &DaemonCommand{ConfigFile: configFile, Logger: logger, LogLevel: "DEBUG"}
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 
 	_ = cmd.boot()
 
 	var warnMsg bool
-	for _, e := range backend.AllEntries() {
-		if e.Level == logrus.WarnLevel && strings.Contains(e.Message, "Could not load config file") {
+	for _, e := range backend.GetMessages() {
+		if e.Level == "WARN" && strings.Contains(e.Message, "Could not load config file") {
 			warnMsg = true
 		}
 	}
@@ -58,20 +55,20 @@ func TestBootLogsConfigErrorSuppressed(t *testing.T) {
 	err := os.WriteFile(configFile, []byte("[global\nno-overlap = true\n"), 0o644)
 	require.NoError(t, err)
 
-	backend, logger := newMemoryLogger(logrus.InfoLevel)
+	backend, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{ConfigFile: configFile, Logger: logger, LogLevel: "INFO"}
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 
 	_ = cmd.boot()
 
 	var debugMsg bool
-	for _, e := range backend.AllEntries() {
-		if e.Level == logrus.DebugLevel {
+	for _, e := range backend.GetMessages() {
+		if e.Level == "DEBUG" {
 			debugMsg = true
 		}
 	}
@@ -83,20 +80,20 @@ func TestBootLogsMissingConfig(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "nonexistent.ini")
 
-	backend, logger := newMemoryLogger(logrus.DebugLevel)
+	backend, logger := newMemoryLogger(slog.LevelDebug)
 	cmd := &DaemonCommand{ConfigFile: path, Logger: logger, LogLevel: "DEBUG"}
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 
 	_ = cmd.boot()
 
 	var warnMsg bool
-	for _, e := range backend.AllEntries() {
-		if e.Level == logrus.WarnLevel && strings.Contains(e.Message, "Could not load config file") {
+	for _, e := range backend.GetMessages() {
+		if e.Level == "WARN" && strings.Contains(e.Message, "Could not load config file") {
 			warnMsg = true
 		}
 	}
@@ -108,20 +105,20 @@ func TestBootLogsMissingConfigIncludesFilename(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "nonexistent.ini")
 
-	backend, logger := newMemoryLogger(logrus.DebugLevel)
+	backend, logger := newMemoryLogger(slog.LevelDebug)
 	cmd := &DaemonCommand{ConfigFile: path, Logger: logger, LogLevel: "DEBUG"}
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 
 	_ = cmd.boot()
 
 	var warnMsg bool
-	for _, e := range backend.AllEntries() {
-		if e.Level == logrus.WarnLevel &&
+	for _, e := range backend.GetMessages() {
+		if e.Level == "WARN" &&
 			strings.Contains(e.Message, "Could not load config file") &&
 			strings.Contains(e.Message, path) {
 			warnMsg = true
@@ -133,12 +130,12 @@ func TestBootLogsMissingConfigIncludesFilename(t *testing.T) {
 func TestBootWebWithoutDocker(t *testing.T) {
 	// Note: Not parallel - modifies global newDockerHandler
 
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{Logger: logger, EnableWeb: true}
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker unavailable")
 	}
 
@@ -148,7 +145,7 @@ func TestBootWebWithoutDocker(t *testing.T) {
 
 func TestApplyAuthOptionsCopiesNonDefaults(t *testing.T) {
 	t.Parallel()
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:              logger,
 		WebAuthEnabled:      true,
@@ -172,7 +169,7 @@ func TestApplyAuthOptionsCopiesNonDefaults(t *testing.T) {
 
 func TestApplyAuthOptionsSkipsDefaults(t *testing.T) {
 	t.Parallel()
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:              logger,
 		WebAuthEnabled:      false,
@@ -195,7 +192,7 @@ func TestApplyAuthOptionsSkipsDefaults(t *testing.T) {
 
 func TestApplyAuthDefaultsCopiesFromConfig(t *testing.T) {
 	t.Parallel()
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:              logger,
 		WebAuthEnabled:      false,
@@ -225,7 +222,7 @@ func TestApplyAuthDefaultsCopiesFromConfig(t *testing.T) {
 
 func TestApplyAuthDefaultsPreservesCLIValues(t *testing.T) {
 	t.Parallel()
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:              logger,
 		WebAuthEnabled:      true,
@@ -255,7 +252,7 @@ func TestApplyAuthDefaultsPreservesCLIValues(t *testing.T) {
 
 func TestApplyAuthDefaultsSkipsEmptyConfigValues(t *testing.T) {
 	t.Parallel()
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:              logger,
 		WebUsername:         "",
@@ -277,7 +274,7 @@ func TestApplyAuthDefaultsSkipsEmptyConfigValues(t *testing.T) {
 
 func TestApplyWebDefaultsCopiesFromConfig(t *testing.T) {
 	t.Parallel()
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:    logger,
 		EnableWeb: false,
@@ -295,7 +292,7 @@ func TestApplyWebDefaultsCopiesFromConfig(t *testing.T) {
 
 func TestApplyWebDefaultsPreservesCLIValues(t *testing.T) {
 	t.Parallel()
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:    logger,
 		EnableWeb: true,
@@ -313,7 +310,7 @@ func TestApplyWebDefaultsPreservesCLIValues(t *testing.T) {
 
 func TestApplyServerDefaultsCopiesFromConfig(t *testing.T) {
 	t.Parallel()
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:      logger,
 		EnablePprof: false,
@@ -331,7 +328,7 @@ func TestApplyServerDefaultsCopiesFromConfig(t *testing.T) {
 
 func TestApplyServerDefaultsPreservesCLIValues(t *testing.T) {
 	t.Parallel()
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:      logger,
 		EnablePprof: true,

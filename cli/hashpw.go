@@ -2,24 +2,24 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/manifoldco/promptui"
 	"golang.org/x/crypto/bcrypt"
-
-	"github.com/netresearch/ofelia/core"
 )
 
 type HashPasswordCommand struct {
 	Cost     int    `long:"cost" default:"12" description:"bcrypt cost factor (10-14 recommended)"`
 	LogLevel string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level"`
-	Logger   core.Logger
+	Logger   *slog.Logger
+	LevelVar *slog.LevelVar
 }
 
 func (c *HashPasswordCommand) Execute(_ []string) error {
-	if err := ApplyLogLevel(c.LogLevel); err != nil {
-		c.Logger.Warningf("Failed to apply log level (using default): %v", err)
+	if err := ApplyLogLevel(c.LogLevel, c.LevelVar); err != nil {
+		c.Logger.Warn(fmt.Sprintf("Failed to apply log level (using default): %v", err))
 	}
 
 	if c.Cost < bcrypt.MinCost || c.Cost > bcrypt.MaxCost {

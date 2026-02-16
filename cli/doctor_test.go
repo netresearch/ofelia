@@ -25,7 +25,7 @@ command = echo test`
 
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
-		Logger:     &test.Logger{},
+		Logger:     test.NewTestLogger(),
 		JSON:       true,
 	}
 
@@ -50,7 +50,7 @@ command = echo test`
 
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
-		Logger:     &test.Logger{},
+		Logger:     test.NewTestLogger(),
 		JSON:       true,
 	}
 
@@ -64,7 +64,7 @@ command = echo test`
 func TestDoctorCommand_MissingConfigFile(t *testing.T) {
 	cmd := &DoctorCommand{
 		ConfigFile: "/nonexistent/config.ini",
-		Logger:     &test.Logger{},
+		Logger:     test.NewTestLogger(),
 		JSON:       true,
 	}
 
@@ -88,7 +88,7 @@ this is not valid INI syntax
 
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
-		Logger:     &test.Logger{},
+		Logger:     test.NewTestLogger(),
 		JSON:       true,
 	}
 
@@ -160,7 +160,7 @@ func TestDoctorCommand_NoJobs(t *testing.T) {
 
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
-		Logger:     &test.Logger{},
+		Logger:     test.NewTestLogger(),
 		JSON:       true,
 	}
 
@@ -194,7 +194,7 @@ command = echo test`
 
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
-		Logger:     &test.Logger{},
+		Logger:     test.NewTestLogger(),
 		JSON:       true,
 	}
 
@@ -231,7 +231,7 @@ command = echo cron`
 
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
-		Logger:     &test.Logger{},
+		Logger:     test.NewTestLogger(),
 		JSON:       true,
 	}
 
@@ -357,7 +357,7 @@ command = echo test`
 
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
-		Logger:     &test.Logger{},
+		Logger:     test.NewTestLogger(),
 		JSON:       true,
 	}
 
@@ -516,7 +516,7 @@ command = echo test`
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
 		Logger:     logger,
@@ -529,16 +529,16 @@ command = echo test`
 	}
 
 	// Verify human-readable output was generated
-	messages := logger.GetMessages()
+	messages := handler.GetMessages()
 	if len(messages) == 0 {
 		t.Error("Expected log messages for human output, got none")
 	}
 
 	// Check for expected output elements
-	if !logger.HasMessage("Ofelia Health Check") {
+	if !handler.HasMessage("Ofelia Health Check") {
 		t.Error("Expected 'Ofelia Health Check' in output")
 	}
-	if !logger.HasMessage("Summary") {
+	if !handler.HasMessage("Summary") {
 		t.Error("Expected 'Summary' in output")
 	}
 }
@@ -556,7 +556,7 @@ command = echo test`
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
 		Logger:     logger,
@@ -570,7 +570,7 @@ command = echo test`
 	}
 
 	// Verify failure message was logged
-	if !logger.HasMessage("issue(s) found") {
+	if !handler.HasMessage("issue(s) found") {
 		t.Error("Expected failure summary in output")
 	}
 }
@@ -589,7 +589,7 @@ command = echo test`
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
 		Logger:     logger,
@@ -600,7 +600,7 @@ command = echo test`
 	_ = cmd.Execute(nil)
 
 	// Verify output contains category icons
-	messages := logger.GetMessages()
+	messages := handler.GetMessages()
 	hasCategory := false
 	for _, msg := range messages {
 		if strings.Contains(msg.Message, "📋") || strings.Contains(msg.Message, "📅") {
@@ -615,7 +615,7 @@ command = echo test`
 
 // TestDoctorCommand_OutputHumanWithHints tests hints are displayed in human output
 func TestDoctorCommand_OutputHumanWithHints(t *testing.T) {
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{
 		Logger: logger,
 		JSON:   false,
@@ -639,10 +639,10 @@ func TestDoctorCommand_OutputHumanWithHints(t *testing.T) {
 	_ = cmd.outputHuman(report)
 
 	// Verify hints are displayed
-	if !logger.HasMessage("Try doing X") {
+	if !handler.HasMessage("Try doing X") {
 		t.Error("Expected hint 'Try doing X' in output")
 	}
-	if !logger.HasMessage("Check Y") {
+	if !handler.HasMessage("Check Y") {
 		t.Error("Expected hint 'Check Y' in output")
 	}
 }
@@ -673,7 +673,7 @@ command = echo test`
 
 		cmd := &DoctorCommand{
 			ConfigFile: "", // Empty - should auto-detect
-			Logger:     &test.Logger{},
+			Logger:     test.NewTestLogger(),
 			JSON:       true,
 		}
 
@@ -703,7 +703,7 @@ command = echo test`
 
 		cmd := &DoctorCommand{
 			ConfigFile: configPath, // Explicit path provided
-			Logger:     &test.Logger{},
+			Logger:     test.NewTestLogger(),
 			JSON:       true,
 		}
 
@@ -728,7 +728,7 @@ command = echo test`
 		// Don't create any config files
 		cmd := &DoctorCommand{
 			ConfigFile: "", // Empty - will fail to auto-detect
-			Logger:     &test.Logger{},
+			Logger:     test.NewTestLogger(),
 			JSON:       true,
 		}
 

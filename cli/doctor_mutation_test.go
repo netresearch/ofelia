@@ -26,7 +26,7 @@ func TestDoctorExecute_ApplyLogLevelError(t *testing.T) {
 	err := os.WriteFile(configPath, []byte("[global]\n[job-local \"test\"]\nschedule = @daily\ncommand = echo test\n"), 0o644)
 	require.NoError(t, err)
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
 		LogLevel:   "INVALID_LEVEL", // This should cause ApplyLogLevel to fail
@@ -36,7 +36,7 @@ func TestDoctorExecute_ApplyLogLevelError(t *testing.T) {
 
 	// Execute should succeed (log level error is non-fatal)
 	_ = cmd.Execute(nil)
-	assert.True(t, logger.HasWarning("Failed to apply log level"),
+	assert.True(t, handler.HasWarning("Failed to apply log level"),
 		"Expected warning about failed log level")
 }
 
@@ -137,7 +137,7 @@ func TestDoctorExecute_JSONvsHumanOutput(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("JSON mode outputs JSON", func(t *testing.T) {
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		cmd := &DoctorCommand{
 			ConfigFile: configPath,
 			Logger:     logger,
@@ -145,7 +145,7 @@ func TestDoctorExecute_JSONvsHumanOutput(t *testing.T) {
 		}
 		_ = cmd.Execute(nil)
 		// JSON output should have been logged
-		messages := logger.GetMessages()
+		messages := handler.GetMessages()
 		foundJSON := false
 		for _, msg := range messages {
 			if strings.HasPrefix(strings.TrimSpace(msg.Message), "{") {
@@ -157,14 +157,14 @@ func TestDoctorExecute_JSONvsHumanOutput(t *testing.T) {
 	})
 
 	t.Run("Human mode outputs human-readable text", func(t *testing.T) {
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		cmd := &DoctorCommand{
 			ConfigFile: configPath,
 			Logger:     logger,
 			JSON:       false,
 		}
 		_ = cmd.Execute(nil)
-		assert.True(t, logger.HasMessage("Ofelia Health Check"),
+		assert.True(t, handler.HasMessage("Ofelia Health Check"),
 			"Human mode should output 'Ofelia Health Check' header")
 	})
 }
@@ -479,7 +479,7 @@ command = echo test
 // TestOutputJSON_HealthyReport targets the !report.Healthy check at line 580.
 // Healthy report should return nil error.
 func TestOutputJSON_HealthyReport(t *testing.T) {
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{Logger: logger, JSON: true}
 
 	report := &DoctorReport{
@@ -491,7 +491,7 @@ func TestOutputJSON_HealthyReport(t *testing.T) {
 	require.NoError(t, err, "outputJSON must return nil for healthy report")
 
 	// Verify JSON was output
-	messages := logger.GetMessages()
+	messages := handler.GetMessages()
 	foundJSON := false
 	for _, msg := range messages {
 		var parsed DoctorReport
@@ -529,7 +529,7 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 	cmd := &DoctorCommand{Logger: logger}
 
 	t.Run("healthy with skips shows skip count", func(t *testing.T) {
-		lgr := test.NewTestLogger()
+		lgr, lgrHandler := test.NewTestLoggerWithHandler()
 		cmd := &DoctorCommand{Logger: lgr}
 		report := &DoctorReport{
 			Healthy: true,
@@ -540,14 +540,14 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 		}
 		err := cmd.outputHuman(report)
 		require.NoError(t, err)
-		assert.True(t, lgr.HasMessage("All checks passed"),
+		assert.True(t, lgrHandler.HasMessage("All checks passed"),
 			"healthy report must show 'All checks passed'")
-		assert.True(t, lgr.HasMessage("1 check(s) skipped as not applicable"),
+		assert.True(t, lgrHandler.HasMessage("1 check(s) skipped as not applicable"),
 			"must show skip count for healthy report")
 	})
 
 	t.Run("unhealthy with fails and skips", func(t *testing.T) {
-		lgr := test.NewTestLogger()
+		lgr, lgrHandler := test.NewTestLoggerWithHandler()
 		cmd := &DoctorCommand{Logger: lgr}
 		report := &DoctorReport{
 			Healthy: false,
@@ -559,14 +559,14 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 		}
 		err := cmd.outputHuman(report)
 		require.Error(t, err)
-		assert.True(t, lgr.HasMessage("2 issue(s) found"),
+		assert.True(t, lgrHandler.HasMessage("2 issue(s) found"),
 			"must show correct fail count")
-		assert.True(t, lgr.HasMessage("1 check(s) skipped due to blockers"),
+		assert.True(t, lgrHandler.HasMessage("1 check(s) skipped due to blockers"),
 			"must show skip count for unhealthy report")
 	})
 
 	t.Run("unhealthy without skips", func(t *testing.T) {
-		lgr := test.NewTestLogger()
+		lgr, lgrHandler := test.NewTestLoggerWithHandler()
 		cmd = &DoctorCommand{Logger: lgr}
 		report := &DoctorReport{
 			Healthy: false,
@@ -576,13 +576,13 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 		}
 		err := cmd.outputHuman(report)
 		require.Error(t, err)
-		assert.True(t, lgr.HasMessage("1 issue(s) found"))
-		assert.False(t, lgr.HasMessage("skipped due to blockers"),
+		assert.True(t, lgrHandler.HasMessage("1 issue(s) found"))
+		assert.False(t, lgrHandler.HasMessage("skipped due to blockers"),
 			"must NOT show skip count when no skips")
 	})
 
 	t.Run("healthy without skips", func(t *testing.T) {
-		lgr := test.NewTestLogger()
+		lgr, lgrHandler := test.NewTestLoggerWithHandler()
 		cmd = &DoctorCommand{Logger: lgr}
 		report := &DoctorReport{
 			Healthy: true,
@@ -592,8 +592,8 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 		}
 		err := cmd.outputHuman(report)
 		require.NoError(t, err)
-		assert.True(t, lgr.HasMessage("All checks passed"))
-		assert.False(t, lgr.HasMessage("skipped"),
+		assert.True(t, lgrHandler.HasMessage("All checks passed"))
+		assert.False(t, lgrHandler.HasMessage("skipped"),
 			"must NOT show skip count when no skips")
 	})
 
@@ -604,7 +604,7 @@ func TestOutputHuman_CountsFailAndSkip(t *testing.T) {
 // (check.Message != "") and its negation.
 func TestOutputHuman_CheckWithAndWithoutMessage(t *testing.T) {
 	t.Run("check with message", func(t *testing.T) {
-		lgr := test.NewTestLogger()
+		lgr, lgrHandler := test.NewTestLoggerWithHandler()
 		cmd := &DoctorCommand{Logger: lgr}
 		report := &DoctorReport{
 			Healthy: true,
@@ -613,11 +613,11 @@ func TestOutputHuman_CheckWithAndWithoutMessage(t *testing.T) {
 			},
 		}
 		_ = cmd.outputHuman(report)
-		assert.True(t, lgr.HasMessage("detailed info"))
+		assert.True(t, lgrHandler.HasMessage("detailed info"))
 	})
 
 	t.Run("check without message", func(t *testing.T) {
-		lgr := test.NewTestLogger()
+		lgr, lgrHandler := test.NewTestLoggerWithHandler()
 		cmd := &DoctorCommand{Logger: lgr}
 		report := &DoctorReport{
 			Healthy: true,
@@ -626,14 +626,14 @@ func TestOutputHuman_CheckWithAndWithoutMessage(t *testing.T) {
 			},
 		}
 		_ = cmd.outputHuman(report)
-		assert.True(t, lgr.HasMessage("NoMsg"))
+		assert.True(t, lgrHandler.HasMessage("NoMsg"))
 	})
 }
 
 // TestOutputHuman_CategoryNotInOrder targets the !exists check at line 601.
 // Unknown categories should be silently skipped in output.
 func TestOutputHuman_CategoryNotInOrder(t *testing.T) {
-	lgr := test.NewTestLogger()
+	lgr, lgrHandler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{Logger: lgr}
 	report := &DoctorReport{
 		Healthy: true,
@@ -645,9 +645,9 @@ func TestOutputHuman_CategoryNotInOrder(t *testing.T) {
 	err := cmd.outputHuman(report)
 	require.NoError(t, err)
 	// "UnknownCategory" is not in categoryOrder, so it should not appear
-	assert.False(t, lgr.HasMessage("UnknownCategory"),
+	assert.False(t, lgrHandler.HasMessage("UnknownCategory"),
 		"unknown categories should not appear in output")
-	assert.True(t, lgr.HasMessage("Configuration"),
+	assert.True(t, lgrHandler.HasMessage("Configuration"),
 		"known categories should appear")
 }
 
@@ -813,7 +813,7 @@ func TestDoctorExecute_ProgressInHumanMode(t *testing.T) {
 	err := os.WriteFile(configPath, []byte("[global]\n[job-local \"test\"]\nschedule = @daily\ncommand = echo test\n"), 0o644)
 	require.NoError(t, err)
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
 		Logger:     logger,
@@ -822,7 +822,7 @@ func TestDoctorExecute_ProgressInHumanMode(t *testing.T) {
 	_ = cmd.Execute(nil)
 
 	// In human mode, progress messages should be logged
-	assert.True(t, logger.HasMessage("Checking configuration"),
+	assert.True(t, handler.HasMessage("Checking configuration"),
 		"human mode should show progress messages")
 }
 
@@ -833,7 +833,7 @@ func TestDoctorExecute_NoProgressInJSONMode(t *testing.T) {
 	err := os.WriteFile(configPath, []byte("[global]\n[job-local \"test\"]\nschedule = @daily\ncommand = echo test\n"), 0o644)
 	require.NoError(t, err)
 
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{
 		ConfigFile: configPath,
 		Logger:     logger,
@@ -842,7 +842,7 @@ func TestDoctorExecute_NoProgressInJSONMode(t *testing.T) {
 	_ = cmd.Execute(nil)
 
 	// In JSON mode, NO progress messages should appear
-	assert.False(t, logger.HasMessage("Checking configuration"),
+	assert.False(t, handler.HasMessage("Checking configuration"),
 		"JSON mode should NOT show progress messages")
 }
 
@@ -1049,7 +1049,7 @@ command = echo test
 // TestOutputHuman_FailCountExact targets INCREMENT_DECREMENT at line 629
 // (failCount++). If mutated to failCount--, the count would be wrong.
 func TestOutputHuman_FailCountExact(t *testing.T) {
-	lgr := test.NewTestLogger()
+	lgr, lgrHandler := test.NewTestLoggerWithHandler()
 	cmd := &DoctorCommand{Logger: lgr}
 
 	report := &DoctorReport{
@@ -1065,11 +1065,11 @@ func TestOutputHuman_FailCountExact(t *testing.T) {
 	err := cmd.outputHuman(report)
 	require.Error(t, err)
 	// Exactly 3 failures
-	assert.True(t, lgr.HasMessage("3 issue(s) found"),
+	assert.True(t, lgrHandler.HasMessage("3 issue(s) found"),
 		"must show exactly 3 failures, not any other count")
-	assert.False(t, lgr.HasMessage("4 issue(s) found"),
+	assert.False(t, lgrHandler.HasMessage("4 issue(s) found"),
 		"must not count pass as failure")
-	assert.False(t, lgr.HasMessage("2 issue(s) found"),
+	assert.False(t, lgrHandler.HasMessage("2 issue(s) found"),
 		"must not undercount failures")
 }
 

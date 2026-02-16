@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -13,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -145,7 +145,7 @@ func getAvailableAddress() string {
 }
 
 func TestSuccessfulBootStartShutdown(t *testing.T) {
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:      logger,
 		EnableWeb:   false,
@@ -155,7 +155,7 @@ func TestSuccessfulBootStartShutdown(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
@@ -195,7 +195,7 @@ func TestBootFailureInvalidConfig(t *testing.T) {
 	err := os.WriteFile(configFile, []byte("[global\ninvalid-section-header\nkey = value"), 0o644)
 	require.NoError(t, err)
 
-	_, logger := newMemoryLogger(logrus.DebugLevel)
+	_, logger := newMemoryLogger(slog.LevelDebug)
 	cmd := &DaemonCommand{
 		ConfigFile: configFile,
 		Logger:     logger,
@@ -204,7 +204,7 @@ func TestBootFailureInvalidConfig(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker initialization failed")
 	}
 
@@ -213,7 +213,7 @@ func TestBootFailureInvalidConfig(t *testing.T) {
 }
 
 func TestBootDockerConnectionFailure(t *testing.T) {
-	hook, logger := newMemoryLogger(logrus.DebugLevel)
+	hook, logger := newMemoryLogger(slog.LevelDebug)
 	cmd := &DaemonCommand{
 		Logger:    logger,
 		EnableWeb: true,
@@ -223,7 +223,7 @@ func TestBootDockerConnectionFailure(t *testing.T) {
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
 	dockerError := errors.New("cannot connect to Docker daemon")
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, dockerError
 	}
 
@@ -232,7 +232,7 @@ func TestBootDockerConnectionFailure(t *testing.T) {
 	assert.Regexp(t, ".*Docker daemon.*", err.Error())
 
 	found := false
-	for _, entry := range hook.AllEntries() {
+	for _, entry := range hook.GetMessages() {
 		if strings.Contains(entry.Message, "Can't start the app") {
 			found = true
 			break
@@ -242,7 +242,7 @@ func TestBootDockerConnectionFailure(t *testing.T) {
 }
 
 func TestPprofServerStartup(t *testing.T) {
-	hook, logger := newMemoryLogger(logrus.InfoLevel)
+	hook, logger := newMemoryLogger(slog.LevelInfo)
 	addr := getAvailableAddress()
 
 	cmd := &DaemonCommand{
@@ -264,7 +264,7 @@ func TestPprofServerStartup(t *testing.T) {
 
 	// Poll for log message instead of fixed sleep
 	testutil.Eventually(t, func() bool {
-		for _, entry := range hook.AllEntries() {
+		for _, entry := range hook.GetMessages() {
 			if strings.Contains(entry.Message, "Starting pprof server") {
 				return true
 			}
@@ -278,7 +278,7 @@ func TestPprofServerStartup(t *testing.T) {
 }
 
 func TestWebServerStartup(t *testing.T) {
-	hook, logger := newMemoryLogger(logrus.InfoLevel)
+	hook, logger := newMemoryLogger(slog.LevelInfo)
 	addr := getAvailableAddress()
 
 	cmd := &DaemonCommand{
@@ -291,7 +291,7 @@ func TestWebServerStartup(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
@@ -315,7 +315,7 @@ func TestWebServerStartup(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	found := false
-	for _, entry := range hook.AllEntries() {
+	for _, entry := range hook.GetMessages() {
 		if strings.Contains(entry.Message, "Starting web server") {
 			found = true
 			break
@@ -332,7 +332,7 @@ func TestWebServerStartup(t *testing.T) {
 }
 
 func TestPortBindingConflict(t *testing.T) {
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 
 	addr := getAvailableAddress()
 	listener, err := net.Listen("tcp", addr)
@@ -359,7 +359,7 @@ func TestPortBindingConflict(t *testing.T) {
 }
 
 func TestGracefulShutdownWithRunningJobs(t *testing.T) {
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 
 	cmd := &DaemonCommand{
 		Logger:          logger,
@@ -388,7 +388,7 @@ func TestGracefulShutdownWithRunningJobs(t *testing.T) {
 }
 
 func TestForcedShutdownOnTimeout(t *testing.T) {
-	_, logger := newMemoryLogger(logrus.DebugLevel)
+	_, logger := newMemoryLogger(slog.LevelDebug)
 
 	cmd := &DaemonCommand{
 		Logger:          logger,
@@ -417,7 +417,7 @@ func TestForcedShutdownOnTimeout(t *testing.T) {
 }
 
 func TestConfigurationOptionApplication(t *testing.T) {
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 
 	pollInterval := 30 * time.Second
 	cmd := &DaemonCommand{
@@ -434,7 +434,7 @@ func TestConfigurationOptionApplication(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
@@ -460,7 +460,7 @@ func TestConfigurationOptionApplication(t *testing.T) {
 }
 
 func TestConcurrentServerStartup(t *testing.T) {
-	hook, logger := newMemoryLogger(logrus.InfoLevel)
+	hook, logger := newMemoryLogger(slog.LevelInfo)
 
 	pprofAddr := getAvailableAddress()
 	webAddr := getAvailableAddress()
@@ -477,7 +477,7 @@ func TestConcurrentServerStartup(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
@@ -500,7 +500,7 @@ func TestConcurrentServerStartup(t *testing.T) {
 	testutil.Eventually(t, func() bool {
 		pprofFound := false
 		webFound := false
-		for _, entry := range hook.AllEntries() {
+		for _, entry := range hook.GetMessages() {
 			if strings.Contains(entry.Message, "Starting pprof server") {
 				pprofFound = true
 			}
@@ -516,7 +516,7 @@ func TestConcurrentServerStartup(t *testing.T) {
 }
 
 func TestResourceCleanupOnFailure(t *testing.T) {
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger: logger,
 	}
@@ -524,7 +524,7 @@ func TestResourceCleanupOnFailure(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("docker init failed")
 	}
 
@@ -536,7 +536,7 @@ func TestResourceCleanupOnFailure(t *testing.T) {
 }
 
 func TestHealthCheckerInitialization(t *testing.T) {
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:    logger,
 		EnableWeb: true,
@@ -545,7 +545,7 @@ func TestHealthCheckerInitialization(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},
@@ -565,7 +565,7 @@ func TestHealthCheckerInitialization(t *testing.T) {
 }
 
 func TestServerErrorHandlingDuringStartup(t *testing.T) {
-	hook, logger := newMemoryLogger(logrus.InfoLevel)
+	hook, logger := newMemoryLogger(slog.LevelInfo)
 
 	cmd := &DaemonCommand{
 		Logger:      logger,
@@ -586,8 +586,8 @@ func TestServerErrorHandlingDuringStartup(t *testing.T) {
 	assert.Regexp(t, ".*pprof server startup failed.*", err.Error())
 
 	foundError := false
-	for _, entry := range hook.AllEntries() {
-		if entry.Level == logrus.ErrorLevel &&
+	for _, entry := range hook.GetMessages() {
+		if entry.Level == "ERROR" &&
 			(strings.Contains(entry.Message, "pprof server failed to start") ||
 				strings.Contains(entry.Message, "Error starting HTTP server")) {
 			foundError = true
@@ -598,7 +598,7 @@ func TestServerErrorHandlingDuringStartup(t *testing.T) {
 }
 
 func TestCompleteExecuteWorkflow(t *testing.T) {
-	_, logger := newMemoryLogger(logrus.InfoLevel)
+	_, logger := newMemoryLogger(slog.LevelInfo)
 	cmd := &DaemonCommand{
 		Logger:      logger,
 		EnableWeb:   false,
@@ -608,7 +608,7 @@ func TestCompleteExecuteWorkflow(t *testing.T) {
 	originalNewDockerHandler := newDockerHandler
 	defer func() { newDockerHandler = originalNewDockerHandler }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		handler := &DockerHandler{
 			ctx:                ctx,
 			dockerProvider:     &mockDockerProvider{},

@@ -3,19 +3,18 @@ package cli
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/term"
-
-	"github.com/netresearch/ofelia/core"
 )
 
 // ProgressIndicator provides visual feedback for long-running operations
 type ProgressIndicator struct {
-	logger     core.Logger
+	logger     *slog.Logger
 	writer     io.Writer
 	message    string
 	done       chan struct{}
@@ -27,7 +26,7 @@ type ProgressIndicator struct {
 
 // NewProgressIndicator creates a new progress indicator
 // If output is not a terminal (e.g., piped to file), it uses simple log messages instead of spinners
-func NewProgressIndicator(logger core.Logger, message string) *ProgressIndicator {
+func NewProgressIndicator(logger *slog.Logger, message string) *ProgressIndicator {
 	writer := os.Stdout
 	isTerminal := term.IsTerminal(int(writer.Fd()))
 
@@ -52,7 +51,7 @@ func (p *ProgressIndicator) Start() {
 
 	if !p.isTerminal {
 		// Non-terminal: just log the start message
-		p.logger.Noticef("%s...", p.message)
+		p.logger.Info(fmt.Sprintf("%s...", p.message))
 		return
 	}
 
@@ -87,9 +86,9 @@ func (p *ProgressIndicator) Stop(success bool, resultMsg string) {
 	if !p.isTerminal {
 		// Non-terminal: just log the result
 		if success {
-			p.logger.Noticef("✅ %s", resultMsg)
+			p.logger.Info(fmt.Sprintf("✅ %s", resultMsg))
 		} else {
-			p.logger.Errorf("❌ %s", resultMsg)
+			p.logger.Error(fmt.Sprintf("❌ %s", resultMsg))
 		}
 		return
 	}
@@ -109,7 +108,7 @@ func (p *ProgressIndicator) Update(newMessage string) {
 	defer p.mu.Unlock()
 
 	if !p.isTerminal {
-		p.logger.Noticef("%s...", newMessage)
+		p.logger.Info(fmt.Sprintf("%s...", newMessage))
 		p.message = newMessage
 		return
 	}
@@ -148,7 +147,7 @@ func (p *ProgressIndicator) animate() {
 
 // ProgressReporter provides structured progress reporting for multi-step operations
 type ProgressReporter struct {
-	logger      core.Logger
+	logger      *slog.Logger
 	totalSteps  int
 	currentStep int
 	mu          sync.Mutex
@@ -156,7 +155,7 @@ type ProgressReporter struct {
 }
 
 // NewProgressReporter creates a new multi-step progress reporter
-func NewProgressReporter(logger core.Logger, totalSteps int) *ProgressReporter {
+func NewProgressReporter(logger *slog.Logger, totalSteps int) *ProgressReporter {
 	return &ProgressReporter{
 		logger:     logger,
 		totalSteps: totalSteps,
@@ -186,7 +185,7 @@ func (pr *ProgressReporter) Step(stepNum int, message string) {
 		}
 	} else {
 		// Non-terminal: simple log messages
-		pr.logger.Noticef("[%d/%d] %s", stepNum, pr.totalSteps, message)
+		pr.logger.Info(fmt.Sprintf("[%d/%d] %s", stepNum, pr.totalSteps, message))
 	}
 }
 
@@ -207,5 +206,5 @@ func (pr *ProgressReporter) Complete(message string) {
 	if pr.isTerminal {
 		fmt.Fprintln(os.Stdout)
 	}
-	pr.logger.Noticef("✅ %s", message)
+	pr.logger.Info(fmt.Sprintf("✅ %s", message))
 }

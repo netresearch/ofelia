@@ -24,7 +24,7 @@ func TestResolveConfig_EventsAndPollingWarning(t *testing.T) {
 
 	t.Run("both_events_and_polling_warns", func(t *testing.T) {
 		t.Parallel()
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		cfg := &DockerConfig{
 			UseEvents:          true,
 			DockerPollInterval: 10 * time.Second, // > 0
@@ -32,13 +32,13 @@ func TestResolveConfig_EventsAndPollingWarning(t *testing.T) {
 
 		resolveConfig(cfg, logger)
 
-		assert.True(t, logger.HasWarning("Both Docker events and container polling"),
+		assert.True(t, handler.HasWarning("Both Docker events and container polling"),
 			"Should warn when both events and polling are enabled")
 	})
 
 	t.Run("events_only_no_warning", func(t *testing.T) {
 		t.Parallel()
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		cfg := &DockerConfig{
 			UseEvents:          true,
 			DockerPollInterval: 0, // disabled
@@ -46,13 +46,13 @@ func TestResolveConfig_EventsAndPollingWarning(t *testing.T) {
 
 		resolveConfig(cfg, logger)
 
-		assert.False(t, logger.HasWarning("Both Docker events and container polling"),
+		assert.False(t, handler.HasWarning("Both Docker events and container polling"),
 			"Should NOT warn when only events are enabled")
 	})
 
 	t.Run("polling_only_no_warning", func(t *testing.T) {
 		t.Parallel()
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		cfg := &DockerConfig{
 			UseEvents:          false,
 			DockerPollInterval: 10 * time.Second,
@@ -60,13 +60,13 @@ func TestResolveConfig_EventsAndPollingWarning(t *testing.T) {
 
 		resolveConfig(cfg, logger)
 
-		assert.False(t, logger.HasWarning("Both Docker events and container polling"),
+		assert.False(t, handler.HasWarning("Both Docker events and container polling"),
 			"Should NOT warn when only polling is enabled (no events)")
 	})
 
 	t.Run("neither_no_warning", func(t *testing.T) {
 		t.Parallel()
-		logger := test.NewTestLogger()
+		logger, handler := test.NewTestLoggerWithHandler()
 		cfg := &DockerConfig{
 			UseEvents:          false,
 			DockerPollInterval: 0,
@@ -74,7 +74,7 @@ func TestResolveConfig_EventsAndPollingWarning(t *testing.T) {
 
 		resolveConfig(cfg, logger)
 
-		assert.False(t, logger.HasWarning("Both Docker events and container polling"),
+		assert.False(t, handler.HasWarning("Both Docker events and container polling"),
 			"Should NOT warn when neither events nor polling enabled")
 	})
 }
@@ -100,12 +100,12 @@ func TestResolveConfig_ReturnValues(t *testing.T) {
 }
 
 // =============================================================================
-// GetDockerLabels container filtering mutation tests (lines 276, 284)
+// GetDockerContainers container filtering mutation tests (lines 276, 284)
 // =============================================================================
 
-// TestGetDockerLabels_ContainerNameEmpty targets CONDITIONALS_NEGATION at line 276.
+// TestGetDockerContainers_ContainerNameEmpty targets CONDITIONALS_NEGATION at line 276.
 // Container with empty name should be skipped.
-func TestGetDockerLabels_ContainerNameEmpty(t *testing.T) {
+func TestGetDockerContainers_ContainerNameEmpty(t *testing.T) {
 	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{
@@ -146,9 +146,9 @@ func TestGetDockerLabels_ContainerNameEmpty(t *testing.T) {
 	assert.NotContains(t, containerNames, "")
 }
 
-// TestGetDockerLabels_ContainerNoLabels targets CONDITIONALS_BOUNDARY at line 276.
+// TestGetDockerContainers_ContainerNoLabels targets CONDITIONALS_BOUNDARY at line 276.
 // Container with name but empty labels should be skipped.
-func TestGetDockerLabels_ContainerNoLabels(t *testing.T) {
+func TestGetDockerContainers_ContainerNoLabels(t *testing.T) {
 	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{
@@ -185,9 +185,9 @@ func TestGetDockerLabels_ContainerNoLabels(t *testing.T) {
 	assert.NotContains(t, containerNames, "no-labels")
 }
 
-// TestGetDockerLabels_OnlyNonOfeliaLabels targets CONDITIONALS_BOUNDARY at line 284.
+// TestGetDockerContainers_OnlyNonOfeliaLabels targets CONDITIONALS_BOUNDARY at line 284.
 // Container with labels but none starting with "ofelia." should be skipped.
-func TestGetDockerLabels_OnlyNonOfeliaLabels(t *testing.T) {
+func TestGetDockerContainers_OnlyNonOfeliaLabels(t *testing.T) {
 	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{
@@ -215,9 +215,9 @@ func TestGetDockerLabels_OnlyNonOfeliaLabels(t *testing.T) {
 		"Container with only non-ofelia labels should produce empty result")
 }
 
-// TestGetDockerLabels_MixedOfeliaAndNonOfeliaLabels verifies only ofelia-prefixed
+// TestGetDockerContainers_MixedOfeliaAndNonOfeliaLabels verifies only ofelia-prefixed
 // labels are included. Targets the HasPrefix check at line 280.
-func TestGetDockerLabels_MixedLabels(t *testing.T) {
+func TestGetDockerContainers_MixedLabels(t *testing.T) {
 	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{
@@ -252,9 +252,9 @@ func TestGetDockerLabels_MixedLabels(t *testing.T) {
 	assert.NotContains(t, container.Labels, "not-ofelia")
 }
 
-// TestGetDockerLabels_FilterMerging verifies that filters merge correctly.
+// TestGetDockerContainers_FilterMerging verifies that filters merge correctly.
 // Targets the filter append logic at lines 252-257.
-func TestGetDockerLabels_FilterMerging(t *testing.T) {
+func TestGetDockerContainers_FilterMerging(t *testing.T) {
 	t.Parallel()
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{
@@ -341,7 +341,7 @@ func TestHandleEventStreamError_StartsFallback(t *testing.T) {
 // When pollingFallback is 0, should log error but not start fallback.
 func TestHandleEventStreamError_NoFallback(t *testing.T) {
 	t.Parallel()
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 
 	h := &DockerHandler{
 		pollingFallback: 0,
@@ -355,7 +355,7 @@ func TestHandleEventStreamError_NoFallback(t *testing.T) {
 	assert.False(t, h.fallbackPollingActive)
 	h.mu.Unlock()
 
-	assert.True(t, logger.HasError("Docker event stream failed"),
+	assert.True(t, handler.HasError("Docker event stream failed"),
 		"Should log error when no fallback configured")
 }
 
@@ -505,7 +505,7 @@ func TestRefreshContainerLabels_NonOfeliaError(t *testing.T) {
 	t.Parallel()
 
 	mockProvider := &mockDockerProviderListFail{}
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	notifier := &dummyNotifier{}
 
 	h := &DockerHandler{
@@ -519,7 +519,7 @@ func TestRefreshContainerLabels_NonOfeliaError(t *testing.T) {
 	h.refreshContainerLabels()
 
 	// The non-ErrNoContainerWithOfeliaEnabled error should be logged as debug
-	assert.True(t, logger.HasMessage("connection refused"),
+	assert.True(t, handler.HasMessage("connection refused"),
 		"Non-ErrNoContainer error should be logged as debug")
 }
 
@@ -531,7 +531,7 @@ func TestRefreshContainerLabels_OfeliaError(t *testing.T) {
 	mockProvider := &mockDockerProviderForHandler{
 		containers: []domain.Container{}, // empty = returns ErrNoContainerWithOfeliaEnabled
 	}
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	notifier := &dummyNotifier{}
 
 	h := &DockerHandler{
@@ -545,7 +545,7 @@ func TestRefreshContainerLabels_OfeliaError(t *testing.T) {
 	h.refreshContainerLabels()
 
 	// ErrNoContainerWithOfeliaEnabled should NOT be logged
-	assert.Equal(t, 0, logger.MessageCount(),
+	assert.Equal(t, 0, handler.MessageCount(),
 		"ErrNoContainerWithOfeliaEnabled should be silenced")
 }
 

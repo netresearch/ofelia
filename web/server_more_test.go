@@ -42,21 +42,12 @@ func TestJobFromRequestLocal(t *testing.T) {
 
 // --- Additional coverage for HTTP handlers ---
 
-type testLogger struct{}
-
-func (testLogger) Criticalf(string, ...any) {}
-func (testLogger) Debugf(string, ...any)    {}
-func (testLogger) Errorf(string, ...any)    {}
-func (testLogger) Noticef(string, ...any)   {}
-func (testLogger) Warningf(string, ...any)  {}
-
 type simpleJob struct{ core.BareJob }
 
 func (j *simpleJob) Run(*core.Context) error { return nil }
 
 func newSchedWithJob(name string) *core.Scheduler {
-	l := &testLogger{}
-	sc := core.NewScheduler(l)
+	sc := core.NewScheduler(newDiscardLogger())
 	j := &simpleJob{}
 	j.Name = name
 	j.Schedule = "@daily"
@@ -120,7 +111,7 @@ func TestDisableEnableHandlers(t *testing.T) {
 }
 
 func TestCreateUpdateDeleteHandlers_Local(t *testing.T) {
-	sc := core.NewScheduler(&testLogger{})
+	sc := core.NewScheduler(newDiscardLogger())
 	srv := NewServer("", sc, nil, nil)
 	httpSrv := srv.HTTPServer()
 
@@ -163,7 +154,7 @@ func TestConfigHandlerStripsJobs(t *testing.T) {
 		RunJobs map[string]*struct{ core.BareJob }
 	}
 	c := &cfg{RunJobs: map[string]*struct{ core.BareJob }{"n": {}}}
-	sc := core.NewScheduler(&testLogger{})
+	sc := core.NewScheduler(newDiscardLogger())
 	srv := NewServer("", sc, c, nil)
 	httpSrv := srv.HTTPServer()
 	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
@@ -183,7 +174,7 @@ func TestConfigHandlerStripsJobs(t *testing.T) {
 }
 
 func TestCreateUpdateDeleteHandlers_ComposeAndErrors(t *testing.T) {
-	sc := core.NewScheduler(&testLogger{})
+	sc := core.NewScheduler(newDiscardLogger())
 	srv := NewServer("", sc, nil, nil)
 	httpSrv := srv.HTTPServer()
 

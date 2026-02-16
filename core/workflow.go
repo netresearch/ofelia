@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -10,7 +11,7 @@ import (
 // WorkflowOrchestrator manages job dependencies and workflow execution
 type WorkflowOrchestrator struct {
 	scheduler    *Scheduler
-	logger       Logger
+	logger       *slog.Logger
 	dependencies map[string]*DependencyNode
 	mu           sync.RWMutex
 	executions   map[string]*WorkflowExecution
@@ -36,7 +37,7 @@ type WorkflowExecution struct {
 }
 
 // NewWorkflowOrchestrator creates a new workflow orchestrator
-func NewWorkflowOrchestrator(scheduler *Scheduler, logger Logger) *WorkflowOrchestrator {
+func NewWorkflowOrchestrator(scheduler *Scheduler, logger *slog.Logger) *WorkflowOrchestrator {
 	return &WorkflowOrchestrator{
 		scheduler:    scheduler,
 		logger:       logger,
@@ -148,10 +149,10 @@ func (wo *WorkflowOrchestrator) CanExecute(jobName string, executionID string) b
 		if !execution.CompletedJobs[dep] {
 			// Dependency not yet completed
 			if execution.FailedJobs[dep] {
-				wo.logger.Warningf("Job %s cannot run: dependency %s failed", jobName, dep)
+				wo.logger.Warn(fmt.Sprintf("Job %s cannot run: dependency %s failed", jobName, dep))
 				return false
 			}
-			wo.logger.Debugf("Job %s waiting for dependency %s", jobName, dep)
+			wo.logger.Debug(fmt.Sprintf("Job %s waiting for dependency %s", jobName, dep))
 			return false
 		}
 	}
@@ -160,7 +161,7 @@ func (wo *WorkflowOrchestrator) CanExecute(jobName string, executionID string) b
 	if execution.RunningJobs[jobName] {
 		// Check if this job allows parallel execution
 		if bareJob, ok := node.Job.(*BareJob); ok && !bareJob.AllowParallel {
-			wo.logger.Debugf("Job %s already running, parallel execution not allowed", jobName)
+			wo.logger.Debug(fmt.Sprintf("Job %s already running, parallel execution not allowed", jobName))
 			return false
 		}
 	}
@@ -175,7 +176,7 @@ func (wo *WorkflowOrchestrator) JobStarted(jobName string, executionID string) {
 	defer execution.mu.Unlock()
 
 	execution.RunningJobs[jobName] = true
-	wo.logger.Debugf("Workflow %s: Job %s started", executionID, jobName)
+	wo.logger.Debug(fmt.Sprintf("Workflow %s: Job %s started", executionID, jobName))
 }
 
 // JobCompleted marks a job as completed and triggers dependent jobs
@@ -186,10 +187,10 @@ func (wo *WorkflowOrchestrator) JobCompleted(ctx context.Context, jobName string
 
 	if success {
 		execution.CompletedJobs[jobName] = true
-		wo.logger.Noticef("Workflow %s: Job %s completed successfully", executionID, jobName)
+		wo.logger.Info(fmt.Sprintf("Workflow %s: Job %s completed successfully", executionID, jobName))
 	} else {
 		execution.FailedJobs[jobName] = true
-		wo.logger.Warningf("Workflow %s: Job %s failed", executionID, jobName)
+		wo.logger.Warn(fmt.Sprintf("Workflow %s: Job %s failed", executionID, jobName))
 	}
 	execution.mu.Unlock()
 
@@ -217,7 +218,7 @@ func (wo *WorkflowOrchestrator) triggerDependentJobs(ctx context.Context, jobNam
 
 	for _, triggerJob := range jobsToTrigger {
 		if wo.CanExecute(triggerJob, executionID) {
-			wo.logger.Noticef("Triggering job %s from workflow", triggerJob)
+			wo.logger.Info(fmt.Sprintf("Triggering job %s from workflow", triggerJob))
 			_ = wo.scheduler.RunJob(ctx, triggerJob)
 		}
 	}
@@ -226,7 +227,7 @@ func (wo *WorkflowOrchestrator) triggerDependentJobs(ctx context.Context, jobNam
 	if success {
 		for _, dependent := range node.Dependents {
 			if wo.CanExecute(dependent, executionID) {
-				wo.logger.Noticef("Dependency satisfied, triggering job %s", dependent)
+				wo.logger.Info(fmt.Sprintf("Dependency satisfied, triggering job %s", dependent))
 				_ = wo.scheduler.RunJob(ctx, dependent)
 			}
 		}
@@ -262,7 +263,7 @@ func (wo *WorkflowOrchestrator) CleanupOldExecutions(maxAge time.Duration) {
 	for id, execution := range wo.executions {
 		if execution.StartTime.Before(cutoff) {
 			delete(wo.executions, id)
-			wo.logger.Debugf("Cleaned up old workflow execution %s", id)
+			wo.logger.Debug(fmt.Sprintf("Cleaned up old workflow execution %s", id))
 		}
 	}
 }

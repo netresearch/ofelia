@@ -8,7 +8,7 @@ import (
 
 // TestRetryExecutor tests the retry mechanism
 func TestRetryExecutor(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	executor := NewRetryExecutor(logger)
 
 	t.Run("SuccessOnFirstTry", func(t *testing.T) {

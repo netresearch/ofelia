@@ -7,7 +7,7 @@ import (
 
 // TestWorkflowDependencies tests job dependency resolution
 func TestWorkflowDependencies(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	scheduler := NewScheduler(logger)
 	orchestrator := scheduler.workflowOrchestrator
 
@@ -78,7 +78,7 @@ func TestWorkflowDependencies(t *testing.T) {
 
 // TestCircularDependencyDetection tests detection of circular dependencies
 func TestCircularDependencyDetection(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	scheduler := NewScheduler(logger)
 	orchestrator := scheduler.workflowOrchestrator
 
@@ -116,7 +116,7 @@ func TestCircularDependencyDetection(t *testing.T) {
 
 // TestOnSuccessOnFailureTriggers tests conditional job triggers
 func TestOnSuccessOnFailureTriggers(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	scheduler := NewScheduler(logger)
 	orchestrator := scheduler.workflowOrchestrator
 
@@ -180,7 +180,7 @@ func TestOnSuccessOnFailureTriggers(t *testing.T) {
 
 // TestParallelExecutionControl tests AllowParallel flag
 func TestParallelExecutionControl(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	scheduler := NewScheduler(logger)
 	orchestrator := scheduler.workflowOrchestrator
 
@@ -223,7 +223,7 @@ func TestParallelExecutionControl(t *testing.T) {
 
 // TestWorkflowStatus tests workflow status tracking
 func TestWorkflowStatus(t *testing.T) {
-	logger := &TestLogger{}
+	logger := newDiscardLogger()
 	scheduler := NewScheduler(logger)
 	orchestrator := scheduler.workflowOrchestrator
 

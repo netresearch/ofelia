@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"sync"
@@ -62,11 +63,11 @@ type EnhancedBufferPool struct {
 	shrinkTicker  *time.Ticker
 	shrinkStop    chan struct{}
 
-	logger Logger
+	logger *slog.Logger
 }
 
 // NewEnhancedBufferPool creates a new enhanced buffer pool with adaptive management
-func NewEnhancedBufferPool(config *EnhancedBufferPoolConfig, logger Logger) *EnhancedBufferPool {
+func NewEnhancedBufferPool(config *EnhancedBufferPoolConfig, logger *slog.Logger) *EnhancedBufferPool {
 	if config == nil {
 		config = DefaultEnhancedBufferPoolConfig()
 	}
@@ -240,7 +241,7 @@ func (ebp *EnhancedBufferPool) createPoolForSize(size int64) *sync.Pool {
 			if err != nil {
 				// Return nil instead of panicking - caller will handle
 				if ebp.logger != nil {
-					ebp.logger.Errorf("Failed to create buffer of size %d: %v", size, err)
+					ebp.logger.Error(fmt.Sprintf("Failed to create buffer of size %d: %v", size, err))
 				}
 				return nil
 			}
@@ -251,7 +252,7 @@ func (ebp *EnhancedBufferPool) createPoolForSize(size int64) *sync.Pool {
 	ebp.pools[size] = pool
 
 	if ebp.config.EnableMetrics && ebp.logger != nil {
-		ebp.logger.Debugf("Created buffer pool for size %d bytes", size)
+		ebp.logger.Debug(fmt.Sprintf("Created buffer pool for size %d bytes", size))
 	}
 
 	return pool
@@ -296,7 +297,7 @@ func (ebp *EnhancedBufferPool) prewarmPools() {
 			if err != nil {
 				// Log error but continue with remaining buffers (graceful degradation)
 				if ebp.logger != nil {
-					ebp.logger.Errorf("Failed to pre-warm buffer %d of size %d: %v", i, size, err)
+					ebp.logger.Error(fmt.Sprintf("Failed to pre-warm buffer %d of size %d: %v", i, size, err))
 				}
 				continue
 			}
@@ -305,7 +306,7 @@ func (ebp *EnhancedBufferPool) prewarmPools() {
 		}
 
 		if ebp.logger != nil {
-			ebp.logger.Debugf("Pre-warmed pool for size %d with %d/%d buffers", size, successfulBuffers, ebp.config.PoolSize)
+			ebp.logger.Debug(fmt.Sprintf("Pre-warmed pool for size %d with %d/%d buffers", size, successfulBuffers, ebp.config.PoolSize))
 		}
 	}
 }
@@ -353,8 +354,8 @@ func (ebp *EnhancedBufferPool) performAdaptiveManagement() {
 		if utilizationRate < ebp.config.ShrinkThreshold {
 			// This pool is underutilized - could shrink or remove
 			if ebp.logger != nil {
-				ebp.logger.Debugf("Buffer pool size %d has low utilization: %.2f%%",
-					size, utilizationRate*100)
+				ebp.logger.Debug(fmt.Sprintf("Buffer pool size %d has low utilization: %.2f%%",
+					size, utilizationRate*100))
 			}
 			// For now, just log - in production, could implement actual shrinking
 		}
@@ -418,7 +419,7 @@ func (ebp *EnhancedBufferPool) Shutdown() {
 	ebp.poolsMutex.Unlock()
 
 	if ebp.logger != nil {
-		ebp.logger.Noticef("Enhanced buffer pool shutdown complete")
+		ebp.logger.Info("Enhanced buffer pool shutdown complete")
 	}
 }
 
@@ -437,7 +438,7 @@ var (
 )
 
 // SetGlobalBufferPoolLogger sets the logger for the global buffer pool
-func SetGlobalBufferPoolLogger(logger Logger) {
+func SetGlobalBufferPoolLogger(logger *slog.Logger) {
 	DefaultBufferPool.logger = logger
 }
 

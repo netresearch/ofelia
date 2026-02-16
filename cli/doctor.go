@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
 	"github.com/netresearch/go-cron"
-
-	"github.com/netresearch/ofelia/core"
 )
 
 // DoctorCommand runs comprehensive health checks on Ofelia configuration and environment
@@ -17,7 +16,8 @@ type DoctorCommand struct {
 	ConfigFile string `long:"config" description:"Path to configuration file"`
 	LogLevel   string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level"`
 	JSON       bool   `long:"json" description:"Output results as JSON"`
-	Logger     core.Logger
+	Logger     *slog.Logger
+	LevelVar   *slog.LevelVar
 
 	// configAutoDetected tracks whether auto-detection was used (for error hints)
 	configAutoDetected bool
@@ -65,8 +65,8 @@ type DoctorReport struct {
 
 // Execute runs all health checks
 func (c *DoctorCommand) Execute(_ []string) error {
-	if err := ApplyLogLevel(c.LogLevel); err != nil {
-		c.Logger.Warningf("Failed to apply log level (using default): %v", err)
+	if err := ApplyLogLevel(c.LogLevel, c.LevelVar); err != nil {
+		c.Logger.Warn(fmt.Sprintf("Failed to apply log level (using default): %v", err))
 	}
 
 	// Auto-detect config file if not specified
@@ -87,7 +87,7 @@ func (c *DoctorCommand) Execute(_ []string) error {
 	// Show progress only in non-JSON mode
 	var progress *ProgressReporter
 	if !c.JSON {
-		c.Logger.Noticef("🏥 Running Ofelia Health Diagnostics...\n")
+		c.Logger.Info("Running Ofelia Health Diagnostics...\n")
 		totalSteps := 4 // config, docker, schedules, images
 		progress = NewProgressReporter(c.Logger, totalSteps)
 	}
@@ -582,7 +582,7 @@ func (c *DoctorCommand) outputJSON(report *DoctorReport) error {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 
-	c.Logger.Noticef("%s", string(data))
+	c.Logger.Info(string(data))
 
 	if !report.Healthy {
 		return fmt.Errorf("health check failed")
@@ -592,7 +592,7 @@ func (c *DoctorCommand) outputJSON(report *DoctorReport) error {
 
 // outputHuman outputs results in human-readable format
 func (c *DoctorCommand) outputHuman(report *DoctorReport) error {
-	c.Logger.Noticef("🏥 Ofelia Health Check\n")
+	c.Logger.Info("Ofelia Health Check\n")
 
 	// Group checks by category
 	categories := make(map[string][]CheckResult)
@@ -610,22 +610,22 @@ func (c *DoctorCommand) outputHuman(report *DoctorReport) error {
 		}
 
 		icon := getCategoryIcon(category)
-		c.Logger.Noticef("%s %s", icon, category)
+		c.Logger.Info(fmt.Sprintf("%s %s", icon, category))
 
 		for _, check := range checks {
 			statusIcon := getStatusIcon(check.Status)
 			if check.Message != "" {
-				c.Logger.Noticef("  %s %s: %s", statusIcon, check.Name, check.Message)
+				c.Logger.Info(fmt.Sprintf("  %s %s: %s", statusIcon, check.Name, check.Message))
 			} else {
-				c.Logger.Noticef("  %s %s", statusIcon, check.Name)
+				c.Logger.Info(fmt.Sprintf("  %s %s", statusIcon, check.Name))
 			}
 
 			// Output hints
 			for _, hint := range check.Hints {
-				c.Logger.Noticef("    → %s", hint)
+				c.Logger.Info(fmt.Sprintf("    → %s", hint))
 			}
 		}
-		c.Logger.Noticef("")
+		c.Logger.Info("")
 	}
 
 	// Summary
@@ -640,16 +640,16 @@ func (c *DoctorCommand) outputHuman(report *DoctorReport) error {
 	}
 
 	if report.Healthy {
-		c.Logger.Noticef("Summary: All checks passed ✅")
+		c.Logger.Info("Summary: All checks passed")
 		if skipCount > 0 {
-			c.Logger.Noticef("  (%d check(s) skipped as not applicable)", skipCount)
+			c.Logger.Info(fmt.Sprintf("  (%d check(s) skipped as not applicable)", skipCount))
 		}
 		return nil
 	}
 
-	c.Logger.Noticef("Summary: %d issue(s) found ❌", failCount)
+	c.Logger.Info(fmt.Sprintf("Summary: %d issue(s) found", failCount))
 	if skipCount > 0 {
-		c.Logger.Noticef("  (%d check(s) skipped due to blockers)", skipCount)
+		c.Logger.Info(fmt.Sprintf("  (%d check(s) skipped due to blockers)", skipCount))
 	}
 	return fmt.Errorf("health check failed")
 }

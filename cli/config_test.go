@@ -17,12 +17,9 @@ import (
 	"github.com/netresearch/ofelia/test"
 )
 
-type TestLogger = test.Logger
-
 func TestBuildFromString(t *testing.T) {
 	t.Parallel()
 
-	mockLogger := TestLogger{}
 	_, err := BuildFromString(`
 		[job-exec "foo"]
 		schedule = @every 10s
@@ -40,7 +37,7 @@ func TestBuildFromString(t *testing.T) {
 		[job-service-run "bob"]
 		schedule = @every 10s
 		image = nginx
-  `, &mockLogger)
+  `, test.NewTestLogger())
 
 	require.NoError(t, err)
 }
@@ -174,10 +171,10 @@ func TestConfigIni(t *testing.T) {
 
 	for _, tc := range testcases {
 		t.Run(tc.Comment, func(t *testing.T) {
-			conf, err := BuildFromString(tc.Ini, &TestLogger{})
+			conf, err := BuildFromString(tc.Ini, test.NewTestLogger())
 			require.NoError(t, err)
 
-			expectedWithDefaults := NewConfig(&TestLogger{})
+			expectedWithDefaults := NewConfig(test.NewTestLogger())
 			expectedWithDefaults.logger = nil
 			conf.logger = nil
 
@@ -672,7 +669,7 @@ func TestLabelsConfig(t *testing.T) {
 func TestBuildFromStringError(t *testing.T) {
 	t.Parallel()
 
-	_, err := BuildFromString("[invalid", &TestLogger{})
+	_, err := BuildFromString("[invalid", test.NewTestLogger())
 	assert.Error(t, err)
 }
 
@@ -689,7 +686,7 @@ command = echo test123
 	err := os.WriteFile(configFile, []byte(content), 0o644)
 	require.NoError(t, err)
 
-	conf, err := BuildFromFile(configFile, &TestLogger{})
+	conf, err := BuildFromFile(configFile, test.NewTestLogger())
 	require.NoError(t, err)
 	assert.Len(t, conf.RunJobs, 1)
 	job, ok := conf.RunJobs["foo"]
@@ -711,7 +708,7 @@ func TestBuildFromFileGlob(t *testing.T) {
 	err = os.WriteFile(file2, []byte("[job-exec \"bar\"]\nschedule = @every 10s\ncommand = echo bar\n"), 0o644)
 	require.NoError(t, err)
 
-	conf, err := BuildFromFile(filepath.Join(dir, "*.ini"), &TestLogger{})
+	conf, err := BuildFromFile(filepath.Join(dir, "*.ini"), test.NewTestLogger())
 	require.NoError(t, err)
 	assert.Len(t, conf.RunJobs, 1)
 	_, ok := conf.RunJobs["foo"]
@@ -724,7 +721,7 @@ func TestBuildFromFileGlob(t *testing.T) {
 func TestNewConfig(t *testing.T) {
 	t.Parallel()
 
-	cfg := NewConfig(&TestLogger{})
+	cfg := NewConfig(test.NewTestLogger())
 	assert.NotNil(t, cfg.ExecJobs)
 	assert.NotNil(t, cfg.RunJobs)
 	assert.NotNil(t, cfg.ServiceJobs)
@@ -744,7 +741,7 @@ func TestBuildSchedulerMiddlewares(t *testing.T) {
 	cfg.Global.MailConfig.EmailTo = "to@example.com"
 	cfg.Global.MailConfig.EmailFrom = "from@example.com"
 
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(sh)
 	ms := sh.Middlewares()
 	assert.Len(t, ms, 3)
@@ -759,14 +756,14 @@ func TestBuildSchedulerMiddlewares(t *testing.T) {
 func TestDefaultUserGlobalConfig(t *testing.T) {
 	t.Parallel()
 
-	mockLogger := TestLogger{}
+	logger := test.NewTestLogger()
 
 	cfg, err := BuildFromString(`
 		[job-exec "test"]
 		schedule = @every 10s
 		container = test-container
 		command = echo test
-	`, &mockLogger)
+	`, logger)
 	require.NoError(t, err)
 	assert.Equal(t, "nobody", cfg.Global.DefaultUser)
 
@@ -778,7 +775,7 @@ func TestDefaultUserGlobalConfig(t *testing.T) {
 		schedule = @every 10s
 		container = test-container
 		command = echo test
-	`, &mockLogger)
+	`, logger)
 	require.NoError(t, err)
 	assert.Equal(t, "root", cfg.Global.DefaultUser)
 
@@ -790,7 +787,7 @@ func TestDefaultUserGlobalConfig(t *testing.T) {
 		schedule = @every 10s
 		container = test-container
 		command = echo test
-	`, &mockLogger)
+	`, logger)
 	require.NoError(t, err)
 	assert.Empty(t, cfg.Global.DefaultUser)
 }
@@ -798,7 +795,7 @@ func TestDefaultUserGlobalConfig(t *testing.T) {
 func TestApplyDefaultUser(t *testing.T) {
 	t.Parallel()
 
-	cfg := NewConfig(&TestLogger{})
+	cfg := NewConfig(test.NewTestLogger())
 	cfg.Global.DefaultUser = "testuser"
 
 	user := ""
@@ -823,7 +820,7 @@ func TestApplyDefaultUser(t *testing.T) {
 func TestMergeMailDefaults(t *testing.T) {
 	t.Parallel()
 
-	cfg := NewConfig(&TestLogger{})
+	cfg := NewConfig(test.NewTestLogger())
 	cfg.Global.MailConfig.SMTPHost = "smtp.example.com"
 	cfg.Global.MailConfig.SMTPPort = 587
 	cfg.Global.MailConfig.SMTPUser = "globaluser"
@@ -863,7 +860,7 @@ func TestMergeMailDefaults(t *testing.T) {
 	assert.Equal(t, "job@example.com", jobMail2.EmailTo)
 	assert.Equal(t, "sender@example.com", jobMail2.EmailFrom)
 
-	cfgEmpty := NewConfig(&TestLogger{})
+	cfgEmpty := NewConfig(test.NewTestLogger())
 	jobMail3 := middlewares.MailConfig{
 		SMTPHost: "job-only.example.com",
 		SMTPPort: 25,
@@ -878,7 +875,7 @@ func TestMergeMailDefaults(t *testing.T) {
 func TestMergeSlackDefaults(t *testing.T) {
 	t.Parallel()
 
-	cfg := NewConfig(&TestLogger{})
+	cfg := NewConfig(test.NewTestLogger())
 	cfg.Global.SlackConfig.SlackWebhook = "https://hooks.slack.com/services/global"
 	cfg.Global.SlackConfig.SlackOnlyOnError = new(true)
 
@@ -902,7 +899,7 @@ func TestMergeSlackDefaults(t *testing.T) {
 	assert.True(t, *jobSlack2.SlackOnlyOnError)
 
 	// Global=false should not override job=true
-	cfg3 := NewConfig(&TestLogger{})
+	cfg3 := NewConfig(test.NewTestLogger())
 	cfg3.Global.SlackConfig.SlackWebhook = "https://hooks.slack.com/services/global"
 	cfg3.Global.SlackConfig.SlackOnlyOnError = new(false)
 	jobSlack3 := middlewares.SlackConfig{
@@ -916,13 +913,13 @@ func TestMergeSlackDefaults(t *testing.T) {
 func TestMergeMailDefaultsBoolFieldLimitation(t *testing.T) {
 	t.Parallel()
 
-	cfg1 := NewConfig(&TestLogger{})
+	cfg1 := NewConfig(test.NewTestLogger())
 	cfg1.Global.MailConfig.SMTPTLSSkipVerify = true
 	jobMail1 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
 	cfg1.mergeMailDefaults(&jobMail1)
 	assert.True(t, jobMail1.SMTPTLSSkipVerify, "Global skip-verify=true should propagate to job")
 
-	cfg2 := NewConfig(&TestLogger{})
+	cfg2 := NewConfig(test.NewTestLogger())
 	cfg2.Global.MailConfig.SMTPTLSSkipVerify = false
 	jobMail2 := middlewares.MailConfig{
 		SMTPHost:          "mail.example.com",
@@ -931,13 +928,13 @@ func TestMergeMailDefaultsBoolFieldLimitation(t *testing.T) {
 	cfg2.mergeMailDefaults(&jobMail2)
 	assert.True(t, jobMail2.SMTPTLSSkipVerify, "Job skip-verify=true should NOT be overridden by global false")
 
-	cfg3 := NewConfig(&TestLogger{})
+	cfg3 := NewConfig(test.NewTestLogger())
 	cfg3.Global.MailConfig.SMTPTLSSkipVerify = false
 	jobMail3 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
 	cfg3.mergeMailDefaults(&jobMail3)
 	assert.False(t, jobMail3.SMTPTLSSkipVerify, "Both false - secure default should be maintained")
 
-	cfg4 := NewConfig(&TestLogger{})
+	cfg4 := NewConfig(test.NewTestLogger())
 	cfg4.Global.MailConfig.SMTPTLSSkipVerify = true
 	jobMail4 := middlewares.MailConfig{
 		SMTPHost:          "mail.example.com",
@@ -951,7 +948,7 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 	t.Parallel()
 
 	// Global=true, Job=nil (not set) → Job inherits true
-	cfg1 := NewConfig(&TestLogger{})
+	cfg1 := NewConfig(test.NewTestLogger())
 	cfg1.Global.MailConfig.MailOnlyOnError = new(true)
 	jobMail1 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
 	cfg1.mergeMailDefaults(&jobMail1)
@@ -959,7 +956,7 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 	assert.True(t, *jobMail1.MailOnlyOnError)
 
 	// Global=false, Job=true → Job keeps true
-	cfg2 := NewConfig(&TestLogger{})
+	cfg2 := NewConfig(test.NewTestLogger())
 	cfg2.Global.MailConfig.MailOnlyOnError = new(false)
 	jobMail2 := middlewares.MailConfig{
 		SMTPHost:        "mail.example.com",
@@ -970,7 +967,7 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 	assert.True(t, *jobMail2.MailOnlyOnError, "Job mail-only-on-error=true should NOT be overridden by global false")
 
 	// Global=true, Job=false (explicitly) → Job keeps false (explicit override)
-	cfg3 := NewConfig(&TestLogger{})
+	cfg3 := NewConfig(test.NewTestLogger())
 	cfg3.Global.MailConfig.MailOnlyOnError = new(true)
 	jobMail3 := middlewares.MailConfig{
 		SMTPHost:        "mail.example.com",
@@ -981,13 +978,13 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 	assert.False(t, *jobMail3.MailOnlyOnError, "Job explicit false should NOT be overridden by global true")
 
 	// Global=nil, Job=nil → Job stays nil (default: send all)
-	cfg4 := NewConfig(&TestLogger{})
+	cfg4 := NewConfig(test.NewTestLogger())
 	jobMail4 := middlewares.MailConfig{SMTPHost: "mail.example.com"}
 	cfg4.mergeMailDefaults(&jobMail4)
 	assert.Nil(t, jobMail4.MailOnlyOnError, "Both nil - should stay nil (send all)")
 
 	// Global=true, Job=true → Job stays true
-	cfg5 := NewConfig(&TestLogger{})
+	cfg5 := NewConfig(test.NewTestLogger())
 	cfg5.Global.MailConfig.MailOnlyOnError = new(true)
 	jobMail5 := middlewares.MailConfig{
 		SMTPHost:        "mail.example.com",
@@ -1001,7 +998,7 @@ func TestMergeMailDefaultsOnlyOnErrorInheritance(t *testing.T) {
 func TestMergeMailDefaultsEmailSubjectInheritance(t *testing.T) {
 	t.Parallel()
 
-	cfg := NewConfig(&TestLogger{})
+	cfg := NewConfig(test.NewTestLogger())
 	cfg.Global.MailConfig.EmailSubject = "[{{status .Execution}}] {{.Job.GetName}}"
 
 	// Job without subject inherits from global
@@ -1021,7 +1018,7 @@ func TestMergeMailDefaultsEmailSubjectInheritance(t *testing.T) {
 func TestMergeSaveDefaults(t *testing.T) {
 	t.Parallel()
 
-	cfg := NewConfig(&TestLogger{})
+	cfg := NewConfig(test.NewTestLogger())
 	cfg.Global.SaveConfig.SaveFolder = "/var/log/ofelia"
 	cfg.Global.SaveConfig.SaveOnlyOnError = new(true)
 
@@ -1046,7 +1043,7 @@ func TestMergeSaveDefaults(t *testing.T) {
 	assert.False(t, *jobSave3.SaveOnlyOnError, "Job explicit false should NOT be overridden by global true")
 
 	// Empty global: nothing inherited
-	cfgEmpty := NewConfig(&TestLogger{})
+	cfgEmpty := NewConfig(test.NewTestLogger())
 	jobSave4 := middlewares.SaveConfig{}
 	cfgEmpty.mergeSaveDefaults(&jobSave4)
 	assert.Empty(t, jobSave4.SaveFolder)

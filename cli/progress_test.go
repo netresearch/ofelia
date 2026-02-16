@@ -12,7 +12,7 @@ import (
 
 // TestProgressIndicator_NonTerminal tests progress indicator in non-terminal mode (simple logging)
 func TestProgressIndicator_NonTerminal(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	progress := &ProgressIndicator{
 		logger:     logger,
 		writer:     &bytes.Buffer{},
@@ -31,7 +31,7 @@ func TestProgressIndicator_NonTerminal(t *testing.T) {
 
 // TestProgressIndicator_Start tests starting a progress indicator
 func TestProgressIndicator_Start(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	progress := NewProgressIndicator(logger, "Testing operation")
 
 	// Should be able to start
@@ -46,7 +46,7 @@ func TestProgressIndicator_Start(t *testing.T) {
 
 // TestProgressIndicator_Stop tests stopping a progress indicator
 func TestProgressIndicator_Stop(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	progress := NewProgressIndicator(logger, "Testing operation")
 
 	progress.Start()
@@ -61,7 +61,7 @@ func TestProgressIndicator_Stop(t *testing.T) {
 
 // TestProgressIndicator_Update tests updating progress message
 func TestProgressIndicator_Update(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	progress := &ProgressIndicator{
 		logger:     logger,
 		writer:     &bytes.Buffer{},
@@ -80,7 +80,7 @@ func TestProgressIndicator_Update(t *testing.T) {
 
 // TestProgressReporter_Step tests step reporting
 func TestProgressReporter_Step(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	reporter := NewProgressReporter(logger, 5)
 
 	// Report several steps
@@ -97,7 +97,7 @@ func TestProgressReporter_Step(t *testing.T) {
 
 // TestProgressReporter_Complete tests completion reporting
 func TestProgressReporter_Complete(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	reporter := NewProgressReporter(logger, 3)
 
 	reporter.Step(1, "Step 1")
@@ -113,7 +113,7 @@ func TestProgressReporter_Complete(t *testing.T) {
 
 // TestProgressReporter_RenderProgressBar tests progress bar rendering
 func TestProgressReporter_RenderProgressBar(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	reporter := NewProgressReporter(logger, 10)
 
 	tests := []struct {
@@ -138,7 +138,7 @@ func TestProgressReporter_RenderProgressBar(t *testing.T) {
 
 // TestProgressIndicator_Concurrency tests concurrent usage
 func TestProgressIndicator_Concurrency(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	progress := NewProgressIndicator(logger, "Concurrent test")
 
 	progress.Start()
@@ -162,7 +162,7 @@ func TestProgressIndicator_Concurrency(t *testing.T) {
 
 // TestProgressReporter_ZeroSteps tests reporter with zero steps
 func TestProgressReporter_ZeroSteps(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	reporter := NewProgressReporter(logger, 0)
 
 	// Should handle zero steps gracefully
@@ -171,7 +171,7 @@ func TestProgressReporter_ZeroSteps(t *testing.T) {
 
 // TestProgressReporter_ProgressCalculation tests progress percentage calculation
 func TestProgressReporter_ProgressCalculation(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 	reporter := NewProgressReporter(logger, 4)
 
 	tests := []struct {
@@ -195,7 +195,7 @@ func TestProgressReporter_ProgressCalculation(t *testing.T) {
 
 // TestProgressIndicator_MessageContent tests message content preservation
 func TestProgressIndicator_MessageContent(t *testing.T) {
-	logger := &test.Logger{}
+	logger := test.NewTestLogger()
 
 	testMessages := []string{
 		"Simple message",

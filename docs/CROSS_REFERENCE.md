@@ -120,10 +120,9 @@
 - **Job Metrics**: [`metrics/prometheus.go#L290-L344`](../metrics/prometheus.go)
 
 ### Structured Logging
-- **Logger**: [`logging/structured.go`](../logging/structured.go)
-- **Job Logger**: [`logging/structured.go#L291-L395`](../logging/structured.go)
-- **Tests**: [`logging/structured_test.go`](../logging/structured_test.go)
-- **Integration**: [`core/context.go#L122-L135`](../core/context.go)
+- **Logger**: stdlib `log/slog` (used directly, no wrapper)
+- **Logger construction**: [`ofelia.go#L21-L38`](../ofelia.go) (`buildLogger`)
+- **Level management**: [`cli/logging.go`](../cli/logging.go) (`ApplyLogLevel`)
 
 ## Security
 
@@ -220,7 +219,7 @@
 3. **Middleware Chain**: [`core/context.go#L68-L103`](../core/context.go)
 4. **Job Execution**: [`core/runjob.go#L98`](../core/runjob.go)
 5. **Metrics Recording**: [`metrics/prometheus.go#L305-L333`](../metrics/prometheus.go)
-6. **Logging**: [`logging/structured.go#L317-L355`](../logging/structured.go)
+6. **Logging**: stdlib `log/slog` (used directly throughout)
 
 ### Configuration Update Flow
 1. **Docker Event/Poll**: [`core/container_monitor.go#L50`](../core/container_monitor.go)

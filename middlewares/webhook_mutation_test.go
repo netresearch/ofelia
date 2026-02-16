@@ -55,7 +55,7 @@ func TestSendWithRetry_ZeroRetries(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -107,7 +107,7 @@ func TestSendWithRetry_AllAttemptsFail(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -167,7 +167,7 @@ func TestSendWithRetry_FirstAttemptNoSleep(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -226,7 +226,7 @@ func TestSendWithRetry_ErrorMessage(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -327,7 +327,7 @@ func TestBuildWebhookDataWithPreset_LinkText(t *testing.T) {
 			job := &TestJob{}
 			job.Name = "test-job"
 			job.Command = "echo hello"
-			sh := core.NewScheduler(&TestLogger{})
+			sh := core.NewScheduler(newDiscardLogger())
 			e, err := core.NewExecution()
 			require.NoError(t, err)
 			ctx := core.NewContext(sh, job, e)
@@ -379,7 +379,7 @@ func TestSendWithRetry_ExactRetryCount_One(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -433,7 +433,7 @@ func TestSendWithRetry_SucceedsOnSecondAttempt(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "test-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)
@@ -483,7 +483,7 @@ func TestWebhookRun_TriggerFiltering(t *testing.T) {
 	job := &TestJob{}
 	job.Name = "success-job"
 	job.Command = "echo hello"
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 	ctx := core.NewContext(sh, job, e)

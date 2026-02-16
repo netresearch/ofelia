@@ -1,8 +1,9 @@
 package core
 
 import (
+	"context"
 	"errors"
-	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"testing"
@@ -43,25 +44,39 @@ func (m *captureMetrics) RecordJobStart(jobName string)                       {}
 func (m *captureMetrics) RecordJobComplete(jobName string, _ float64, _ bool) {}
 func (m *captureMetrics) RecordJobScheduled(jobName string)                   {}
 
-// captureLogger records log messages for assertion.
-type captureLogger struct {
+// retrySlogHandler captures slog records for assertion.
+type retrySlogHandler struct {
 	warnings []string
 	errors   []string
-	notices  []string
+	infos    []string
 }
 
-func (l *captureLogger) Criticalf(format string, args ...any) {}
-func (l *captureLogger) Debugf(format string, args ...any)    {}
-func (l *captureLogger) Errorf(format string, args ...any) {
-	l.errors = append(l.errors, fmt.Sprintf(format, args...))
+func (h *retrySlogHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+
+func (h *retrySlogHandler) Handle(_ context.Context, r slog.Record) error {
+	// Format message with attributes for test assertions
+	msg := r.Message
+	r.Attrs(func(a slog.Attr) bool {
+		msg += " " + a.Key + "=" + a.Value.String()
+		return true
+	})
+	switch r.Level { //nolint:exhaustive // only relevant levels captured
+	case slog.LevelWarn:
+		h.warnings = append(h.warnings, msg)
+	case slog.LevelError:
+		h.errors = append(h.errors, msg)
+	case slog.LevelInfo:
+		h.infos = append(h.infos, msg)
+	}
+	return nil
 }
 
-func (l *captureLogger) Noticef(format string, args ...any) {
-	l.notices = append(l.notices, fmt.Sprintf(format, args...))
-}
+func (h *retrySlogHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *retrySlogHandler) WithGroup(_ string) slog.Handler      { return h }
 
-func (l *captureLogger) Warningf(format string, args ...any) {
-	l.warnings = append(l.warnings, fmt.Sprintf(format, args...))
+func newRetryCaptureLogger() (*slog.Logger, *retrySlogHandler) {
+	h := &retrySlogHandler{}
+	return slog.New(h), h
 }
 
 // --- MaxRetries boundary (line 78) ---
@@ -75,8 +90,9 @@ func (l *captureLogger) Warningf(format string, args ...any) {
 func TestRetryExecutor_MaxRetriesBoundary(t *testing.T) {
 	t.Parallel()
 
-	logger := &captureLogger{}
+	logger, handler := newRetryCaptureLogger()
 	executor := NewRetryExecutor(logger)
+	_ = handler
 
 	t.Run("MaxRetries_Zero_RunsOnce", func(t *testing.T) {
 		t.Parallel()
@@ -170,7 +186,7 @@ func TestRetryExecutor_SuccessNoticeAfterRetry(t *testing.T) {
 
 	t.Run("FirstAttempt_NoNotice", func(t *testing.T) {
 		t.Parallel()
-		logger := &captureLogger{}
+		logger, handler := newRetryCaptureLogger()
 		executor := NewRetryExecutor(logger)
 		metrics := &captureMetrics{}
 		executor.SetMetricsRecorder(metrics)
@@ -192,8 +208,8 @@ func TestRetryExecutor_SuccessNoticeAfterRetry(t *testing.T) {
 		}
 
 		// On first attempt (attempt=0), "attempt > 0" is false, so no notice
-		if len(logger.notices) != 0 {
-			t.Errorf("expected no notices on first-attempt success, got %v", logger.notices)
+		if len(handler.infos) != 0 {
+			t.Errorf("expected no notices on first-attempt success, got %v", handler.infos)
 		}
 		// No retry metrics should be recorded on first success
 		if len(metrics.retries) != 0 {
@@ -203,7 +219,7 @@ func TestRetryExecutor_SuccessNoticeAfterRetry(t *testing.T) {
 
 	t.Run("SecondAttempt_Notice", func(t *testing.T) {
 		t.Parallel()
-		logger := &captureLogger{}
+		logger, handler := newRetryCaptureLogger()
 		executor := NewRetryExecutor(logger)
 		metrics := &captureMetrics{}
 		executor.SetMetricsRecorder(metrics)
@@ -230,8 +246,8 @@ func TestRetryExecutor_SuccessNoticeAfterRetry(t *testing.T) {
 		}
 
 		// On second attempt (attempt=1), "attempt > 0" is true, so notice is logged
-		if len(logger.notices) != 1 {
-			t.Errorf("expected 1 notice after retry success, got %d: %v", len(logger.notices), logger.notices)
+		if len(handler.infos) != 1 {
+			t.Errorf("expected 1 notice after retry success, got %d: %v", len(handler.infos), handler.infos)
 		}
 		// Should record success metric
 		foundSuccess := false
@@ -256,8 +272,9 @@ func TestRetryExecutor_SuccessNoticeAfterRetry(t *testing.T) {
 func TestRetryExecutor_AttemptBoundary(t *testing.T) {
 	t.Parallel()
 
-	logger := &captureLogger{}
+	logger, handler := newRetryCaptureLogger()
 	executor := NewRetryExecutor(logger)
+	_ = handler
 
 	job := &testRetryJob{
 		BareJob: BareJob{
@@ -295,8 +312,9 @@ func TestRetryExecutor_AttemptBoundary(t *testing.T) {
 func TestRetryExecutor_WarningLogFormat(t *testing.T) {
 	t.Parallel()
 
-	logger := &captureLogger{}
+	logger, handler := newRetryCaptureLogger()
 	executor := NewRetryExecutor(logger)
+	_ = handler
 	metrics := &captureMetrics{}
 	executor.SetMetricsRecorder(metrics)
 
@@ -320,21 +338,21 @@ func TestRetryExecutor_WarningLogFormat(t *testing.T) {
 	// For attempt=0: "attempt 1/4" (attempt+1=1, MaxRetries+1=4)
 	// For attempt=1: "attempt 2/4"
 	// For attempt=2: "attempt 3/4"
-	if len(logger.warnings) != 3 {
-		t.Fatalf("expected 3 warnings, got %d: %v", len(logger.warnings), logger.warnings)
+	if len(handler.warnings) != 3 {
+		t.Fatalf("expected 3 warnings, got %d: %v", len(handler.warnings), handler.warnings)
 	}
 
 	// Check first warning: attempt+1=1, MaxRetries+1=4
-	if !strings.Contains(logger.warnings[0], "attempt 1/4") {
-		t.Errorf("first warning should contain 'attempt 1/4', got: %s", logger.warnings[0])
+	if !strings.Contains(handler.warnings[0], "attempt=1") || !strings.Contains(handler.warnings[0], "maxRetries=4") {
+		t.Errorf("first warning should contain attempt=1 and maxRetries=4, got: %s", handler.warnings[0])
 	}
 	// Check second warning
-	if !strings.Contains(logger.warnings[1], "attempt 2/4") {
-		t.Errorf("second warning should contain 'attempt 2/4', got: %s", logger.warnings[1])
+	if !strings.Contains(handler.warnings[1], "attempt=2") || !strings.Contains(handler.warnings[1], "maxRetries=4") {
+		t.Errorf("second warning should contain attempt=2 and maxRetries=4, got: %s", handler.warnings[1])
 	}
 	// Check third warning
-	if !strings.Contains(logger.warnings[2], "attempt 3/4") {
-		t.Errorf("third warning should contain 'attempt 3/4', got: %s", logger.warnings[2])
+	if !strings.Contains(handler.warnings[2], "attempt=3") || !strings.Contains(handler.warnings[2], "maxRetries=4") {
+		t.Errorf("third warning should contain attempt=3 and maxRetries=4, got: %s", handler.warnings[2])
 	}
 
 	// Also verify metrics record the correct attempt numbers
@@ -362,8 +380,9 @@ func TestRetryExecutor_WarningLogFormat(t *testing.T) {
 func TestRetryExecutor_ErrorLogFormat(t *testing.T) {
 	t.Parallel()
 
-	logger := &captureLogger{}
+	logger, handler := newRetryCaptureLogger()
 	executor := NewRetryExecutor(logger)
+	_ = handler
 	metrics := &captureMetrics{}
 	executor.SetMetricsRecorder(metrics)
 
@@ -381,14 +400,14 @@ func TestRetryExecutor_ErrorLogFormat(t *testing.T) {
 	})
 
 	// Should have 1 error message
-	if len(logger.errors) != 1 {
-		t.Fatalf("expected 1 error log, got %d: %v", len(logger.errors), logger.errors)
+	if len(handler.errors) != 1 {
+		t.Fatalf("expected 1 error log, got %d: %v", len(handler.errors), handler.errors)
 	}
 
 	// Error format: "Job %s failed after %d retries: %v"
 	// MaxRetries=2, so %d should be 3 (MaxRetries+1)
-	if !strings.Contains(logger.errors[0], "failed after 3 retries") {
-		t.Errorf("error log should contain 'failed after 3 retries', got: %s", logger.errors[0])
+	if !strings.Contains(handler.errors[0], "failed after 3 retries") {
+		t.Errorf("error log should contain 'failed after 3 retries', got: %s", handler.errors[0])
 	}
 
 	// Also check the final metrics recording: MaxRetries+1 = 3
@@ -408,8 +427,9 @@ func TestRetryExecutor_ErrorLogFormat(t *testing.T) {
 func TestRetryExecutor_ReturnErrorFormat(t *testing.T) {
 	t.Parallel()
 
-	logger := &captureLogger{}
+	logger, handler := newRetryCaptureLogger()
 	executor := NewRetryExecutor(logger)
+	_ = handler
 
 	job := &testRetryJob{
 		BareJob: BareJob{
@@ -450,8 +470,9 @@ func TestRetryExecutor_ReturnErrorFormat(t *testing.T) {
 func TestRetryExecutor_ExponentialDelayCap(t *testing.T) {
 	t.Parallel()
 
-	logger := &captureLogger{}
+	logger, handler := newRetryCaptureLogger()
 	executor := NewRetryExecutor(logger)
+	_ = handler
 
 	t.Run("ExactCap", func(t *testing.T) {
 		t.Parallel()
@@ -551,8 +572,9 @@ func TestRetryExecutor_ExponentialDelayCap(t *testing.T) {
 func TestRetryExecutor_ExponentialFormulaExact(t *testing.T) {
 	t.Parallel()
 
-	logger := &captureLogger{}
+	logger, handler := newRetryCaptureLogger()
 	executor := NewRetryExecutor(logger)
+	_ = handler
 
 	config := RetryConfig{
 		RetryDelayMs:     10,
@@ -576,8 +598,9 @@ func TestRetryExecutor_ExponentialFormulaExact(t *testing.T) {
 func TestRetryExecutor_MetricsAttemptValues(t *testing.T) {
 	t.Parallel()
 
-	logger := &captureLogger{}
+	logger, handler := newRetryCaptureLogger()
 	executor := NewRetryExecutor(logger)
+	_ = handler
 	metrics := &captureMetrics{}
 	executor.SetMetricsRecorder(metrics)
 
@@ -616,6 +639,3 @@ func TestRetryExecutor_MetricsAttemptValues(t *testing.T) {
 		}
 	}
 }
-
-// Suppress unused import warnings
-var _ = fmt.Sprint

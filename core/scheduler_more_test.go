@@ -6,7 +6,7 @@ import (
 )
 
 func TestSchedulerDisableEnable(t *testing.T) {
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	job := &TestJob{}
 	job.Name = "job1"
 	job.Schedule = "@daily"
@@ -34,7 +34,7 @@ func TestSchedulerDisableEnable(t *testing.T) {
 }
 
 func TestSchedulerRemoveJobTracksRemoved(t *testing.T) {
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	a := &TestJob{}
 	a.Name = "a"
 	a.Schedule = "@daily"
@@ -90,7 +90,7 @@ func TestIsTriggeredSchedule(t *testing.T) {
 
 // TestSchedulerTriggeredJobNotScheduled tests that @triggered jobs are stored but not added to cron
 func TestSchedulerTriggeredJobNotScheduled(t *testing.T) {
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	// Add a triggered job
 	triggered := &TestJob{}
@@ -122,7 +122,7 @@ func TestSchedulerTriggeredJobNotScheduled(t *testing.T) {
 
 // TestSchedulerTriggeredJobWithAliases tests @manual and @none aliases
 func TestSchedulerTriggeredJobWithAliases(t *testing.T) {
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	// Test @manual alias
 	manualJob := &TestJob{}
@@ -151,7 +151,7 @@ func TestSchedulerTriggeredJobWithAliases(t *testing.T) {
 
 // TestSchedulerTriggeredJobRunManually tests that triggered jobs can be run via RunJob
 func TestSchedulerTriggeredJobRunManually(t *testing.T) {
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	triggered := &TestJob{}
 	triggered.Name = "run-me"

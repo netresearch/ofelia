@@ -94,13 +94,14 @@ Notifications include:
 - Execution output (stdout/stderr)
 - Error details on failure
 
-### 6. Logging (`logging/structured.go`, `core/logrus_logger.go`)
+### 6. Logging (stdlib `log/slog`)
 
-Structured logging with:
+Uses Go's standard library `log/slog` with `slog.TextHandler`:
 - Multiple log levels (debug, info, warn, error)
-- JSON or text output formats
+- Structured key-value attributes
+- Source location via `AddSource: true`
+- Runtime-mutable log level via `slog.LevelVar`
 - Per-job log prefixing
-- Output capture and storage
 
 ## Data Flow
 
@@ -186,7 +187,6 @@ ofelia/
 │   ├── docker_*.go         # Docker integration
 │   └── *job.go             # Job type implementations
 ├── middlewares/            # Notification handlers (mail, slack, etc.)
-├── logging/                # Structured logging
 ├── docs/                   # Documentation
 ├── .github/                # CI/CD workflows
 └── docker-compose.yml      # Development environment

@@ -3,11 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"strings"
-
-	"github.com/netresearch/ofelia/core"
 )
 
 const (
@@ -31,22 +30,22 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 			return fmt.Errorf("decode global labels: %w", err)
 		}
 		if c.logger != nil && len(result.UnusedKeys) > 0 {
-			c.logger.Warningf("Unknown global label keys (possible typo): %v", result.UnusedKeys)
+			c.logger.Warn(fmt.Sprintf("Unknown global label keys (possible typo): %v", result.UnusedKeys))
 		}
 	}
 
 	// Security check: filter out host-based jobs from container labels unless explicitly allowed
 	if !c.Global.AllowHostJobsFromLabels {
 		if len(localJobs) > 0 {
-			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d host-based local jobs from container labels. "+
+			c.logger.Error(fmt.Sprintf("SECURITY POLICY VIOLATION: Cannot sync %d host-based local jobs from container labels. "+
 				"Host job execution from container labels is disabled for security. "+
-				"This prevents container-to-host privilege escalation attacks.", len(localJobs))
+				"This prevents container-to-host privilege escalation attacks.", len(localJobs)))
 			localJobs = make(map[string]map[string]any)
 		}
 		if len(composeJobs) > 0 {
-			c.logger.Errorf("SECURITY POLICY VIOLATION: Cannot sync %d host-based compose jobs from container labels. "+
+			c.logger.Error(fmt.Sprintf("SECURITY POLICY VIOLATION: Cannot sync %d host-based compose jobs from container labels. "+
 				"Host job execution from container labels is disabled for security. "+
-				"This prevents container-to-host privilege escalation attacks.", len(composeJobs))
+				"This prevents container-to-host privilege escalation attacks.", len(composeJobs)))
 			composeJobs = make(map[string]map[string]any)
 		}
 	}
@@ -85,7 +84,7 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 
 // Returns true if the job type is allowed to run on a service/non-service container.
 // `job-local` and `job-service-run` can only run on service containers.
-func checkJobTypeAllowedOnServiceContainer(jobType string, jobName string, containerName string, isService bool, logger core.Logger) bool {
+func checkJobTypeAllowedOnServiceContainer(jobType string, jobName string, containerName string, isService bool, logger *slog.Logger) bool {
 	// Any job type can run on a service container.
 	if isService {
 		return true
@@ -94,20 +93,21 @@ func checkJobTypeAllowedOnServiceContainer(jobType string, jobName string, conta
 	switch jobType {
 	case jobLocal, jobServiceRun:
 		// `job-local` and `job-service-run` can only run on service containers.
-		logger.Debugf("Container %s. Job %s (%s) can be run only on service containers. Skipping", containerName, jobName, jobType)
+		logger.Debug(fmt.Sprintf("Container %s. Job %s (%s) can be run only on service containers. Skipping",
+			containerName, jobName, jobType))
 		return false
 	case jobRun, jobExec, jobCompose:
 		// Other job types can run on non-service containers.
 		return true
 	}
 
-	logger.Warningf("Unknown job type %s found in container %s. Skipping", jobType, containerName)
+	logger.Warn(fmt.Sprintf("Unknown job type %s found in container %s. Skipping", jobType, containerName))
 	return false
 }
 
 // Returns true if the job type is allowed to run on a stopped/running container.
 // Only the `job-run` type can run on stopped containers.
-func checkJobTypeAllowedOnStoppedContainer(jobType string, jobName string, containerName string, isRunning bool, logger core.Logger) bool {
+func checkJobTypeAllowedOnStoppedContainer(jobType string, jobName string, containerName string, isRunning bool, logger *slog.Logger) bool {
 	// Any job type can run on a running container.
 	if isRunning {
 		return true
@@ -120,19 +120,19 @@ func checkJobTypeAllowedOnStoppedContainer(jobType string, jobName string, conta
 
 	case jobExec, jobLocal, jobServiceRun, jobCompose:
 		// Other job types cannot run on stopped containers.
-		logger.Debugf(
+		logger.Debug(fmt.Sprintf(
 			"Container %s is stopped, skipping job %s (%s) from stopped container: only job-run allowed on stopped containers",
-			containerName, jobName, jobType)
+			containerName, jobName, jobType))
 
 		return false
 	}
 
-	logger.Warningf("Unknown job type %s found in container %s. Skipping", jobType, containerName)
+	logger.Warn(fmt.Sprintf("Unknown job type %s found in container %s. Skipping", jobType, containerName))
 	return false
 }
 
 // Returns true if specified job can be run on a container, logs debug message if not.
-func canRunJobOnContainer(jobType string, jobName string, containerName string, isRunning bool, isService bool, logger core.Logger) bool {
+func canRunJobOnContainer(jobType string, jobName string, containerName string, isRunning bool, isService bool, logger *slog.Logger) bool {
 	return checkJobTypeAllowedOnServiceContainer(jobType, jobName, containerName, isService, logger) &&
 		checkJobTypeAllowedOnStoppedContainer(jobType, jobName, containerName, isRunning, logger)
 }

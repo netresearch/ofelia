@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,13 +26,9 @@ const (
 	originLabel  = "label"
 )
 
-type stubLogger struct{}
-
-func (stubLogger) Criticalf(string, ...any) {}
-func (stubLogger) Debugf(string, ...any)    {}
-func (stubLogger) Errorf(string, ...any)    {}
-func (stubLogger) Noticef(string, ...any)   {}
-func (stubLogger) Warningf(string, ...any)  {}
+func stubDiscardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
 
 type testJob struct{ core.BareJob }
 
@@ -77,7 +74,7 @@ func TestHistoryEndpoint(t *testing.T) {
 	e.Error = fmt.Errorf("boom")
 	e.Failed = true
 	job.SetLastRun(e)
-	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
+	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
 	srv := webpkg.NewServer("", sched, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs/job1/history", nil)
@@ -133,7 +130,7 @@ func TestJobsEndpointWithRuntimeData(t *testing.T) {
 	job.SetLastRun(e)
 
 	// Create scheduler and server
-	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
+	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
 	srv := webpkg.NewServer("", sched, nil, nil)
 
 	// Test with live buffers
@@ -214,7 +211,7 @@ func TestJobsEndpointAfterBufferCleanup(t *testing.T) {
 	job.SetLastRun(e)
 
 	// Create scheduler and server
-	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
+	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
 	srv := webpkg.NewServer("", sched, nil, nil)
 
 	// Test with cleaned buffers (should use captured content)
@@ -285,7 +282,7 @@ func TestHistoryEndpointWithCapturedOutput(t *testing.T) {
 	e.Cleanup()
 
 	job.SetLastRun(e)
-	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
+	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
 	srv := webpkg.NewServer("", sched, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs/history-job/history", nil)
@@ -333,7 +330,7 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 	e.Error = fmt.Errorf("boom")
 	e.Failed = true
 	job.SetLastRun(e)
-	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: &stubLogger{}}
+	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
 	srv := webpkg.NewServer("", sched, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
@@ -366,7 +363,7 @@ func TestJobsHandlerOrigin(t *testing.T) {
 	jobLabel.Schedule = schedHourly
 	jobLabel.Command = "ls"
 
-	sched := &core.Scheduler{Jobs: []core.Job{jobIni, jobLabel}, Logger: &stubLogger{}}
+	sched := &core.Scheduler{Jobs: []core.Job{jobIni, jobLabel}, Logger: stubDiscardLogger()}
 
 	type originConfig struct {
 		RunJobs map[string]*struct{ JobSource cli.JobSource }
@@ -418,7 +415,7 @@ func TestRemovedJobsHandlerOrigin(t *testing.T) {
 	jobLabel.Schedule = schedHourly
 	jobLabel.Command = "ls"
 
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	_ = sched.AddJob(jobIni)
 	_ = sched.AddJob(jobLabel)
 	_ = sched.RemoveJob(jobIni)
@@ -471,7 +468,7 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 	jobLabel.Schedule = schedHourly
 	jobLabel.Command = "ls"
 
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	_ = sched.AddJob(jobIni)
 	_ = sched.AddJob(jobLabel)
 	_ = sched.DisableJob("job-ini")
@@ -514,7 +511,7 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 }
 
 func TestCreateJobTypes(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	srv := webpkg.NewServer("", sched, nil, nil)
 	httpSrv := srv.HTTPServer()
 
@@ -551,7 +548,7 @@ func TestCreateJobTypes(t *testing.T) {
 // New tests for missing coverage
 
 func TestRunJobHandler(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	job := &testJob{}
 	job.Name = "test-run-job"
 	job.Schedule = schedDaily
@@ -600,7 +597,7 @@ func TestRunJobHandler(t *testing.T) {
 }
 
 func TestDisableJobHandler(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	job := &testJob{}
 	job.Name = "test-disable-job"
 	job.Schedule = schedDaily
@@ -654,7 +651,7 @@ func TestDisableJobHandler(t *testing.T) {
 }
 
 func TestEnableJobHandler(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	job := &testJob{}
 	job.Name = "test-enable-job"
 	job.Schedule = schedDaily
@@ -708,7 +705,7 @@ func TestEnableJobHandler(t *testing.T) {
 }
 
 func TestHistoryHandler_NotFound(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	srv := webpkg.NewServer("", sched, nil, nil)
 	httpSrv := srv.HTTPServer()
 
@@ -734,7 +731,7 @@ func TestHistoryHandler_NotFound(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	srv := webpkg.NewServer(":0", sched, nil, nil)
 
 	// Start the server
@@ -757,7 +754,7 @@ func TestShutdown(t *testing.T) {
 }
 
 func TestRegisterHealthEndpoints(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	srv := webpkg.NewServer("", sched, nil, nil)
 
 	hc := webpkg.NewHealthChecker(nil, "test-version")
@@ -825,7 +822,7 @@ func TestRegisterHealthEndpoints(t *testing.T) {
 }
 
 func TestJobFromRequest_EdgeCases(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	srv := webpkg.NewServer("", sched, nil, nil)
 	httpSrv := srv.HTTPServer()
 
@@ -887,7 +884,7 @@ func TestJobFromRequest_EdgeCases(t *testing.T) {
 }
 
 func TestGetHTTPServer(t *testing.T) {
-	sched := core.NewScheduler(&stubLogger{})
+	sched := core.NewScheduler(stubDiscardLogger())
 	srv := webpkg.NewServer("", sched, nil, nil)
 
 	httpSrv := srv.GetHTTPServer()

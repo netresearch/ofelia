@@ -6,10 +6,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -22,18 +22,15 @@ const ServiceImageFixture = "test-image"
 type runServiceJobTestHelper struct {
 	mockClient *mock.DockerClient
 	provider   *SDKDockerProvider
-	logger     Logger
+	logger     *slog.Logger
 }
 
 func setupRunServiceJobTest(t *testing.T) *runServiceJobTestHelper {
 	t.Helper()
 
-	l := logrus.New()
-	l.Formatter = &logrus.TextFormatter{DisableTimestamp: true}
-
 	helper := &runServiceJobTestHelper{
 		mockClient: mock.NewDockerClient(),
-		logger:     &LogrusAdapter{Logger: l},
+		logger:     slog.New(slog.DiscardHandler),
 	}
 	helper.provider = &SDKDockerProvider{
 		client: helper.mockClient,
@@ -74,7 +71,7 @@ func setupRunServiceMockBehaviors(mockClient *mock.DockerClient) {
 	}
 
 	services.OnListTasks = func(ctx context.Context, opts domain.TaskListOptions) ([]domain.Task, error) {
-		tasks := make([]domain.Task, 0)
+		tasks := make([]domain.Task, 0, len(createdServices))
 		for _, svc := range createdServices {
 			task := domain.Task{
 				ID:        "task-" + svc.ID,
@@ -129,7 +126,7 @@ func TestRunServiceJob_Run(t *testing.T) {
 
 	// Verify service was created
 	services := h.mockClient.Services().(*mock.SwarmService)
-	assert.True(t, len(services.CreateCalls) > 0, "expected service to be created")
+	assert.NotEmpty(t, services.CreateCalls, "expected service to be created")
 }
 
 func TestRunServiceJob_ParseRepositoryTagBareImage(t *testing.T) {

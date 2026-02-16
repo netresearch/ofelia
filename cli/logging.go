@@ -1,35 +1,39 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
-
-	"github.com/sirupsen/logrus"
 )
 
-// ApplyLogLevel sets the global logging level if level is valid.
+// ErrInvalidLogLevel indicates an invalid log level string was provided.
+var ErrInvalidLogLevel = errors.New("invalid log level")
+
+// ApplyLogLevel sets the logging level if level is valid.
 // Returns an error if the level is invalid, with a list of valid options.
-func ApplyLogLevel(level string) error {
+func ApplyLogLevel(level string, lv *slog.LevelVar) error {
 	if level == "" {
 		return nil
 	}
 
-	lvl, err := logrus.ParseLevel(strings.ToLower(level))
-	if err != nil {
-		// Dynamically generate list of valid levels
-		var validLevels []string
-		for _, l := range logrus.AllLevels {
-			validLevels = append(validLevels, l.String())
-		}
-
-		// Log warning for immediate visibility
-		logrus.Warnf("Invalid log level %q. Valid levels: %s",
-			level, strings.Join(validLevels, ", "))
-
-		// Return error for programmatic handling
-		return fmt.Errorf("invalid log level %q: %w", level, err)
+	// Map legacy logrus level names to slog levels
+	var l slog.Level
+	switch strings.ToLower(level) {
+	case "trace", "debug":
+		l = slog.LevelDebug
+	case "info", "notice":
+		l = slog.LevelInfo
+	case "warning", "warn":
+		l = slog.LevelWarn
+	case "error", "fatal", "panic", "critical":
+		l = slog.LevelError
+	default:
+		return fmt.Errorf("%w: %q (valid levels are debug, info, warn, error)", ErrInvalidLogLevel, level)
 	}
 
-	logrus.SetLevel(lvl)
+	if lv != nil {
+		lv.Set(l)
+	}
 	return nil
 }

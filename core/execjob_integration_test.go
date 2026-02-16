@@ -6,9 +6,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -120,15 +120,12 @@ func TestExecJob_Run(t *testing.T) {
 	e, err := NewExecution()
 	require.NoError(t, err)
 
-	logger := logrus.New()
-	logger.SetLevel(logrus.InfoLevel)
-
-	err = job.Run(&Context{Execution: e, Logger: &LogrusAdapter{Logger: logger}})
+	err = job.Run(&Context{Execution: e, Logger: slog.New(slog.DiscardHandler)})
 	require.NoError(t, err)
 
 	// Verify exec was run
 	exec := h.mockClient.Exec().(*mock.ExecService)
-	assert.True(t, len(exec.RunCalls) > 0, "expected exec to be run")
+	assert.NotEmpty(t, exec.RunCalls, "expected exec to be run")
 }
 
 func TestExecJob_RunStartExecError(t *testing.T) {
@@ -155,15 +152,12 @@ func TestExecJob_RunStartExecError(t *testing.T) {
 	e, err := NewExecution()
 	require.NoError(t, err)
 
-	logger := logrus.New()
-	logger.SetLevel(logrus.InfoLevel)
-
-	ctx := &Context{Execution: e, Job: job, Logger: &LogrusAdapter{Logger: logger}}
+	ctx := &Context{Execution: e, Job: job, Logger: slog.New(slog.DiscardHandler)}
 
 	ctx.Start()
 	err = job.Run(ctx)
 	ctx.Stop(err)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.True(t, e.Failed)
 }

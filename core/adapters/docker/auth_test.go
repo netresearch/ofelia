@@ -1,8 +1,11 @@
 package docker
 
 import (
+	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -186,22 +189,38 @@ func TestConfigAuthProvider_GetEncodedAuth_ValidConfig(t *testing.T) {
 	}
 }
 
-// mockLogger implements the Logger interface for testing
-type mockLogger struct {
-	debugMessages   []string
-	warningMessages []string
+// authTestHandler is a slog.Handler that captures log records for testing.
+type authTestHandler struct {
+	records []authTestRecord
 }
 
-func (m *mockLogger) Debugf(format string, args ...any) {
-	m.debugMessages = append(m.debugMessages, format)
+type authTestRecord struct {
+	level   slog.Level
+	message string
 }
 
-func (m *mockLogger) Warningf(format string, args ...any) {
-	m.warningMessages = append(m.warningMessages, format)
+func (h *authTestHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+
+func (h *authTestHandler) Handle(_ context.Context, r slog.Record) error {
+	h.records = append(h.records, authTestRecord{level: r.Level, message: r.Message})
+	return nil
+}
+
+func (h *authTestHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *authTestHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *authTestHandler) hasDebugContaining(substr string) bool { //nolint:unused // kept for future test assertions
+	for _, r := range h.records {
+		if r.level == slog.LevelDebug && strings.Contains(r.message, substr) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestConfigAuthProvider_Logging(t *testing.T) {
-	logger := &mockLogger{}
+	handler := &authTestHandler{}
+	logger := slog.New(handler)
 
 	// Test with valid config dir - should log debug message when credentials found
 	tmpDir := t.TempDir()
@@ -222,7 +241,14 @@ func TestConfigAuthProvider_Logging(t *testing.T) {
 	provider := NewConfigAuthProviderWithOptions(tmpDir, logger)
 	_, _ = provider.GetAuthConfig("gcr.io")
 
-	if len(logger.debugMessages) == 0 {
+	hasDebug := false
+	for _, r := range handler.records {
+		if r.level == slog.LevelDebug {
+			hasDebug = true
+			break
+		}
+	}
+	if !hasDebug {
 		t.Error("Expected debug message for found credentials, got none")
 	}
 }
@@ -238,7 +264,7 @@ func TestNewConfigAuthProvider(t *testing.T) {
 }
 
 func TestNewConfigAuthProviderWithOptions(t *testing.T) {
-	logger := &mockLogger{}
+	logger := slog.New(slog.DiscardHandler)
 	provider := NewConfigAuthProviderWithOptions("/custom/path", logger)
 
 	if provider.configDir != "/custom/path" {

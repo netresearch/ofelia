@@ -21,7 +21,7 @@ func TestNewSchedulerWithClock_NegativeNanosecond(t *testing.T) {
 	t.Parallel()
 
 	cronClock := NewCronClock(time.Now())
-	sc := NewSchedulerWithClock(&TestLogger{}, cronClock)
+	sc := NewSchedulerWithClock(newDiscardLogger(), cronClock)
 
 	// With -time.Nanosecond, sub-second schedules should work.
 	// If the sign were inverted to +time.Nanosecond, the library would enforce
@@ -48,7 +48,7 @@ func TestStartWorkflowCleanup_CleanupInterval(t *testing.T) {
 	t.Parallel()
 
 	fakeClock := NewFakeClock(time.Now())
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	sc.SetClock(fakeClock)
 
 	job := &TestJob{}
@@ -105,7 +105,7 @@ func TestStartWorkflowCleanup_CleanupInterval(t *testing.T) {
 func TestGetJob_NotFoundReturnsNegativeOne(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	// No jobs added - getJob should return (nil, -1)
 	job, idx := getJob(sc.Jobs, "nonexistent")
@@ -146,7 +146,7 @@ func TestGetJob_NotFoundReturnsNegativeOne(t *testing.T) {
 func TestGetJob_CorrectIndex(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	job1 := &TestJob{}
 	job1.Name = "job-a"
@@ -185,7 +185,7 @@ func TestGetJob_CorrectIndex(t *testing.T) {
 func TestSetMaxConcurrentJobs_BoundaryExactlyOne(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	// maxJobs = 1 should be accepted as-is (not changed)
 	sc.SetMaxConcurrentJobs(1)
@@ -219,7 +219,7 @@ func TestSetMaxConcurrentJobs_BoundaryExactlyOne(t *testing.T) {
 func TestAddJobWithTags_TagBoundary(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	// Test with no tags (len(tags) == 0)
 	job1 := &TestJob{}
@@ -268,7 +268,7 @@ func TestSchedulerMetricsRecorderOnRetryExecutor(t *testing.T) {
 	t.Parallel()
 
 	// With nil metrics recorder - retry executor should NOT have metrics
-	scNoMetrics := NewScheduler(&TestLogger{})
+	scNoMetrics := NewScheduler(newDiscardLogger())
 	if scNoMetrics.retryExecutor == nil {
 		t.Fatal("retryExecutor should always be initialized")
 	}
@@ -279,7 +279,7 @@ func TestSchedulerMetricsRecorderOnRetryExecutor(t *testing.T) {
 
 	// With non-nil metrics recorder
 	mockRecorder := &mockMetricsRecorder{}
-	scWithMetrics := NewSchedulerWithMetrics(&TestLogger{}, mockRecorder)
+	scWithMetrics := NewSchedulerWithMetrics(newDiscardLogger(), mockRecorder)
 	if scWithMetrics.metricsRecorder == nil {
 		t.Error("metricsRecorder should be set when provided")
 	}
@@ -293,7 +293,7 @@ func TestSchedulerMetricsRecorderOnRetryExecutor(t *testing.T) {
 func TestSetMetricsRecorder_PropagesToRetryExecutor(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	if sc.retryExecutor == nil {
 		t.Fatal("retryExecutor should be initialized")
 	}
@@ -315,7 +315,7 @@ func TestSetMetricsRecorder_PropagesToRetryExecutor(t *testing.T) {
 func TestSchedulerStart_TriggeredJobStartup(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	// Triggered job WITH RunOnStartup=true -> should run on start
 	triggeredStartup := &TestJob{}
@@ -377,7 +377,7 @@ func TestStartWorkflowCleanup_DefaultValues(t *testing.T) {
 	t.Parallel()
 
 	fakeClock := NewFakeClock(time.Now())
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	sc.SetClock(fakeClock)
 
 	job := &TestJob{}
@@ -439,7 +439,7 @@ func TestStartWorkflowCleanup_DefaultValues(t *testing.T) {
 func TestEnableJob_DisabledJobExists(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	job := &TestJob{}
 	job.Name = "enable-test"
@@ -472,7 +472,7 @@ func TestIsJobRunning_NilCron(t *testing.T) {
 
 	// Create a scheduler and nil out cron to test the guard
 	sc := &Scheduler{
-		Logger: &TestLogger{},
+		Logger: newDiscardLogger(),
 		cron:   nil,
 	}
 
@@ -486,7 +486,7 @@ func TestIsJobRunning_NilCron(t *testing.T) {
 func TestIsJobRunning_NoSuchJob(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	result := sc.IsJobRunning("nonexistent")
 	if result {
 		t.Error("IsJobRunning should return false for nonexistent job")
@@ -501,7 +501,7 @@ func TestIsJobRunning_NoSuchJob(t *testing.T) {
 func TestJobWrapper_DependencyCheckPreventsExecution(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	// Use *BareJob directly so BuildDependencyGraph can extract Dependencies
 	// (type assertion `job.(*BareJob)` only works for exact *BareJob type)
@@ -536,7 +536,7 @@ func TestJobWrapper_DependencyCheckPreventsExecution(t *testing.T) {
 func TestJobWrapper_SemaphoreLimitsExecution(t *testing.T) {
 	t.Parallel()
 
-	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
+	sc := NewSchedulerWithOptions(newDiscardLogger(), nil, 10*time.Millisecond)
 	sc.SetMaxConcurrentJobs(1) // Only 1 job at a time
 
 	slowJob := &SlowTestJob{duration: 100 * time.Millisecond}
@@ -577,7 +577,7 @@ func TestJobWrapper_SemaphoreLimitsExecution(t *testing.T) {
 func TestJobWrapper_SemaphoreExactCapacity(t *testing.T) {
 	t.Parallel()
 
-	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
+	sc := NewSchedulerWithOptions(newDiscardLogger(), nil, 10*time.Millisecond)
 	sc.SetMaxConcurrentJobs(2)
 
 	job1 := &TestJob{}
@@ -648,7 +648,7 @@ func (m *mockMetricsRecorder) RecordJobScheduled(_ string) { m.jobScheduled.Add(
 func TestStopWithTimeout_Timeout(t *testing.T) {
 	t.Parallel()
 
-	sc := NewSchedulerWithOptions(&TestLogger{}, nil, 10*time.Millisecond)
+	sc := NewSchedulerWithOptions(newDiscardLogger(), nil, 10*time.Millisecond)
 
 	slowJob := &SlowTestJob{duration: 500 * time.Millisecond}
 	slowJob.Name = "very-slow-job"
@@ -681,7 +681,7 @@ func TestStopWithTimeout_Timeout(t *testing.T) {
 func TestUpdateJob_ExistingJob(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	job := &TestJob{}
 	job.Name = "update-me"
@@ -713,7 +713,7 @@ func TestUpdateJob_ExistingJob(t *testing.T) {
 func TestUpdateJob_NonExistent(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	newJob := &TestJob{}
 	newJob.Name = "ghost"
@@ -729,7 +729,7 @@ func TestUpdateJob_NonExistent(t *testing.T) {
 func TestGetDisabledJobs_ReturnsCopy(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	job := &TestJob{}
 	job.Name = "disable-copy-test"
@@ -751,7 +751,7 @@ func TestGetDisabledJobs_ReturnsCopy(t *testing.T) {
 func TestEnableJob_TriggeredJob(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	job := &TestJob{}
 	job.Name = "triggered-enable"
@@ -780,7 +780,7 @@ func TestEnableJob_TriggeredJob(t *testing.T) {
 func TestStopAndWait(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	job := &TestJob{}
 	job.Name = "stop-and-wait"
@@ -799,7 +799,7 @@ func TestStopAndWait(t *testing.T) {
 func TestRemoveJobsByTag(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	job1 := &TestJob{}
 	job1.Name = "tagged-1"
@@ -849,7 +849,7 @@ func TestRemoveJobsByTag(t *testing.T) {
 func TestRemoveJobsByTag_NonexistentTag(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 	count := sc.RemoveJobsByTag("nonexistent")
 	if count != 0 {
 		t.Errorf("RemoveJobsByTag for nonexistent tag should return 0, got %d", count)
@@ -860,7 +860,7 @@ func TestRemoveJobsByTag_NonexistentTag(t *testing.T) {
 func TestAddJob_EmptySchedule(t *testing.T) {
 	t.Parallel()
 
-	sc := NewScheduler(&TestLogger{})
+	sc := NewScheduler(newDiscardLogger())
 
 	job := &TestJob{}
 	job.Name = "empty-sched"

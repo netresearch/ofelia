@@ -75,11 +75,11 @@ func (m *Mail) Run(ctx *core.Context) error {
 	}
 	// Check deduplication - suppress duplicate error notifications
 	if m.Dedup != nil && ctx.Execution.Failed && !m.Dedup.ShouldNotify(ctx) {
-		ctx.Logger.Debugf("Mail notification suppressed (duplicate within cooldown)")
+		ctx.Logger.Debug("Mail notification suppressed (duplicate within cooldown)")
 		return err
 	}
 	if mailErr := m.sendMail(ctx); mailErr != nil {
-		ctx.Logger.Errorf("Mail error: %q", mailErr)
+		ctx.Logger.Error(fmt.Sprintf("Mail error: %q", mailErr))
 	}
 	return err
 }

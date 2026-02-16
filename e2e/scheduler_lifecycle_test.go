@@ -7,10 +7,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"testing"
 	"time"
-
-	"github.com/sirupsen/logrus"
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/adapters/mock"
@@ -186,7 +185,7 @@ func TestScheduler_BasicLifecycle(t *testing.T) {
 	}
 
 	// Create scheduler with CronClock for instant time control
-	logger := &core.LogrusAdapter{Logger: logrus.New()}
+	logger := slog.New(slog.DiscardHandler)
 	cronClock := core.NewCronClock(time.Now())
 	scheduler := core.NewSchedulerWithClock(logger, cronClock)
 
@@ -279,7 +278,7 @@ func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 		t.Fatalf("Failed to start container: %v", err)
 	}
 
-	logger := &core.LogrusAdapter{Logger: logrus.New()}
+	logger := slog.New(slog.DiscardHandler)
 	cronClock := core.NewCronClock(time.Now())
 	scheduler := core.NewSchedulerWithClock(logger, cronClock)
 
@@ -374,7 +373,7 @@ func TestScheduler_JobFailureHandling(t *testing.T) {
 		t.Fatalf("Failed to start container: %v", err)
 	}
 
-	logger := &core.LogrusAdapter{Logger: logrus.New()}
+	logger := slog.New(slog.DiscardHandler)
 	cronClock := core.NewCronClock(time.Now())
 	scheduler := core.NewSchedulerWithClock(logger, cronClock)
 

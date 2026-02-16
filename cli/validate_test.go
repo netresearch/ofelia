@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/netresearch/ofelia/test"
 )
 
 func TestValidateExecuteValidFile(t *testing.T) {
@@ -28,7 +30,7 @@ command = echo "foo"
 	os.Stdout = w
 	defer func() { os.Stdout = oldStdout }()
 
-	cmd := ValidateCommand{ConfigFile: configFile, Logger: &TestLogger{}}
+	cmd := ValidateCommand{ConfigFile: configFile, Logger: test.NewTestLogger()}
 	err = cmd.Execute(nil)
 	require.NoError(t, err)
 
@@ -50,7 +52,7 @@ func TestValidateExecuteInvalidFile(t *testing.T) {
 	err := os.WriteFile(configFile, []byte("[job-exec \"foo\"\nschedule = @every 10s\n"), 0o644)
 	require.NoError(t, err)
 
-	cmd := ValidateCommand{ConfigFile: configFile, Logger: &TestLogger{}}
+	cmd := ValidateCommand{ConfigFile: configFile, Logger: test.NewTestLogger()}
 	err = cmd.Execute(nil)
 	assert.Error(t, err)
 }
@@ -58,7 +60,7 @@ func TestValidateExecuteInvalidFile(t *testing.T) {
 func TestValidateExecuteMissingFile(t *testing.T) {
 	t.Parallel()
 
-	cmd := ValidateCommand{ConfigFile: "/nonexistent/ofelia/config.ini", Logger: &TestLogger{}}
+	cmd := ValidateCommand{ConfigFile: "/nonexistent/ofelia/config.ini", Logger: test.NewTestLogger()}
 	err := cmd.Execute(nil)
 	assert.Error(t, err)
 }

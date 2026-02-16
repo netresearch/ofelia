@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"time"
 )
@@ -47,12 +48,12 @@ type MetricsRecorder interface {
 
 // RetryExecutor wraps job execution with retry logic
 type RetryExecutor struct {
-	logger  Logger
+	logger  *slog.Logger
 	metrics MetricsRecorder
 }
 
 // NewRetryExecutor creates a new retry executor
-func NewRetryExecutor(logger Logger) *RetryExecutor {
+func NewRetryExecutor(logger *slog.Logger) *RetryExecutor {
 	return &RetryExecutor{
 		logger: logger,
 	}
@@ -89,7 +90,7 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 		// Success
 		if err == nil {
 			if attempt > 0 {
-				re.logger.Noticef("Job %s succeeded after %d retries", job.GetName(), attempt)
+				re.logger.Info(fmt.Sprintf("Job %s succeeded after %d retries", job.GetName(), attempt))
 				// Record retry success in metrics
 				if re.metrics != nil {
 					re.metrics.RecordJobRetry(job.GetName(), attempt, true)
@@ -108,8 +109,9 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 		// Calculate delay
 		delay := re.calculateDelay(config, attempt)
 
-		re.logger.Warningf("Job %s failed (attempt %d/%d): %v. Retrying in %v",
-			job.GetName(), attempt+1, config.MaxRetries+1, err, delay)
+		re.logger.Warn("Job failed, retrying",
+			"job", job.GetName(), "attempt", attempt+1, "maxRetries", config.MaxRetries+1,
+			"error", err, "backoff", delay)
 
 		// Record retry attempt in metrics
 		if re.metrics != nil {
@@ -123,8 +125,8 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 	}
 
 	// All retries exhausted
-	re.logger.Errorf("Job %s failed after %d retries: %v",
-		job.GetName(), config.MaxRetries+1, lastErr)
+	re.logger.Error(fmt.Sprintf("Job %s failed after %d retries: %v",
+		job.GetName(), config.MaxRetries+1, lastErr))
 
 	// Record final failure in metrics
 	if re.metrics != nil {

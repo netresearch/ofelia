@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,30 +14,29 @@ import (
 	"github.com/netresearch/go-cron"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/ini.v1"
-
-	"github.com/netresearch/ofelia/core"
 )
 
 // InitCommand creates an interactive wizard for generating Ofelia configuration
 type InitCommand struct {
 	Output   string `long:"output" short:"o" description:"Output file path" default:"./ofelia.ini"`
 	LogLevel string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level"`
-	Logger   core.Logger
+	Logger   *slog.Logger
+	LevelVar *slog.LevelVar
 }
 
 // Execute runs the interactive configuration wizard
 func (c *InitCommand) Execute(_ []string) error {
-	if err := ApplyLogLevel(c.LogLevel); err != nil {
-		c.Logger.Warningf("Failed to apply log level (using default): %v", err)
+	if err := ApplyLogLevel(c.LogLevel, c.LevelVar); err != nil {
+		c.Logger.Warn(fmt.Sprintf("Failed to apply log level (using default): %v", err))
 	}
 
-	c.Logger.Noticef("🚀 Welcome to Ofelia Configuration Setup!")
-	c.Logger.Noticef("This wizard will help you create your first config file.")
+	c.Logger.Info("Welcome to Ofelia Configuration Setup!")
+	c.Logger.Info("This wizard will help you create your first config file.")
 
 	// Check if output file already exists
 	if _, err := os.Stat(c.Output); err == nil {
 		if !c.confirmOverwrite() {
-			c.Logger.Noticef("Setup canceled")
+			c.Logger.Info("Setup canceled")
 			return nil
 		}
 	}
@@ -62,11 +62,11 @@ func (c *InitCommand) Execute(_ []string) error {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	c.Logger.Noticef("✅ Configuration saved to: %s", c.Output)
+	c.Logger.Info(fmt.Sprintf("Configuration saved to: %s", c.Output))
 
 	// Offer post-creation actions
 	if err := c.postCreationActions(); err != nil {
-		c.Logger.Warningf("Post-creation action failed: %v", err)
+		c.Logger.Warn(fmt.Sprintf("Post-creation action failed: %v", err))
 	}
 
 	c.printNextSteps()
@@ -157,7 +157,7 @@ func (c *InitCommand) confirmOverwrite() bool {
 
 // promptGlobalSettings gathers global configuration
 func (c *InitCommand) promptGlobalSettings(global *globalConfig) error {
-	c.Logger.Noticef("=== Global Settings ===")
+	c.Logger.Info("=== Global Settings ===")
 
 	prompt := promptui.Prompt{
 		Label:     "Enable web UI",
@@ -259,14 +259,14 @@ func (c *InitCommand) promptWebAuth(global *globalConfig) error {
 	}
 	global.WebPasswordHash = string(hash)
 
-	c.Logger.Noticef("✓ Web authentication configured")
+	c.Logger.Info("Web authentication configured")
 	return nil
 }
 
 // promptJobs gathers job configurations
 func (c *InitCommand) promptJobs(config *initConfig) error {
-	c.Logger.Noticef("=== Job Configuration ===")
-	c.Logger.Noticef("Let's create your first scheduled job.")
+	c.Logger.Info("=== Job Configuration ===")
+	c.Logger.Info("Let's create your first scheduled job.")
 
 	for {
 		// Select job type
@@ -281,7 +281,7 @@ func (c *InitCommand) promptJobs(config *initConfig) error {
 
 		if strings.HasPrefix(jobTypeSelection, "Skip") {
 			if len(config.Jobs) == 0 {
-				c.Logger.Warningf("⚠️  Warning: No jobs configured. Ofelia won't schedule anything.")
+				c.Logger.Warn("Warning: No jobs configured. Ofelia won't schedule anything.")
 			}
 			break
 		}
@@ -299,7 +299,7 @@ func (c *InitCommand) promptJobs(config *initConfig) error {
 		}
 
 		config.Jobs = append(config.Jobs, job)
-		c.Logger.Noticef("✓ Added %s job: %s", job.Type(), job.Name())
+		c.Logger.Info(fmt.Sprintf("Added %s job: %s", job.Type(), job.Name()))
 
 		// Ask if user wants to add another job
 		addMore := promptui.Prompt{
@@ -557,10 +557,10 @@ func (c *InitCommand) postCreationActions() error {
 		// Validate the configuration
 		conf, err := BuildFromFile(c.Output, c.Logger)
 		if err != nil {
-			c.Logger.Errorf("❌ Configuration validation failed: %v", err)
+			c.Logger.Error(fmt.Sprintf("Configuration validation failed: %v", err))
 			return err
 		}
-		c.Logger.Noticef("✅ Configuration is valid!")
+		c.Logger.Info("Configuration is valid!")
 
 		// Offer to show configuration
 		showPrompt := promptui.Prompt{
@@ -571,7 +571,7 @@ func (c *InitCommand) postCreationActions() error {
 		_, err = showPrompt.Run()
 		if err == nil {
 			content, _ := os.ReadFile(c.Output)
-			c.Logger.Noticef("\n%s", string(content))
+			c.Logger.Info(fmt.Sprintf("\n%s", string(content)))
 		}
 
 		// Don't offer to start daemon - that's a separate workflow
@@ -583,8 +583,8 @@ func (c *InitCommand) postCreationActions() error {
 
 // printNextSteps displays helpful next steps
 func (c *InitCommand) printNextSteps() {
-	c.Logger.Noticef("📋 Setup complete! Next steps:")
-	c.Logger.Noticef("  → Review configuration: cat %s", c.Output)
-	c.Logger.Noticef("  → Validate: ofelia validate --config=%s", c.Output)
-	c.Logger.Noticef("  → Start daemon: ofelia daemon --config=%s", c.Output)
+	c.Logger.Info("Setup complete! Next steps:")
+	c.Logger.Info(fmt.Sprintf("  Review configuration: cat %s", c.Output))
+	c.Logger.Info(fmt.Sprintf("  Validate: ofelia validate --config=%s", c.Output))
+	c.Logger.Info(fmt.Sprintf("  Start daemon: ofelia daemon --config=%s", c.Output))
 }

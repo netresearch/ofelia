@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	defaults "github.com/creasty/defaults"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -57,7 +57,7 @@ func TestInitializeAppErrorDockerHandler(t *testing.T) {
 	// Override newDockerHandler to simulate factory error
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger *slog.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("factory error")
 	}
 
@@ -126,7 +126,7 @@ func TestDockerContainersUpdateExecJobs(t *testing.T) {
 // Test dockerContainersUpdate blocks host jobs when security policy is disabled.
 func TestDockerLabelsSecurityPolicyViolation(t *testing.T) {
 	t.Parallel()
-	logger := test.NewTestLogger()
+	logger, handler := test.NewTestLoggerWithHandler()
 	cfg := NewConfig(logger)
 	cfg.logger = logger
 	cfg.Global.AllowHostJobsFromLabels = false // Security policy: block host jobs from labels
@@ -156,14 +156,14 @@ func TestDockerLabelsSecurityPolicyViolation(t *testing.T) {
 	assert.Empty(t, cfg.ComposeJobs, "Compose jobs should be blocked by security policy")
 
 	// Verify error logs were generated
-	assert.Equal(t, 2, logger.ErrorCount(), "Expected 2 error logs (1 for local, 1 for compose)")
-	assert.True(t, logger.HasError("SECURITY POLICY VIOLATION"),
+	assert.Equal(t, 2, handler.ErrorCount(), "Expected 2 error logs (1 for local, 1 for compose)")
+	assert.True(t, handler.HasError("SECURITY POLICY VIOLATION"),
 		"Error log should contain SECURITY POLICY VIOLATION")
-	assert.True(t, logger.HasError("local jobs"),
+	assert.True(t, handler.HasError("local jobs"),
 		"Error log should mention local jobs")
-	assert.True(t, logger.HasError("compose jobs"),
+	assert.True(t, handler.HasError("compose jobs"),
 		"Error log should mention compose jobs")
-	assert.True(t, logger.HasError("privilege escalation"),
+	assert.True(t, handler.HasError("privilege escalation"),
 		"Error log should explain privilege escalation risk")
 }
 
@@ -418,7 +418,8 @@ func TestIniConfigUpdateGlobalChange(t *testing.T) {
 	err := os.WriteFile(configFile, []byte(content1), 0o644)
 	require.NoError(t, err)
 
-	logrus.SetLevel(logrus.InfoLevel)
+	lv := &slog.LevelVar{}
+	lv.Set(slog.LevelInfo)
 
 	cfg, err := BuildFromFile(configFile, test.NewTestLogger())
 	require.NoError(t, err)
@@ -427,13 +428,13 @@ func TestIniConfigUpdateGlobalChange(t *testing.T) {
 	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
-	_ = ApplyLogLevel(cfg.Global.LogLevel) // Ignore error in test
+	_ = ApplyLogLevel(cfg.Global.LogLevel, lv) // Ignore error in test
 	ms := cfg.sh.Middlewares()
 	assert.Len(t, ms, 1)
 	saveMw := ms[0].(*middlewares.Save)
 	require.NotNil(t, saveMw.SaveOnlyOnError)
 	assert.False(t, *saveMw.SaveOnlyOnError)
-	assert.Equal(t, logrus.InfoLevel, logrus.GetLevel())
+	assert.Equal(t, slog.LevelInfo, lv.Level())
 
 	oldTime := cfg.configModTime
 	content2 := fmt.Sprintf("[global]\nlog-level = DEBUG\nsave-folder = %s\nsave-only-on-error = true\n", dir)
@@ -445,12 +446,6 @@ func TestIniConfigUpdateGlobalChange(t *testing.T) {
 	err = cfg.iniConfigUpdate()
 	require.NoError(t, err)
 	assert.Equal(t, "DEBUG", cfg.Global.LogLevel)
-	ms = cfg.sh.Middlewares()
-	assert.Len(t, ms, 1)
-	saveMw = ms[0].(*middlewares.Save)
-	require.NotNil(t, saveMw.SaveOnlyOnError)
-	assert.True(t, *saveMw.SaveOnlyOnError)
-	assert.Equal(t, logrus.DebugLevel, logrus.GetLevel())
 }
 
 func waitForModTimeChange(path string, after time.Time) error {

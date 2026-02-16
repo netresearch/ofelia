@@ -2,6 +2,7 @@ package docker
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/distribution/reference"
 	"github.com/docker/cli/cli/config"
@@ -18,13 +19,7 @@ type ConfigAuthProvider struct {
 	// configDir overrides the default Docker config directory (for testing)
 	configDir string
 	// logger for debug/warning messages (optional)
-	logger Logger
-}
-
-// Logger interface for auth provider logging
-type Logger interface {
-	Debugf(format string, args ...any)
-	Warningf(format string, args ...any)
+	logger *slog.Logger
 }
 
 // NewConfigAuthProvider creates a new auth provider.
@@ -33,7 +28,7 @@ func NewConfigAuthProvider() *ConfigAuthProvider {
 }
 
 // NewConfigAuthProviderWithOptions creates an auth provider with options.
-func NewConfigAuthProviderWithOptions(configDir string, logger Logger) *ConfigAuthProvider {
+func NewConfigAuthProviderWithOptions(configDir string, logger *slog.Logger) *ConfigAuthProvider {
 	return &ConfigAuthProvider{
 		configDir: configDir,
 		logger:    logger,
@@ -98,13 +93,13 @@ func (p *ConfigAuthProvider) loadConfig() (*configfile.ConfigFile, error) {
 
 func (p *ConfigAuthProvider) logDebug(format string, args ...any) {
 	if p.logger != nil {
-		p.logger.Debugf(format, args...)
+		p.logger.Debug(fmt.Sprintf(format, args...))
 	}
 }
 
 func (p *ConfigAuthProvider) logWarning(format string, args ...any) {
 	if p.logger != nil {
-		p.logger.Warningf(format, args...)
+		p.logger.Warn(fmt.Sprintf(format, args...))
 	}
 }
 

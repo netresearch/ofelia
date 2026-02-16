@@ -22,7 +22,7 @@
 - Integration tests: `go test -tags=integration ./cli/...`
 
 ## Code style & conventions
-- Use structured logging via `core.Logger` (logrus adapter), never `log` package
+- Use structured logging via `*slog.Logger` from stdlib `log/slog`
 - Configuration structs use `mapstructure` tags for INI mapping
 - Docker integration follows Docker API best practices
 - Error handling: wrap errors with context using `fmt.Errorf`
@@ -44,7 +44,7 @@
 ## Good vs. bad examples
 - Good: `config.go` (structured config with validation)
 - Good: `validate.go` (comprehensive input validation)
-- Bad: Direct `log` package usage (use `core.Logger` instead)
+- Bad: Direct `log` package usage (use `*slog.Logger` instead)
 
 ## When stuck
 - Check `example/config.ini` for configuration format examples

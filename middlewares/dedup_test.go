@@ -215,7 +215,7 @@ func TestConcurrentAccess(t *testing.T) {
 	done := make(chan bool, 10)
 	for range 10 {
 		go func() {
-			sh := core.NewScheduler(&TestLogger{})
+			sh := core.NewScheduler(newDiscardLogger())
 			e, err := core.NewExecution()
 			assert.NoError(t, err) // use assert in goroutines, not require
 			ctx := core.NewContext(sh, job, e)
@@ -266,7 +266,7 @@ func TestNotificationDedup_Integration(t *testing.T) {
 	job.Name = "integration-test-job"
 	job.Command = "test command"
 
-	sh := core.NewScheduler(&TestLogger{})
+	sh := core.NewScheduler(newDiscardLogger())
 	e, err := core.NewExecution()
 	require.NoError(t, err)
 

@@ -215,7 +215,7 @@ func TestDockerLabels_Dependencies(t *testing.T) {
 	cfg := &Config{logger: logger}
 	err := cfg.buildFromDockerContainers([]DockerContainerInfo{containerInfo})
 	if err != nil {
-		t.Fatalf("buildFromDockerLabels failed: %v", err)
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
 	}
 
 	// Test single dependency (process job)
@@ -400,7 +400,7 @@ func TestDockerLabels_MixedComposeAndNonCompose(t *testing.T) {
 	cfg := &Config{logger: logger}
 	err := cfg.buildFromDockerContainers([]DockerContainerInfo{dbContainerInfo, legacyContainerInfo})
 	if err != nil {
-		t.Fatalf("buildFromDockerLabels failed: %v", err)
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
 	}
 
 	// Compose container should use service name

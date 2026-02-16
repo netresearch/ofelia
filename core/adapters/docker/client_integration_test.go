@@ -295,7 +295,7 @@ func TestClientPoolingOptionsIntegration(t *testing.T) {
 			defer client.Close()
 
 			// Make multiple requests to exercise connection pooling
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				_, err = client.System().Ping(ctx)
 				if err != nil {
 					t.Errorf("Ping %d failed with %s config: %v", i+1, tc.name, err)

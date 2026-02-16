@@ -43,7 +43,7 @@ func TestPollingDisabled(t *testing.T) {
 	}
 
 	cfg := &DockerConfig{Filters: []string{}, PollInterval: time.Millisecond * 50, UseEvents: false, DisablePolling: true}
-	_, err := NewDockerHandler(context.Background(), notifier, &test.Logger{}, cfg, mockProvider)
+	_, err := NewDockerHandler(context.Background(), notifier, test.NewTestLogger(), cfg, mockProvider)
 	require.NoError(t, err)
 
 	select {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	dockeradapter "github.com/netresearch/ofelia/core/adapters/docker"
@@ -14,7 +15,7 @@ import (
 // SDKDockerProvider implements DockerProvider using the official Docker SDK.
 type SDKDockerProvider struct {
 	client          ports.DockerClient
-	logger          Logger
+	logger          *slog.Logger
 	metricsRecorder MetricsRecorder
 	authProvider    ports.AuthProvider
 }
@@ -24,7 +25,7 @@ type SDKDockerProviderConfig struct {
 	// Host is the Docker host address (e.g., "unix:///var/run/docker.sock")
 	Host string
 	// Logger for operation logging
-	Logger Logger
+	Logger *slog.Logger
 	// MetricsRecorder for metrics tracking
 	MetricsRecorder MetricsRecorder
 	// AuthProvider for registry authentication (optional)
@@ -43,7 +44,7 @@ func NewSDKDockerProvider(cfg *SDKDockerProviderConfig) (*SDKDockerProvider, err
 		return nil, fmt.Errorf("creating docker client: %w", err)
 	}
 
-	var logger Logger
+	var logger *slog.Logger
 	var metricsRecorder MetricsRecorder
 	var authProvider ports.AuthProvider
 	if cfg != nil {
@@ -66,7 +67,7 @@ func NewSDKDockerProviderDefault() (*SDKDockerProvider, error) {
 }
 
 // NewSDKDockerProviderFromClient creates a provider from an existing client.
-func NewSDKDockerProviderFromClient(client ports.DockerClient, logger Logger, metricsRecorder MetricsRecorder) *SDKDockerProvider {
+func NewSDKDockerProviderFromClient(client ports.DockerClient, logger *slog.Logger, metricsRecorder MetricsRecorder) *SDKDockerProvider {
 	return &SDKDockerProvider{
 		client:          client,
 		logger:          logger,
@@ -501,13 +502,13 @@ func (p *SDKDockerProvider) recordError(name string) {
 
 func (p *SDKDockerProvider) logNotice(format string, args ...any) {
 	if p.logger != nil {
-		p.logger.Noticef(format, args...)
+		p.logger.Info(fmt.Sprintf(format, args...))
 	}
 }
 
 func (p *SDKDockerProvider) logDebug(format string, args ...any) {
 	if p.logger != nil {
-		p.logger.Debugf(format, args...)
+		p.logger.Debug(fmt.Sprintf(format, args...))
 	}
 }
 

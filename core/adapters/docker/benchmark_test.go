@@ -26,7 +26,7 @@ func BenchmarkContainerCreate(b *testing.B) {
 	containers := client.Containers()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		name := fmt.Sprintf("bench-create-%d-%d", time.Now().UnixNano(), i)
 		id, err := containers.Create(ctx, &domain.ContainerConfig{
 			Name:  name,
@@ -65,7 +65,7 @@ func BenchmarkContainerStartStop(b *testing.B) {
 	defer containers.Remove(ctx, id, domain.RemoveOptions{Force: true})
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if err := containers.Start(ctx, id); err != nil {
 			b.Fatalf("Start failed: %v", err)
 		}
@@ -100,7 +100,7 @@ func BenchmarkContainerInspect(b *testing.B) {
 	defer containers.Remove(ctx, id, domain.RemoveOptions{Force: true})
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := containers.Inspect(ctx, id)
 		if err != nil {
 			b.Fatalf("Inspect failed: %v", err)
@@ -120,7 +120,7 @@ func BenchmarkContainerList(b *testing.B) {
 	containers := client.Containers()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := containers.List(ctx, domain.ListOptions{All: true})
 		if err != nil {
 			b.Fatalf("List failed: %v", err)
@@ -164,7 +164,7 @@ func BenchmarkExecRun(b *testing.B) {
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		exitCode, err := exec.Run(ctx, id, &domain.ExecConfig{
 			Cmd:          []string{"echo", "benchmark"},
 			AttachStdout: true,
@@ -246,7 +246,7 @@ func BenchmarkImageExists(b *testing.B) {
 	images := client.Images()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := images.Exists(ctx, "alpine:latest")
 		if err != nil {
 			b.Fatalf("Exists failed: %v", err)
@@ -266,7 +266,7 @@ func BenchmarkImageList(b *testing.B) {
 	images := client.Images()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := images.List(ctx, domain.ImageListOptions{All: true})
 		if err != nil {
 			b.Fatalf("List failed: %v", err)
@@ -286,7 +286,7 @@ func BenchmarkSystemPing(b *testing.B) {
 	system := client.System()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := system.Ping(ctx)
 		if err != nil {
 			b.Fatalf("Ping failed: %v", err)
@@ -306,7 +306,7 @@ func BenchmarkSystemInfo(b *testing.B) {
 	system := client.System()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, err := system.Info(ctx)
 		if err != nil {
 			b.Fatalf("Info failed: %v", err)
@@ -326,7 +326,7 @@ func BenchmarkContainerFullLifecycle(b *testing.B) {
 	containers := client.Containers()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		name := fmt.Sprintf("bench-lifecycle-%d-%d", time.Now().UnixNano(), i)
 
 		// Create
@@ -389,7 +389,7 @@ func BenchmarkExecJobSimulation(b *testing.B) {
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		// Simulate ExecJob: inspect + exec + capture output
 		_, err := containers.Inspect(ctx, id)
 		if err != nil {
@@ -424,7 +424,7 @@ func BenchmarkRunJobSimulation(b *testing.B) {
 	images := client.Images()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		// Simulate RunJob: check image + create + start + wait + logs + remove
 		name := fmt.Sprintf("bench-runjob-%d-%d", time.Now().UnixNano(), i)
 
