@@ -16,10 +16,10 @@ import (
 
 // NOTE: mockDockerProviderForHandler is defined in docker_handler_test.go
 
-// chanNotifier implements dockerLabelsUpdate and notifies via channel when updates occur.
+// chanNotifier implements dockerContainersUpdate and notifies via channel when updates occur.
 type chanNotifier struct{ ch chan struct{} }
 
-func (n *chanNotifier) dockerLabelsUpdate(_ map[string]map[string]string) {
+func (n *chanNotifier) dockerContainersUpdate(_ []DockerContainerInfo) {
 	select {
 	case n.ch <- struct{}{}:
 	default:

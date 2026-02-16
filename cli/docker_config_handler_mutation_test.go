@@ -133,13 +133,17 @@ func TestGetDockerLabels_ContainerNameEmpty(t *testing.T) {
 		dockerProvider: mockProvider,
 	}
 
-	labels, err := h.GetDockerLabels()
+	containers, err := h.GetDockerContainers()
 	require.NoError(t, err)
 
 	// Only the container with a valid name should be included
-	assert.Len(t, labels, 1, "Only named containers should be included")
-	assert.Contains(t, labels, "valid-container")
-	assert.NotContains(t, labels, "")
+	assert.Len(t, containers, 1, "Only named containers should be included")
+	containerNames := make([]string, len(containers))
+	for i, container := range containers {
+		containerNames[i] = container.Name
+	}
+	assert.Contains(t, containerNames, "valid-container")
+	assert.NotContains(t, containerNames, "")
 }
 
 // TestGetDockerLabels_ContainerNoLabels targets CONDITIONALS_BOUNDARY at line 276.
@@ -169,13 +173,16 @@ func TestGetDockerLabels_ContainerNoLabels(t *testing.T) {
 		dockerProvider: mockProvider,
 	}
 
-	labels, err := h.GetDockerLabels()
+	containers, err := h.GetDockerContainers()
 	require.NoError(t, err)
 
-	assert.Len(t, labels, 1)
-	assert.Contains(t, labels, "has-labels")
-	assert.NotContains(t, labels, "no-labels",
-		"Container with empty labels should not appear in results")
+	assert.Len(t, containers, 1)
+	containerNames := make([]string, len(containers))
+	for i, container := range containers {
+		containerNames[i] = container.Name
+	}
+	assert.Contains(t, containerNames, "has-labels")
+	assert.NotContains(t, containerNames, "no-labels")
 }
 
 // TestGetDockerLabels_OnlyNonOfeliaLabels targets CONDITIONALS_BOUNDARY at line 284.
@@ -201,10 +208,10 @@ func TestGetDockerLabels_OnlyNonOfeliaLabels(t *testing.T) {
 		dockerProvider: mockProvider,
 	}
 
-	labels, err := h.GetDockerLabels()
+	containers, err := h.GetDockerContainers()
 	require.NoError(t, err)
 
-	assert.Empty(t, labels,
+	assert.Empty(t, containers,
 		"Container with only non-ofelia labels should produce empty result")
 }
 
@@ -233,14 +240,16 @@ func TestGetDockerLabels_MixedLabels(t *testing.T) {
 		dockerProvider: mockProvider,
 	}
 
-	labels, err := h.GetDockerLabels()
+	containers, err := h.GetDockerContainers()
 	require.NoError(t, err)
 
-	require.Contains(t, labels, "mixed")
-	assert.Len(t, labels["mixed"], 2, "Only 2 ofelia-prefixed labels should be included")
-	assert.Contains(t, labels["mixed"], "ofelia.enabled")
-	assert.Contains(t, labels["mixed"], "ofelia.job-run.x.schedule")
-	assert.NotContains(t, labels["mixed"], "not-ofelia")
+	require.Len(t, containers, 1)
+	container := containers[0]
+	require.Equal(t, "mixed", container.Name)
+	assert.Len(t, container.Labels, 2, "Only 2 ofelia-prefixed labels should be included")
+	assert.Contains(t, container.Labels, "ofelia.enabled")
+	assert.Contains(t, container.Labels, "ofelia.job-run.x.schedule")
+	assert.NotContains(t, container.Labels, "not-ofelia")
 }
 
 // TestGetDockerLabels_FilterMerging verifies that filters merge correctly.
@@ -265,9 +274,11 @@ func TestGetDockerLabels_FilterMerging(t *testing.T) {
 		dockerProvider: mockProvider,
 	}
 
-	labels, err := h.GetDockerLabels()
+	containers, err := h.GetDockerContainers()
+	require.Len(t, containers, 1)
+	container := containers[0]
 	require.NoError(t, err)
-	assert.Contains(t, labels, "filtered")
+	assert.Equal(t, "filtered", container.Name)
 }
 
 // =============================================================================

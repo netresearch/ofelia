@@ -10,6 +10,7 @@ import (
 	ini "gopkg.in/ini.v1"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/middlewares"
 	"github.com/netresearch/ofelia/test"
 )
@@ -380,16 +381,20 @@ func TestDockerLabelsUpdate_SecurityWarning(t *testing.T) {
 	cfg.sh = core.NewScheduler(logger)
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
-	labels := map[string]map[string]string{
-		"cont1": {
-			requiredLabel:                         "true",
-			serviceLabel:                          "true",
-			labelPrefix + ".job-local.l.schedule": "@daily",
-			labelPrefix + ".job-local.l.command":  "echo local",
+	containers := []DockerContainerInfo{
+		{
+			Name:  "cont1",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				requiredLabel:                         "true",
+				serviceLabel:                          "true",
+				labelPrefix + ".job-local.l.schedule": "@daily",
+				labelPrefix + ".job-local.l.command":  "echo local",
+			},
 		},
 	}
 
-	cfg.dockerLabelsUpdate(labels)
+	cfg.dockerContainersUpdate(containers)
 	assert.True(t, logger.HasWarning("SECURITY WARNING"),
 		"Security warning must be logged when local jobs are synced from labels")
 }
@@ -407,16 +412,20 @@ func TestDockerLabelsUpdate_NoSecurityWarningWhenDisabled(t *testing.T) {
 	cfg.sh = core.NewScheduler(logger)
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
-	labels := map[string]map[string]string{
-		"cont1": {
-			requiredLabel:                         "true",
-			serviceLabel:                          "true",
-			labelPrefix + ".job-local.l.schedule": "@daily",
-			labelPrefix + ".job-local.l.command":  "echo local",
+	containers := []DockerContainerInfo{
+		{
+			Name:  "cont1",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				requiredLabel:                         "true",
+				serviceLabel:                          "true",
+				labelPrefix + ".job-local.l.schedule": "@daily",
+				labelPrefix + ".job-local.l.command":  "echo local",
+			},
 		},
 	}
 
-	cfg.dockerLabelsUpdate(labels)
+	cfg.dockerContainersUpdate(containers)
 	// With AllowHostJobsFromLabels=false, the security warning path shouldn't fire
 	// (though local jobs will be blocked by buildFromDockerLabels)
 	assert.False(t, logger.HasWarning("SECURITY WARNING"),
@@ -437,15 +446,19 @@ func TestDockerLabelsUpdate_NoWarningWithoutHostJobs(t *testing.T) {
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	// Only exec jobs, no local/compose
-	labels := map[string]map[string]string{
-		"cont1": {
-			requiredLabel:                        "true",
-			labelPrefix + ".job-exec.e.schedule": "@daily",
-			labelPrefix + ".job-exec.e.command":  "echo exec",
+	containers := []DockerContainerInfo{
+		{
+			Name:  "cont1",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				requiredLabel:                        "true",
+				labelPrefix + ".job-exec.e.schedule": "@daily",
+				labelPrefix + ".job-exec.e.command":  "echo exec",
+			},
 		},
 	}
 
-	cfg.dockerLabelsUpdate(labels)
+	cfg.dockerContainersUpdate(containers)
 	assert.False(t, logger.HasWarning("SECURITY WARNING"),
 		"No security warning when only exec jobs (no local/compose) are synced")
 }

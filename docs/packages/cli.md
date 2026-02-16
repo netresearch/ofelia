@@ -89,7 +89,7 @@ command = find /tmp -mtime +7 -delete
 Dynamic configuration from container labels.
 
 ```go
-func BuildFromDockerLabels(client *docker.Client) (*Config, error) {
+func BuildFromDockerContainers(client *docker.Client) (*Config, error) {
     containers, err := client.ListContainers()
     for _, container := range containers {
         labels := container.Labels
@@ -131,8 +131,8 @@ func (c *Config) mergeConfig(parsedConfig *Config) {
 Detects configuration changes for dynamic updates.
 
 ```go
-func (c *Config) dockerLabelsUpdate(client *docker.Client) error {
-    newConfig, err := BuildFromDockerLabels(client)
+func (c *Config) dockerContainersUpdate(client *docker.Client) error {
+    newConfig, err := BuildFromDockerContainers(client)
     
     for name, newJob := range newConfig.ExecJobs {
         if oldJob, exists := c.ExecJobs[name]; exists {
@@ -255,11 +255,11 @@ config, err := BuildFromFile("/etc/ofelia/config.ini")
 
 // From Docker labels
 client := docker.NewClient("unix:///var/run/docker.sock")
-config, err := BuildFromDockerLabels(client)
+config, err := BuildFromDockerContainers(client)
 
 // Merged configuration
 fileConfig, _ := BuildFromFile("config.ini")
-labelConfig, _ := BuildFromDockerLabels(client)
+labelConfig, _ := BuildFromDockerContainers(client)
 fileConfig.mergeConfig(labelConfig)
 ```
 
@@ -269,7 +269,7 @@ fileConfig.mergeConfig(labelConfig)
 // Monitor for configuration changes
 ticker := time.NewTicker(30 * time.Second)
 for range ticker.C {
-    if err := config.dockerLabelsUpdate(client); err != nil {
+    if err := config.dockerContainersUpdate(client); err != nil {
         log.Printf("Update failed: %v", err)
     }
 }

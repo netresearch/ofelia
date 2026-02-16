@@ -203,6 +203,7 @@ they override values from the config file and Docker labels.
 | `OFELIA_POLL_INTERVAL` | `--docker-poll-interval` | Interval for Docker polling and config reload |
 | `OFELIA_DOCKER_EVENTS` | `--docker-events` | Use Docker events instead of polling |
 | `OFELIA_DOCKER_NO_POLL` | `--docker-no-poll` | Disable polling Docker for labels |
+| `OFELIA_DOCKER_INCLUDE_STOPPED` | `--docker-include-stopped` | Include stopped containers when reading Docker labels (only for job-run) |
 | `OFELIA_LOG_LEVEL` | `--log-level` | Set the log level |
 | `OFELIA_ENABLE_PPROF` | `--enable-pprof` | Enable the pprof HTTP server |
 | `OFELIA_PPROF_ADDRESS` | `--pprof-address` | Address for the pprof server |
@@ -464,11 +465,18 @@ docker-poll-interval = 0
 # Auto-fallback to polling if event subscription fails (BC-safe default)
 # Set to 0 to disable fallback (will only log errors)
 polling-fallback = 10s
+
+# When true lists stopped containers when reading Docker labels (only for job-run)
+# When false, only running containers are considered
+# Default is false
+# See "Include stopped containers" in the docs/CONFIGURATION.md for full documentation
+include-stopped = false
 ```
 
 #### CLI Flags
 
 - `--docker-events`: Enable/disable Docker event-based container detection
+- `--docker-include-stopped`: Include stopped containers when reading Docker labels (see "Include stopped containers" in the [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for full documentation)
 - `--docker-poll-interval`: Deprecated legacy poll interval (affects config + container polling)
 - `--docker-no-poll`: Deprecated; disable container polling
 

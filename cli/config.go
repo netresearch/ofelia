@@ -311,7 +311,7 @@ func (c *Config) InitializeApp() error {
 	if err := c.initDockerHandler(); err != nil {
 		return err
 	}
-	c.mergeJobsFromDockerLabels()
+	c.mergeJobsFromDockerContainers()
 	c.registerAllJobs()
 	return nil
 }
@@ -346,8 +346,8 @@ func (c *Config) initDockerHandler() error {
 	return err
 }
 
-func (c *Config) mergeJobsFromDockerLabels() {
-	dockerLabels, err := c.dockerHandler.GetDockerLabels()
+func (c *Config) mergeJobsFromDockerContainers() {
+	dockerContainers, err := c.dockerHandler.GetDockerContainers()
 	if err != nil {
 		return
 	}
@@ -355,7 +355,7 @@ func (c *Config) mergeJobsFromDockerLabels() {
 		logger: c.logger,
 		Global: c.Global, // Copy Global settings including AllowHostJobsFromLabels
 	}
-	_ = parsed.buildFromDockerLabels(dockerLabels)
+	_ = parsed.buildFromDockerContainers(dockerContainers)
 
 	mergeJobs(c, c.ExecJobs, parsed.ExecJobs, "exec")
 	mergeJobs(c, c.RunJobs, parsed.RunJobs, "run")
@@ -659,14 +659,14 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 	current[name] = j
 }
 
-func (c *Config) dockerLabelsUpdate(labels map[string]map[string]string) {
-	c.logger.Debugf("dockerLabelsUpdate started")
+func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
+	c.logger.Debugf("dockerContainersUpdate started")
 
 	parsedLabelConfig := Config{
 		logger: c.logger,
 		Global: c.Global, // Copy Global settings including AllowHostJobsFromLabels
 	}
-	_ = parsedLabelConfig.buildFromDockerLabels(labels)
+	_ = parsedLabelConfig.buildFromDockerContainers(containers)
 
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
@@ -1002,6 +1002,10 @@ func (c *RunServiceConfig) buildMiddlewares(wm *middlewares.WebhookManager) {
 
 type DockerConfig struct {
 	Filters []string `mapstructure:"filters"`
+
+	// IncludeStopped when true lists stopped containers when reading Docker labels (only for job-run).
+	// When false, only running containers are considered. Can be set via --docker-include-stopped or OFELIA_DOCKER_INCLUDE_STOPPED.
+	IncludeStopped bool `mapstructure:"include-stopped" default:"false"`
 
 	// ConfigPollInterval controls how often to check for INI config file changes.
 	// This is independent of container detection. Set to 0 to disable config file watching.

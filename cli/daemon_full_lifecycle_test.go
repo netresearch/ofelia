@@ -16,7 +16,7 @@ func TestDaemonCommand_Execute_WithStartError(t *testing.T) {
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
 
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		mockProvider := &mockDockerProviderForHandler{}
 		return orig(ctx, notifier, logger, cfg, mockProvider)
 	}
@@ -58,6 +58,9 @@ func TestDaemonCommand_ApplyOptions(t *testing.T) {
 	noPoll := true
 	cmd.DockerNoPoll = &noPoll
 
+	dockerIncludeStopped := true
+	cmd.DockerIncludeStopped = &dockerIncludeStopped
+
 	cfg := NewConfig(logger)
 	cmd.applyOptions(cfg)
 
@@ -89,6 +92,9 @@ func TestDaemonCommand_ApplyOptions(t *testing.T) {
 	if cfg.Global.LogLevel != "debug" {
 		t.Errorf("Expected log level debug, got %s", cfg.Global.LogLevel)
 	}
+	if !cfg.Docker.IncludeStopped {
+		t.Error("Expected IncludeStopped to be true")
+	}
 }
 
 // TestDaemonCommand_ApplyOptionsNil tests applyOptions with nil config
@@ -117,7 +123,7 @@ log-level = info
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		mockProvider := &mockDockerProviderForHandler{}
 		return orig(ctx, notifier, logger, cfg, mockProvider)
 	}
@@ -163,7 +169,7 @@ web-address = :8888
 
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		mockProvider := &mockDockerProviderForHandler{}
 		return orig(ctx, notifier, logger, cfg, mockProvider)
 	}

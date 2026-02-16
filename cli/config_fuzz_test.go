@@ -3,6 +3,7 @@ package cli
 import (
 	"testing"
 
+	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/test"
 )
 
@@ -95,14 +96,16 @@ func FuzzDockerLabels(f *testing.F) {
 		c := NewConfig(logger)
 
 		// Create a mock label set as if from a container
-		labels := map[string]map[string]string{
-			"test-container": {
+		testContainerInfo := DockerContainerInfo{
+			Name:  "test-container",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
 				labelKey:         labelValue,
 				"ofelia.enabled": "true",
 			},
 		}
 
 		// We don't care about errors - we're looking for panics
-		_ = c.buildFromDockerLabels(labels)
+		_ = c.buildFromDockerContainers([]DockerContainerInfo{testContainerInfo})
 	})
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/middlewares"
 	"github.com/netresearch/ofelia/test"
 )
@@ -56,7 +57,7 @@ func TestInitializeAppErrorDockerHandler(t *testing.T) {
 	// Override newDockerHandler to simulate factory error
 	orig := newDockerHandler
 	defer func() { newDockerHandler = orig }()
-	newDockerHandler = func(ctx context.Context, notifier dockerLabelsUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
+	newDockerHandler = func(ctx context.Context, notifier dockerContainersUpdate, logger core.Logger, cfg *DockerConfig, provider core.DockerProvider) (*DockerHandler, error) {
 		return nil, errors.New("factory error")
 	}
 
@@ -66,8 +67,8 @@ func TestInitializeAppErrorDockerHandler(t *testing.T) {
 	assert.Equal(t, "factory error", err.Error())
 }
 
-// Test dynamic updates via dockerLabelsUpdate for ExecJobs: additions, schedule changes, removals
-func TestDockerLabelsUpdateExecJobs(t *testing.T) {
+// Test dynamic updates via dockerContainersUpdate for ExecJobs: additions, schedule changes, removals
+func TestDockerContainersUpdateExecJobs(t *testing.T) {
 	t.Parallel()
 	// Prepare initial Config
 	cfg := NewConfig(test.NewTestLogger())
@@ -78,13 +79,16 @@ func TestDockerLabelsUpdateExecJobs(t *testing.T) {
 	cfg.ExecJobs = make(map[string]*ExecJobConfig)
 
 	// 1) Addition of new job
-	labelsAdd := map[string]map[string]string{
-		"container1": {
+	container1Info := DockerContainerInfo{
+		Name:  "container1",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			labelPrefix + ".job-exec.foo.schedule": "@every 5s",
 			labelPrefix + ".job-exec.foo.command":  "echo foo",
 		},
 	}
-	cfg.dockerLabelsUpdate(labelsAdd)
+
+	cfg.dockerContainersUpdate([]DockerContainerInfo{container1Info})
 	assert.Len(t, cfg.ExecJobs, 1)
 	j := cfg.ExecJobs["container1.foo"]
 	assert.Equal(t, JobSourceLabel, j.JobSource)
@@ -97,13 +101,15 @@ func TestDockerLabelsUpdateExecJobs(t *testing.T) {
 	assert.Len(t, entries, 1)
 
 	// 2) Change schedule (should restart job)
-	labelsChange := map[string]map[string]string{
-		"container1": {
+	container1Info = DockerContainerInfo{
+		Name:  container1Info.Name,
+		State: container1Info.State,
+		Labels: map[string]string{
 			labelPrefix + ".job-exec.foo.schedule": "@every 10s",
 			labelPrefix + ".job-exec.foo.command":  "echo foo",
 		},
 	}
-	cfg.dockerLabelsUpdate(labelsChange)
+	cfg.dockerContainersUpdate([]DockerContainerInfo{container1Info})
 	assert.Len(t, cfg.ExecJobs, 1)
 	j2 := cfg.ExecJobs["container1.foo"]
 	assert.Equal(t, "@every 10s", j2.GetSchedule())
@@ -111,13 +117,13 @@ func TestDockerLabelsUpdateExecJobs(t *testing.T) {
 	assert.Len(t, entries, 1)
 
 	// 3) Removal of job
-	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+	cfg.dockerContainersUpdate([]DockerContainerInfo{})
 	assert.Empty(t, cfg.ExecJobs)
 	entries = cfg.sh.Entries()
 	assert.Empty(t, entries)
 }
 
-// Test dockerLabelsUpdate blocks host jobs when security policy is disabled.
+// Test dockerContainersUpdate blocks host jobs when security policy is disabled.
 func TestDockerLabelsSecurityPolicyViolation(t *testing.T) {
 	t.Parallel()
 	logger := test.NewTestLogger()
@@ -130,9 +136,10 @@ func TestDockerLabelsSecurityPolicyViolation(t *testing.T) {
 	cfg.LocalJobs = make(map[string]*LocalJobConfig)
 	cfg.ComposeJobs = make(map[string]*ComposeJobConfig)
 
-	// Attempt to create local and compose jobs via labels
-	labels := map[string]map[string]string{
-		"cont1": {
+	cont1Info := DockerContainerInfo{
+		Name:  "cont1",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			requiredLabel:                           "true",
 			serviceLabel:                            "true",
 			labelPrefix + ".job-local.l.schedule":   "@daily",
@@ -141,7 +148,8 @@ func TestDockerLabelsSecurityPolicyViolation(t *testing.T) {
 			labelPrefix + ".job-compose.c.command":  "restart",
 		},
 	}
-	cfg.dockerLabelsUpdate(labels)
+	// Attempt to create local and compose jobs via labels
+	cfg.dockerContainersUpdate([]DockerContainerInfo{cont1Info})
 
 	// Verify security policy blocked the jobs
 	assert.Empty(t, cfg.LocalJobs, "Local jobs should be blocked by security policy")
@@ -159,8 +167,8 @@ func TestDockerLabelsSecurityPolicyViolation(t *testing.T) {
 		"Error log should explain privilege escalation risk")
 }
 
-// Test dockerLabelsUpdate removes local and service jobs when containers disappear.
-func TestDockerLabelsUpdateStaleJobs(t *testing.T) {
+// Test dockerContainersUpdate removes local and service jobs when containers disappear.
+func TestDockerContainersUpdateStaleJobs(t *testing.T) {
 	t.Parallel()
 	cfg := NewConfig(test.NewTestLogger())
 	cfg.logger = test.NewTestLogger()
@@ -171,8 +179,10 @@ func TestDockerLabelsUpdateStaleJobs(t *testing.T) {
 	cfg.LocalJobs = make(map[string]*LocalJobConfig)
 	cfg.ServiceJobs = make(map[string]*RunServiceConfig)
 
-	labels := map[string]map[string]string{
-		"cont1": {
+	cont1Info := DockerContainerInfo{
+		Name:  "cont1",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
 			requiredLabel:                               "true",
 			serviceLabel:                                "true",
 			labelPrefix + ".job-local.l.schedule":       "@daily",
@@ -182,11 +192,12 @@ func TestDockerLabelsUpdateStaleJobs(t *testing.T) {
 			labelPrefix + ".job-service-run.s.command":  "echo svc",
 		},
 	}
-	cfg.dockerLabelsUpdate(labels)
+
+	cfg.dockerContainersUpdate([]DockerContainerInfo{cont1Info})
 	assert.Len(t, cfg.LocalJobs, 1)
 	assert.Len(t, cfg.ServiceJobs, 1)
 
-	cfg.dockerLabelsUpdate(map[string]map[string]string{})
+	cfg.dockerContainersUpdate([]DockerContainerInfo{})
 	assert.Empty(t, cfg.LocalJobs)
 	assert.Empty(t, cfg.ServiceJobs)
 }
