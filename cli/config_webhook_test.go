@@ -327,6 +327,110 @@ func TestSyncWebhookConfigs_NoChangeNoReinit(t *testing.T) {
 	}
 }
 
+func TestSyncWebhookConfigs_INIWebhookNotOverwritten(t *testing.T) {
+	t.Parallel()
+	logger := test.NewTestLogger()
+	c := NewConfig(logger)
+	c.sh = core.NewScheduler(logger)
+
+	// Mark "slack-alerts" as INI-defined
+	c.WebhookConfigs.Webhooks["slack-alerts"] = &middlewares.WebhookConfig{
+		Name:   "slack-alerts",
+		Preset: "slack",
+		ID:     "ini-original-id",
+		Secret: "ini-secret",
+	}
+	c.WebhookConfigs.iniWebhookNames = map[string]struct{}{
+		"slack-alerts": {},
+	}
+	_ = c.WebhookConfigs.InitManager()
+
+	// Container labels try to overwrite the INI webhook
+	parsed := NewWebhookConfigs()
+	parsed.Webhooks["slack-alerts"] = &middlewares.WebhookConfig{
+		Name:   "slack-alerts",
+		Preset: "slack",
+		ID:     "attacker-id",
+		Secret: "attacker-secret",
+		URL:    "https://evil.example.com/webhook",
+	}
+
+	c.syncWebhookConfigs(parsed)
+
+	// INI webhook must NOT be overwritten
+	wh := c.WebhookConfigs.Webhooks["slack-alerts"]
+	if wh.ID != "ini-original-id" {
+		t.Errorf("INI webhook ID was overwritten: got %q, want %q", wh.ID, "ini-original-id")
+	}
+	if wh.Secret != "ini-secret" {
+		t.Errorf("INI webhook Secret was overwritten: got %q, want %q", wh.Secret, "ini-secret")
+	}
+	if wh.URL != "" {
+		t.Errorf("INI webhook URL was overwritten: got %q, want empty", wh.URL)
+	}
+}
+
+func TestSyncWebhookConfigs_RemovedLabelWebhookCleaned(t *testing.T) {
+	t.Parallel()
+	logger := test.NewTestLogger()
+	c := NewConfig(logger)
+	c.sh = core.NewScheduler(logger)
+
+	// Two label-defined webhooks
+	c.WebhookConfigs.Webhooks["slack"] = &middlewares.WebhookConfig{
+		Name:   "slack",
+		Preset: "slack",
+	}
+	c.WebhookConfigs.Webhooks["discord"] = &middlewares.WebhookConfig{
+		Name:   "discord",
+		Preset: "discord",
+	}
+	_ = c.WebhookConfigs.InitManager()
+
+	// Parsed labels only have "slack" — "discord" was removed
+	parsed := NewWebhookConfigs()
+	parsed.Webhooks["slack"] = &middlewares.WebhookConfig{
+		Name:   "slack",
+		Preset: "slack",
+	}
+
+	c.syncWebhookConfigs(parsed)
+
+	if _, ok := c.WebhookConfigs.Webhooks["slack"]; !ok {
+		t.Error("Expected slack webhook to remain")
+	}
+	if _, ok := c.WebhookConfigs.Webhooks["discord"]; ok {
+		t.Error("Expected discord webhook to be removed (no longer in labels)")
+	}
+}
+
+func TestSyncWebhookConfigs_INIWebhookNotRemovedWhenAbsentFromLabels(t *testing.T) {
+	t.Parallel()
+	logger := test.NewTestLogger()
+	c := NewConfig(logger)
+	c.sh = core.NewScheduler(logger)
+
+	// INI-defined webhook
+	c.WebhookConfigs.Webhooks["ini-slack"] = &middlewares.WebhookConfig{
+		Name:   "ini-slack",
+		Preset: "slack",
+	}
+	c.WebhookConfigs.iniWebhookNames = map[string]struct{}{
+		"ini-slack": {},
+	}
+	_ = c.WebhookConfigs.InitManager()
+
+	// Parsed labels have no webhooks at all
+	parsed := NewWebhookConfigs()
+
+	c.syncWebhookConfigs(parsed)
+
+	// INI webhook must NOT be removed
+	if _, ok := c.WebhookConfigs.Webhooks["ini-slack"]; !ok {
+		t.Error("INI-defined webhook should NOT be removed when absent from labels")
+	}
+}
+
 func TestMergeWebhookConfigs_INITakesPrecedence(t *testing.T) {
 	t.Parallel()
 	logger, handler := test.NewTestLoggerWithHandler()

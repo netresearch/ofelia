@@ -15,9 +15,10 @@ const webhookSection = "webhook"
 
 // WebhookConfigs holds all parsed webhook configurations
 type WebhookConfigs struct {
-	Global   *middlewares.WebhookGlobalConfig
-	Webhooks map[string]*middlewares.WebhookConfig
-	Manager  *middlewares.WebhookManager
+	Global          *middlewares.WebhookGlobalConfig
+	Webhooks        map[string]*middlewares.WebhookConfig
+	Manager         *middlewares.WebhookManager
+	iniWebhookNames map[string]struct{} // tracks names defined in INI (protected from label overwrite)
 }
 
 // NewWebhookConfigs creates a new WebhookConfigs with defaults
@@ -66,6 +67,10 @@ func parseWebhookSections(cfg *ini.File, c *Config) error {
 			}
 
 			c.WebhookConfigs.Webhooks[webhookName] = config
+			if c.WebhookConfigs.iniWebhookNames == nil {
+				c.WebhookConfigs.iniWebhookNames = make(map[string]struct{})
+			}
+			c.WebhookConfigs.iniWebhookNames[webhookName] = struct{}{}
 		}
 	}
 
@@ -191,8 +196,6 @@ func (c *JobWebhookConfig) GetWebhookNames() []string {
 
 // syncWebhookConfigs detects changes in label-defined webhooks and re-initializes
 // the webhook manager if needed (called during container update events).
-// syncWebhookConfigs detects changes in label-defined webhooks and re-initializes
-// the webhook manager if needed (called during container update events).
 func (c *Config) syncWebhookConfigs(parsed *WebhookConfigs) {
 	if parsed == nil {
 		return
@@ -213,11 +216,16 @@ func (c *Config) syncWebhookConfigs(parsed *WebhookConfigs) {
 }
 
 // applyWebhookChanges merges parsed webhook configs into the current config,
-// returning true if any changes were detected.
+// returning true if any changes were detected. INI-defined webhooks are never
+// overwritten by labels (security: prevents container label hijacking).
 func (c *Config) applyWebhookChanges(parsed *WebhookConfigs) bool {
 	changed := false
 
 	for name, wh := range parsed.Webhooks {
+		// Never overwrite INI-defined webhooks from labels
+		if _, isINI := c.WebhookConfigs.iniWebhookNames[name]; isINI {
+			continue
+		}
 		existing, exists := c.WebhookConfigs.Webhooks[name]
 		if !exists {
 			c.WebhookConfigs.Webhooks[name] = wh
@@ -226,6 +234,17 @@ func (c *Config) applyWebhookChanges(parsed *WebhookConfigs) bool {
 		}
 		if webhookConfigChanged(existing, wh) {
 			c.WebhookConfigs.Webhooks[name] = wh
+			changed = true
+		}
+	}
+
+	// Remove label-defined webhooks no longer present in parsed labels
+	for name := range c.WebhookConfigs.Webhooks {
+		if _, isINI := c.WebhookConfigs.iniWebhookNames[name]; isINI {
+			continue
+		}
+		if _, stillPresent := parsed.Webhooks[name]; !stillPresent {
+			delete(c.WebhookConfigs.Webhooks, name)
 			changed = true
 		}
 	}
@@ -358,7 +377,7 @@ func applyGlobalWebhookLabels(c *Config, globals map[string]any) {
 	}
 	if v, ok := globals["allow-remote-presets"]; ok {
 		if s, ok := v.(string); ok {
-			c.WebhookConfigs.Global.AllowRemotePresets = s == "true"
+			c.WebhookConfigs.Global.AllowRemotePresets, _ = strconv.ParseBool(s)
 		}
 	}
 	if v, ok := globals["trusted-preset-sources"]; ok {
