@@ -215,10 +215,19 @@ webhooks = slack-alerts, discord
 
 Docker labels:
 ```bash
+# Webhook labels (on service container with ofelia.service=true)
 ofelia.webhook.slack.preset=slack
 ofelia.webhook.slack.id=T00000000/B00000000000
 ofelia.webhook.slack.secret=XXXXXXXXXXXXXXXXXXXXXXXX
 ofelia.webhook.slack.trigger=error
+ofelia.webhook.slack.timeout=30s
+ofelia.webhook.slack.retry-count=3
+ofelia.webhook.slack.link=https://logs.example.com
+ofelia.webhook.slack.link-text=View Logs
+# Global webhook settings (on service container)
+ofelia.webhooks=slack
+ofelia.webhook-allowed-hosts=hooks.slack.com
+# Assign webhook to job (on any container)
 ofelia.job-exec.backup.webhooks=slack
 ```
 

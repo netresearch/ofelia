@@ -315,3 +315,40 @@ func TestMultipleWebhooksFromLabels(t *testing.T) {
 	assert.Equal(t, "https://dashboard.example.com", ntfy.Link)
 	assert.Equal(t, "View Dashboard", ntfy.LinkText)
 }
+
+func TestPerJobWebhookAssignmentViaLabels(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(test.NewTestLogger())
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "ofelia-service",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                     "true",
+				"ofelia.service":                     "true",
+				"ofelia.webhooks":                    "slack-alerts",
+				"ofelia.webhook.slack-alerts.preset": "slack",
+				"ofelia.webhook.slack-alerts.id":     "T123/B456",
+				"ofelia.webhook.slack-alerts.secret": "xoxb-secret",
+			},
+		},
+		{
+			Name:  "worker-container",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                  "true",
+				"ofelia.job-exec.backup.schedule": "@every 1h",
+				"ofelia.job-exec.backup.command":  "pg_dump -U postgres mydb",
+				"ofelia.job-exec.backup.webhooks": "slack-alerts",
+			},
+		},
+	}
+
+	err := c.buildFromDockerContainers(containers)
+	require.NoError(t, err)
+
+	require.Contains(t, c.ExecJobs, "worker-container.backup", "expected backup exec job")
+	assert.Equal(t, "slack-alerts", c.ExecJobs["worker-container.backup"].Webhooks,
+		"expected exec job webhooks field to be set from label")
+}

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -467,5 +468,331 @@ func TestMergeWebhookConfigs_INITakesPrecedence(t *testing.T) {
 	// Warning should be logged
 	if !handler.HasWarning("ignoring label-defined webhook") {
 		t.Error("Expected warning about ignoring label-defined webhook")
+	}
+}
+
+func TestWebhookConfigChanged_AllFields(t *testing.T) {
+	t.Parallel()
+
+	base := func() *middlewares.WebhookConfig {
+		return &middlewares.WebhookConfig{
+			Preset:     "slack",
+			URL:        "https://hooks.example.com",
+			ID:         "T123",
+			Secret:     "secret",
+			Trigger:    middlewares.TriggerError,
+			Timeout:    10 * time.Second,
+			RetryCount: 3,
+			RetryDelay: 5 * time.Second,
+			Link:       "https://logs.example.com",
+			LinkText:   "View Logs",
+		}
+	}
+
+	tests := []struct {
+		name   string
+		modify func(c *middlewares.WebhookConfig)
+		want   bool
+	}{
+		{name: "identical", modify: func(_ *middlewares.WebhookConfig) {}, want: false},
+		{name: "Preset changed", modify: func(c *middlewares.WebhookConfig) { c.Preset = "discord" }, want: true},
+		{name: "URL changed", modify: func(c *middlewares.WebhookConfig) { c.URL = "https://other.example.com" }, want: true},
+		{name: "ID changed", modify: func(c *middlewares.WebhookConfig) { c.ID = "T999" }, want: true},
+		{name: "Secret changed", modify: func(c *middlewares.WebhookConfig) { c.Secret = "new-secret" }, want: true},
+		{name: "Trigger changed", modify: func(c *middlewares.WebhookConfig) { c.Trigger = middlewares.TriggerAlways }, want: true},
+		{name: "Timeout changed", modify: func(c *middlewares.WebhookConfig) { c.Timeout = 30 * time.Second }, want: true},
+		{name: "RetryCount changed", modify: func(c *middlewares.WebhookConfig) { c.RetryCount = 10 }, want: true},
+		{name: "RetryDelay changed", modify: func(c *middlewares.WebhookConfig) { c.RetryDelay = 15 * time.Second }, want: true},
+		{name: "Link changed", modify: func(c *middlewares.WebhookConfig) { c.Link = "https://dashboard.example.com" }, want: true},
+		{name: "LinkText changed", modify: func(c *middlewares.WebhookConfig) { c.LinkText = "Dashboard" }, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			a := base()
+			b := base()
+			tt.modify(b)
+			got := webhookConfigChanged(a, b)
+			if got != tt.want {
+				t.Errorf("webhookConfigChanged() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyWebhookLabelParams_InvalidDuration(t *testing.T) {
+	t.Parallel()
+	config := middlewares.DefaultWebhookConfig()
+
+	params := map[string]string{
+		"timeout": "not-a-duration",
+	}
+
+	applyWebhookLabelParams(config, params)
+
+	// DefaultWebhookConfig sets Timeout to 10s; invalid duration should not change it
+	if config.Timeout != 10*time.Second {
+		t.Errorf("Expected timeout to remain at default 10s, got %v", config.Timeout)
+	}
+}
+
+func TestApplyWebhookLabelParams_InvalidInt(t *testing.T) {
+	t.Parallel()
+	config := middlewares.DefaultWebhookConfig()
+
+	params := map[string]string{
+		"retry-count": "abc",
+	}
+
+	applyWebhookLabelParams(config, params)
+
+	// DefaultWebhookConfig sets RetryCount to 3; invalid int should not change it
+	if config.RetryCount != 3 {
+		t.Errorf("Expected retry-count to remain at default 3, got %d", config.RetryCount)
+	}
+}
+
+func TestApplyWebhookLabelParams_UnknownKeys(t *testing.T) {
+	t.Parallel()
+	config := middlewares.DefaultWebhookConfig()
+	original := *config
+
+	params := map[string]string{
+		"foo": "bar",
+	}
+
+	applyWebhookLabelParams(config, params)
+
+	// All fields should remain unchanged (reflect.DeepEqual catches new fields automatically)
+	if !reflect.DeepEqual(original, *config) {
+		t.Errorf("Unknown key should not affect any config field.\nGot:  %+v\nWant: %+v", *config, original)
+	}
+}
+
+func TestApplyWebhookLabelParams_EmptyValues(t *testing.T) {
+	t.Parallel()
+	config := middlewares.DefaultWebhookConfig()
+
+	params := map[string]string{
+		"preset": "",
+	}
+
+	applyWebhookLabelParams(config, params)
+
+	if config.Preset != "" {
+		t.Errorf("Expected Preset to be empty, got %q", config.Preset)
+	}
+}
+
+func TestApplyGlobalWebhookLabels_AllFields(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(nil)
+
+	globals := map[string]any{
+		"webhooks":               "slack-alerts,discord",
+		"allow-remote-presets":   "true",
+		"trusted-preset-sources": "gh:myorg/*",
+		"preset-cache-ttl":       "1h",
+		"preset-cache-dir":       "/tmp/presets",
+		"webhook-allowed-hosts":  "hooks.slack.com,ntfy.internal",
+	}
+
+	applyGlobalWebhookLabels(c, globals)
+
+	if c.WebhookConfigs.Global.Webhooks != "slack-alerts,discord" {
+		t.Errorf("Expected webhooks 'slack-alerts,discord', got %q", c.WebhookConfigs.Global.Webhooks)
+	}
+	if !c.WebhookConfigs.Global.AllowRemotePresets {
+		t.Error("Expected AllowRemotePresets to be true")
+	}
+	if c.WebhookConfigs.Global.TrustedPresetSources != "gh:myorg/*" {
+		t.Errorf("Expected TrustedPresetSources 'gh:myorg/*', got %q", c.WebhookConfigs.Global.TrustedPresetSources)
+	}
+	if c.WebhookConfigs.Global.PresetCacheTTL != 1*time.Hour {
+		t.Errorf("Expected PresetCacheTTL 1h, got %v", c.WebhookConfigs.Global.PresetCacheTTL)
+	}
+	if c.WebhookConfigs.Global.PresetCacheDir != "/tmp/presets" {
+		t.Errorf("Expected PresetCacheDir '/tmp/presets', got %q", c.WebhookConfigs.Global.PresetCacheDir)
+	}
+	if c.WebhookConfigs.Global.AllowedHosts != "hooks.slack.com,ntfy.internal" {
+		t.Errorf("Expected AllowedHosts 'hooks.slack.com,ntfy.internal', got %q", c.WebhookConfigs.Global.AllowedHosts)
+	}
+}
+
+func TestApplyGlobalWebhookLabels_InvalidBool(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(nil)
+
+	globals := map[string]any{
+		"allow-remote-presets": "not-a-bool",
+	}
+
+	applyGlobalWebhookLabels(c, globals)
+
+	if c.WebhookConfigs.Global.AllowRemotePresets {
+		t.Error("Expected AllowRemotePresets to remain false for invalid bool")
+	}
+}
+
+func TestApplyGlobalWebhookLabels_InvalidDuration(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(nil)
+
+	globals := map[string]any{
+		"preset-cache-ttl": "not-a-duration",
+	}
+
+	applyGlobalWebhookLabels(c, globals)
+
+	if c.WebhookConfigs.Global.PresetCacheTTL != 24*time.Hour {
+		t.Errorf("Expected PresetCacheTTL to remain at default 24h, got %v", c.WebhookConfigs.Global.PresetCacheTTL)
+	}
+}
+
+func TestMergeWebhookConfigs_NilParsed(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(nil)
+	c.WebhookConfigs.Webhooks["existing"] = &middlewares.WebhookConfig{
+		Name:   "existing",
+		Preset: "slack",
+	}
+
+	mergeWebhookConfigs(c, nil)
+
+	// existing webhook should still be there
+	if _, ok := c.WebhookConfigs.Webhooks["existing"]; !ok {
+		t.Error("Expected existing webhook to remain after nil merge")
+	}
+}
+
+func TestMergeWebhookConfigs_EmptyWebhooks(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(nil)
+	c.WebhookConfigs.Webhooks["existing"] = &middlewares.WebhookConfig{
+		Name:   "existing",
+		Preset: "slack",
+	}
+
+	parsed := NewWebhookConfigs()
+	mergeWebhookConfigs(c, parsed)
+
+	if _, ok := c.WebhookConfigs.Webhooks["existing"]; !ok {
+		t.Error("Expected existing webhook to remain after empty merge")
+	}
+}
+
+func TestMergeWebhookConfigs_NilWebhookConfigs(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(nil)
+	c.WebhookConfigs = nil
+
+	parsed := NewWebhookConfigs()
+	parsed.Webhooks["new-hook"] = &middlewares.WebhookConfig{
+		Name:   "new-hook",
+		Preset: "slack",
+	}
+
+	mergeWebhookConfigs(c, parsed)
+
+	if c.WebhookConfigs == nil {
+		t.Fatal("Expected WebhookConfigs to be created")
+	}
+	if _, ok := c.WebhookConfigs.Webhooks["new-hook"]; !ok {
+		t.Error("Expected new-hook webhook to be added")
+	}
+}
+
+func TestMergeWebhookConfigs_GlobalMerge(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(nil)
+	// c.WebhookConfigs.Global starts with defaults: Webhooks="", AllowedHosts="*"
+
+	parsed := NewWebhookConfigs()
+	parsed.Global.Webhooks = "slack-alerts"
+	parsed.Global.AllowedHosts = "hooks.slack.com"
+	parsed.Webhooks["slack-alerts"] = &middlewares.WebhookConfig{
+		Name:   "slack-alerts",
+		Preset: "slack",
+	}
+
+	mergeWebhookConfigs(c, parsed)
+
+	// Webhooks should be merged because INI Global.Webhooks was empty
+	if c.WebhookConfigs.Global.Webhooks != "slack-alerts" {
+		t.Errorf("Expected global Webhooks 'slack-alerts', got %q", c.WebhookConfigs.Global.Webhooks)
+	}
+	// AllowedHosts should be merged because INI was "*" (default)
+	if c.WebhookConfigs.Global.AllowedHosts != "hooks.slack.com" {
+		t.Errorf("Expected AllowedHosts 'hooks.slack.com', got %q", c.WebhookConfigs.Global.AllowedHosts)
+	}
+}
+
+func TestSyncWebhookConfigs_NilParsed(t *testing.T) {
+	t.Parallel()
+	logger := test.NewTestLogger()
+	c := NewConfig(logger)
+	c.sh = core.NewScheduler(logger)
+
+	c.WebhookConfigs.Webhooks["slack"] = &middlewares.WebhookConfig{
+		Name:   "slack",
+		Preset: "slack",
+	}
+	_ = c.WebhookConfigs.InitManager()
+	originalManager := c.WebhookConfigs.Manager
+
+	c.syncWebhookConfigs(nil)
+
+	// Manager should remain unchanged
+	if c.WebhookConfigs.Manager != originalManager {
+		t.Error("Expected manager to remain unchanged after nil sync")
+	}
+	// Webhooks should remain
+	if _, ok := c.WebhookConfigs.Webhooks["slack"]; !ok {
+		t.Error("Expected slack webhook to remain after nil sync")
+	}
+}
+
+func TestBuildWebhookConfigsFromLabels_Empty(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(nil)
+	originalLen := len(c.WebhookConfigs.Webhooks)
+
+	buildWebhookConfigsFromLabels(c, map[string]map[string]string{})
+
+	if len(c.WebhookConfigs.Webhooks) != originalLen {
+		t.Error("Expected no webhooks to be added for empty labels")
+	}
+}
+
+func TestBuildWebhookConfigsFromLabels_NilWebhookConfigs(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(nil)
+	c.WebhookConfigs = nil
+
+	webhookLabels := map[string]map[string]string{
+		"slack-alerts": {
+			"preset": "slack",
+			"id":     "T123",
+		},
+	}
+
+	buildWebhookConfigsFromLabels(c, webhookLabels)
+
+	if c.WebhookConfigs == nil {
+		t.Fatal("Expected WebhookConfigs to be created")
+	}
+	wh, ok := c.WebhookConfigs.Webhooks["slack-alerts"]
+	if !ok {
+		t.Fatal("Expected slack-alerts webhook to be created")
+	}
+	if wh.Preset != "slack" {
+		t.Errorf("Expected preset 'slack', got %q", wh.Preset)
+	}
+	if wh.ID != "T123" {
+		t.Errorf("Expected ID 'T123', got %q", wh.ID)
+	}
+	if wh.Name != "slack-alerts" {
+		t.Errorf("Expected name 'slack-alerts', got %q", wh.Name)
 	}
 }

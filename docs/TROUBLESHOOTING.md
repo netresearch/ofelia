@@ -1030,6 +1030,49 @@ curl -X POST $SLACK_WEBHOOK \
    - Generate new webhook in Slack settings
    - Update configuration with new URL
 
+### Webhook Notifications Not Working
+
+**Symptoms**:
+- Webhooks not firing after job execution
+- No webhook-related log messages
+- "Unknown job type webhook" warnings in logs
+
+**Diagnosis**:
+```bash
+# Check logs for webhook-related messages
+docker logs ofelia 2>&1 | grep -i webhook
+
+# Verify webhook labels are on the service container
+docker inspect --format '{{json .Config.Labels}}' ofelia-service | jq 'to_entries[] | select(.key | startswith("ofelia.webhook"))'
+```
+
+**Solutions**:
+
+1. **Webhook labels on wrong container**: Webhook labels (`ofelia.webhook.*`) are only processed from the **service container** (with `ofelia.service=true`). Move webhook labels to the Ofelia service container:
+   ```yaml
+   ofelia:
+     labels:
+       ofelia.service: "true"
+       ofelia.enabled: "true"
+       ofelia.webhook.slack.preset: slack
+       ofelia.webhook.slack.id: "T00/B00"
+       ofelia.webhook.slack.secret: "secret"
+   ```
+
+2. **Missing webhook assignment on job**: Define which webhooks a job should use:
+   ```yaml
+   worker:
+     labels:
+       ofelia.job-exec.backup.webhooks: "slack"
+   ```
+
+3. **INI webhook overriding label webhook**: If a webhook with the same name exists in both the INI file and Docker labels, the INI version takes precedence. Use a different name for the label-defined webhook or remove the INI definition.
+
+4. **Trigger mismatch**: Verify the webhook's `trigger` matches the job outcome:
+   - `error` — only fires when the job fails
+   - `success` — only fires when the job succeeds
+   - `always` — fires on every execution
+
 ### Output Saving Issues
 
 **Symptoms**:

@@ -29,20 +29,74 @@ webhooks = slack-alerts
 ```yaml
 services:
   ofelia:
-    image: mcuadros/ofelia:latest
+    image: netresearch/ofelia:latest
     labels:
-      # Define a webhook
+      ofelia.enabled: "true"
+      ofelia.service: "true"
+
+      # Global webhook settings
+      ofelia.webhooks: "slack-alerts"
+      ofelia.webhook-allowed-hosts: "hooks.slack.com,discord.com"
+
+      # Define webhooks
       ofelia.webhook.slack-alerts.preset: slack
       ofelia.webhook.slack-alerts.id: "T00000000/B00000000000"
       ofelia.webhook.slack-alerts.secret: "XXXXXXXXXXXXXXXXXXXXXXXX"
       ofelia.webhook.slack-alerts.trigger: error
 
-      # Assign webhook to a job
+      ofelia.webhook.discord-notify.preset: discord
+      ofelia.webhook.discord-notify.id: "1234567890123456789"
+      ofelia.webhook.discord-notify.secret: "abcdefghijklmnopqrstuvwxyz"
+      ofelia.webhook.discord-notify.trigger: always
+
+  worker:
+    image: myapp:latest
+    labels:
+      ofelia.enabled: "true"
+      # Assign webhooks to a job
       ofelia.job-exec.backup.schedule: "@daily"
       ofelia.job-exec.backup.container: postgres
       ofelia.job-exec.backup.command: "pg_dump -U postgres mydb > /backup/db.sql"
-      ofelia.job-exec.backup.webhooks: slack-alerts
+      ofelia.job-exec.backup.webhooks: "slack-alerts, discord-notify"
 ```
+
+> **Important**: Webhook labels (`ofelia.webhook.*`) are only processed from the **service container** (the container with `ofelia.service: "true"`). Webhook labels on non-service containers are ignored.
+
+### Docker Label Reference
+
+All webhook parameters can be set via Docker labels on the service container:
+
+| Label | Description |
+|-------|-------------|
+| `ofelia.webhook.NAME.preset` | Preset name (slack, discord, etc.) |
+| `ofelia.webhook.NAME.id` | Service-specific identifier |
+| `ofelia.webhook.NAME.secret` | Service-specific secret/token |
+| `ofelia.webhook.NAME.url` | Custom webhook URL |
+| `ofelia.webhook.NAME.trigger` | When to send: `always`, `error`, `success`, `skipped` |
+| `ofelia.webhook.NAME.timeout` | HTTP request timeout (e.g., `30s`) |
+| `ofelia.webhook.NAME.retry-count` | Number of retries on failure |
+| `ofelia.webhook.NAME.retry-delay` | Delay between retries (e.g., `5s`) |
+| `ofelia.webhook.NAME.link` | Optional URL to include in notification |
+| `ofelia.webhook.NAME.link-text` | Display text for link |
+
+Global webhook settings can also be set via labels on the service container:
+
+| Label | Description |
+|-------|-------------|
+| `ofelia.webhooks` | Default webhooks for all jobs (comma-separated) |
+| `ofelia.webhook-allowed-hosts` | Host whitelist (`*` = allow all) |
+| `ofelia.allow-remote-presets` | Allow fetching remote presets (`true`/`false`) |
+| `ofelia.trusted-preset-sources` | Trusted remote preset source URLs |
+| `ofelia.preset-cache-ttl` | Cache TTL for remote presets (e.g., `24h`) |
+| `ofelia.preset-cache-dir` | Directory for preset cache |
+
+### Configuration Precedence
+
+When both INI and Docker labels define a webhook with the same name, the **INI configuration takes precedence**. Label-defined webhooks with conflicting names are ignored with a warning. This prevents container labels from hijacking credentials defined in the INI file.
+
+### Dynamic Updates
+
+When Docker container events are enabled (`--docker-events`), webhook configurations from labels are automatically synced when containers start, stop, or change. If webhook labels are added or modified, the webhook manager is re-initialized and all job middlewares are rebuilt.
 
 ## Bundled Presets
 
