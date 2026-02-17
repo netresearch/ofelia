@@ -131,7 +131,7 @@ test-race:
 
 .PHONY: test-benchmark
 test-benchmark:
-	@go test -bench=. -benchmem ./...
+	@go test -run=^$$ -bench=. -benchmem ./...
 
 .PHONY: test-watch
 test-watch:
