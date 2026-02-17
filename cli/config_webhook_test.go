@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -563,18 +564,9 @@ func TestApplyWebhookLabelParams_UnknownKeys(t *testing.T) {
 
 	applyWebhookLabelParams(config, params)
 
-	// All fields should remain unchanged
-	if config.Preset != original.Preset ||
-		config.URL != original.URL ||
-		config.ID != original.ID ||
-		config.Secret != original.Secret ||
-		config.Trigger != original.Trigger ||
-		config.Timeout != original.Timeout ||
-		config.RetryCount != original.RetryCount ||
-		config.RetryDelay != original.RetryDelay ||
-		config.Link != original.Link ||
-		config.LinkText != original.LinkText {
-		t.Error("Unknown key 'foo' should not affect any config field")
+	// All fields should remain unchanged (reflect.DeepEqual catches new fields automatically)
+	if !reflect.DeepEqual(original, *config) {
+		t.Errorf("Unknown key should not affect any config field.\nGot:  %+v\nWant: %+v", *config, original)
 	}
 }
 
