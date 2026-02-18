@@ -48,18 +48,14 @@ var globalLabelAllowList = map[string]bool{
 	"mail-only-on-error":   true,
 
 	// Save middleware
-	"save-folder":             true,
 	"save-only-on-error":      true,
 	"restore-history":         true,
 	"restore-history-max-age": true,
 
 	// Webhook global settings
-	"webhooks":               true,
-	"webhook-allowed-hosts":  true,
-	"allow-remote-presets":   true,
-	"trusted-preset-sources": true,
-	"preset-cache-ttl":       true,
-	"preset-cache-dir":       true,
+	"webhooks":              true,
+	"webhook-allowed-hosts": true,
+	"preset-cache-ttl":      true,
 }
 
 func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) error {
@@ -275,17 +271,12 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 			}
 
 			parts := strings.Split(k, ".")
+			if len(parts) < 2 {
+				continue
+			}
 			if len(parts) < 4 {
 				if isService {
-					key := parts[1]
-					if globalLabelAllowList[key] {
-						globalConfigs[key] = jobParamValue
-					} else if c.logger != nil {
-						c.logger.Warn(fmt.Sprintf(
-							"SECURITY: Blocked global config key %q from Docker labels (only settable via config file)",
-							key,
-						))
-					}
+					c.filterGlobalLabelKey(parts[1], jobParamValue, containerName, globalConfigs)
 				}
 				continue
 			}
@@ -361,6 +352,21 @@ func mergeJobMaps[K comparable, V any](left map[K]V, right map[K]V, useRightIfEx
 		}
 	}
 	return result
+}
+
+// filterGlobalLabelKey checks if a global config key from a Docker label is in the allow-list.
+// Allowed keys are added to globalConfigs; blocked keys emit a security warning.
+func (c *Config) filterGlobalLabelKey(key, value, containerName string, globalConfigs map[string]any) {
+	if globalLabelAllowList[key] {
+		globalConfigs[key] = value
+		return
+	}
+	if c.logger != nil {
+		c.logger.Warn(fmt.Sprintf(
+			"SECURITY: Blocked global config key %q from Docker labels on container %q (only settable via config file)",
+			key, containerName,
+		))
+	}
 }
 
 func hasServiceLabel(labels map[string]string) bool {

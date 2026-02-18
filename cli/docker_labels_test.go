@@ -372,6 +372,10 @@ func TestGlobalLabelAllowListBlocksSecurityKeys(t *testing.T) {
 				"ofelia.web-secret-key":              "stolen",
 				"ofelia.enable-pprof":                "true",
 				"ofelia.default-user":                "root",
+				"ofelia.save-folder":                 "/etc/cron.d",
+				"ofelia.allow-remote-presets":        "true",
+				"ofelia.trusted-preset-sources":      "evil.com",
+				"ofelia.preset-cache-dir":            "/tmp/evil",
 			},
 		},
 	}
@@ -397,7 +401,6 @@ func TestGlobalLabelAllowListPermitsSafeKeys(t *testing.T) {
 				"ofelia.log-level":             "debug",
 				"ofelia.slack-webhook":         "https://hooks.slack.com/test",
 				"ofelia.smtp-host":             "mail.example.com",
-				"ofelia.save-folder":           "/tmp/saves",
 				"ofelia.notification-cooldown": "5m",
 			},
 		},
@@ -408,7 +411,6 @@ func TestGlobalLabelAllowListPermitsSafeKeys(t *testing.T) {
 	assert.Equal(t, "debug", globals["log-level"])
 	assert.Equal(t, "https://hooks.slack.com/test", globals["slack-webhook"])
 	assert.Equal(t, "mail.example.com", globals["smtp-host"])
-	assert.Equal(t, "/tmp/saves", globals["save-folder"])
 	assert.Equal(t, "5m", globals["notification-cooldown"])
 }
 
