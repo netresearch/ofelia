@@ -21,6 +21,47 @@ const (
 	dockerComposeServiceLabel = "com.docker.compose.service"
 )
 
+// globalLabelAllowList defines global config keys that may be set via Docker labels.
+// Keys NOT in this list are blocked to prevent privilege escalation (e.g., a container
+// enabling host job execution or disabling web authentication via labels).
+// See: https://github.com/netresearch/ofelia/issues/486
+var globalLabelAllowList = map[string]bool{
+	// Logging & scheduling
+	"log-level":                true,
+	"max-runtime":              true,
+	"notification-cooldown":    true,
+	"enable-strict-validation": true,
+
+	// Slack notifications
+	"slack-webhook":       true,
+	"slack-only-on-error": true,
+
+	// Email notifications
+	"smtp-host":            true,
+	"smtp-port":            true,
+	"smtp-user":            true,
+	"smtp-password":        true,
+	"smtp-tls-skip-verify": true,
+	"email-to":             true,
+	"email-from":           true,
+	"email-subject":        true,
+	"mail-only-on-error":   true,
+
+	// Save middleware
+	"save-folder":             true,
+	"save-only-on-error":      true,
+	"restore-history":         true,
+	"restore-history-max-age": true,
+
+	// Webhook global settings
+	"webhooks":               true,
+	"webhook-allowed-hosts":  true,
+	"allow-remote-presets":   true,
+	"trusted-preset-sources": true,
+	"preset-cache-ttl":       true,
+	"preset-cache-dir":       true,
+}
+
 func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) error {
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals, webhookLabels := c.splitContainersLabelsIntoJobMapsByType(containers)
 
@@ -236,7 +277,15 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 			parts := strings.Split(k, ".")
 			if len(parts) < 4 {
 				if isService {
-					globalConfigs[parts[1]] = jobParamValue
+					key := parts[1]
+					if globalLabelAllowList[key] {
+						globalConfigs[key] = jobParamValue
+					} else if c.logger != nil {
+						c.logger.Warn(fmt.Sprintf(
+							"SECURITY: Blocked global config key %q from Docker labels (only settable via config file)",
+							key,
+						))
+					}
 				}
 				continue
 			}
