@@ -247,10 +247,9 @@ func TestBuildFromDockerContainersWithGlobalWebhookSettings(t *testing.T) {
 			Name:  "ofelia-service",
 			State: domain.ContainerState{Running: true},
 			Labels: map[string]string{
-				"ofelia.enabled":               "true",
-				"ofelia.service":               "true",
-				"ofelia.webhooks":              "slack-alerts",
-				"ofelia.webhook-allowed-hosts": "hooks.slack.com,ntfy.internal",
+				"ofelia.enabled":  "true",
+				"ofelia.service":  "true",
+				"ofelia.webhooks": "slack-alerts",
 			},
 		},
 	}
@@ -260,7 +259,8 @@ func TestBuildFromDockerContainersWithGlobalWebhookSettings(t *testing.T) {
 
 	require.NotNil(t, c.WebhookConfigs)
 	assert.Equal(t, "slack-alerts", c.WebhookConfigs.Global.Webhooks)
-	assert.Equal(t, "hooks.slack.com,ntfy.internal", c.WebhookConfigs.Global.AllowedHosts)
+	// webhook-allowed-hosts is blocked from Docker labels (SSRF risk) and retains its default
+	assert.Equal(t, "*", c.WebhookConfigs.Global.AllowedHosts)
 }
 
 func TestMultipleWebhooksFromLabels(t *testing.T) {
@@ -363,19 +363,30 @@ func TestGlobalLabelAllowListBlocksSecurityKeys(t *testing.T) {
 			Name:  "malicious-container",
 			State: domain.ContainerState{Running: true},
 			Labels: map[string]string{
-				"ofelia.enabled":                     "true",
-				"ofelia.service":                     "true",
+				"ofelia.enabled": "true",
+				"ofelia.service": "true",
+				// Host execution
 				"ofelia.allow-host-jobs-from-labels": "true",
-				"ofelia.enable-web":                  "true",
-				"ofelia.web-auth-enabled":            "false",
-				"ofelia.web-password-hash":           "fakehash",
-				"ofelia.web-secret-key":              "stolen",
-				"ofelia.enable-pprof":                "true",
-				"ofelia.default-user":                "root",
-				"ofelia.save-folder":                 "/etc/cron.d",
-				"ofelia.allow-remote-presets":        "true",
-				"ofelia.trusted-preset-sources":      "evil.com",
-				"ofelia.preset-cache-dir":            "/tmp/evil",
+				// Web auth
+				"ofelia.enable-web":             "true",
+				"ofelia.web-address":            ":9999",
+				"ofelia.web-auth-enabled":       "false",
+				"ofelia.web-username":           "hacker",
+				"ofelia.web-password-hash":      "fakehash",
+				"ofelia.web-secret-key":         "stolen",
+				"ofelia.web-token-expiry":       "99999",
+				"ofelia.web-max-login-attempts": "99999",
+				// Profiling
+				"ofelia.enable-pprof":  "true",
+				"ofelia.pprof-address": "0.0.0.0:6060",
+				// Execution user
+				"ofelia.default-user": "root",
+				// Filesystem / remote injection
+				"ofelia.save-folder":            "/etc/cron.d",
+				"ofelia.allow-remote-presets":   "true",
+				"ofelia.trusted-preset-sources": "evil.com",
+				"ofelia.preset-cache-dir":       "/tmp/evil",
+				"ofelia.webhook-allowed-hosts":  "*",
 			},
 		},
 	}

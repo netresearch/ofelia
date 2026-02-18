@@ -52,10 +52,11 @@ var globalLabelAllowList = map[string]bool{
 	"restore-history":         true,
 	"restore-history-max-age": true,
 
-	// Webhook global settings
-	"webhooks":              true,
-	"webhook-allowed-hosts": true,
-	"preset-cache-ttl":      true,
+	// Webhook global settings (security-sensitive keys like webhook-allowed-hosts,
+	// allow-remote-presets, and trusted-preset-sources are intentionally NOT allowed
+	// via labels to prevent SSRF and remote configuration injection)
+	"webhooks":         true,
+	"preset-cache-ttl": true,
 }
 
 func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) error {
