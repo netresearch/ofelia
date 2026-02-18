@@ -228,6 +228,11 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 		containerExecJobs := make(map[string]map[string]any)
 
 		for k, jobParamValue := range labelSet {
+			if k == requiredLabel || k == serviceLabel {
+				// Do not track internal labels as global config parameters.
+				continue
+			}
+
 			parts := strings.Split(k, ".")
 			if len(parts) < 4 {
 				if isService {
