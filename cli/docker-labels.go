@@ -21,6 +21,44 @@ const (
 	dockerComposeServiceLabel = "com.docker.compose.service"
 )
 
+// globalLabelAllowList defines global config keys that may be set via Docker labels.
+// Keys NOT in this list are blocked to prevent privilege escalation (e.g., a container
+// enabling host job execution or disabling web authentication via labels).
+// See: https://github.com/netresearch/ofelia/issues/486
+var globalLabelAllowList = map[string]bool{
+	// Logging & scheduling
+	"log-level":                true,
+	"max-runtime":              true,
+	"notification-cooldown":    true,
+	"enable-strict-validation": true,
+
+	// Slack notifications
+	"slack-webhook":       true,
+	"slack-only-on-error": true,
+
+	// Email notifications
+	"smtp-host":            true,
+	"smtp-port":            true,
+	"smtp-user":            true,
+	"smtp-password":        true,
+	"smtp-tls-skip-verify": true,
+	"email-to":             true,
+	"email-from":           true,
+	"email-subject":        true,
+	"mail-only-on-error":   true,
+
+	// Save middleware
+	"save-only-on-error":      true,
+	"restore-history":         true,
+	"restore-history-max-age": true,
+
+	// Webhook global settings (security-sensitive keys like webhook-allowed-hosts,
+	// allow-remote-presets, and trusted-preset-sources are intentionally NOT allowed
+	// via labels to prevent SSRF and remote configuration injection)
+	"webhooks":         true,
+	"preset-cache-ttl": true,
+}
+
 func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) error {
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals, webhookLabels := c.splitContainersLabelsIntoJobMapsByType(containers)
 
@@ -234,9 +272,12 @@ func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerConta
 			}
 
 			parts := strings.Split(k, ".")
+			if len(parts) < 2 {
+				continue
+			}
 			if len(parts) < 4 {
 				if isService {
-					globalConfigs[parts[1]] = jobParamValue
+					c.filterGlobalLabelKey(parts[1], jobParamValue, containerName, globalConfigs)
 				}
 				continue
 			}
@@ -312,6 +353,21 @@ func mergeJobMaps[K comparable, V any](left map[K]V, right map[K]V, useRightIfEx
 		}
 	}
 	return result
+}
+
+// filterGlobalLabelKey checks if a global config key from a Docker label is in the allow-list.
+// Allowed keys are added to globalConfigs; blocked keys emit a security warning.
+func (c *Config) filterGlobalLabelKey(key, value, containerName string, globalConfigs map[string]any) {
+	if globalLabelAllowList[key] {
+		globalConfigs[key] = value
+		return
+	}
+	if c.logger != nil {
+		c.logger.Warn(fmt.Sprintf(
+			"SECURITY: Blocked global config key %q from Docker labels on container %q (only settable via config file)",
+			key, containerName,
+		))
+	}
 }
 
 func hasServiceLabel(labels map[string]string) bool {

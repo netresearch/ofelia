@@ -247,10 +247,9 @@ func TestBuildFromDockerContainersWithGlobalWebhookSettings(t *testing.T) {
 			Name:  "ofelia-service",
 			State: domain.ContainerState{Running: true},
 			Labels: map[string]string{
-				"ofelia.enabled":               "true",
-				"ofelia.service":               "true",
-				"ofelia.webhooks":              "slack-alerts",
-				"ofelia.webhook-allowed-hosts": "hooks.slack.com,ntfy.internal",
+				"ofelia.enabled":  "true",
+				"ofelia.service":  "true",
+				"ofelia.webhooks": "slack-alerts",
 			},
 		},
 	}
@@ -260,7 +259,8 @@ func TestBuildFromDockerContainersWithGlobalWebhookSettings(t *testing.T) {
 
 	require.NotNil(t, c.WebhookConfigs)
 	assert.Equal(t, "slack-alerts", c.WebhookConfigs.Global.Webhooks)
-	assert.Equal(t, "hooks.slack.com,ntfy.internal", c.WebhookConfigs.Global.AllowedHosts)
+	// webhook-allowed-hosts is blocked from Docker labels (SSRF risk) and retains its default
+	assert.Equal(t, "*", c.WebhookConfigs.Global.AllowedHosts)
 }
 
 func TestMultipleWebhooksFromLabels(t *testing.T) {
@@ -351,4 +351,107 @@ func TestPerJobWebhookAssignmentViaLabels(t *testing.T) {
 	require.Contains(t, c.ExecJobs, "worker-container.backup", "expected backup exec job")
 	assert.Equal(t, "slack-alerts", c.ExecJobs["worker-container.backup"].Webhooks,
 		"expected exec job webhooks field to be set from label")
+}
+
+func TestGlobalLabelAllowListBlocksSecurityKeys(t *testing.T) {
+	t.Parallel()
+	logger, handler := test.NewTestLoggerWithHandler()
+	c := NewConfig(logger)
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "malicious-container",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled": "true",
+				"ofelia.service": "true",
+				// Host execution
+				"ofelia.allow-host-jobs-from-labels": "true",
+				// Web auth
+				"ofelia.enable-web":             "true",
+				"ofelia.web-address":            ":9999",
+				"ofelia.web-auth-enabled":       "false",
+				"ofelia.web-username":           "hacker",
+				"ofelia.web-password-hash":      "fakehash",
+				"ofelia.web-secret-key":         "stolen",
+				"ofelia.web-token-expiry":       "99999",
+				"ofelia.web-max-login-attempts": "99999",
+				// Profiling
+				"ofelia.enable-pprof":  "true",
+				"ofelia.pprof-address": "0.0.0.0:6060",
+				// Execution user
+				"ofelia.default-user": "root",
+				// Filesystem / remote injection
+				"ofelia.save-folder":            "/etc/cron.d",
+				"ofelia.allow-remote-presets":   "true",
+				"ofelia.trusted-preset-sources": "evil.com",
+				"ofelia.preset-cache-dir":       "/tmp/evil",
+				"ofelia.webhook-allowed-hosts":  "*",
+			},
+		},
+	}
+
+	_, _, _, _, _, globals, _ := c.splitContainersLabelsIntoJobMapsByType(containers)
+
+	assert.Empty(t, globals, "no security-sensitive keys should pass through to globals")
+	assert.True(t, handler.HasWarning("SECURITY"), "should log security warnings for blocked keys")
+	assert.True(t, handler.HasWarning("allow-host-jobs-from-labels"), "should mention blocked key name")
+}
+
+func TestGlobalLabelAllowListPermitsSafeKeys(t *testing.T) {
+	t.Parallel()
+	c := NewConfig(test.NewTestLogger())
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "ofelia-service",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":               "true",
+				"ofelia.service":               "true",
+				"ofelia.log-level":             "debug",
+				"ofelia.slack-webhook":         "https://hooks.slack.com/test",
+				"ofelia.smtp-host":             "mail.example.com",
+				"ofelia.notification-cooldown": "5m",
+			},
+		},
+	}
+
+	_, _, _, _, _, globals, _ := c.splitContainersLabelsIntoJobMapsByType(containers)
+
+	assert.Equal(t, "debug", globals["log-level"])
+	assert.Equal(t, "https://hooks.slack.com/test", globals["slack-webhook"])
+	assert.Equal(t, "mail.example.com", globals["smtp-host"])
+	assert.Equal(t, "5m", globals["notification-cooldown"])
+}
+
+func TestGlobalLabelAllowListPreventsHostJobEscalation(t *testing.T) {
+	t.Parallel()
+	logger, handler := test.NewTestLoggerWithHandler()
+	c := NewConfig(logger)
+	c.Global.AllowHostJobsFromLabels = false
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "attacker-container",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                     "true",
+				"ofelia.service":                     "true",
+				"ofelia.allow-host-jobs-from-labels": "true",
+				"ofelia.job-local.pwn.schedule":      "@daily",
+				"ofelia.job-local.pwn.command":       "echo pwned",
+			},
+		},
+	}
+
+	err := c.buildFromDockerContainers(containers)
+	require.NoError(t, err)
+
+	assert.False(t, c.Global.AllowHostJobsFromLabels,
+		"allow-host-jobs-from-labels must not be overridden via Docker labels")
+	assert.Empty(t, c.LocalJobs,
+		"local jobs must be blocked when AllowHostJobsFromLabels is false")
+	assert.True(t, handler.HasWarning("allow-host-jobs-from-labels"),
+		"should warn about blocked security key")
 }
