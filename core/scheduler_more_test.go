@@ -95,7 +95,7 @@ func TestIsTriggeredSchedule(t *testing.T) {
 // with go-cron as native TriggeredSchedule entries. They get a cron entry ID and
 // appear in Entries(), but their schedule never fires automatically (Next() returns
 // zero time).
-func TestSchedulerTriggeredJobNotScheduled(t *testing.T) {
+func TestSchedulerTriggeredJobHasCronEntry(t *testing.T) {
 	sc := NewScheduler(newDiscardLogger())
 
 	// Add a triggered job

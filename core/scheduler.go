@@ -474,7 +474,7 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 	// This works for all job types including triggered schedules, since all jobs now
 	// have cron entries.
 	if err := s.cron.TriggerEntryByName(jobName); err != nil {
-		return fmt.Errorf("%w: %s", ErrJobNotFound, jobName)
+		return fmt.Errorf("trigger job %s: %w", jobName, err)
 	}
 
 	return nil
