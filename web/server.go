@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gobs/args"
+	cron "github.com/netresearch/go-cron"
 
 	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
@@ -193,6 +194,8 @@ type apiJob struct {
 	Command  string          `json:"command"`
 	Running  bool            `json:"running"`
 	LastRun  *apiExecution   `json:"lastRun,omitempty"`
+	NextRuns []time.Time     `json:"nextRuns"`
+	PrevRuns []time.Time     `json:"prevRuns"`
 	Origin   string          `json:"origin"`
 	Config   json.RawMessage `json:"config"`
 }
@@ -255,8 +258,12 @@ func jobType(j core.Job) string {
 	}
 }
 
+// scheduleRunCount is the number of next/previous execution times returned per job.
+const scheduleRunCount = 5
+
 // buildAPIJobs converts a slice of core.Job into apiJob payloads.
 func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
+	now := time.Now()
 	jobs := make([]apiJob, 0, len(list))
 	for _, job := range list {
 		var execInfo *apiExecution
@@ -279,6 +286,24 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 				}
 			}
 		}
+
+		// Compute next/prev execution times from the cron schedule.
+		// Triggered-only jobs and jobs without a cron entry return empty slices.
+		var nextRuns, prevRuns []time.Time
+		if !core.IsTriggeredSchedule(job.GetSchedule()) {
+			entry := s.scheduler.EntryByName(job.GetName())
+			if entry.Valid() && entry.Schedule != nil {
+				nextRuns = cron.NextN(entry.Schedule, now, scheduleRunCount)
+				prevRuns = cron.PrevN(entry.Schedule, now, scheduleRunCount)
+			}
+		}
+		if nextRuns == nil {
+			nextRuns = []time.Time{}
+		}
+		if prevRuns == nil {
+			prevRuns = []time.Time{}
+		}
+
 		origin := s.jobOrigin(job.GetName())
 		cfgBytes, _ := json.Marshal(job)
 		jobs = append(jobs, apiJob{
@@ -288,6 +313,8 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 			Command:  job.GetCommand(),
 			Running:  s.scheduler.IsJobRunning(job.GetName()),
 			LastRun:  execInfo,
+			NextRuns: nextRuns,
+			PrevRuns: prevRuns,
 			Origin:   origin,
 			Config:   cfgBytes,
 		})
@@ -318,6 +345,8 @@ func (s *Server) disabledJobsHandler(w http.ResponseWriter, _ *http.Request) {
 			Type:     jobType(job),
 			Schedule: job.GetSchedule(),
 			Command:  job.GetCommand(),
+			NextRuns: []time.Time{},
+			PrevRuns: []time.Time{},
 			Origin:   origin,
 			Config:   cfgBytes,
 		})
