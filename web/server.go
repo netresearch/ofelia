@@ -323,7 +323,7 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 }
 
 func (s *Server) jobsHandler(w http.ResponseWriter, _ *http.Request) {
-	jobs := s.buildAPIJobs(s.scheduler.Jobs)
+	jobs := s.buildAPIJobs(s.scheduler.GetActiveJobs())
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jobs)
 }
@@ -335,22 +335,7 @@ func (s *Server) removedJobsHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) disabledJobsHandler(w http.ResponseWriter, _ *http.Request) {
-	disabled := s.scheduler.GetDisabledJobs()
-	jobs := make([]apiJob, 0, len(disabled))
-	for _, job := range disabled {
-		origin := s.jobOrigin(job.GetName())
-		cfgBytes, _ := json.Marshal(job)
-		jobs = append(jobs, apiJob{
-			Name:     job.GetName(),
-			Type:     jobType(job),
-			Schedule: job.GetSchedule(),
-			Command:  job.GetCommand(),
-			NextRuns: []time.Time{},
-			PrevRuns: []time.Time{},
-			Origin:   origin,
-			Config:   cfgBytes,
-		})
-	}
+	jobs := s.buildAPIJobs(s.scheduler.GetDisabledJobs())
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jobs)
 }
@@ -441,10 +426,12 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try atomic update first; fall back to disable+add for new jobs
+	// Try atomic update first; fall back to remove+add for new jobs
 	if err := s.scheduler.UpdateJob(req.Name, req.Schedule, job); err != nil {
-		// Job doesn't exist yet — disable any remnant and add fresh
-		_ = s.scheduler.DisableJob(req.Name)
+		// Job doesn't exist yet — remove any remnant and add fresh
+		if old := s.scheduler.GetJob(req.Name); old != nil {
+			_ = s.scheduler.RemoveJob(old)
+		}
 		if err := s.scheduler.AddJob(job); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
