@@ -41,13 +41,49 @@ type Scheduler struct {
 	wg                sync.WaitGroup
 	mu                sync.RWMutex
 	maxConcurrentJobs int
-	jobSemaphore      chan struct{}
+	concurrencySem    *concurrencySemaphore // go-cron middleware semaphore
 	retryExecutor     *RetryExecutor
 	jobsByName        map[string]Job
 	disabledNames     map[string]struct{}
 	metricsRecorder   MetricsRecorder
 	clock             Clock
 	onJobComplete     func(jobName string, success bool)
+}
+
+// concurrencySemaphore holds a swappable semaphore channel used by the
+// go-cron MaxConcurrentSkip-style job wrapper. The wrapper reads the
+// current channel via an atomic-style accessor so that SetMaxConcurrentJobs
+// can resize the limit before the scheduler is started.
+type concurrencySemaphore struct {
+	mu  sync.RWMutex
+	ch  chan struct{}
+	cap int
+}
+
+func newConcurrencySemaphore(n int) *concurrencySemaphore {
+	return &concurrencySemaphore{
+		ch:  make(chan struct{}, n),
+		cap: n,
+	}
+}
+
+func (cs *concurrencySemaphore) resize(n int) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.ch = make(chan struct{}, n)
+	cs.cap = n
+}
+
+func (cs *concurrencySemaphore) getChan() chan struct{} {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.ch
+}
+
+func (cs *concurrencySemaphore) getCap() int {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.cap
 }
 
 func NewScheduler(l *slog.Logger) *Scheduler {
@@ -85,10 +121,19 @@ func newSchedulerInternal(
 	// can capture it by reference; the variable is assigned after cron.New().
 	var cronInstance *cron.Cron
 
+	// Default to 10 concurrent jobs, can be configured via SetMaxConcurrentJobs
+	maxConcurrent := 10
+	sem := newConcurrencySemaphore(maxConcurrent)
+
+	// Build the go-cron middleware chain. Concurrency limiting uses a
+	// MaxConcurrentSkip-style wrapper backed by the scheduler's resizable
+	// semaphore so that SetMaxConcurrentJobs can adjust the limit before Start.
+	concurrencyWrapper := maxConcurrentSkipWrapper(cronUtils, sem)
+
 	cronOpts := []cron.Option{
 		cron.WithParser(parser),
 		cron.WithLogger(cronUtils),
-		cron.WithChain(cron.Recover(cronUtils)),
+		cron.WithChain(cron.Recover(cronUtils), concurrencyWrapper),
 		cron.WithCapacity(64), // pre-allocate for typical workloads
 	}
 
@@ -116,9 +161,6 @@ func newSchedulerInternal(
 
 	cronInstance = cron.New(cronOpts...)
 
-	// Default to 10 concurrent jobs, can be configured
-	maxConcurrent := 10
-
 	var clock Clock = GetDefaultClock()
 	if cronClock != nil {
 		clock = cronClock.FakeClock
@@ -128,7 +170,7 @@ func newSchedulerInternal(
 		Logger:            l,
 		cron:              cronInstance,
 		maxConcurrentJobs: maxConcurrent,
-		jobSemaphore:      make(chan struct{}, maxConcurrent),
+		concurrencySem:    sem,
 		retryExecutor:     NewRetryExecutor(l),
 		jobsByName:        make(map[string]Job),
 		disabledNames:     make(map[string]struct{}),
@@ -144,7 +186,54 @@ func newSchedulerInternal(
 	return s
 }
 
-// SetMaxConcurrentJobs configures the maximum number of concurrent jobs
+// maxConcurrentSkipWrapper returns a cron.JobWrapper that limits the total
+// number of concurrent jobs across all entries. When the limit is reached,
+// new invocations are skipped (not queued) and a log message is emitted.
+//
+// This is functionally equivalent to go-cron's cron.MaxConcurrentSkip but
+// uses the scheduler's resizable concurrencySemaphore so that the limit
+// can be adjusted via SetMaxConcurrentJobs before the scheduler starts.
+func maxConcurrentSkipWrapper(logger cron.Logger, sem *concurrencySemaphore) cron.JobWrapper {
+	return func(j cron.Job) cron.Job {
+		return &maxConcurrentSkipJob{inner: j, sem: sem, logger: logger}
+	}
+}
+
+// maxConcurrentSkipJob implements cron.Job and cron.JobWithContext.
+// It acquires a slot from the shared concurrencySemaphore before running
+// the inner job. If no slot is available, the invocation is skipped.
+type maxConcurrentSkipJob struct {
+	inner  cron.Job
+	sem    *concurrencySemaphore
+	logger cron.Logger
+}
+
+func (m *maxConcurrentSkipJob) Run() {
+	m.RunWithContext(context.Background())
+}
+
+func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
+	ch := m.sem.getChan()
+	select {
+	case ch <- struct{}{}: // try to acquire slot
+		defer func() { <-ch }()
+		if jc, ok := m.inner.(cron.JobWithContext); ok {
+			jc.RunWithContext(ctx)
+		} else {
+			m.inner.Run()
+		}
+	default:
+		m.logger.Info("skip", "reason", "max concurrent reached",
+			"limit", m.sem.getCap())
+	}
+}
+
+// SetMaxConcurrentJobs configures the maximum number of concurrent jobs.
+// The limit is enforced by the go-cron middleware chain (MaxConcurrentSkip
+// pattern). When the limit is reached, new job invocations are skipped.
+//
+// This should be called before Start(); calling it on a running scheduler
+// resizes the semaphore but in-flight jobs retain the previous channel.
 func (s *Scheduler) SetMaxConcurrentJobs(maxJobs int) {
 	if maxJobs < 1 {
 		maxJobs = 1
@@ -152,7 +241,7 @@ func (s *Scheduler) SetMaxConcurrentJobs(maxJobs int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.maxConcurrentJobs = maxJobs
-	s.jobSemaphore = make(chan struct{}, maxJobs)
+	s.concurrencySem.resize(maxJobs)
 }
 
 func (s *Scheduler) SetMetricsRecorder(recorder MetricsRecorder) {
@@ -408,7 +497,8 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 
 	// Delegate to go-cron's TriggerEntryByName for proper middleware chain execution.
 	// This works for all job types including triggered schedules, since all jobs now
-	// have cron entries (registered via TriggeredSchedule in PR #498).
+	// have cron entries (registered via TriggeredSchedule in PR #498). The
+	// MaxConcurrentSkip middleware in the chain handles concurrency limiting.
 	if err := s.cron.TriggerEntryByName(jobName); err != nil {
 		return fmt.Errorf("trigger job %s: %w", jobName, err)
 	}
@@ -711,17 +801,9 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		}
 	}()
 
-	// Acquire semaphore slot for job concurrency limit
-	select {
-	case w.s.jobSemaphore <- struct{}{}:
-		// Got a slot, proceed
-		defer func() { <-w.s.jobSemaphore }() // Release slot when done
-	default:
-		// No slots available, skip this execution
-		w.s.Logger.Warn(fmt.Sprintf("Job %q skipped - max concurrent jobs limit reached (%d)",
-			w.j.GetName(), w.s.maxConcurrentJobs))
-		return
-	}
+	// NOTE: Concurrency limiting is handled by the go-cron middleware chain
+	// (maxConcurrentSkipWrapper). Dependencies are handled by go-cron's native
+	// DAG engine. No manual semaphore or workflow checks needed here.
 
 	if !w.s.cron.IsRunning() {
 		return
