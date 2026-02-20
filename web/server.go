@@ -429,7 +429,7 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	// Try atomic update first; fall back to remove+add for new jobs
 	if err := s.scheduler.UpdateJob(req.Name, req.Schedule, job); err != nil {
 		// Job doesn't exist yet — remove any remnant and add fresh
-		if old := s.scheduler.GetJob(req.Name); old != nil {
+		if old := s.scheduler.GetAnyJob(req.Name); old != nil {
 			_ = s.scheduler.RemoveJob(old)
 		}
 		if err := s.scheduler.AddJob(job); err != nil {
