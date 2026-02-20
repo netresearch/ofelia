@@ -61,8 +61,8 @@ func TestSchedulerConcurrencyLimit(t *testing.T) {
 		t.Error("Scheduler must have a default concurrency limit")
 	}
 
-	if s.jobSemaphore == nil {
-		t.Error("Scheduler must initialize job semaphore")
+	if s.concurrencySem == nil {
+		t.Error("Scheduler must initialize concurrency semaphore")
 	}
 
 	// Test setting custom limit
