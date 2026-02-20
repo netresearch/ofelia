@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/netresearch/go-cron"
 )
 
 // ============================================================================
@@ -642,7 +644,9 @@ func (m *mockMetricsRecorder) RecordJobStart(_ string)                { m.jobSta
 func (m *mockMetricsRecorder) RecordJobComplete(_ string, _ float64, _ bool) {
 	m.jobCompleted.Add(1)
 }
-func (m *mockMetricsRecorder) RecordJobScheduled(_ string) { m.jobScheduled.Add(1) }
+func (m *mockMetricsRecorder) RecordJobScheduled(_ string)                { m.jobScheduled.Add(1) }
+func (m *mockMetricsRecorder) RecordWorkflowComplete(_ string, _ string)  {}
+func (m *mockMetricsRecorder) RecordWorkflowJobResult(_ string, _ string) {}
 
 // --- Test StopWithTimeout returns error on timeout ---
 func TestStopWithTimeout_Timeout(t *testing.T) {
@@ -872,5 +876,272 @@ func TestAddJob_EmptySchedule(t *testing.T) {
 	}
 	if err != ErrEmptySchedule {
 		t.Errorf("Expected ErrEmptySchedule, got: %v", err)
+	}
+}
+
+// ============================================================================
+// Tests for workflowStatus helper
+// ============================================================================
+
+func TestWorkflowStatus_EmptyResults(t *testing.T) {
+	t.Parallel()
+
+	status := workflowStatus(nil)
+	if status != workflowStatusSuccess {
+		t.Errorf("Expected 'success' for nil results, got %q", status)
+	}
+
+	status = workflowStatus(map[cron.EntryID]cron.JobResult{})
+	if status != workflowStatusSuccess {
+		t.Errorf("Expected 'success' for empty results, got %q", status)
+	}
+}
+
+func TestWorkflowStatus_AllSuccess(t *testing.T) {
+	t.Parallel()
+
+	results := map[cron.EntryID]cron.JobResult{
+		1: cron.ResultSuccess,
+		2: cron.ResultSuccess,
+		3: cron.ResultSuccess,
+	}
+	status := workflowStatus(results)
+	if status != workflowStatusSuccess {
+		t.Errorf("Expected 'success', got %q", status)
+	}
+}
+
+func TestWorkflowStatus_AnyFailure(t *testing.T) {
+	t.Parallel()
+
+	results := map[cron.EntryID]cron.JobResult{
+		1: cron.ResultSuccess,
+		2: cron.ResultFailure,
+		3: cron.ResultSuccess,
+	}
+	status := workflowStatus(results)
+	if status != workflowStatusFailure {
+		t.Errorf("Expected 'failure', got %q", status)
+	}
+}
+
+func TestWorkflowStatus_AllSkipped(t *testing.T) {
+	t.Parallel()
+
+	results := map[cron.EntryID]cron.JobResult{
+		1: cron.ResultSkipped,
+		2: cron.ResultSkipped,
+	}
+	status := workflowStatus(results)
+	if status != workflowStatusSkipped {
+		t.Errorf("Expected 'skipped', got %q", status)
+	}
+}
+
+func TestWorkflowStatus_Mixed(t *testing.T) {
+	t.Parallel()
+
+	results := map[cron.EntryID]cron.JobResult{
+		1: cron.ResultSuccess,
+		2: cron.ResultSkipped,
+	}
+	status := workflowStatus(results)
+	if status != workflowStatusMixed {
+		t.Errorf("Expected 'mixed', got %q", status)
+	}
+}
+
+func TestWorkflowStatus_FailureTakesPrecedence(t *testing.T) {
+	t.Parallel()
+
+	results := map[cron.EntryID]cron.JobResult{
+		1: cron.ResultSuccess,
+		2: cron.ResultSkipped,
+		3: cron.ResultFailure,
+	}
+	status := workflowStatus(results)
+	if status != workflowStatusFailure {
+		t.Errorf("Expected 'failure' (takes precedence), got %q", status)
+	}
+}
+
+func TestWorkflowStatus_SingleSuccess(t *testing.T) {
+	t.Parallel()
+
+	results := map[cron.EntryID]cron.JobResult{
+		1: cron.ResultSuccess,
+	}
+	status := workflowStatus(results)
+	if status != workflowStatusSuccess {
+		t.Errorf("Expected 'success', got %q", status)
+	}
+}
+
+func TestWorkflowStatus_SingleFailure(t *testing.T) {
+	t.Parallel()
+
+	results := map[cron.EntryID]cron.JobResult{
+		1: cron.ResultFailure,
+	}
+	status := workflowStatus(results)
+	if status != workflowStatusFailure {
+		t.Errorf("Expected 'failure', got %q", status)
+	}
+}
+
+func TestWorkflowStatus_SingleSkipped(t *testing.T) {
+	t.Parallel()
+
+	results := map[cron.EntryID]cron.JobResult{
+		1: cron.ResultSkipped,
+	}
+	status := workflowStatus(results)
+	if status != workflowStatusSkipped {
+		t.Errorf("Expected 'skipped', got %q", status)
+	}
+}
+
+func TestWorkflowStatus_PendingOnly(t *testing.T) {
+	t.Parallel()
+
+	// Pending-only shouldn't happen in practice (OnWorkflowComplete fires
+	// when all are terminal), but handle gracefully
+	results := map[cron.EntryID]cron.JobResult{
+		1: cron.ResultPending,
+	}
+	status := workflowStatus(results)
+	// No success/failure/skipped flags set, falls to default "mixed"
+	if status != workflowStatusMixed {
+		t.Errorf("Expected 'mixed' for pending-only, got %q", status)
+	}
+}
+
+// ============================================================================
+// Tests for recordWorkflowMetrics
+// ============================================================================
+
+// workflowMetricsCapture captures workflow metric recording calls.
+type workflowMetricsCapture struct {
+	mockMetricsRecorder
+	completions []struct {
+		rootJobName string
+		status      string
+	}
+	jobResults []struct {
+		jobName string
+		result  string
+	}
+}
+
+func (w *workflowMetricsCapture) RecordWorkflowComplete(rootJobName, status string) {
+	w.completions = append(w.completions, struct {
+		rootJobName string
+		status      string
+	}{rootJobName, status})
+}
+
+func (w *workflowMetricsCapture) RecordWorkflowJobResult(jobName, result string) {
+	w.jobResults = append(w.jobResults, struct {
+		jobName string
+		result  string
+	}{jobName, result})
+}
+
+func TestRecordWorkflowMetrics_WithNamedEntries(t *testing.T) {
+	t.Parallel()
+
+	// Create a cron instance with named entries
+	c := cron.New(cron.WithParser(cron.FullParser()))
+	rootID, _ := c.AddFunc("@every 1h", func() {}, cron.WithName("root-job"))
+	childID, _ := c.AddFunc("@every 1h", func() {}, cron.WithName("child-job"))
+
+	capture := &workflowMetricsCapture{}
+	results := map[cron.EntryID]cron.JobResult{
+		rootID:  cron.ResultSuccess,
+		childID: cron.ResultFailure,
+	}
+
+	recordWorkflowMetrics(c, capture, rootID, results)
+
+	// Check workflow completion was recorded
+	if len(capture.completions) != 1 {
+		t.Fatalf("Expected 1 workflow completion, got %d", len(capture.completions))
+	}
+	if capture.completions[0].rootJobName != "root-job" {
+		t.Errorf("Expected root job name 'root-job', got %q", capture.completions[0].rootJobName)
+	}
+	if capture.completions[0].status != workflowStatusFailure {
+		t.Errorf("Expected status 'failure', got %q", capture.completions[0].status)
+	}
+
+	// Check individual job results were recorded
+	if len(capture.jobResults) != 2 {
+		t.Fatalf("Expected 2 job results, got %d", len(capture.jobResults))
+	}
+
+	// Build a map of results for easier assertion (iteration order not guaranteed)
+	resultMap := make(map[string]string)
+	for _, jr := range capture.jobResults {
+		resultMap[jr.jobName] = jr.result
+	}
+
+	if resultMap["root-job"] != "Success" {
+		t.Errorf("Expected root-job result 'Success', got %q", resultMap["root-job"])
+	}
+	if resultMap["child-job"] != "Failure" {
+		t.Errorf("Expected child-job result 'Failure', got %q", resultMap["child-job"])
+	}
+}
+
+func TestRecordWorkflowMetrics_UnknownEntries(t *testing.T) {
+	t.Parallel()
+
+	// Create a cron instance without the referenced entries
+	c := cron.New(cron.WithParser(cron.FullParser()))
+
+	capture := &workflowMetricsCapture{}
+	results := map[cron.EntryID]cron.JobResult{
+		999: cron.ResultSuccess,
+	}
+
+	recordWorkflowMetrics(c, capture, 999, results)
+
+	// Should use unknownJobName for entries not found
+	if len(capture.completions) != 1 {
+		t.Fatalf("Expected 1 workflow completion, got %d", len(capture.completions))
+	}
+	if capture.completions[0].rootJobName != unknownJobName {
+		t.Errorf("Expected root job name %q, got %q", unknownJobName, capture.completions[0].rootJobName)
+	}
+
+	if len(capture.jobResults) != 1 {
+		t.Fatalf("Expected 1 job result, got %d", len(capture.jobResults))
+	}
+	if capture.jobResults[0].jobName != unknownJobName {
+		t.Errorf("Expected job name %q, got %q", unknownJobName, capture.jobResults[0].jobName)
+	}
+}
+
+func TestRecordWorkflowMetrics_EmptyResults(t *testing.T) {
+	t.Parallel()
+
+	c := cron.New(cron.WithParser(cron.FullParser()))
+
+	capture := &workflowMetricsCapture{}
+	results := map[cron.EntryID]cron.JobResult{}
+
+	recordWorkflowMetrics(c, capture, 0, results)
+
+	// Workflow completion should still be recorded with "success" status
+	if len(capture.completions) != 1 {
+		t.Fatalf("Expected 1 workflow completion, got %d", len(capture.completions))
+	}
+	if capture.completions[0].status != workflowStatusSuccess {
+		t.Errorf("Expected status 'success' for empty results, got %q", capture.completions[0].status)
+	}
+
+	// No individual job results
+	if len(capture.jobResults) != 0 {
+		t.Errorf("Expected 0 job results, got %d", len(capture.jobResults))
 	}
 }

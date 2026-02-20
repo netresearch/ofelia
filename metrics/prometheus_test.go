@@ -217,6 +217,8 @@ func TestDefaultMetricsInitialization(t *testing.T) {
 		"ofelia_container_monitor_fallbacks_total",
 		"ofelia_container_monitor_method",
 		"ofelia_container_wait_duration_seconds",
+		"ofelia_workflow_completions_total",
+		"ofelia_workflow_job_results_total",
 	}
 
 	for _, name := range expectedMetrics {
@@ -614,4 +616,84 @@ func TestLastUpdatedTimestamp(t *testing.T) {
 	}
 
 	t.Log("LastUpdated timestamp test passed")
+}
+
+func TestWorkflowCompletionMetrics(t *testing.T) {
+	mc := NewCollector()
+	mc.InitDefaultMetrics()
+
+	// Verify workflow metrics are registered
+	if _, exists := mc.metrics["ofelia_workflow_completions_total"]; !exists {
+		t.Error("Expected ofelia_workflow_completions_total to be registered")
+	}
+	if _, exists := mc.metrics["ofelia_workflow_job_results_total"]; !exists {
+		t.Error("Expected ofelia_workflow_job_results_total to be registered")
+	}
+
+	// Record workflow completions
+	mc.RecordWorkflowComplete("root-job", "success")
+	mc.RecordWorkflowComplete("root-job", "failure")
+	mc.RecordWorkflowComplete("other-root", "mixed")
+
+	if mc.metrics["ofelia_workflow_completions_total"].Value != 3 {
+		t.Errorf("Expected 3 workflow completions, got %f",
+			mc.metrics["ofelia_workflow_completions_total"].Value)
+	}
+
+	// Record workflow job results
+	mc.RecordWorkflowJobResult("job-a", "Success")
+	mc.RecordWorkflowJobResult("job-b", "Failure")
+	mc.RecordWorkflowJobResult("job-c", "Skipped")
+
+	if mc.metrics["ofelia_workflow_job_results_total"].Value != 3 {
+		t.Errorf("Expected 3 workflow job results, got %f",
+			mc.metrics["ofelia_workflow_job_results_total"].Value)
+	}
+
+	t.Log("Workflow completion metrics test passed")
+}
+
+func TestWorkflowMetricsExport(t *testing.T) {
+	mc := NewCollector()
+	mc.InitDefaultMetrics()
+
+	mc.RecordWorkflowComplete("root-job", "success")
+	mc.RecordWorkflowJobResult("child-job", "Success")
+
+	output := mc.Export()
+
+	if !strings.Contains(output, "ofelia_workflow_completions_total") {
+		t.Error("Export should contain ofelia_workflow_completions_total")
+	}
+	if !strings.Contains(output, "ofelia_workflow_job_results_total") {
+		t.Error("Export should contain ofelia_workflow_job_results_total")
+	}
+
+	t.Log("Workflow metrics export test passed")
+}
+
+func TestDefaultMetricsIncludesWorkflowMetrics(t *testing.T) {
+	mc := NewCollector()
+	mc.InitDefaultMetrics()
+
+	workflowMetrics := []string{
+		"ofelia_workflow_completions_total",
+		"ofelia_workflow_job_results_total",
+	}
+
+	for _, name := range workflowMetrics {
+		if _, exists := mc.metrics[name]; !exists {
+			t.Errorf("Expected metric '%s' to be registered by InitDefaultMetrics", name)
+		}
+	}
+
+	// Verify initial values are zero
+	if mc.metrics["ofelia_workflow_completions_total"].Value != 0 {
+		t.Error("ofelia_workflow_completions_total should be initialized to 0")
+	}
+	if mc.metrics["ofelia_workflow_job_results_total"].Value != 0 {
+		t.Error("ofelia_workflow_job_results_total should be initialized to 0")
+	}
+
+	t.Log("Default metrics includes workflow metrics test passed")
 }

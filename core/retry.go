@@ -44,6 +44,9 @@ type MetricsRecorder interface {
 	RecordJobStart(jobName string)
 	RecordJobComplete(jobName string, durationSeconds float64, panicked bool)
 	RecordJobScheduled(jobName string)
+	// Workflow completion metrics (from go-cron ObservabilityHooks)
+	RecordWorkflowComplete(rootJobName string, status string)
+	RecordWorkflowJobResult(jobName string, result string)
 }
 
 // RetryExecutor wraps job execution with retry logic
