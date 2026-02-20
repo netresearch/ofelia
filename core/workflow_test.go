@@ -297,3 +297,78 @@ func TestEmptyJobList(t *testing.T) {
 		t.Fatalf("Should succeed with empty job list: %v", err)
 	}
 }
+
+func TestCollectDependencyEdges_TriggeredJobWithDependencies(t *testing.T) {
+	t.Parallel()
+
+	jobs := []Job{
+		&BareJob{
+			Name:         "triggered-child",
+			Schedule:     "@triggered",
+			Command:      "echo child",
+			Dependencies: []string{"parent"},
+		},
+		&BareJob{
+			Name:     "parent",
+			Schedule: "@daily",
+			Command:  "echo parent",
+		},
+	}
+
+	edges := collectDependencyEdges(jobs, newDiscardLogger())
+
+	if len(edges) != 1 {
+		t.Fatalf("Expected 1 edge, got %d", len(edges))
+	}
+
+	e := edges[0]
+	if e.parent != "parent" || e.child != "triggered-child" {
+		t.Errorf("Unexpected edge: got %s->%s, want parent->triggered-child", e.parent, e.child)
+	}
+	if e.condition != cron.OnSuccess {
+		t.Errorf("Unexpected condition for depends-on edge: got %v, want %v", e.condition, cron.OnSuccess)
+	}
+}
+
+func TestCollectDependencyEdges_TriggeredJobInOnSuccessFailure(t *testing.T) {
+	t.Parallel()
+
+	jobs := []Job{
+		&BareJob{
+			Name:      "parent",
+			Schedule:  "@daily",
+			Command:   "echo parent",
+			OnSuccess: []string{"success-triggered"},
+			OnFailure: []string{"failure-triggered"},
+		},
+		&BareJob{
+			Name:     "success-triggered",
+			Schedule: "@triggered",
+			Command:  "echo success",
+		},
+		&BareJob{
+			Name:     "failure-triggered",
+			Schedule: "@triggered",
+			Command:  "echo failure",
+		},
+	}
+
+	edges := collectDependencyEdges(jobs, newDiscardLogger())
+
+	if len(edges) != 2 {
+		t.Fatalf("Expected 2 edges, got %d", len(edges))
+	}
+
+	edgeMap := map[string]cron.TriggerCondition{}
+	for _, e := range edges {
+		key := e.parent + "->" + e.child
+		edgeMap[key] = e.condition
+	}
+
+	if cond, ok := edgeMap["parent->success-triggered"]; !ok || cond != cron.OnSuccess {
+		t.Error("Expected on-success edge: parent->success-triggered (OnSuccess)")
+	}
+	if cond, ok := edgeMap["parent->failure-triggered"]; !ok || cond != cron.OnFailure {
+		t.Error("Expected on-failure edge: parent->failure-triggered (OnFailure)")
+	}
+}

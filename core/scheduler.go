@@ -323,8 +323,8 @@ func (s *Scheduler) Start() error {
 	// Wire dependency edges into go-cron using native DAG engine.
 	// This must happen after all jobs are added to cron but before Start().
 	if err := BuildWorkflowDependencies(s.cron, s.Jobs, s.Logger); err != nil {
-		s.Logger.Error(fmt.Sprintf("Failed to build workflow dependencies: %v", err))
-		// Continue anyway - jobs without dependencies will still work
+		s.Logger.Error(fmt.Sprintf("Failed to build workflow dependencies: %v. "+
+			"Jobs without dependencies will still run, but workflows may not execute as expected", err))
 	}
 
 	s.mu.Unlock()
