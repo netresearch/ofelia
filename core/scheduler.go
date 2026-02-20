@@ -661,22 +661,20 @@ func recordWorkflowMetrics(
 	results map[cron.EntryID]cron.JobResult,
 ) {
 	// Determine the root job name from its entry
-	rootName := unknownJobName
-	if rootEntry := cronInstance.Entry(rootID); rootEntry.Name != "" {
-		rootName = rootEntry.Name
+	entryName := func(id cron.EntryID) string {
+		if entry := cronInstance.Entry(id); entry.Name != "" {
+			return entry.Name
+		}
+		return unknownJobName
 	}
 
 	// Aggregate results to determine overall workflow status
 	status := workflowStatus(results)
-	recorder.RecordWorkflowComplete(rootName, status)
+	recorder.RecordWorkflowComplete(entryName(rootID), status)
 
 	// Record individual job results
 	for entryID, result := range results {
-		jobName := unknownJobName
-		if entry := cronInstance.Entry(entryID); entry.Name != "" {
-			jobName = entry.Name
-		}
-		recorder.RecordWorkflowJobResult(jobName, result.String())
+		recorder.RecordWorkflowJobResult(entryName(entryID), result.String())
 	}
 }
 
