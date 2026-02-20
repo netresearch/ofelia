@@ -723,19 +723,9 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		return
 	}
 
-	w.s.mu.Lock()
 	if !w.s.cron.IsRunning() {
-		w.s.mu.Unlock()
 		return
 	}
-	w.s.wg.Add(1)
-	w.s.mu.Unlock()
-
-	defer func() {
-		w.s.mu.Lock()
-		w.s.wg.Done()
-		w.s.mu.Unlock()
-	}()
 
 	e, err := NewExecution()
 	if err != nil {
