@@ -311,9 +311,10 @@ func TestSetMetricsRecorder_PropagesToRetryExecutor(t *testing.T) {
 	// and the propagation happens)
 }
 
-// --- CONDITIONALS_NEGATION at line 311: IsTriggeredSchedule && ShouldRunOnStartup ---
-// In Start(), triggered-only jobs with RunOnStartup=true should be executed.
-// This tests both the IsTriggeredSchedule check AND the ShouldRunOnStartup check.
+// --- CONDITIONALS_NEGATION: ShouldRunOnStartup via WithRunImmediately ---
+// In AddJobWithTags(), jobs with RunOnStartup=true get WithRunImmediately().
+// For triggered schedules, go-cron fires them once at startup then they go dormant.
+// This tests that the startup execution works correctly for triggered jobs.
 func TestSchedulerStart_TriggeredJobStartup(t *testing.T) {
 	t.Parallel()
 

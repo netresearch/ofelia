@@ -288,12 +288,12 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 		}
 
 		// Compute next/prev execution times from the cron schedule.
-		// Triggered-only jobs, disabled (paused) jobs, and jobs without a cron
-		// entry return empty slices.
+		// Triggered-only jobs (detected via cron.IsTriggered on the entry's schedule),
+		// disabled (paused) jobs, and jobs without a cron entry return empty slices.
 		var nextRuns, prevRuns []time.Time
-		if !core.IsTriggeredSchedule(job.GetSchedule()) && s.scheduler.GetDisabledJob(job.GetName()) == nil {
+		if s.scheduler.GetDisabledJob(job.GetName()) == nil {
 			entry := s.scheduler.EntryByName(job.GetName())
-			if entry.Valid() && entry.Schedule != nil {
+			if entry.Valid() && entry.Schedule != nil && !cron.IsTriggered(entry.Schedule) {
 				nextRuns = cron.NextN(entry.Schedule, now, scheduleRunCount)
 				prevRuns = cron.PrevN(entry.Schedule, now, scheduleRunCount)
 			}
