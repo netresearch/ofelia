@@ -591,17 +591,19 @@ func TestSchedulerEntries(t *testing.T) {
 	}
 }
 
-// TestWorkflowOrchestratorCleanupOldExecutions tests the WorkflowOrchestrator.CleanupOldExecutions method
-func TestWorkflowOrchestratorCleanupOldExecutions(t *testing.T) {
+// TestBuildWorkflowDependencies_NoEdges tests BuildWorkflowDependencies with jobs that have no dependencies
+func TestBuildWorkflowDependencies_NoEdges(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	scheduler := NewScheduler(logger)
-	orchestrator := NewWorkflowOrchestrator(scheduler, logger)
+	sc := NewScheduler(logger)
 
-	// Clean up old executions with default retention
-	orchestrator.CleanupOldExecutions(0)
+	job := &BareJob{Name: "no-deps", Schedule: "@daily", Command: "echo ok"}
+	_ = sc.AddJob(job)
 
-	// Clean up with custom retention (30 days)
-	orchestrator.CleanupOldExecutions(30 * 24 * time.Hour)
+	// Should succeed with no edges
+	err := BuildWorkflowDependencies(sc.cron, sc.Jobs, logger)
+	if err != nil {
+		t.Fatalf("BuildWorkflowDependencies should succeed with no dependency edges: %v", err)
+	}
 }

@@ -42,58 +42,43 @@ func TestNewSchedulerWithClock_NegativeNanosecond(t *testing.T) {
 	_ = sc.Stop()
 }
 
-// --- ARITHMETIC_BASE at line 416: 1 * time.Hour ---
-// startWorkflowCleanup uses `1 * time.Hour` as cleanup interval.
-// Mutation changes arithmetic (e.g., 1+time.Hour or 1-time.Hour).
-// Verify cleanup ticker is created with a sensible interval.
-func TestStartWorkflowCleanup_CleanupInterval(t *testing.T) {
+// TestBuildWorkflowDependencies_WiresEdges tests that BuildWorkflowDependencies
+// wires dependency edges into go-cron's native DAG engine.
+func TestBuildWorkflowDependencies_WiresEdges(t *testing.T) {
 	t.Parallel()
 
-	fakeClock := NewFakeClock(time.Now())
 	sc := NewScheduler(newDiscardLogger())
-	sc.SetClock(fakeClock)
 
-	job := &TestJob{}
-	job.Name = "cleanup-test-job"
-	job.Schedule = "@daily"
-	if err := sc.AddJob(job); err != nil {
-		t.Fatalf("AddJob: %v", err)
+	parentJob := &BareJob{
+		Name:     "parent-job",
+		Schedule: "@daily",
+		Command:  "echo parent",
+	}
+	childJob := &BareJob{
+		Name:         "child-job",
+		Schedule:     "@daily",
+		Command:      "echo child",
+		Dependencies: []string{"parent-job"},
 	}
 
-	if err := sc.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
+	_ = sc.AddJob(parentJob)
+	_ = sc.AddJob(childJob)
+
+	// Wire dependencies
+	err := BuildWorkflowDependencies(sc.cron, sc.Jobs, sc.Logger)
+	if err != nil {
+		t.Fatalf("BuildWorkflowDependencies: %v", err)
 	}
 
-	// The cleanup ticker should have been created
-	if sc.cleanupTicker == nil {
-		t.Fatal("cleanupTicker should be initialized after Start()")
+	// Verify that go-cron has the dependency registered
+	childEntry := sc.cron.EntryByName("child-job")
+	if !childEntry.Valid() {
+		t.Fatal("child-job entry should exist in cron")
 	}
 
-	// Add an old execution to the workflow orchestrator
-	oldTime := time.Now().Add(-48 * time.Hour) // 48 hours ago, older than 24h retention
-	sc.workflowOrchestrator.mu.Lock()
-	sc.workflowOrchestrator.executions["old-exec"] = &WorkflowExecution{
-		ID:            "old-exec",
-		StartTime:     oldTime,
-		CompletedJobs: make(map[string]bool),
-		FailedJobs:    make(map[string]bool),
-		RunningJobs:   make(map[string]bool),
-	}
-	sc.workflowOrchestrator.mu.Unlock()
-
-	// Advance the clock by 1 hour to trigger the cleanup
-	fakeClock.Advance(1 * time.Hour)
-
-	// Give the goroutine a moment to process
-	time.Sleep(50 * time.Millisecond)
-
-	// The old execution should have been cleaned up
-	sc.workflowOrchestrator.mu.RLock()
-	_, exists := sc.workflowOrchestrator.executions["old-exec"]
-	sc.workflowOrchestrator.mu.RUnlock()
-
-	if exists {
-		t.Error("Old workflow execution should have been cleaned up after 1 hour tick")
+	deps := sc.cron.Dependencies(childEntry.ID)
+	if len(deps) == 0 {
+		t.Error("child-job should have at least one dependency in go-cron")
 	}
 
 	_ = sc.Stop()
@@ -370,67 +355,39 @@ func TestSchedulerStart_TriggeredJobStartup(t *testing.T) {
 	_ = completedJobs
 }
 
-// --- CONDITIONALS_NEGATION at line 419 and 424 ---
-// These are in startWorkflowCleanup, related to environment variable parsing.
-// Line 419: if interval := os.Getenv("OFELIA_WORKFLOW_CLEANUP_INTERVAL"); interval != ""
-// Line 424: if d, err := time.ParseDuration(interval); err == nil
-// Line 424: if d, err := time.ParseDuration(retention); err == nil
-// We test that the default values are used when env vars are not set.
-func TestStartWorkflowCleanup_DefaultValues(t *testing.T) {
+// TestBuildWorkflowDependencies_CircularDetection tests that circular dependencies
+// are detected and reported via go-cron's native cycle detection.
+func TestBuildWorkflowDependencies_CircularDetection(t *testing.T) {
 	t.Parallel()
 
-	fakeClock := NewFakeClock(time.Now())
 	sc := NewScheduler(newDiscardLogger())
-	sc.SetClock(fakeClock)
 
-	job := &TestJob{}
-	job.Name = "default-cleanup-job"
-	job.Schedule = "@daily"
-	_ = sc.AddJob(job)
-
-	_ = sc.Start()
-
-	// Without env vars, cleanup should use defaults:
-	// - cleanupInterval: 1 hour
-	// - retentionDuration: 24 hours
-	if sc.cleanupTicker == nil {
-		t.Fatal("cleanupTicker should be initialized")
+	jobA := &BareJob{
+		Name:         "job-a",
+		Schedule:     "@daily",
+		Command:      "echo A",
+		Dependencies: []string{"job-c"},
+	}
+	jobB := &BareJob{
+		Name:         "job-b",
+		Schedule:     "@daily",
+		Command:      "echo B",
+		Dependencies: []string{"job-a"},
+	}
+	jobC := &BareJob{
+		Name:         "job-c",
+		Schedule:     "@daily",
+		Command:      "echo C",
+		Dependencies: []string{"job-b"},
 	}
 
-	// Add execution that is 25 hours old (should be cleaned after 24h retention)
-	sc.workflowOrchestrator.mu.Lock()
-	sc.workflowOrchestrator.executions["should-clean"] = &WorkflowExecution{
-		ID:            "should-clean",
-		StartTime:     time.Now().Add(-25 * time.Hour),
-		CompletedJobs: make(map[string]bool),
-		FailedJobs:    make(map[string]bool),
-		RunningJobs:   make(map[string]bool),
-	}
-	// Add execution that is 23 hours old (should NOT be cleaned with 24h retention)
-	sc.workflowOrchestrator.executions["should-keep"] = &WorkflowExecution{
-		ID:            "should-keep",
-		StartTime:     time.Now().Add(-23 * time.Hour),
-		CompletedJobs: make(map[string]bool),
-		FailedJobs:    make(map[string]bool),
-		RunningJobs:   make(map[string]bool),
-	}
-	sc.workflowOrchestrator.mu.Unlock()
+	_ = sc.AddJob(jobA)
+	_ = sc.AddJob(jobB)
+	_ = sc.AddJob(jobC)
 
-	// Advance clock by 1 hour to trigger cleanup
-	fakeClock.Advance(1 * time.Hour)
-	time.Sleep(50 * time.Millisecond)
-
-	// 25-hour-old execution should be cleaned
-	sc.workflowOrchestrator.mu.RLock()
-	_, existsOld := sc.workflowOrchestrator.executions["should-clean"]
-	_, existsNew := sc.workflowOrchestrator.executions["should-keep"]
-	sc.workflowOrchestrator.mu.RUnlock()
-
-	if existsOld {
-		t.Error("25-hour-old execution should have been cleaned up (retention is 24h)")
-	}
-	if !existsNew {
-		t.Error("23-hour-old execution should NOT have been cleaned up (retention is 24h)")
+	err := BuildWorkflowDependencies(sc.cron, sc.Jobs, sc.Logger)
+	if err == nil {
+		t.Error("BuildWorkflowDependencies should detect circular dependency")
 	}
 
 	_ = sc.Stop()
@@ -496,18 +453,13 @@ func TestIsJobRunning_NoSuchJob(t *testing.T) {
 	}
 }
 
-// --- CONDITIONALS_BOUNDARY + CONDITIONALS_NEGATION at lines 680, 684 ---
-// These are in runWithCtx (jobWrapper):
-// Line 680: !w.s.workflowOrchestrator.CanExecute(...) -- dependency check
-// Line 684: semaphore select/default -- concurrency limit
-// Tests that the dependency check and semaphore work correctly.
-func TestJobWrapper_DependencyCheckPreventsExecution(t *testing.T) {
+// TestWorkflowDependenciesWiredInStart tests that workflow dependencies are
+// wired during scheduler Start() and go-cron handles execution ordering.
+func TestWorkflowDependenciesWiredInStart(t *testing.T) {
 	t.Parallel()
 
 	sc := NewScheduler(newDiscardLogger())
 
-	// Use *BareJob directly so BuildDependencyGraph can extract Dependencies
-	// (type assertion `job.(*BareJob)` only works for exact *BareJob type)
 	prereqJob := &BareJob{
 		Name:     "prerequisite-job",
 		Schedule: "@daily",
@@ -525,11 +477,21 @@ func TestJobWrapper_DependencyCheckPreventsExecution(t *testing.T) {
 
 	_ = sc.Start()
 
-	// Run the dependent job without completing the prerequisite first.
-	// The dependency check in RunJob should fail and return ErrDependencyNotMet.
-	err := sc.RunJob(context.Background(), "dependent-job")
-	if err == nil {
-		t.Error("RunJob should fail for job with unsatisfied dependencies")
+	// Verify dependencies are wired in go-cron
+	depEntry := sc.cron.EntryByName("dependent-job")
+	if !depEntry.Valid() {
+		t.Fatal("dependent-job should exist as cron entry")
+	}
+
+	deps := sc.cron.Dependencies(depEntry.ID)
+	if len(deps) == 0 {
+		t.Error("dependent-job should have dependencies wired in go-cron after Start()")
+	}
+
+	// Triggering the prerequisite should work (it has children, so it starts a workflow)
+	err := sc.RunJob(context.Background(), "prerequisite-job")
+	if err != nil {
+		t.Errorf("RunJob should succeed for job without unsatisfied dependencies: %v", err)
 	}
 
 	_ = sc.Stop()
@@ -573,10 +535,8 @@ func TestJobWrapper_SemaphoreLimitsExecution(t *testing.T) {
 	}
 }
 
-// --- CONDITIONALS_BOUNDARY at line 680, 684 ---
-// These test exact boundary conditions in the runWithCtx method.
-// Line 680: CanExecute returning exactly true (boundary)
-// Line 684: semaphore exactly at capacity
+// TestJobWrapper_SemaphoreExactCapacity tests boundary conditions where
+// the concurrency semaphore is exactly at capacity.
 func TestJobWrapper_SemaphoreExactCapacity(t *testing.T) {
 	t.Parallel()
 

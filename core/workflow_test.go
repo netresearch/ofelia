@@ -1,282 +1,374 @@
 package core
 
 import (
-	"context"
+	"errors"
 	"testing"
+
+	"github.com/netresearch/go-cron"
 )
 
-// TestWorkflowDependencies tests job dependency resolution
+// TestWorkflowDependencies tests that depends-on edges are wired correctly
 func TestWorkflowDependencies(t *testing.T) {
-	logger := newDiscardLogger()
-	scheduler := NewScheduler(logger)
-	orchestrator := scheduler.workflowOrchestrator
+	t.Parallel()
 
-	// Create test jobs with dependencies
-	jobA := &BareJob{
-		Name:         "job-a",
-		Command:      "echo A",
-		Dependencies: []string{},
-	}
+	sc := NewScheduler(newDiscardLogger())
 
-	jobB := &BareJob{
-		Name:         "job-b",
-		Command:      "echo B",
-		Dependencies: []string{"job-a"},
-	}
+	jobA := &BareJob{Name: "job-a", Schedule: "@daily", Command: "echo A"}
+	jobB := &BareJob{Name: "job-b", Schedule: "@daily", Command: "echo B", Dependencies: []string{"job-a"}}
+	jobC := &BareJob{Name: "job-c", Schedule: "@daily", Command: "echo C", Dependencies: []string{"job-a", "job-b"}}
 
-	jobC := &BareJob{
-		Name:         "job-c",
-		Command:      "echo C",
-		Dependencies: []string{"job-a", "job-b"},
-	}
+	_ = sc.AddJob(jobA)
+	_ = sc.AddJob(jobB)
+	_ = sc.AddJob(jobC)
 
-	jobs := []Job{jobA, jobB, jobC}
-
-	// Build dependency graph
-	err := orchestrator.BuildDependencyGraph(jobs)
+	err := BuildWorkflowDependencies(sc.cron, sc.Jobs, sc.Logger)
 	if err != nil {
-		t.Fatalf("Failed to build dependency graph: %v", err)
+		t.Fatalf("BuildWorkflowDependencies failed: %v", err)
 	}
 
-	// Test initial state - only job A can run
-	executionID := "test-exec-1"
-
-	if !orchestrator.CanExecute("job-a", executionID) {
-		t.Error("Job A should be able to execute (no dependencies)")
+	// Verify job-b depends on job-a
+	entryB := sc.cron.EntryByName("job-b")
+	if !entryB.Valid() {
+		t.Fatal("job-b entry should exist")
+	}
+	depsB := sc.cron.Dependencies(entryB.ID)
+	if len(depsB) != 1 {
+		t.Fatalf("job-b should have 1 dependency, got %d", len(depsB))
 	}
 
-	if orchestrator.CanExecute("job-b", executionID) {
-		t.Error("Job B should not be able to execute (depends on A)")
+	entryA := sc.cron.EntryByName("job-a")
+	if depsB[0].ParentID != entryA.ID {
+		t.Error("job-b's dependency should be job-a")
+	}
+	if depsB[0].Condition != cron.OnSuccess {
+		t.Errorf("job-b's dependency condition should be OnSuccess, got %v", depsB[0].Condition)
 	}
 
-	if orchestrator.CanExecute("job-c", executionID) {
-		t.Error("Job C should not be able to execute (depends on A and B)")
+	// Verify job-c depends on both job-a and job-b
+	entryC := sc.cron.EntryByName("job-c")
+	if !entryC.Valid() {
+		t.Fatal("job-c entry should exist")
+	}
+	depsC := sc.cron.Dependencies(entryC.ID)
+	if len(depsC) != 2 {
+		t.Fatalf("job-c should have 2 dependencies, got %d", len(depsC))
 	}
 
-	// Mark job A as completed
-	orchestrator.JobStarted("job-a", executionID)
-	orchestrator.JobCompleted(context.Background(), "job-a", executionID, true)
-
-	// Now job B should be able to run
-	if !orchestrator.CanExecute("job-b", executionID) {
-		t.Error("Job B should be able to execute after A completes")
+	parentIDs := map[cron.EntryID]bool{}
+	for _, dep := range depsC {
+		parentIDs[dep.ParentID] = true
 	}
-
-	if orchestrator.CanExecute("job-c", executionID) {
-		t.Error("Job C should not be able to execute (still waiting for B)")
+	if !parentIDs[entryA.ID] {
+		t.Error("job-c should depend on job-a")
 	}
-
-	// Mark job B as completed
-	orchestrator.JobStarted("job-b", executionID)
-	orchestrator.JobCompleted(context.Background(), "job-b", executionID, true)
-
-	// Now job C should be able to run
-	if !orchestrator.CanExecute("job-c", executionID) {
-		t.Error("Job C should be able to execute after A and B complete")
+	entryBID := sc.cron.EntryByName("job-b").ID
+	if !parentIDs[entryBID] {
+		t.Error("job-c should depend on job-b")
 	}
 }
 
-// TestCircularDependencyDetection tests detection of circular dependencies
+// TestCircularDependencyDetection tests detection of circular dependencies via go-cron
 func TestCircularDependencyDetection(t *testing.T) {
-	logger := newDiscardLogger()
-	scheduler := NewScheduler(logger)
-	orchestrator := scheduler.workflowOrchestrator
+	t.Parallel()
 
-	// Create jobs with circular dependency
-	jobA := &BareJob{
-		Name:         "job-a",
-		Command:      "echo A",
-		Dependencies: []string{"job-c"}, // A depends on C
-	}
+	sc := NewScheduler(newDiscardLogger())
 
-	jobB := &BareJob{
-		Name:         "job-b",
-		Command:      "echo B",
-		Dependencies: []string{"job-a"}, // B depends on A
-	}
+	jobA := &BareJob{Name: "job-a", Schedule: "@daily", Command: "echo A", Dependencies: []string{"job-c"}}
+	jobB := &BareJob{Name: "job-b", Schedule: "@daily", Command: "echo B", Dependencies: []string{"job-a"}}
+	jobC := &BareJob{Name: "job-c", Schedule: "@daily", Command: "echo C", Dependencies: []string{"job-b"}}
 
-	jobC := &BareJob{
-		Name:         "job-c",
-		Command:      "echo C",
-		Dependencies: []string{"job-b"}, // C depends on B (creates cycle)
-	}
+	_ = sc.AddJob(jobA)
+	_ = sc.AddJob(jobB)
+	_ = sc.AddJob(jobC)
 
-	jobs := []Job{jobA, jobB, jobC}
-
-	// Should detect circular dependency
-	err := orchestrator.BuildDependencyGraph(jobs)
+	err := BuildWorkflowDependencies(sc.cron, sc.Jobs, sc.Logger)
 	if err == nil {
-		t.Error("Should have detected circular dependency")
+		t.Fatal("Should have detected circular dependency")
 	}
 
-	if err.Error() == "" || !contains(err.Error(), "circular") {
-		t.Errorf("Error should mention circular dependency, got: %v", err)
+	if !errors.Is(err, ErrCircularDependency) {
+		t.Errorf("Error should be ErrCircularDependency, got: %v", err)
 	}
 }
 
-// TestOnSuccessOnFailureTriggers tests conditional job triggers
+// TestOnSuccessOnFailureTriggers tests that on-success/on-failure edges are wired correctly
 func TestOnSuccessOnFailureTriggers(t *testing.T) {
-	logger := newDiscardLogger()
-	scheduler := NewScheduler(logger)
-	orchestrator := scheduler.workflowOrchestrator
+	t.Parallel()
 
-	// Create test jobs with success/failure triggers
+	sc := NewScheduler(newDiscardLogger())
+
 	jobMain := &BareJob{
 		Name:      "job-main",
+		Schedule:  "@daily",
 		Command:   "echo main",
 		OnSuccess: []string{"job-success"},
 		OnFailure: []string{"job-failure"},
 	}
+	jobSuccess := &BareJob{Name: "job-success", Schedule: "@daily", Command: "echo success"}
+	jobFailure := &BareJob{Name: "job-failure", Schedule: "@daily", Command: "echo failure"}
 
-	jobSuccess := &BareJob{
-		Name:    "job-success",
-		Command: "echo success",
-	}
+	_ = sc.AddJob(jobMain)
+	_ = sc.AddJob(jobSuccess)
+	_ = sc.AddJob(jobFailure)
 
-	jobFailure := &BareJob{
-		Name:    "job-failure",
-		Command: "echo failure",
-	}
-
-	jobs := []Job{jobMain, jobSuccess, jobFailure}
-	scheduler.Jobs = jobs
-	scheduler.jobsByName = map[string]Job{
-		"job-main":    jobMain,
-		"job-success": jobSuccess,
-		"job-failure": jobFailure,
-	}
-
-	err := orchestrator.BuildDependencyGraph(jobs)
+	err := BuildWorkflowDependencies(sc.cron, sc.Jobs, sc.Logger)
 	if err != nil {
-		t.Fatalf("Failed to build dependency graph: %v", err)
+		t.Fatalf("BuildWorkflowDependencies failed: %v", err)
 	}
 
-	// For this test, we'll just verify that the orchestrator correctly
-	// identifies which jobs should be triggered based on success/failure
-	// The actual RunJob method would be called in a real scenario
-
-	// Test success trigger
-	executionID := "test-exec-success"
-	orchestrator.JobStarted("job-main", executionID)
-
-	// Complete main job successfully
-	orchestrator.JobCompleted(context.Background(), "job-main", executionID, true)
-
-	// Verify that job-success can now execute (would be triggered)
-	if !orchestrator.CanExecute("job-success", executionID) {
-		t.Error("job-success should be able to execute after main job succeeds")
+	// Verify job-success has OnSuccess dependency on job-main
+	successEntry := sc.cron.EntryByName("job-success")
+	if !successEntry.Valid() {
+		t.Fatal("job-success entry should exist")
+	}
+	successDeps := sc.cron.Dependencies(successEntry.ID)
+	if len(successDeps) != 1 {
+		t.Fatalf("job-success should have 1 dependency, got %d", len(successDeps))
+	}
+	mainEntry := sc.cron.EntryByName("job-main")
+	if successDeps[0].ParentID != mainEntry.ID {
+		t.Error("job-success should depend on job-main")
+	}
+	if successDeps[0].Condition != cron.OnSuccess {
+		t.Errorf("Expected OnSuccess condition, got %v", successDeps[0].Condition)
 	}
 
-	// Test failure trigger
-	executionID = "test-exec-failure"
-	orchestrator.JobStarted("job-main", executionID)
-	orchestrator.JobCompleted(context.Background(), "job-main", executionID, false)
-
-	// Verify that job-failure can execute (would be triggered)
-	if !orchestrator.CanExecute("job-failure", executionID) {
-		t.Error("job-failure should be able to execute after main job fails")
+	// Verify job-failure has OnFailure dependency on job-main
+	failureEntry := sc.cron.EntryByName("job-failure")
+	if !failureEntry.Valid() {
+		t.Fatal("job-failure entry should exist")
+	}
+	failureDeps := sc.cron.Dependencies(failureEntry.ID)
+	if len(failureDeps) != 1 {
+		t.Fatalf("job-failure should have 1 dependency, got %d", len(failureDeps))
+	}
+	if failureDeps[0].ParentID != mainEntry.ID {
+		t.Error("job-failure should depend on job-main")
+	}
+	if failureDeps[0].Condition != cron.OnFailure {
+		t.Errorf("Expected OnFailure condition, got %v", failureDeps[0].Condition)
 	}
 }
 
-// TestParallelExecutionControl tests AllowParallel flag
-func TestParallelExecutionControl(t *testing.T) {
-	logger := newDiscardLogger()
-	scheduler := NewScheduler(logger)
-	orchestrator := scheduler.workflowOrchestrator
+// TestNoDependencyJobs tests that jobs without dependencies work normally
+func TestNoDependencyJobs(t *testing.T) {
+	t.Parallel()
 
-	// Create job that doesn't allow parallel execution
+	sc := NewScheduler(newDiscardLogger())
+
+	job := &BareJob{Name: "standalone", Schedule: "@daily", Command: "echo standalone"}
+	_ = sc.AddJob(job)
+
+	err := BuildWorkflowDependencies(sc.cron, sc.Jobs, sc.Logger)
+	if err != nil {
+		t.Fatalf("BuildWorkflowDependencies should succeed for jobs without dependencies: %v", err)
+	}
+
+	entry := sc.cron.EntryByName("standalone")
+	if !entry.Valid() {
+		t.Fatal("standalone entry should exist")
+	}
+	deps := sc.cron.Dependencies(entry.ID)
+	if len(deps) != 0 {
+		t.Errorf("standalone job should have no dependencies, got %d", len(deps))
+	}
+}
+
+// TestMissingDependencyTarget tests that referencing a non-existent job fails
+func TestMissingDependencyTarget(t *testing.T) {
+	t.Parallel()
+
+	sc := NewScheduler(newDiscardLogger())
+
 	job := &BareJob{
-		Name:          "job-no-parallel",
-		Command:       "echo test",
-		AllowParallel: false,
+		Name:         "orphan",
+		Schedule:     "@daily",
+		Command:      "echo orphan",
+		Dependencies: []string{"nonexistent"},
 	}
+	_ = sc.AddJob(job)
 
-	jobs := []Job{job}
-	err := orchestrator.BuildDependencyGraph(jobs)
-	if err != nil {
-		t.Fatalf("Failed to build dependency graph: %v", err)
+	err := BuildWorkflowDependencies(sc.cron, sc.Jobs, sc.Logger)
+	if err == nil {
+		t.Fatal("Should fail when referencing nonexistent dependency")
 	}
-
-	executionID := "test-exec-parallel"
-
-	// First execution should be allowed
-	if !orchestrator.CanExecute("job-no-parallel", executionID) {
-		t.Error("First execution should be allowed")
-	}
-
-	// Mark job as running
-	orchestrator.JobStarted("job-no-parallel", executionID)
-
-	// Second execution should be blocked
-	if orchestrator.CanExecute("job-no-parallel", executionID) {
-		t.Error("Parallel execution should be blocked")
-	}
-
-	// Complete the job
-	orchestrator.JobCompleted(context.Background(), "job-no-parallel", executionID, true)
-
-	// Now it should be allowed again
-	if !orchestrator.CanExecute("job-no-parallel", executionID) {
-		t.Error("Execution should be allowed after job completes")
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Errorf("Error should be ErrJobNotFound, got: %v", err)
 	}
 }
 
-// TestWorkflowStatus tests workflow status tracking
-func TestWorkflowStatus(t *testing.T) {
-	logger := newDiscardLogger()
-	scheduler := NewScheduler(logger)
-	orchestrator := scheduler.workflowOrchestrator
+// TestMixedDependencyTypes tests jobs with both depends-on and on-success/on-failure
+func TestMixedDependencyTypes(t *testing.T) {
+	t.Parallel()
 
-	jobA := &BareJob{Name: "job-a", Command: "echo A"}
-	jobB := &BareJob{Name: "job-b", Command: "echo B"}
+	sc := NewScheduler(newDiscardLogger())
 
-	jobs := []Job{jobA, jobB}
-	err := orchestrator.BuildDependencyGraph(jobs)
+	jobA := &BareJob{
+		Name:      "job-a",
+		Schedule:  "@daily",
+		Command:   "echo A",
+		OnSuccess: []string{"job-c"},
+	}
+	jobB := &BareJob{
+		Name:     "job-b",
+		Schedule: "@daily",
+		Command:  "echo B",
+	}
+	jobC := &BareJob{
+		Name:         "job-c",
+		Schedule:     "@daily",
+		Command:      "echo C",
+		Dependencies: []string{"job-b"}, // depends-on job-b AND triggered by job-a on-success
+	}
+
+	_ = sc.AddJob(jobA)
+	_ = sc.AddJob(jobB)
+	_ = sc.AddJob(jobC)
+
+	err := BuildWorkflowDependencies(sc.cron, sc.Jobs, sc.Logger)
 	if err != nil {
-		t.Fatalf("Failed to build dependency graph: %v", err)
+		t.Fatalf("BuildWorkflowDependencies failed: %v", err)
 	}
 
-	executionID := "test-workflow-status"
-
-	// Start and complete jobs
-	orchestrator.JobStarted("job-a", executionID)
-	orchestrator.JobStarted("job-b", executionID)
-
-	status := orchestrator.GetWorkflowStatus(executionID)
-	if status == nil {
-		t.Fatal("Expected workflow status, got nil")
-	}
-
-	if status["runningJobs"].(int) != 2 {
-		t.Errorf("Expected 2 running jobs, got %v", status["runningJobs"])
-	}
-
-	// Complete one job successfully
-	orchestrator.JobCompleted(context.Background(), "job-a", executionID, true)
-
-	status = orchestrator.GetWorkflowStatus(executionID)
-	if status["completedJobs"].(int) != 1 {
-		t.Errorf("Expected 1 completed job, got %v", status["completedJobs"])
-	}
-	if status["runningJobs"].(int) != 1 {
-		t.Errorf("Expected 1 running job, got %v", status["runningJobs"])
-	}
-
-	// Fail the other job
-	orchestrator.JobCompleted(context.Background(), "job-b", executionID, false)
-
-	status = orchestrator.GetWorkflowStatus(executionID)
-	if status["failedJobs"].(int) != 1 {
-		t.Errorf("Expected 1 failed job, got %v", status["failedJobs"])
-	}
-	if status["runningJobs"].(int) != 0 {
-		t.Errorf("Expected 0 running jobs, got %v", status["runningJobs"])
+	// job-c should have 2 dependencies: job-b (from depends-on) and job-a (from on-success)
+	entryC := sc.cron.EntryByName("job-c")
+	depsC := sc.cron.Dependencies(entryC.ID)
+	if len(depsC) != 2 {
+		t.Fatalf("job-c should have 2 dependencies, got %d", len(depsC))
 	}
 }
 
-// Helper function
-func contains(str, substr string) bool {
-	return len(str) > 0 && len(substr) > 0 && str != substr &&
-		(len(str) >= len(substr)) &&
-		(str[:len(substr)] == substr || contains(str[1:], substr))
+// TestCollectDependencyEdges tests the internal edge collection logic
+func TestCollectDependencyEdges(t *testing.T) {
+	t.Parallel()
+
+	jobs := []Job{
+		&BareJob{
+			Name:         "child",
+			Schedule:     "@daily",
+			Command:      "echo child",
+			Dependencies: []string{"parent"},
+			OnSuccess:    []string{"success-handler"},
+			OnFailure:    []string{"failure-handler"},
+		},
+		&BareJob{Name: "parent", Schedule: "@daily", Command: "echo parent"},
+		&BareJob{Name: "success-handler", Schedule: "@daily", Command: "echo success"},
+		&BareJob{Name: "failure-handler", Schedule: "@daily", Command: "echo failure"},
+	}
+
+	edges := collectDependencyEdges(jobs, newDiscardLogger())
+
+	// Should have 3 edges: 1 depends-on, 1 on-success, 1 on-failure
+	if len(edges) != 3 {
+		t.Fatalf("Expected 3 edges, got %d", len(edges))
+	}
+
+	// Verify edge types
+	edgeMap := map[string]cron.TriggerCondition{}
+	for _, e := range edges {
+		key := e.parent + "->" + e.child
+		edgeMap[key] = e.condition
+	}
+
+	if cond, ok := edgeMap["parent->child"]; !ok || cond != cron.OnSuccess {
+		t.Error("Expected depends-on edge: parent->child (OnSuccess)")
+	}
+	if cond, ok := edgeMap["child->success-handler"]; !ok || cond != cron.OnSuccess {
+		t.Error("Expected on-success edge: child->success-handler (OnSuccess)")
+	}
+	if cond, ok := edgeMap["child->failure-handler"]; !ok || cond != cron.OnFailure {
+		t.Error("Expected on-failure edge: child->failure-handler (OnFailure)")
+	}
+}
+
+// TestEmptyJobList tests BuildWorkflowDependencies with no jobs
+func TestEmptyJobList(t *testing.T) {
+	t.Parallel()
+
+	sc := NewScheduler(newDiscardLogger())
+
+	err := BuildWorkflowDependencies(sc.cron, nil, sc.Logger)
+	if err != nil {
+		t.Fatalf("Should succeed with nil job list: %v", err)
+	}
+
+	err = BuildWorkflowDependencies(sc.cron, []Job{}, sc.Logger)
+	if err != nil {
+		t.Fatalf("Should succeed with empty job list: %v", err)
+	}
+}
+
+func TestCollectDependencyEdges_TriggeredJobWithDependencies(t *testing.T) {
+	t.Parallel()
+
+	jobs := []Job{
+		&BareJob{
+			Name:         "triggered-child",
+			Schedule:     "@triggered",
+			Command:      "echo child",
+			Dependencies: []string{"parent"},
+		},
+		&BareJob{
+			Name:     "parent",
+			Schedule: "@daily",
+			Command:  "echo parent",
+		},
+	}
+
+	edges := collectDependencyEdges(jobs, newDiscardLogger())
+
+	if len(edges) != 1 {
+		t.Fatalf("Expected 1 edge, got %d", len(edges))
+	}
+
+	e := edges[0]
+	if e.parent != "parent" || e.child != "triggered-child" {
+		t.Errorf("Unexpected edge: got %s->%s, want parent->triggered-child", e.parent, e.child)
+	}
+	if e.condition != cron.OnSuccess {
+		t.Errorf("Unexpected condition for depends-on edge: got %v, want %v", e.condition, cron.OnSuccess)
+	}
+}
+
+func TestCollectDependencyEdges_TriggeredJobInOnSuccessFailure(t *testing.T) {
+	t.Parallel()
+
+	jobs := []Job{
+		&BareJob{
+			Name:      "parent",
+			Schedule:  "@daily",
+			Command:   "echo parent",
+			OnSuccess: []string{"success-triggered"},
+			OnFailure: []string{"failure-triggered"},
+		},
+		&BareJob{
+			Name:     "success-triggered",
+			Schedule: "@triggered",
+			Command:  "echo success",
+		},
+		&BareJob{
+			Name:     "failure-triggered",
+			Schedule: "@triggered",
+			Command:  "echo failure",
+		},
+	}
+
+	edges := collectDependencyEdges(jobs, newDiscardLogger())
+
+	if len(edges) != 2 {
+		t.Fatalf("Expected 2 edges, got %d", len(edges))
+	}
+
+	edgeMap := map[string]cron.TriggerCondition{}
+	for _, e := range edges {
+		key := e.parent + "->" + e.child
+		edgeMap[key] = e.condition
+	}
+
+	if cond, ok := edgeMap["parent->success-triggered"]; !ok || cond != cron.OnSuccess {
+		t.Error("Expected on-success edge: parent->success-triggered (OnSuccess)")
+	}
+	if cond, ok := edgeMap["parent->failure-triggered"]; !ok || cond != cron.OnFailure {
+		t.Error("Expected on-failure edge: parent->failure-triggered (OnFailure)")
+	}
 }
