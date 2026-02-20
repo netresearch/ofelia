@@ -30,8 +30,10 @@ func BuildWorkflowDependencies(cronInstance *cron.Cron, jobs []Job, logger *slog
 		return nil
 	}
 
-	// Validate that all referenced job names exist as cron entries
-	if err := validateEdgeTargets(cronInstance, edges); err != nil {
+	// Validate that all referenced job names exist in the jobs slice.
+	// We check the jobs slice rather than cron entries because @triggered jobs
+	// may not yet be registered in go-cron (resolved after PR #490 merge).
+	if err := validateEdgeTargets(jobs, edges); err != nil {
 		return err
 	}
 
@@ -85,14 +87,20 @@ func collectDependencyEdges(jobs []Job, logger *slog.Logger) []dependencyEdge {
 	return edges
 }
 
-// validateEdgeTargets checks that all job names referenced in edges exist as cron entries.
-func validateEdgeTargets(cronInstance *cron.Cron, edges []dependencyEdge) error {
+// validateEdgeTargets checks that all job names referenced in edges exist in the jobs slice.
+// This uses the jobs slice rather than cron entries so that @triggered jobs (which may not
+// yet be registered in go-cron on current main) are correctly recognized.
+func validateEdgeTargets(jobs []Job, edges []dependencyEdge) error {
+	jobSet := make(map[string]struct{}, len(jobs))
+	for _, j := range jobs {
+		jobSet[j.GetName()] = struct{}{}
+	}
 	for _, edge := range edges {
-		if entry := cronInstance.EntryByName(edge.parent); !entry.Valid() {
-			return fmt.Errorf("%w: job %q references unknown parent %q", ErrJobNotFound, edge.child, edge.parent)
+		if _, ok := jobSet[edge.child]; !ok {
+			return fmt.Errorf("%w: dependency target %q not found", ErrJobNotFound, edge.child)
 		}
-		if entry := cronInstance.EntryByName(edge.child); !entry.Valid() {
-			return fmt.Errorf("%w: job %q references unknown child %q", ErrJobNotFound, edge.parent, edge.child)
+		if _, ok := jobSet[edge.parent]; !ok {
+			return fmt.Errorf("%w: dependency parent %q not found", ErrJobNotFound, edge.parent)
 		}
 	}
 	return nil

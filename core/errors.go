@@ -34,7 +34,6 @@ var (
 
 	// Workflow errors
 	ErrCircularDependency = errors.New("circular dependency detected")
-	ErrDependencyNotMet   = errors.New("job dependencies not met")
 	ErrWorkflowInvalid    = errors.New("invalid workflow configuration")
 
 	// Validation errors

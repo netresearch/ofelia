@@ -535,10 +535,8 @@ func TestJobWrapper_SemaphoreLimitsExecution(t *testing.T) {
 	}
 }
 
-// --- CONDITIONALS_BOUNDARY at line 680, 684 ---
-// These test exact boundary conditions in the runWithCtx method.
-// Line 680: CanExecute returning exactly true (boundary)
-// Line 684: semaphore exactly at capacity
+// TestJobWrapper_SemaphoreExactCapacity tests boundary conditions where
+// the concurrency semaphore is exactly at capacity.
 func TestJobWrapper_SemaphoreExactCapacity(t *testing.T) {
 	t.Parallel()
 

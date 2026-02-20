@@ -118,13 +118,13 @@ func TestSchedulerWorkflowDependenciesInit(t *testing.T) {
 
 	// Start wires dependencies
 	err := sc.Start()
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	// Verify dependencies are wired in go-cron
 	childEntry := sc.cron.EntryByName("child")
 	assert.True(t, childEntry.Valid())
 	deps := sc.cron.Dependencies(childEntry.ID)
-	assert.Equal(t, 1, len(deps))
+	assert.Len(t, deps, 1)
 
 	_ = sc.Stop()
 }
