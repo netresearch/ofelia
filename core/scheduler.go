@@ -52,7 +52,7 @@ type Scheduler struct {
 
 // concurrencySemaphore holds a swappable semaphore channel used by the
 // go-cron MaxConcurrentSkip-style job wrapper. The wrapper reads the
-// current channel via an atomic-style accessor so that SetMaxConcurrentJobs
+// current channel via a mutex-protected accessor so that SetMaxConcurrentJobs
 // can resize the limit before the scheduler is started.
 type concurrencySemaphore struct {
 	mu  sync.RWMutex
@@ -223,6 +223,9 @@ func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 			m.inner.Run()
 		}
 	default:
+		// cron.Logger only exposes Info and Error; use Info since skipping
+		// is non-fatal.  The scheduler's own RunJob/Start paths log at Warn
+		// via slog, but the middleware wrapper is limited to the cron interface.
 		m.logger.Info("skip", "reason", "max concurrent reached",
 			"limit", m.sem.getCap())
 	}
@@ -240,6 +243,9 @@ func (s *Scheduler) SetMaxConcurrentJobs(maxJobs int) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.cron != nil && s.cron.IsRunning() {
+		s.Logger.Warn("SetMaxConcurrentJobs called on running scheduler; in-flight jobs retain previous limit")
+	}
 	s.maxConcurrentJobs = maxJobs
 	s.concurrencySem.resize(maxJobs)
 }

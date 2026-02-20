@@ -43,7 +43,8 @@ var (
 	ErrImageRequired        = errors.New("job-service-run requires 'image' to create a new swarm service")
 
 	// Scheduler errors
-	ErrSchedulerTimeout = errors.New("scheduler stop timed out")
+	ErrSchedulerTimeout        = errors.New("scheduler stop timed out")
+	ErrConcurrencyLimitReached = errors.New("max concurrent jobs limit reached")
 
 	// Shutdown errors
 	ErrShutdownInProgress = errors.New("shutdown already in progress")
