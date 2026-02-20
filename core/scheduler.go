@@ -528,6 +528,9 @@ func (s *Scheduler) GetDisabledJobs() []Job {
 func (s *Scheduler) GetAnyJob(name string) Job {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if s.jobsByName != nil {
+		return s.jobsByName[name]
+	}
 	j, _ := getJob(s.Jobs, name)
 	return j
 }
@@ -562,8 +565,7 @@ func (s *Scheduler) GetJob(name string) Job {
 	if _, disabled := s.disabledNames[name]; disabled {
 		return nil
 	}
-	j, _ := getJob(s.Jobs, name)
-	return j
+	return s.lookupJob(name)
 }
 
 // GetDisabledJob returns a disabled/paused job by name.
@@ -572,6 +574,15 @@ func (s *Scheduler) GetDisabledJob(name string) Job {
 	defer s.mu.RUnlock()
 	if _, disabled := s.disabledNames[name]; !disabled {
 		return nil
+	}
+	return s.lookupJob(name)
+}
+
+// lookupJob returns a job by name using the O(1) jobsByName map when available,
+// falling back to linear scan for Scheduler instances created without NewScheduler.
+func (s *Scheduler) lookupJob(name string) Job {
+	if s.jobsByName != nil {
+		return s.jobsByName[name]
 	}
 	j, _ := getJob(s.Jobs, name)
 	return j

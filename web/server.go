@@ -520,7 +520,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	j := s.scheduler.GetJob(req.Name)
+	j := s.scheduler.GetAnyJob(req.Name)
 	if j == nil {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
@@ -571,13 +571,7 @@ func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/jobs/"), "/history")
-	var target core.Job
-	for _, job := range s.scheduler.Jobs {
-		if job.GetName() == name {
-			target = job
-			break
-		}
-	}
+	target := s.scheduler.GetAnyJob(name)
 	if target == nil {
 		http.NotFound(w, r)
 		return
