@@ -715,6 +715,8 @@ func workflowStatus(results map[cron.EntryID]cron.JobResult) string {
 	case hasSkipped && !hasSuccess:
 		return workflowStatusSkipped
 	default:
+		// Covers success+skipped combinations, pending-only (shouldn't occur),
+		// and any future JobResult values not yet handled.
 		return workflowStatusMixed
 	}
 }
