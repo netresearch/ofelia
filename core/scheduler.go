@@ -455,6 +455,11 @@ func (s *Scheduler) EntryByName(name string) cron.Entry {
 // TriggerEntryByName, which means it benefits from the full middleware chain
 // (retry, timeout, etc.) and proper concurrency tracking.
 // Returns ErrJobNotFound if the job does not exist or is disabled.
+//
+// Note: The context parameter is currently unused because go-cron's
+// TriggerEntryByName does not accept a context. The job runs with its own
+// internal context managed by go-cron. This means request-scoped cancellation
+// is not supported for triggered executions.
 func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 	s.mu.RLock()
 	_, exists := s.jobsByName[jobName]
