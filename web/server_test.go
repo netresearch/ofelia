@@ -51,6 +51,8 @@ type apiJob struct {
 	Command  string          `json:"command"`
 	Running  bool            `json:"running"`
 	LastRun  *apiExecution   `json:"lastRun"`
+	NextRuns []time.Time     `json:"nextRuns"`
+	PrevRuns []time.Time     `json:"prevRuns"`
 	Origin   string          `json:"origin"`
 	Config   json.RawMessage `json:"config"`
 }
@@ -895,5 +897,237 @@ func TestGetHTTPServer(t *testing.T) {
 	// Verify it's the same as HTTPServer()
 	if httpSrv != srv.HTTPServer() {
 		t.Error("GetHTTPServer() and HTTPServer() should return the same instance")
+	}
+}
+
+func TestJobsEndpointNextPrevRuns(t *testing.T) {
+	sched := core.NewScheduler(stubDiscardLogger())
+
+	// Add a job with a real cron schedule so NextN/PrevN return results
+	job := &testJob{}
+	job.Name = "cron-job"
+	job.Schedule = "*/5 * * * *" // every 5 minutes
+	job.Command = "echo hello"
+	if err := sched.AddJob(job); err != nil {
+		t.Fatalf("AddJob error: %v", err)
+	}
+
+	srv := webpkg.NewServer("", sched, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
+	rr := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var jobs []apiJob
+	if err := json.Unmarshal(rr.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("json unmarshal error: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	j := jobs[0]
+
+	// NextRuns should have 5 entries for a valid cron schedule
+	if len(j.NextRuns) != 5 {
+		t.Errorf("expected 5 next_runs, got %d", len(j.NextRuns))
+	}
+	// PrevRuns should have 5 entries for a valid cron schedule
+	if len(j.PrevRuns) != 5 {
+		t.Errorf("expected 5 prev_runs, got %d", len(j.PrevRuns))
+	}
+
+	// NextRuns should be in ascending chronological order
+	now := time.Now()
+	for i, ts := range j.NextRuns {
+		if !ts.After(now) {
+			t.Errorf("next_runs[%d] = %v should be after now %v", i, ts, now)
+		}
+		if i > 0 && !ts.After(j.NextRuns[i-1]) {
+			t.Errorf("next_runs[%d] = %v should be after next_runs[%d] = %v", i, ts, i-1, j.NextRuns[i-1])
+		}
+	}
+
+	// PrevRuns should be in reverse chronological order (most recent first)
+	for i, ts := range j.PrevRuns {
+		if !ts.Before(now) {
+			t.Errorf("prev_runs[%d] = %v should be before now %v", i, ts, now)
+		}
+		if i > 0 && !ts.Before(j.PrevRuns[i-1]) {
+			t.Errorf("prev_runs[%d] = %v should be before prev_runs[%d] = %v", i, ts, i-1, j.PrevRuns[i-1])
+		}
+	}
+}
+
+func TestJobsEndpointTriggeredJobEmptyRuns(t *testing.T) {
+	sched := core.NewScheduler(stubDiscardLogger())
+
+	// Add a triggered-only job (no cron schedule)
+	job := &testJob{}
+	job.Name = "triggered-job"
+	job.Schedule = "@triggered"
+	job.Command = "echo triggered"
+	if err := sched.AddJob(job); err != nil {
+		t.Fatalf("AddJob error: %v", err)
+	}
+
+	srv := webpkg.NewServer("", sched, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
+	rr := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var jobs []apiJob
+	if err := json.Unmarshal(rr.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("json unmarshal error: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	j := jobs[0]
+
+	// Triggered jobs should have empty (non-nil) slices
+	if j.NextRuns == nil {
+		t.Error("next_runs should be non-nil empty slice")
+	}
+	if j.PrevRuns == nil {
+		t.Error("prev_runs should be non-nil empty slice")
+	}
+	if len(j.NextRuns) != 0 {
+		t.Errorf("expected 0 next_runs for triggered job, got %d", len(j.NextRuns))
+	}
+	if len(j.PrevRuns) != 0 {
+		t.Errorf("expected 0 prev_runs for triggered job, got %d", len(j.PrevRuns))
+	}
+}
+
+func TestDisabledJobsEndpointEmptyRuns(t *testing.T) {
+	sched := core.NewScheduler(stubDiscardLogger())
+
+	job := &testJob{}
+	job.Name = "disabled-job"
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
+	_ = sched.AddJob(job)
+	_ = sched.DisableJob("disabled-job")
+
+	srv := webpkg.NewServer("", sched, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/disabled", nil)
+	rr := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var jobs []apiJob
+	if err := json.Unmarshal(rr.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("json unmarshal error: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	j := jobs[0]
+
+	// Disabled jobs are not in cron, so they should have empty slices
+	if len(j.NextRuns) != 0 {
+		t.Errorf("expected 0 next_runs for disabled job, got %d", len(j.NextRuns))
+	}
+	if len(j.PrevRuns) != 0 {
+		t.Errorf("expected 0 prev_runs for disabled job, got %d", len(j.PrevRuns))
+	}
+}
+
+func TestRemovedJobsEndpointEmptyRuns(t *testing.T) {
+	sched := core.NewScheduler(stubDiscardLogger())
+
+	job := &testJob{}
+	job.Name = "removed-job"
+	job.Schedule = schedDaily
+	job.Command = cmdEcho
+	_ = sched.AddJob(job)
+	_ = sched.RemoveJob(job)
+
+	srv := webpkg.NewServer("", sched, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs/removed", nil)
+	rr := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var jobs []apiJob
+	if err := json.Unmarshal(rr.Body.Bytes(), &jobs); err != nil {
+		t.Fatalf("json unmarshal error: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+
+	j := jobs[0]
+
+	// Removed jobs are no longer in cron, so they should have empty slices
+	if len(j.NextRuns) != 0 {
+		t.Errorf("expected 0 next_runs for removed job, got %d", len(j.NextRuns))
+	}
+	if len(j.PrevRuns) != 0 {
+		t.Errorf("expected 0 prev_runs for removed job, got %d", len(j.PrevRuns))
+	}
+}
+
+func TestJobsEndpointNextPrevRunsJSONFormat(t *testing.T) {
+	sched := core.NewScheduler(stubDiscardLogger())
+
+	job := &testJob{}
+	job.Name = "json-format-job"
+	job.Schedule = "@hourly"
+	job.Command = "echo test"
+	if err := sched.AddJob(job); err != nil {
+		t.Fatalf("AddJob error: %v", err)
+	}
+
+	srv := webpkg.NewServer("", sched, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
+	rr := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	// Verify the JSON contains next_runs and prev_runs fields as arrays
+	var raw []map[string]json.RawMessage
+	if err := json.Unmarshal(rr.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("json unmarshal error: %v", err)
+	}
+	if len(raw) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(raw))
+	}
+
+	if _, ok := raw[0]["nextRuns"]; !ok {
+		t.Error("nextRuns field missing from JSON response")
+	}
+	if _, ok := raw[0]["prevRuns"]; !ok {
+		t.Error("prevRuns field missing from JSON response")
+	}
+
+	// Verify the timestamps parse as RFC3339 (Go's default time.Time JSON format)
+	var nextRuns []string
+	if err := json.Unmarshal(raw[0]["nextRuns"], &nextRuns); err != nil {
+		t.Fatalf("failed to unmarshal next_runs: %v", err)
+	}
+	for i, ts := range nextRuns {
+		if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
+			t.Errorf("next_runs[%d] = %q is not valid RFC3339: %v", i, ts, err)
+		}
 	}
 }

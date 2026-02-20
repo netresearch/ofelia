@@ -454,6 +454,16 @@ func (s *Scheduler) Entries() []cron.Entry {
 	return s.cron.Entries()
 }
 
+// EntryByName returns a snapshot of the cron entry with the given name.
+// Returns an invalid Entry (Entry.Valid() == false) if not found or if the
+// scheduler's cron instance is nil.
+func (s *Scheduler) EntryByName(name string) cron.Entry {
+	if s.cron == nil {
+		return cron.Entry{}
+	}
+	return s.cron.EntryByName(name)
+}
+
 // RunJob manually triggers a job by name. The provided context is propagated
 // to the job's RunWithContext method and is available via Context.Ctx.
 func (s *Scheduler) RunJob(ctx context.Context, jobName string) error {
