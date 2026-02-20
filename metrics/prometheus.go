@@ -214,6 +214,18 @@ func (mc *Collector) RecordJobScheduled(jobName string) {
 	mc.IncrementCounter("ofelia_cron_jobs_scheduled_total", 1)
 }
 
+// RecordWorkflowComplete records a workflow completion (from go-cron ObservabilityHooks).
+// TODO: add label dimensions (root_job_name, status) once Collector supports labeled metrics.
+func (mc *Collector) RecordWorkflowComplete(rootJobName string, status string) {
+	mc.IncrementCounter("ofelia_workflow_completions_total", 1)
+}
+
+// RecordWorkflowJobResult records an individual job result within a workflow (from go-cron ObservabilityHooks).
+// TODO: add label dimensions (job_name, result) once Collector supports labeled metrics.
+func (mc *Collector) RecordWorkflowJobResult(jobName string, result string) {
+	mc.IncrementCounter("ofelia_workflow_job_results_total", 1)
+}
+
 // Export formats metrics in Prometheus text format
 func (mc *Collector) Export() string {
 	mc.mu.RLock()
@@ -298,6 +310,10 @@ func (mc *Collector) InitDefaultMetrics() {
 	mc.RegisterCounter("ofelia_cron_jobs_completed_total", "Total cron jobs completed")
 	mc.RegisterCounter("ofelia_cron_jobs_panicked_total", "Total cron jobs that panicked")
 	mc.RegisterCounter("ofelia_cron_jobs_scheduled_total", "Total cron job scheduling events")
+
+	// Workflow completion metrics (from go-cron ObservabilityHooks)
+	mc.RegisterCounter("ofelia_workflow_completions_total", "Total workflow completions")
+	mc.RegisterCounter("ofelia_workflow_job_results_total", "Total workflow job results")
 
 	// Set initial values
 	mc.SetGauge("ofelia_up", 1)

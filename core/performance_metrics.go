@@ -268,6 +268,16 @@ func (pm *PerformanceMetrics) RecordJobScheduled(jobName string) {
 	atomic.AddInt64(&pm.totalJobsScheduled, 1)
 }
 
+// RecordWorkflowComplete records a workflow completion event.
+// No-op: workflow metrics are tracked via the Prometheus Collector, not PerformanceMetrics.
+func (pm *PerformanceMetrics) RecordWorkflowComplete(rootJobName string, status string) {
+}
+
+// RecordWorkflowJobResult records an individual job result within a workflow.
+// No-op: workflow metrics are tracked via the Prometheus Collector, not PerformanceMetrics.
+func (pm *PerformanceMetrics) RecordWorkflowJobResult(jobName string, result string) {
+}
+
 // RecordJobStart records a job start (from go-cron ObservabilityHooks)
 func (pm *PerformanceMetrics) RecordJobStart(jobName string) {
 	// Track concurrent jobs

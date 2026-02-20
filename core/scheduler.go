@@ -81,6 +81,10 @@ func newSchedulerInternal(
 		parser = parser.WithMinEveryInterval(minEveryInterval)
 	}
 
+	// Declare cronInstance before hooks so the OnWorkflowComplete closure
+	// can capture it by reference; the variable is assigned after cron.New().
+	var cronInstance *cron.Cron
+
 	cronOpts := []cron.Option{
 		cron.WithParser(parser),
 		cron.WithLogger(cronUtils),
@@ -103,11 +107,14 @@ func newSchedulerInternal(
 			OnSchedule: func(_ cron.EntryID, name string, _ time.Time) {
 				metricsRecorder.RecordJobScheduled(name)
 			},
+			OnWorkflowComplete: func(_ string, rootID cron.EntryID, results map[cron.EntryID]cron.JobResult) {
+				recordWorkflowMetrics(cronInstance, metricsRecorder, rootID, results)
+			},
 		}
 		cronOpts = append(cronOpts, cron.WithObservability(hooks))
 	}
 
-	cronInstance := cron.New(cronOpts...)
+	cronInstance = cron.New(cronOpts...)
 
 	// Default to 10 concurrent jobs, can be configured
 	maxConcurrent := 10
@@ -641,6 +648,85 @@ func (s *Scheduler) EnableJob(name string) error {
 
 	s.Logger.Info(fmt.Sprintf("Job re-enabled %q - %q - ID: %v", j.GetName(), j.GetSchedule(), id))
 	return nil
+}
+
+// unknownJobName is used when a cron entry's name cannot be resolved from its ID.
+const unknownJobName = "unknown"
+
+// Workflow status constants returned by workflowStatus.
+const (
+	workflowStatusSuccess = "success"
+	workflowStatusFailure = "failure"
+	workflowStatusSkipped = "skipped"
+	workflowStatusMixed   = "mixed"
+)
+
+// recordWorkflowMetrics extracts job names from cron entries and records
+// workflow completion and per-job result metrics. It is called from the
+// OnWorkflowComplete observability hook.
+func recordWorkflowMetrics(
+	cronInstance *cron.Cron,
+	recorder MetricsRecorder,
+	rootID cron.EntryID,
+	results map[cron.EntryID]cron.JobResult,
+) {
+	// Determine the root job name from its entry
+	entryName := func(id cron.EntryID) string {
+		if entry := cronInstance.Entry(id); entry.Name != "" {
+			return entry.Name
+		}
+		return unknownJobName
+	}
+
+	// Aggregate results to determine overall workflow status
+	status := workflowStatus(results)
+	recorder.RecordWorkflowComplete(entryName(rootID), status)
+
+	// Record individual job results
+	for entryID, result := range results {
+		recorder.RecordWorkflowJobResult(entryName(entryID), result.String())
+	}
+}
+
+// workflowStatus computes an aggregate status string from the per-job results map.
+// Returns "success" if all jobs succeeded, "failure" if any failed, "skipped" if
+// all non-pending results are skipped, or "mixed" for other combinations.
+// An empty or nil map returns "success" (vacuously true).
+func workflowStatus(results map[cron.EntryID]cron.JobResult) string {
+	if len(results) == 0 {
+		return workflowStatusSuccess
+	}
+
+	hasFailure := false
+	hasSuccess := false
+	hasSkipped := false
+
+	for _, r := range results {
+		switch r {
+		case cron.ResultFailure:
+			hasFailure = true
+		case cron.ResultSuccess:
+			hasSuccess = true
+		case cron.ResultSkipped:
+			hasSkipped = true
+		case cron.ResultPending:
+			// Pending jobs are not terminal; should not appear in
+			// OnWorkflowComplete results, but handle gracefully.
+		}
+	}
+
+	switch {
+	case hasFailure:
+		return workflowStatusFailure
+	case hasSuccess && !hasSkipped:
+		return workflowStatusSuccess
+	case hasSkipped && !hasSuccess:
+		return workflowStatusSkipped
+	default:
+		// Covers success+skipped combinations, pending-only (shouldn't occur),
+		// and any future JobResult values not yet handled.
+		return workflowStatusMixed
+	}
 }
 
 // jobWrapper wraps a Job to manage running and waiting via the Scheduler.
