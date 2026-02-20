@@ -677,11 +677,6 @@ func TestSchedulerWorkflowIntegration(t *testing.T) {
 	}
 	defer scheduler.Stop()
 
-	// Verify workflow orchestrator was initialized
-	if scheduler.workflowOrchestrator == nil {
-		t.Error("WorkflowOrchestrator should be initialized")
-	}
-
 	// Test that jobs are tracked in lookup map
 	if scheduler.GetJob("workflow-job1") == nil {
 		t.Error("job1 not found in job lookup")

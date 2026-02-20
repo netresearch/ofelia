@@ -105,28 +105,31 @@ func TestSchedulerLastRunRecorded(t *testing.T) {
 	assert.Greater(t, lr.Duration, time.Duration(0))
 }
 
-func TestSchedulerWorkflowOrchestratorInit(t *testing.T) {
+func TestSchedulerWorkflowDependenciesInit(t *testing.T) {
 	t.Parallel()
 
 	sc := NewScheduler(newDiscardLogger())
 
-	sc.workflowOrchestrator = NewWorkflowOrchestrator(sc, newDiscardLogger())
-	assert.NotNil(t, sc.workflowOrchestrator)
-	assert.NotNil(t, sc.workflowOrchestrator.executions)
+	// Add jobs with dependencies
+	parent := &BareJob{Name: "parent", Schedule: "@daily", Command: "echo parent"}
+	child := &BareJob{Name: "child", Schedule: "@daily", Command: "echo child", Dependencies: []string{"parent"}}
+	_ = sc.AddJob(parent)
+	_ = sc.AddJob(child)
 
-	exec := &WorkflowExecution{
-		ID:            "test-exec",
-		StartTime:     time.Now(),
-		CompletedJobs: make(map[string]bool),
-		FailedJobs:    make(map[string]bool),
-		RunningJobs:   make(map[string]bool),
-	}
+	// Start wires dependencies
+	err := sc.Start()
+	assert.Nil(t, err)
 
-	sc.workflowOrchestrator.executions["test-exec"] = exec
-	assert.Equal(t, exec, sc.workflowOrchestrator.executions["test-exec"])
+	// Verify dependencies are wired in go-cron
+	childEntry := sc.cron.EntryByName("child")
+	assert.True(t, childEntry.Valid())
+	deps := sc.cron.Dependencies(childEntry.ID)
+	assert.Equal(t, 1, len(deps))
+
+	_ = sc.Stop()
 }
 
-func TestSchedulerCleanupTicker(t *testing.T) {
+func TestSchedulerClockInit(t *testing.T) {
 	t.Parallel()
 
 	fakeClock := NewFakeClock(time.Now())
@@ -134,7 +137,6 @@ func TestSchedulerCleanupTicker(t *testing.T) {
 	sc.SetClock(fakeClock)
 
 	assert.Equal(t, fakeClock, sc.clock)
-	assert.NotNil(t, sc.cleanupStop)
 }
 
 func TestSchedulerSetClock(t *testing.T) {

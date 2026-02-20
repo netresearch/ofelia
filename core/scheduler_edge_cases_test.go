@@ -429,21 +429,12 @@ func TestSchedulerWorkflowCleanup(t *testing.T) {
 		t.Fatalf("Failed to start scheduler: %v", err)
 	}
 
-	// Verify workflow orchestrator is initialized
-	if scheduler.workflowOrchestrator == nil {
-		t.Error("Workflow orchestrator should be initialized after Start()")
+	// Verify cron instance is initialized and running
+	if !scheduler.IsRunning() {
+		t.Error("Scheduler should be running after Start()")
 	}
 
-	// Verify cleanup ticker is initialized
-	if scheduler.cleanupTicker == nil {
-		t.Error("Cleanup ticker should be initialized after Start()")
-	}
-
-	if scheduler.cleanupStop == nil {
-		t.Error("Cleanup stop channel should be initialized")
-	}
-
-	// Stop scheduler and verify cleanup
+	// Stop scheduler and verify clean shutdown
 	if err := scheduler.Stop(); err != nil {
 		t.Fatalf("Failed to stop scheduler: %v", err)
 	}

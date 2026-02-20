@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"sync"
 	"time"
 
@@ -38,20 +37,17 @@ type Scheduler struct {
 	Logger  *slog.Logger
 
 	middlewareContainer
-	cron                 *cron.Cron
-	wg                   sync.WaitGroup
-	mu                   sync.RWMutex
-	maxConcurrentJobs    int
-	jobSemaphore         chan struct{}
-	retryExecutor        *RetryExecutor
-	workflowOrchestrator *WorkflowOrchestrator
-	jobsByName           map[string]Job
-	disabledNames        map[string]struct{}
-	metricsRecorder      MetricsRecorder
-	cleanupTicker        Ticker
-	cleanupStop          chan struct{}
-	clock                Clock
-	onJobComplete        func(jobName string, success bool)
+	cron              *cron.Cron
+	wg                sync.WaitGroup
+	mu                sync.RWMutex
+	maxConcurrentJobs int
+	jobSemaphore      chan struct{}
+	retryExecutor     *RetryExecutor
+	jobsByName        map[string]Job
+	disabledNames     map[string]struct{}
+	metricsRecorder   MetricsRecorder
+	clock             Clock
+	onJobComplete     func(jobName string, success bool)
 }
 
 func NewScheduler(l *slog.Logger) *Scheduler {
@@ -144,12 +140,6 @@ func newSchedulerInternal(
 	if metricsRecorder != nil {
 		s.retryExecutor.SetMetricsRecorder(metricsRecorder)
 	}
-
-	// Initialize workflow orchestrator
-	s.workflowOrchestrator = NewWorkflowOrchestrator(s, l)
-
-	// Initialize cleanup channels
-	s.cleanupStop = make(chan struct{})
 
 	return s
 }
@@ -325,19 +315,17 @@ func (s *Scheduler) GetJobsByTag(tag string) []Job {
 func (s *Scheduler) Start() error {
 	s.mu.Lock()
 
-	// Build dependency graph
-	if err := s.workflowOrchestrator.BuildDependencyGraph(s.Jobs); err != nil {
-		s.Logger.Error(fmt.Sprintf("Failed to build dependency graph: %v", err))
-		// Continue anyway - jobs without dependencies will still work
-	}
-
 	// Build job name lookup map
 	for _, j := range s.Jobs {
 		s.jobsByName[j.GetName()] = j
 	}
 
-	// Start workflow cleanup routine
-	s.startWorkflowCleanup()
+	// Wire dependency edges into go-cron using native DAG engine.
+	// This must happen after all jobs are added to cron but before Start().
+	if err := BuildWorkflowDependencies(s.cron, s.Jobs, s.Logger); err != nil {
+		s.Logger.Error(fmt.Sprintf("Failed to build workflow dependencies: %v", err))
+		// Continue anyway - jobs without dependencies will still work
+	}
 
 	s.mu.Unlock()
 	s.Logger.Debug("Starting scheduler")
@@ -366,15 +354,6 @@ func (s *Scheduler) StopWithTimeout(timeout time.Duration) error {
 	// Use go-cron's StopWithTimeout for graceful shutdown
 	completed := s.cron.StopWithTimeout(timeout)
 
-	s.mu.Lock()
-
-	// Stop cleanup routine
-	if s.cleanupTicker != nil {
-		s.cleanupTicker.Stop()
-		close(s.cleanupStop)
-	}
-	s.mu.Unlock()
-
 	s.wg.Wait() // Wait for any remaining wrapper goroutines
 
 	if !completed {
@@ -389,51 +368,8 @@ func (s *Scheduler) StopWithTimeout(timeout time.Duration) error {
 func (s *Scheduler) StopAndWait() {
 	s.cron.StopAndWait()
 
-	s.mu.Lock()
-
-	// Stop cleanup routine
-	if s.cleanupTicker != nil {
-		s.cleanupTicker.Stop()
-		close(s.cleanupStop)
-	}
-	s.mu.Unlock()
-
 	s.wg.Wait()
 	s.Logger.Debug("Scheduler stopped and all jobs completed")
-}
-
-// startWorkflowCleanup starts the background cleanup routine for workflow executions
-func (s *Scheduler) startWorkflowCleanup() {
-	// Default cleanup interval: 1 hour
-	// Default retention: 24 hours
-	cleanupInterval := 1 * time.Hour
-	retentionDuration := 24 * time.Hour
-
-	// Check for environment variable overrides
-	if interval := os.Getenv("OFELIA_WORKFLOW_CLEANUP_INTERVAL"); interval != "" {
-		if d, err := time.ParseDuration(interval); err == nil {
-			cleanupInterval = d
-		}
-	}
-	if retention := os.Getenv("OFELIA_WORKFLOW_RETENTION"); retention != "" {
-		if d, err := time.ParseDuration(retention); err == nil {
-			retentionDuration = d
-		}
-	}
-
-	s.cleanupTicker = s.clock.NewTicker(cleanupInterval)
-
-	go func() {
-		for {
-			select {
-			case <-s.cleanupTicker.C():
-				s.workflowOrchestrator.CleanupOldExecutions(retentionDuration)
-				s.Logger.Debug(fmt.Sprintf("Cleaned up workflow executions older than %v", retentionDuration))
-			case <-s.cleanupStop:
-				return
-			}
-		}
-	}()
 }
 
 // Entries returns all scheduled cron entries.
@@ -470,14 +406,9 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 		return fmt.Errorf("%w: %s", ErrJobNotFound, jobName)
 	}
 
-	executionID := fmt.Sprintf("manual-%d", s.clock.Now().Unix())
-	if !s.workflowOrchestrator.CanExecute(jobName, executionID) {
-		return fmt.Errorf("%w: %s", ErrDependencyNotMet, jobName)
-	}
-
 	// Delegate to go-cron's TriggerEntryByName for proper middleware chain execution.
 	// This works for all job types including triggered schedules, since all jobs now
-	// have cron entries.
+	// have cron entries (registered via TriggeredSchedule in PR #498).
 	if err := s.cron.TriggerEntryByName(jobName); err != nil {
 		return fmt.Errorf("trigger job %s: %w", jobName, err)
 	}
@@ -780,14 +711,6 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		}
 	}()
 
-	executionID := fmt.Sprintf("sched-%d-%s", w.s.clock.Now().Unix(), w.j.GetName())
-
-	// Check dependencies
-	if !w.s.workflowOrchestrator.CanExecute(w.j.GetName(), executionID) {
-		w.s.Logger.Debug(fmt.Sprintf("Job %q skipped - dependencies not satisfied", w.j.GetName()))
-		return
-	}
-
 	// Acquire semaphore slot for job concurrency limit
 	select {
 	case w.s.jobSemaphore <- struct{}{}:
@@ -825,9 +748,6 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 
 	jctx := NewContextWithContext(ctx, w.s, w.j, e)
 
-	// Mark job as started in workflow
-	w.s.workflowOrchestrator.JobStarted(w.j.GetName(), executionID)
-
 	w.start(jctx)
 
 	// Execute with retry logic
@@ -837,10 +757,8 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 
 	w.stop(jctx, err)
 
-	success := err == nil && !jctx.Execution.Failed
-	w.s.workflowOrchestrator.JobCompleted(ctx, w.j.GetName(), executionID, success)
-
 	if w.s.onJobComplete != nil {
+		success := err == nil && !jctx.Execution.Failed
 		w.s.onJobComplete(w.j.GetName(), success)
 	}
 }
