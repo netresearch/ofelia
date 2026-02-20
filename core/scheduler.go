@@ -212,6 +212,9 @@ func (m *maxConcurrentSkipJob) Run() {
 	m.RunWithContext(context.Background())
 }
 
+// RunWithContext attempts to acquire a slot from the shared concurrencySemaphore
+// before delegating execution to the wrapped job. If no slot is immediately
+// available, the invocation is skipped and logged via cron.Logger.
 func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 	ch := m.sem.getChan()
 	select {
@@ -224,8 +227,10 @@ func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 		}
 	default:
 		// cron.Logger only exposes Info and Error; use Info since skipping
-		// is non-fatal.  The scheduler's own RunJob/Start paths log at Warn
-		// via slog, but the middleware wrapper is limited to the cron interface.
+		// is non-fatal.  Via CronUtils, cron.Logger.Info maps to slog.Debug,
+		// so cron-scheduled skips appear at Debug level while the scheduler's
+		// own RunJob/Start paths log at Warn via slog directly.  This is
+		// intentional: frequent cron skips stay quiet, manual skips are visible.
 		m.logger.Info("skip", "reason", "max concurrent reached",
 			"limit", m.sem.getCap())
 	}
