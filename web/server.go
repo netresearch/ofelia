@@ -288,9 +288,10 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 		}
 
 		// Compute next/prev execution times from the cron schedule.
-		// Triggered-only jobs and jobs without a cron entry return empty slices.
+		// Triggered-only jobs, disabled (paused) jobs, and jobs without a cron
+		// entry return empty slices.
 		var nextRuns, prevRuns []time.Time
-		if !core.IsTriggeredSchedule(job.GetSchedule()) {
+		if !core.IsTriggeredSchedule(job.GetSchedule()) && s.scheduler.GetDisabledJob(job.GetName()) == nil {
 			entry := s.scheduler.EntryByName(job.GetName())
 			if entry.Valid() && entry.Schedule != nil {
 				nextRuns = cron.NextN(entry.Schedule, now, scheduleRunCount)
@@ -323,7 +324,7 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 }
 
 func (s *Server) jobsHandler(w http.ResponseWriter, _ *http.Request) {
-	jobs := s.buildAPIJobs(s.scheduler.Jobs)
+	jobs := s.buildAPIJobs(s.scheduler.GetActiveJobs())
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jobs)
 }
@@ -335,22 +336,7 @@ func (s *Server) removedJobsHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) disabledJobsHandler(w http.ResponseWriter, _ *http.Request) {
-	disabled := s.scheduler.GetDisabledJobs()
-	jobs := make([]apiJob, 0, len(disabled))
-	for _, job := range disabled {
-		origin := s.jobOrigin(job.GetName())
-		cfgBytes, _ := json.Marshal(job)
-		jobs = append(jobs, apiJob{
-			Name:     job.GetName(),
-			Type:     jobType(job),
-			Schedule: job.GetSchedule(),
-			Command:  job.GetCommand(),
-			NextRuns: []time.Time{},
-			PrevRuns: []time.Time{},
-			Origin:   origin,
-			Config:   cfgBytes,
-		})
-	}
+	jobs := s.buildAPIJobs(s.scheduler.GetDisabledJobs())
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jobs)
 }
@@ -441,10 +427,12 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try atomic update first; fall back to disable+add for new jobs
+	// Try atomic update first; fall back to remove+add for new jobs
 	if err := s.scheduler.UpdateJob(req.Name, req.Schedule, job); err != nil {
-		// Job doesn't exist yet — disable any remnant and add fresh
-		_ = s.scheduler.DisableJob(req.Name)
+		// Job doesn't exist yet — remove any remnant and add fresh
+		if old := s.scheduler.GetAnyJob(req.Name); old != nil {
+			_ = s.scheduler.RemoveJob(old)
+		}
 		if err := s.scheduler.AddJob(job); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -533,7 +521,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	j := s.scheduler.GetJob(req.Name)
+	j := s.scheduler.GetAnyJob(req.Name)
 	if j == nil {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
@@ -584,13 +572,7 @@ func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/jobs/"), "/history")
-	var target core.Job
-	for _, job := range s.scheduler.Jobs {
-		if job.GetName() == name {
-			target = job
-			break
-		}
-	}
+	target := s.scheduler.GetAnyJob(name)
 	if target == nil {
 		http.NotFound(w, r)
 		return

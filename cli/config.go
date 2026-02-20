@@ -788,14 +788,8 @@ func (c *Config) iniConfigUpdate() error {
 		c.sh.ResetMiddlewares()
 		c.buildSchedulerMiddlewares(c.sh)
 		wm := c.getWebhookManager()
+		// All jobs (including disabled/paused) remain in Jobs, so one loop suffices.
 		for _, j := range c.sh.Jobs {
-			if jc, ok := j.(jobConfig); ok {
-				jc.ResetMiddlewares()
-				jc.buildMiddlewares(wm)
-				j.Use(c.sh.Middlewares()...)
-			}
-		}
-		for _, j := range c.sh.Disabled {
 			if jc, ok := j.(jobConfig); ok {
 				jc.ResetMiddlewares()
 				jc.buildMiddlewares(wm)
