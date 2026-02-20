@@ -19,11 +19,15 @@ var (
 
 // TriggeredSchedule is a special schedule keyword for jobs that should only run
 // when triggered by another job's on-success/on-failure, or manually via RunJob().
-// Jobs with this schedule are not added to the cron scheduler.
+// go-cron natively handles these schedules: the parser recognizes @triggered,
+// @manual, and @none and creates a TriggeredSchedule whose Next() always returns
+// zero time, so the scheduler never fires them automatically. Jobs can still be
+// triggered on demand via TriggerEntryByName().
 const TriggeredSchedule = "@triggered"
 
-// IsTriggeredSchedule returns true if the schedule indicates the job should only
-// run when triggered (not on a time-based schedule).
+// IsTriggeredSchedule returns true if the schedule string indicates the job
+// should only run when triggered (not on a time-based schedule). This is a
+// convenience wrapper around string comparison for the three recognized keywords.
 func IsTriggeredSchedule(schedule string) bool {
 	return schedule == TriggeredSchedule || schedule == "@manual" || schedule == "@none"
 }
@@ -188,24 +192,13 @@ func (s *Scheduler) AddJob(j Job) error {
 
 // AddJobWithTags adds a job with optional tags for categorization.
 // Tags can be used to group, filter, and remove related jobs.
-// Jobs with @triggered/@manual/@none schedules are stored but not scheduled in cron.
+// All jobs — including @triggered/@manual/@none — are registered with go-cron.
+// Triggered schedules use go-cron's native TriggeredSchedule whose Next() returns
+// zero time, so the scheduler never fires them automatically. They can be executed
+// on demand via RunJob() which delegates to go-cron's TriggerEntryByName().
 func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	if j.GetSchedule() == "" {
 		return ErrEmptySchedule
-	}
-
-	// Handle triggered-only jobs: store for manual/workflow execution but don't schedule
-	if IsTriggeredSchedule(j.GetSchedule()) {
-		j.Use(s.Middlewares()...)
-		s.mu.Lock()
-		s.Jobs = append(s.Jobs, j)
-		s.jobsByName[j.GetName()] = j
-		s.mu.Unlock()
-		s.Logger.Info(fmt.Sprintf(
-			"Triggered-only job registered %q - %q (will run only when triggered)",
-			j.GetName(), j.GetCommand(),
-		))
-		return nil
 	}
 
 	// Build job options: always include name for O(1) lookup
@@ -235,10 +228,18 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	s.Jobs = append(s.Jobs, j)
 	s.jobsByName[j.GetName()] = j
 	s.mu.Unlock()
-	s.Logger.Info(fmt.Sprintf(
-		"New job registered %q - %q - %q - ID: %v",
-		j.GetName(), j.GetCommand(), j.GetSchedule(), id,
-	))
+
+	if IsTriggeredSchedule(j.GetSchedule()) {
+		s.Logger.Info(fmt.Sprintf(
+			"Triggered-only job registered %q - %q (will run only when triggered) - ID: %v",
+			j.GetName(), j.GetCommand(), id,
+		))
+	} else {
+		s.Logger.Info(fmt.Sprintf(
+			"New job registered %q - %q - %q - ID: %v",
+			j.GetName(), j.GetCommand(), j.GetSchedule(), id,
+		))
+	}
 	return nil
 }
 
@@ -338,43 +339,15 @@ func (s *Scheduler) Start() error {
 	// Start workflow cleanup routine
 	s.startWorkflowCleanup()
 
-	// Collect triggered-only jobs that need startup execution while we hold the lock.
-	// These jobs are not added to go-cron, so WithRunImmediately() does not apply.
-	// Skip disabled jobs.
-	var startupTriggered []Job
-	for _, j := range s.Jobs {
-		if _, disabled := s.disabledNames[j.GetName()]; disabled {
-			continue
-		}
-		if IsTriggeredSchedule(j.GetSchedule()) && j.ShouldRunOnStartup() {
-			startupTriggered = append(startupTriggered, j)
-		}
-	}
-
 	s.mu.Unlock()
 	s.Logger.Debug("Starting scheduler")
+	// All jobs — including triggered ones with ShouldRunOnStartup() — are registered
+	// in go-cron with WithRunImmediately() when applicable. go-cron handles the
+	// startup execution natively: it sets Next=now for runImmediately entries, which
+	// causes them to fire once when the scheduler starts. For triggered schedules,
+	// subsequent Next() calls return zero time so they remain dormant until explicitly
+	// triggered again via TriggerEntryByName().
 	s.cron.Start()
-
-	// Fire startup execution for triggered-only jobs.
-	// Register with wg before spawning to prevent Stop()'s wg.Wait() from
-	// completing before goroutines have started.
-	s.mu.Lock()
-	for range startupTriggered {
-		s.wg.Add(1)
-	}
-	s.mu.Unlock()
-	for _, j := range startupTriggered {
-		s.Logger.Info(fmt.Sprintf("Running triggered-only job %q on startup", j.GetName()))
-		wrapper := &jobWrapper{s: s, j: j}
-		go func() {
-			defer func() {
-				s.mu.Lock()
-				s.wg.Done()
-				s.mu.Unlock()
-			}()
-			wrapper.RunWithContext(context.Background())
-		}()
-	}
 
 	return nil
 }
@@ -478,12 +451,13 @@ func (s *Scheduler) EntryByName(name string) cron.Entry {
 	return s.cron.EntryByName(name)
 }
 
-// RunJob manually triggers a job by name. The provided context is propagated
-// to the job's RunWithContext method and is available via Context.Ctx.
+// RunJob manually triggers a job by name. The job is executed through go-cron's
+// TriggerEntryByName, which means it benefits from the full middleware chain
+// (retry, timeout, etc.) and proper concurrency tracking.
 // Returns ErrJobNotFound if the job does not exist or is disabled.
-func (s *Scheduler) RunJob(ctx context.Context, jobName string) error {
+func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 	s.mu.RLock()
-	job, exists := s.jobsByName[jobName]
+	_, exists := s.jobsByName[jobName]
 	_, disabled := s.disabledNames[jobName]
 	s.mu.RUnlock()
 
@@ -496,8 +470,12 @@ func (s *Scheduler) RunJob(ctx context.Context, jobName string) error {
 		return fmt.Errorf("%w: %s", ErrDependencyNotMet, jobName)
 	}
 
-	wrapper := &jobWrapper{s: s, j: job}
-	go wrapper.RunWithContext(ctx)
+	// Delegate to go-cron's TriggerEntryByName for proper middleware chain execution.
+	// This works for all job types including triggered schedules, since all jobs now
+	// have cron entries.
+	if err := s.cron.TriggerEntryByName(jobName); err != nil {
+		return fmt.Errorf("%w: %s", ErrJobNotFound, jobName)
+	}
 
 	return nil
 }
@@ -625,9 +603,9 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 	return nil
 }
 
-// DisableJob pauses the job so it won't be scheduled, but keeps it for later
-// enabling. For cron-scheduled jobs this uses go-cron's native PauseEntryByName;
-// triggered-only jobs are tracked purely in the scheduler's disabled set.
+// DisableJob pauses the job so it won't be scheduled or triggered, but keeps it
+// for later enabling. Uses go-cron's native PauseEntryByName for all job types
+// including triggered schedules (which now all have cron entries).
 func (s *Scheduler) DisableJob(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -640,11 +618,8 @@ func (s *Scheduler) DisableJob(name string) error {
 		return nil // already disabled
 	}
 
-	// Pause in cron if the job has a cron entry (non-triggered jobs)
-	if !IsTriggeredSchedule(j.GetSchedule()) {
-		if err := s.cron.PauseEntryByName(name); err != nil {
-			return fmt.Errorf("pause job: %w", err)
-		}
+	if err := s.cron.PauseEntryByName(name); err != nil {
+		return fmt.Errorf("pause job: %w", err)
 	}
 
 	s.disabledNames[name] = struct{}{}
@@ -652,9 +627,8 @@ func (s *Scheduler) DisableJob(name string) error {
 	return nil
 }
 
-// EnableJob resumes a previously disabled/paused job.
-// For cron-scheduled jobs this uses go-cron's native ResumeEntryByName;
-// triggered-only jobs are tracked purely in the scheduler's disabled set.
+// EnableJob resumes a previously disabled/paused job. Uses go-cron's native
+// ResumeEntryByName for all job types including triggered schedules.
 func (s *Scheduler) EnableJob(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -668,11 +642,8 @@ func (s *Scheduler) EnableJob(name string) error {
 		return fmt.Errorf("%w: %q", ErrJobNotFound, name)
 	}
 
-	// Resume in cron if the job has a cron entry (non-triggered jobs)
-	if !IsTriggeredSchedule(j.GetSchedule()) {
-		if err := s.cron.ResumeEntryByName(name); err != nil {
-			return fmt.Errorf("resume job: %w", err)
-		}
+	if err := s.cron.ResumeEntryByName(name); err != nil {
+		return fmt.Errorf("resume job: %w", err)
 	}
 
 	delete(s.disabledNames, name)
