@@ -270,7 +270,9 @@ jobs:
             pkg:golang/go.opentelemetry.io/otel/trace,
             pkg:golang/golang.org/x/crypto,
             pkg:golang/golang.org/x/sys,
-            pkg:golang/golang.org/x/text
+            pkg:golang/golang.org/x/term,
+            pkg:golang/golang.org/x/text,
+            pkg:golang/golang.org/x/time
           comment-summary-in-pr: always
 
   license-check:
