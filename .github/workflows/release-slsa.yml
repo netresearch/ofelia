@@ -61,7 +61,7 @@ jobs:
       id-token: write
       contents: write
       attestations: write
-    uses: netresearch/.github/.github/workflows/build-go-attest.yml@main
+    uses: netresearch/.github/.github/workflows/build-go-attest.yml@a26a564653b44536bc84fb2299b1a5a15b1fedcd # main
     with:
       binary-name: ofelia-${{ matrix.target }}
       goos: ${{ matrix.goos }}
