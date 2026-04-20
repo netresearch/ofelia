@@ -29,3 +29,10 @@ updates:
     groups:
       docker:
         patterns: ['*']
+
+  - package-ecosystem: devcontainers
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
