@@ -16,7 +16,7 @@ jobs:
   create:
     uses: netresearch/.github/.github/workflows/create-release.yml@main
     with:
-      tag: ${{ inputs.tag || '' }}
+      tag: ${{ inputs.tag || github.ref_name }}
     permissions:
       contents: write
 

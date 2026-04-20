@@ -17,7 +17,7 @@ jobs:
     uses: netresearch/.github/.github/workflows/ghcr-retention.yml@main
     with:
       package-name: ${{ github.event.repository.name }}
-      dry-run: ${{ inputs.dry-run != false }}
+      dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
     permissions:
       packages: write
       attestations: read
