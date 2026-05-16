@@ -104,6 +104,45 @@ func TestWebhook_Key(t *testing.T) {
 		"Webhook.Key() must return Config.Name so core.middlewareContainer can dedup per-instance instead of per-type")
 }
 
+// TestWebhook_TwoInstancesCoexistInJob_Integration is the end-to-end
+// regression for #670 at the integration seam reviewers flagged on #697:
+// the unit-level TestWebhook_Key only pins Key() in isolation, leaving
+// the actual prod path through core.middlewareContainer.Use untested
+// against real *middlewares.Webhook values. This test wires two real
+// webhooks through a BareJob and asserts both survive insertion.
+//
+// Without the #697 Key() opt-in, the second webhook would be silently
+// dropped at j.Use() — the failure mode from #670.
+func TestWebhook_TwoInstancesCoexistInJob_Integration(t *testing.T) {
+	t.Parallel()
+
+	loader := NewPresetLoader(nil)
+
+	whA, err := NewWebhook(&WebhookConfig{
+		Name:   "wh-success",
+		Preset: "slack",
+		ID:     "T12345/B67890",
+		Secret: "xoxb-test-secret",
+	}, loader)
+	require.NoError(t, err)
+	whB, err := NewWebhook(&WebhookConfig{
+		Name:   "wh-error",
+		Preset: "slack",
+		ID:     "T12345/B99999",
+		Secret: "xoxb-other-secret",
+	}, loader)
+	require.NoError(t, err)
+
+	var job core.BareJob
+	job.Use(whA, whB)
+
+	mws := job.Middlewares()
+	require.Len(t, mws, 2,
+		"two *Webhook with distinct Config.Name must both survive j.Use() — pre-#697 the type-string dedup collapsed them into one")
+	assert.Same(t, whA, mws[0], "insertion order: wh-success first")
+	assert.Same(t, whB, mws[1], "insertion order: wh-error second")
+}
+
 func TestWebhookManager_Creation(t *testing.T) {
 	t.Parallel()
 
