@@ -601,6 +601,10 @@ func applyTLSTransport(transport *http.Transport, cfg *ClientConfig, _ string) {
 // Operators who want TLS over a TCP daemon must use tcp+tls:// (#616) or
 // https:// directly. See #628 (this reconciliation) and #634 (the deeper
 // SDK URL-rewrite half of the docker-CLI parity story).
+//
+// HTTP/2 auto-config suppression is handled centrally by createHTTPClient
+// via the tlsCapable: false flag in schemeHandlers — do not re-add a
+// disableHTTP2AutoConfig call here.
 func applyTCPTransport(transport *http.Transport, _ *ClientConfig, _ string) {
 	transport.ForceAttemptHTTP2 = false
 }
@@ -624,6 +628,10 @@ func applyTCPTransport(transport *http.Transport, _ *ClientConfig, _ string) {
 // handles tcp://, so http:// and tcp:// dial to the same target for any
 // given operator-supplied DOCKER_HOST value. A plain strings.TrimPrefix
 // would have fed "host:port/v1.43" to net.Dial("tcp", …), failing.
+//
+// HTTP/2 auto-config suppression is handled centrally by createHTTPClient
+// via the tlsCapable: false flag in schemeHandlers — do not re-add a
+// disableHTTP2AutoConfig call here.
 func applyHTTPTransport(transport *http.Transport, cfg *ClientConfig, host string) {
 	addr := host
 	if parsed, err := url.Parse(host); err == nil && parsed.Host != "" {
@@ -643,6 +651,10 @@ func applyHTTPTransport(transport *http.Transport, cfg *ClientConfig, host strin
 // the connection will fail at dial time — see docs/TROUBLESHOOTING.md).
 // http:// has its own handler (applyHTTPTransport, #682) so it can
 // install a TCP DialContext that fixes hijack-path APIs.
+//
+// HTTP/2 auto-config suppression is handled centrally by createHTTPClient
+// via the tlsCapable: false flag in schemeHandlers — do not re-add a
+// disableHTTP2AutoConfig call here.
 func applyPlainTransport(transport *http.Transport, _ *ClientConfig, _ string) {
 	transport.ForceAttemptHTTP2 = false
 }
