@@ -693,7 +693,7 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
 
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     expose:
       - "8080"
     environment:
@@ -810,7 +810,7 @@ spec:
 ```yaml
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     user: "1000:1000"  # Non-root user
     cap_drop:
       - ALL
@@ -826,7 +826,7 @@ services:
 **Container Scanning**:
 ```bash
 # Trivy
-trivy image netresearch/ofelia:latest
+trivy image ghcr.io/netresearch/ofelia:latest
 
 # Clair
 docker run -p 6060:6060 -d --name clair clair
