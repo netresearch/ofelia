@@ -233,6 +233,7 @@ func TestExecuteWithRetry_HonorsContextCancellation(t *testing.T) {
 	}
 
 	cancelCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	ctx := &Context{
 		Execution: &Execution{},
 		Ctx:       cancelCtx,

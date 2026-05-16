@@ -127,8 +127,9 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 		// Wait before retry, honoring scheduler / job cancellation so
 		// SIGTERM drains promptly even mid-retry. Pre-fix this was a bare
 		// time.Sleep that blocked daemon shutdown for up to RetryDelay ×
-		// MaxRetries (compounded by exponential backoff). Sibling fix to
-		// https://github.com/netresearch/ofelia/issues/673 — see #687.
+		// MaxRetries. Fixes
+		// https://github.com/netresearch/ofelia/issues/687; sibling to the
+		// webhook backoff fix in #685 / #673.
 		runCtx := ctx.RunContext()
 		select {
 		case <-time.After(delay):
