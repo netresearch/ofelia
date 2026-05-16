@@ -496,7 +496,7 @@ delete = true
 version: '3.8'
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
@@ -512,7 +512,7 @@ services:
 version: '3.8'
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     command: daemon --config=/etc/ofelia/config.ini
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
