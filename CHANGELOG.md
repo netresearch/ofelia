@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING (source-only, pre-1.0):** Removed unused `core/adapters/docker.ClientConfig.HTTPClient` field that was declared in [#681](https://github.com/netresearch/ofelia/pull/681) but never read — a caller setting `cfg.HTTPClient = someClient` silently got the auto-constructed transport instead of theirs. Downstream Go consumers that referenced the field in named struct literals or assignments will see a compile-time error after upgrade (semantically a no-op since the field was already ignored at runtime); permitted under SemVer for the current 0.y.z line (cf. [SemVer §4](https://semver.org/#spec-item-4)). Removing the field turns the silent footgun into a loud compile-time error rather than preserving it as a deprecated no-op. If you need a transport-level injection seam, file a feature request with the use case so the suppression of `disableHTTP2AutoConfig` on caller-supplied transports (the [#668](https://github.com/netresearch/ofelia/issues/668) invariant) can be wired in correctly. ([#693](https://github.com/netresearch/ofelia/pull/693), closes [#684](https://github.com/netresearch/ofelia/issues/684))
+
 ## [0.25.1] - 2026-05-16
 
 ### Added
