@@ -4,6 +4,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -531,7 +533,8 @@ zzz-totally-unrelated-key = value
 // TestDockerSectionUnknownKeyWarning_DidYouMean confirms the same parity fix
 // also applies to the [docker] section path (#678). The two sections share
 // the same code path, but explicitly asserting both prevents a future split
-// from silently dropping suggestions on one half.
+// from silently dropping suggestions on one half. Also pins cross-section
+// isolation: a [docker] typo must NOT be misattributed to [global].
 func TestDockerSectionUnknownKeyWarning_DidYouMean(t *testing.T) {
 	t.Parallel()
 
@@ -550,8 +553,71 @@ inculde-stopped = true
 		"Should warn about 'inculde-stopped'")
 	assert.True(t, handler.HasWarning("[docker] section"),
 		"Should name the [docker] section")
+	assert.False(t, handler.HasWarning("[global] section"),
+		"Should NOT misattribute a [docker] typo to the [global] section")
 	assert.True(t, handler.HasWarning("did you mean 'include-stopped'"),
 		"Should suggest 'include-stopped' for 'inculde-stopped'")
+}
+
+// TestGlobalSectionUnknownKeyWarning_NonSquashedKey complements the
+// _DidYouMean test (which targets `webhook-default-preset` inside the
+// squashed WebhookGlobalConfig) by exercising a key declared DIRECTLY on
+// the anonymous Global struct. Together they lock both halves of
+// extractMapstructureKeysFromType: squash recursion AND direct-field
+// enumeration. Without this, a refactor that breaks one path but not the
+// other could pass the existing tests.
+func TestGlobalSectionUnknownKeyWarning_NonSquashedKey(t *testing.T) {
+	t.Parallel()
+
+	// "enabel-pprof" swaps the el on "enable-pprof", a key declared
+	// directly on Config{}.Global (not via squash).
+	configStr := `
+[global]
+enabel-pprof = true
+`
+
+	logger, handler := test.NewTestLoggerWithHandler()
+	_, err := BuildFromString(configStr, logger)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	assert.True(t, handler.HasWarning("Unknown configuration key 'enabel-pprof'"),
+		"Should warn about 'enabel-pprof'")
+	assert.True(t, handler.HasWarning("did you mean 'enable-pprof'"),
+		"Should suggest 'enable-pprof' for 'enabel-pprof'")
+}
+
+// TestGlobalSectionUnknownKeyWarning_FileBased pins the suggestion
+// behavior on the BuildFromFile path (logUnknownKeyWarnings), the
+// production code path the issue reporter actually hits. The other
+// _DidYouMean tests cover BuildFromString (filename == ""); this one
+// covers the four-arm switch's filename != "" branch and asserts the
+// "of <filename>" substring lands in the message.
+func TestGlobalSectionUnknownKeyWarning_FileBased(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.ini")
+	//nolint:misspell // intentional typo for did-you-mean assertion
+	content := `[global]
+webhook-defauls-preset = json-post
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+
+	logger, handler := test.NewTestLoggerWithHandler()
+	_, err := BuildFromFile(configPath, logger)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	//nolint:misspell // intentional typo for did-you-mean assertion
+	assert.True(t, handler.HasWarning("Unknown configuration key 'webhook-defauls-preset'"),
+		"Should warn about the typo")
+	assert.True(t, handler.HasWarning("[global] section"),
+		"Should name the [global] section")
+	assert.True(t, handler.HasWarning("of "+configPath),
+		"Should include the filename (file-based path's message variant)")
+	assert.True(t, handler.HasWarning("did you mean 'webhook-default-preset'"),
+		"Should suggest 'webhook-default-preset' even on the file-based path")
 }
 
 // Phase 8: Additional coverage tests for config_decode.go
