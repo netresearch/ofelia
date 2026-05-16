@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -322,6 +323,55 @@ func TestPresetLoader_AddLocalPresetDir(t *testing.T) {
 
 	loader.AddLocalPresetDir("/opt/presets")
 	assert.Len(t, loader.localPresetDirs, 2)
+}
+
+// TestPresetLoader_AddLocalPresetDir_WarnsOnBundledShadow pins the fix for
+// https://github.com/netresearch/ofelia/issues/679. PresetLoader.Load resolves
+// bundled presets first and never falls through, so a local file at
+// $dir/<bundled-name>.yaml is a silent no-op. AddLocalPresetDir now scans the
+// directory and emits a slog.Warn per collision so operators learn at startup
+// that their override won't take effect.
+//
+// Not parallel: shares slog.Default with other captureSlog tests in the
+// package (see the helper's comment).
+func TestPresetLoader_AddLocalPresetDir_WarnsOnBundledShadow(t *testing.T) {
+	dir := t.TempDir()
+
+	// json-post is a bundled preset (since #676) — placing a local file
+	// with the same stem must trigger the shadow warning. .yml extension
+	// is also recognized so a future operator pattern doesn't slip through.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "json-post.yaml"), []byte("name: json-post\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "slack.yml"), []byte("name: slack\n"), 0o644))
+	// Non-colliding file in the same directory must NOT trigger a warning.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "my-custom.yaml"), []byte("name: my-custom\n"), 0o644))
+	// Non-yaml file must be ignored entirely.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "json-post.txt"), []byte("not yaml"), 0o644))
+
+	buf := captureSlog(t)
+	loader := NewPresetLoader(nil)
+	loader.AddLocalPresetDir(dir)
+
+	logs := buf.String()
+	assert.Contains(t, logs, "shadows bundled preset \\\"json-post\\\"",
+		"should warn that json-post.yaml shadows the bundled json-post preset")
+	assert.Contains(t, logs, "shadows bundled preset \\\"slack\\\"",
+		"should warn that slack.yml shadows the bundled slack preset (covers .yml ext)")
+	assert.NotContains(t, logs, "my-custom",
+		"should NOT warn about non-colliding local presets")
+	assert.NotContains(t, logs, "json-post.txt",
+		"should NOT scan non-yaml files")
+}
+
+// TestPresetLoader_AddLocalPresetDir_NoWarnOnMissingDir verifies that
+// registering a directory that does not exist (yet) is silent. Operators
+// frequently configure the directory before populating it, and the existing
+// /tmp/presets fixture above relies on this behavior.
+func TestPresetLoader_AddLocalPresetDir_NoWarnOnMissingDir(t *testing.T) {
+	buf := captureSlog(t)
+	loader := NewPresetLoader(nil)
+	loader.AddLocalPresetDir(filepath.Join(t.TempDir(), "does-not-exist"))
+	assert.NotContains(t, buf.String(), "shadows bundled preset",
+		"missing directory must not produce a shadow warning")
 }
 
 func TestPresetLoader_LoadFromFile(t *testing.T) {
