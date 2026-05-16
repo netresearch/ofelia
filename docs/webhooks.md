@@ -618,6 +618,18 @@ Templates support these helper functions:
 
 ## Creating Custom Presets
 
+### Preset Lookup Order
+
+`PresetLoader.Load` resolves a preset name against these sources, in order, and stops at the first hit:
+
+1. **Bundled presets** compiled into the binary (`slack`, `discord`, `teams`, `matrix`, `ntfy`, `ntfy-token`, `pushover`, `pagerduty`, `gotify`, `json-post`).
+2. **Path-prefixed local files** — preset names starting with `/`, `./`, or `../` are read from disk directly.
+3. **Local preset directories** — registered via `(*PresetLoader).AddLocalPresetDir(dir)`; `<dir>/<name>.yaml` lookup.
+4. **GitHub shorthand** — `gh:owner/repo/path/file.yaml@ref`.
+5. **Remote URLs** — `https://...`/`http://...` (requires `webhook-allow-remote-presets = true` AND a matching entry in `webhook-trusted-preset-sources`).
+
+> **Bundled wins:** a file at `<local-preset-dir>/json-post.yaml` will **not** override the bundled `json-post` preset — the bundled lookup at step 1 fires first and never falls through. To make collisions visible, Ofelia emits a startup `slog.Warn` per local `.yaml` file whose stem matches a bundled preset name. Rename the local file (e.g. `my-json-post.yaml`) to use it via step 3. This precedence is intentional: inverting it would let a local typo (e.g. an accidentally-saved `slack.yaml`) silently break Slack delivery for every webhook on the host. See [#679](https://github.com/netresearch/ofelia/issues/679).
+
 Custom presets use YAML format:
 
 ```yaml
