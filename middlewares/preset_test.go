@@ -385,6 +385,36 @@ func TestPresetLoader_AddLocalPresetDir_NoWarnOnMissingDir(t *testing.T) {
 	loader.AddLocalPresetDir(filepath.Join(t.TempDir(), "does-not-exist"))
 	assert.NotContains(t, buf.String(), "shadows bundled preset",
 		"missing directory must not produce a shadow warning")
+	assert.NotContains(t, buf.String(), "could not scan local preset dir",
+		"fs.ErrNotExist must stay silent (no debug log either) — operators register dirs before populating")
+}
+
+// TestPresetLoader_AddLocalPresetDir_DebugLogsNonENOENTError pins the debug-
+// log branch added in response to PR #696 review: read failures other than
+// "directory does not exist" (e.g. operator pointed at a file, permission
+// denied) are debug-logged so they surface when log level is raised, instead
+// of being silently swallowed alongside the legitimate not-yet-populated
+// case.
+//
+// We trigger ENOTDIR by registering a path that points at a regular file
+// rather than a directory — os.ReadDir then returns a non-ENOENT error,
+// which is exactly the branch we want to exercise.
+func TestPresetLoader_AddLocalPresetDir_DebugLogsNonENOENTError(t *testing.T) {
+	dir := t.TempDir()
+	notADir := filepath.Join(dir, "regular-file")
+	require.NoError(t, os.WriteFile(notADir, []byte("just a file"), 0o644))
+
+	buf := captureSlog(t)
+	loader := NewPresetLoader(nil)
+	loader.AddLocalPresetDir(notADir)
+
+	logs := buf.String()
+	assert.Contains(t, logs, "could not scan local preset dir",
+		"non-ENOENT errors must surface as a debug log (e.g. ENOTDIR when path is a regular file)")
+	assert.Contains(t, logs, `"level":"DEBUG"`,
+		"non-ENOENT errors are debug-level, not warn — they're operator-recoverable misconfig, not a startup gate")
+	assert.NotContains(t, logs, "shadows bundled preset",
+		"failure to scan must not produce a shadow warning")
 }
 
 func TestPresetLoader_LoadFromFile(t *testing.T) {
