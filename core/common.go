@@ -295,6 +295,43 @@ type Middleware interface {
 	ContinueOnStop() bool
 }
 
+// keyedMiddleware is an OPTIONAL interface that middleware implementations
+// can satisfy to opt into per-instance dedup keys in middlewareContainer.
+// Implementers that legitimately need multiple instances per job (e.g.
+// multiple Webhook destinations with distinct Config.Name) return a stable,
+// non-empty key per instance — typically the operator-supplied name from
+// configuration. Returning "" or not implementing Key() at all falls back
+// to the legacy reflect.TypeOf(m).String() dedup, preserving the
+// 1-per-type semantics of Slack, Mail, Save, Overlap, and the
+// WebhookMiddleware composite from PR #671.
+//
+// Why opt-in via type assertion (no interface contract change): adding
+// Key() to the Middleware interface would force every implementer (in
+// this repo and any downstream consumer) to add a stub method, providing
+// no value for the common 1-per-type case. The assertion-based opt-in
+// keeps the contract small and lets the type-string fallback do the work
+// it has always done.
+//
+// Tracks the structural fix for
+// https://github.com/netresearch/ofelia/issues/672; sibling to #670 /
+// PR #671 which workarounded the multi-webhook case at the webhook layer.
+type keyedMiddleware interface {
+	Key() string
+}
+
+// middlewareKey computes the dedup key for a middleware. Implementers of
+// keyedMiddleware that return a non-empty string get that string as the
+// key; everyone else (including keyedMiddleware implementers that
+// explicitly return "") falls back to reflect.TypeOf(m).String().
+func middlewareKey(m Middleware) string {
+	if k, ok := m.(keyedMiddleware); ok {
+		if key := k.Key(); key != "" {
+			return key
+		}
+	}
+	return reflect.TypeOf(m).String()
+}
+
 type middlewareContainer struct {
 	m     map[string]Middleware
 	order []string
@@ -310,13 +347,13 @@ func (c *middlewareContainer) Use(ms ...Middleware) {
 			continue
 		}
 
-		t := reflect.TypeOf(m).String()
-		if _, ok := c.m[t]; ok {
+		k := middlewareKey(m)
+		if _, ok := c.m[k]; ok {
 			continue
 		}
 
-		c.order = append(c.order, t)
-		c.m[t] = m
+		c.order = append(c.order, k)
+		c.m[k] = m
 	}
 }
 

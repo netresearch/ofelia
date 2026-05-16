@@ -78,6 +78,32 @@ func TestWebhook_ContinueOnStop(t *testing.T) {
 	assert.True(t, webhook.ContinueOnStop())
 }
 
+// TestWebhook_Key pins the contract used by core.middlewareContainer to
+// dedup webhooks per Config.Name instead of by reflect type. See
+// https://github.com/netresearch/ofelia/issues/672. Without this, two
+// *Webhook instances with distinct names collapse into the first at
+// j.Use() time and the second one silently never fires — the failure
+// mode tracked in #670 / fixed at the webhook layer in PR #671.
+func TestWebhook_Key(t *testing.T) {
+	t.Parallel()
+
+	config := &WebhookConfig{
+		Name:   "wh-success",
+		Preset: "slack",
+		ID:     "T12345/B67890",
+		Secret: "xoxb-test-secret",
+	}
+	loader := NewPresetLoader(nil)
+
+	middleware, err := NewWebhook(config, loader)
+	require.NoError(t, err)
+
+	webhook, ok := middleware.(*Webhook)
+	require.True(t, ok)
+	assert.Equal(t, "wh-success", webhook.Key(),
+		"Webhook.Key() must return Config.Name so core.middlewareContainer can dedup per-instance instead of per-type")
+}
+
 func TestWebhookManager_Creation(t *testing.T) {
 	t.Parallel()
 

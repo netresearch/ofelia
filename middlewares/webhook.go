@@ -129,6 +129,25 @@ func (w *Webhook) ContinueOnStop() bool {
 	return true
 }
 
+// Key returns the per-instance dedup key used by core.middlewareContainer
+// so multiple Webhook instances with distinct Config.Name can coexist in a
+// single job's middleware chain. Pre-#672, the container deduped by
+// reflect.TypeOf(m).String() and silently dropped any second *Webhook;
+// PR #671 worked around this with the WebhookMiddleware composite. With
+// the Key() opt-in, two distinct *Webhook instances (e.g. "wh-success"
+// and "wh-error") survive insertion into the chain by themselves.
+//
+// Returning Config.Name (instead of, say, a UUID) preserves the existing
+// "first wins" dedup contract for the scheduler-to-job propagation path
+// at core/scheduler.go:315 / config_webhook.go:289: if the scheduler-level
+// webhook with the same Config.Name is re-propagated to a job that
+// already has it, the second insertion is correctly skipped.
+//
+// See https://github.com/netresearch/ofelia/issues/672.
+func (w *Webhook) Key() string {
+	return w.Config.Name
+}
+
 // Run executes the webhook notification
 func (w *Webhook) Run(ctx *core.Context) error {
 	err := ctx.Next()
