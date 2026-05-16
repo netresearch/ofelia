@@ -267,7 +267,14 @@ func logSectionUnknownKeyWarnings(logger *slog.Logger, section string, unknownKe
 		default:
 			msg = fmt.Sprintf("Unknown configuration key '%s' in [%s] section (typo?)", key, section)
 		}
-		logger.Warn(msg, "key", key, "file", filename)
+		// Drop the "file" structured attr for string-based configs (filename
+		// is empty) so JSON logs don't carry a noisy file="" field for the
+		// BuildFromString path.
+		if filename != "" {
+			logger.Warn(msg, "key", key, "file", filename)
+		} else {
+			logger.Warn(msg, "key", key)
+		}
 	}
 }
 
