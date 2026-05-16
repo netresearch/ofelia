@@ -500,14 +500,14 @@ v0.11.0 introduced OptimizedDockerClient that incorrectly enabled HTTP/2 on all 
    # docker-compose.yml
    services:
      ofelia:
-       image: mcuadros/ofelia:latest
+       image: ghcr.io/netresearch/ofelia:latest
    ```
 
 2. **Downgrade to v0.10.2** (Temporary workaround):
    ```yaml
    services:
      ofelia:
-       image: mcuadros/ofelia:v0.10.2
+       image: ghcr.io/netresearch/ofelia:v0.10.2
    ```
 
 3. **Use HTTPS connection** (If possible):
@@ -791,7 +791,7 @@ services:
 ```yaml
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
