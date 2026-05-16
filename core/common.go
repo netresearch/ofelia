@@ -332,6 +332,16 @@ func middlewareKey(m Middleware) string {
 	return reflect.TypeOf(m).String()
 }
 
+// middlewareContainer holds a job's (or scheduler's) middleware chain with
+// per-key dedup so the same logical middleware is not invoked twice when
+// scheduler-level middlewares are propagated to a job via
+// j.Use(s.Middlewares()...). See middlewareKey for the dedup-key strategy.
+//
+// Not safe for concurrent use; callers must serialize. In practice
+// (*Scheduler).Use happens under Scheduler.mu, and (*BareJob).Use is
+// invoked from config-parse paths and from AddJob before the job is
+// published to the cron runner — there is no in-flight reader during
+// mutation.
 type middlewareContainer struct {
 	m     map[string]Middleware
 	order []string
