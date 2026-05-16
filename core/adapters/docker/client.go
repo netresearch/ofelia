@@ -84,9 +84,20 @@ var getenv = os.Getenv
 // createHTTPClient — which is invoked directly by some tests — while still
 // letting NewClientWithConfig reject anything not on the public allow-list
 // at the front door (the security / silent-downgrade contract from PR #612).
+//
+// `tlsCapable` marks schemes whose apply function wires real TLS material so
+// the transport can negotiate ALPN h2. createHTTPClient inverts this flag to
+// drive disableHTTP2AutoConfig — non-TLS schemes MUST suppress Go std lib's
+// lazy HTTP/2 auto-config or the SDK's hijack-path dialer misreads the
+// auto-allocated TLSClientConfig as operator-configured TLS and crashes on
+// plain Docker daemons (https://github.com/netresearch/ofelia/issues/668).
+// Driving suppression from the flag — instead of from a call inside each
+// apply function — means a future non-TLS scheme can't silently regress #668
+// by forgetting the call (see #683).
 type schemeHandler struct {
-	allowed bool
-	apply   func(transport *http.Transport, cfg *ClientConfig, host string)
+	allowed    bool
+	tlsCapable bool
+	apply      func(transport *http.Transport, cfg *ClientConfig, host string)
 }
 
 // schemeHandlers maps a lowercase URL scheme to its transport configuration.
@@ -119,12 +130,12 @@ type schemeHandler struct {
 //     is build-tagged. The handler is a no-op so non-Windows builds still
 //     compile and the scheme is on the public allow-list.
 var schemeHandlers = map[string]schemeHandler{
-	schemeUnix:   {allowed: true, apply: applyUnixTransport},
-	schemeTCP:    {allowed: true, apply: applyTCPTransport},
-	schemeHTTP:   {allowed: true, apply: applyHTTPTransport},
-	schemeHTTPS:  {allowed: true, apply: applyTLSTransport},
-	schemeNpipe:  {allowed: true, apply: applyPlainTransport},
-	schemeTCPTLS: {allowed: true, apply: applyTLSTransport},
+	schemeUnix:   {allowed: true, tlsCapable: false, apply: applyUnixTransport},
+	schemeTCP:    {allowed: true, tlsCapable: false, apply: applyTCPTransport},
+	schemeHTTP:   {allowed: true, tlsCapable: false, apply: applyHTTPTransport},
+	schemeHTTPS:  {allowed: true, tlsCapable: true, apply: applyTLSTransport},
+	schemeNpipe:  {allowed: true, tlsCapable: false, apply: applyPlainTransport},
+	schemeTCPTLS: {allowed: true, tlsCapable: true, apply: applyTLSTransport},
 }
 
 // supportedSchemesMsg is the cached, comma-separated list of allowed schemes
@@ -485,6 +496,13 @@ func createHTTPClient(config *ClientConfig) *http.Client {
 
 	if handler, ok := schemeHandlers[scheme]; ok {
 		handler.apply(transport, config, host)
+		// Non-TLS schemes MUST suppress Go std lib's lazy HTTP/2 auto-config
+		// (see schemeHandler.tlsCapable doc and #668). Driving this from the
+		// flag — instead of the apply function — guarantees by construction
+		// that a future non-TLS scheme can't regress the invariant (#683).
+		if !handler.tlsCapable {
+			disableHTTP2AutoConfig(transport)
+		}
 	} else {
 		// Unknown / unrecognized scheme: plain HTTP/1.1. This branch is
 		// unreachable when NewClientWithConfig validated the host, but
@@ -554,7 +572,8 @@ func disableHTTP2AutoConfig(transport *http.Transport) {
 
 // applyUnixTransport configures the transport to dial a Unix domain socket
 // at the path encoded in host. HTTP/2 is disabled (Docker over a Unix
-// socket is HTTP/1.1).
+// socket is HTTP/1.1). HTTP/2 auto-config suppression is handled centrally
+// by createHTTPClient via the tlsCapable: false flag in schemeHandlers.
 func applyUnixTransport(transport *http.Transport, cfg *ClientConfig, host string) {
 	socketPath := strings.TrimPrefix(host, schemeUnix+"://")
 	transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -562,7 +581,6 @@ func applyUnixTransport(transport *http.Transport, cfg *ClientConfig, host strin
 		return dialer.DialContext(ctx, schemeUnix, socketPath)
 	}
 	transport.ForceAttemptHTTP2 = false
-	disableHTTP2AutoConfig(transport)
 }
 
 // applyTLSTransport wires the transport for HTTPS / tcp+tls hosts: HTTP/2
@@ -583,9 +601,12 @@ func applyTLSTransport(transport *http.Transport, cfg *ClientConfig, _ string) {
 // Operators who want TLS over a TCP daemon must use tcp+tls:// (#616) or
 // https:// directly. See #628 (this reconciliation) and #634 (the deeper
 // SDK URL-rewrite half of the docker-CLI parity story).
+//
+// HTTP/2 auto-config suppression is handled centrally by createHTTPClient
+// via the tlsCapable: false flag in schemeHandlers — do not re-add a
+// disableHTTP2AutoConfig call here.
 func applyTCPTransport(transport *http.Transport, _ *ClientConfig, _ string) {
 	transport.ForceAttemptHTTP2 = false
-	disableHTTP2AutoConfig(transport)
 }
 
 // applyHTTPTransport handles plain http:// Docker hosts. Identical to
@@ -607,6 +628,10 @@ func applyTCPTransport(transport *http.Transport, _ *ClientConfig, _ string) {
 // handles tcp://, so http:// and tcp:// dial to the same target for any
 // given operator-supplied DOCKER_HOST value. A plain strings.TrimPrefix
 // would have fed "host:port/v1.43" to net.Dial("tcp", …), failing.
+//
+// HTTP/2 auto-config suppression is handled centrally by createHTTPClient
+// via the tlsCapable: false flag in schemeHandlers — do not re-add a
+// disableHTTP2AutoConfig call here.
 func applyHTTPTransport(transport *http.Transport, cfg *ClientConfig, host string) {
 	addr := host
 	if parsed, err := url.Parse(host); err == nil && parsed.Host != "" {
@@ -619,7 +644,6 @@ func applyHTTPTransport(transport *http.Transport, cfg *ClientConfig, host strin
 		return dialer.DialContext(ctx, schemeTCP, addr)
 	}
 	transport.ForceAttemptHTTP2 = false
-	disableHTTP2AutoConfig(transport)
 }
 
 // applyPlainTransport is the no-frills HTTP/1.1 path used for npipe://
@@ -627,9 +651,12 @@ func applyHTTPTransport(transport *http.Transport, cfg *ClientConfig, host strin
 // the connection will fail at dial time — see docs/TROUBLESHOOTING.md).
 // http:// has its own handler (applyHTTPTransport, #682) so it can
 // install a TCP DialContext that fixes hijack-path APIs.
+//
+// HTTP/2 auto-config suppression is handled centrally by createHTTPClient
+// via the tlsCapable: false flag in schemeHandlers — do not re-add a
+// disableHTTP2AutoConfig call here.
 func applyPlainTransport(transport *http.Transport, _ *ClientConfig, _ string) {
 	transport.ForceAttemptHTTP2 = false
-	disableHTTP2AutoConfig(transport)
 }
 
 // upgradeTCPToHTTPSIfTLSMaterial mirrors the docker CLI's silent scheme

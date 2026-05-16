@@ -143,29 +143,105 @@ func TestApplyTLSTransport_DoesNotDisableHTTP2AutoConfig(t *testing.T) {
 	}
 }
 
-// TestApplyTransport_NonTLSDisableHTTP2AutoConfig asserts the inverse:
-// every non-TLS apply path MUST suppress HTTP/2 auto-config. Adding a new
-// non-TLS scheme handler without the call would silently re-introduce
-// #668; this table pins the invariant.
-func TestApplyTransport_NonTLSDisableHTTP2AutoConfig(t *testing.T) {
-	cases := []struct {
-		name  string
-		apply func(*http.Transport, *ClientConfig, string)
-		host  string
-	}{
-		{"unix", applyUnixTransport, "unix:///var/run/docker.sock"},
-		{"tcp", applyTCPTransport, "tcp://127.0.0.1:2375"},
-		{"http", applyHTTPTransport, "http://127.0.0.1:2375"},
-		{"plain", applyPlainTransport, "npipe://./pipe/docker_engine"},
+// TestSchemeHandler_NonTLSCapableSuppressesHTTP2 asserts the structural
+// invariant from #683: every scheme registered with tlsCapable=false in
+// schemeHandlers MUST end up with TLSNextProto suppressed after going
+// through createHTTPClient. Adding a new non-TLS scheme handler now only
+// requires registering it with tlsCapable=false — the suppression follows
+// from the dispatch, not from a manually-duplicated call inside each apply
+// function. Replaces the per-apply-function check that lived here before
+// #683's data-driven refactor.
+//
+// Asserts a minimum count of covered schemes so a future map-deletion that
+// silently empties the loop body fails loudly; requires hostFor entries to
+// be present so a new scheme without a fixture cannot fall back to env-
+// derived defaults and silently test the wrong scheme.
+func TestSchemeHandler_NonTLSCapableSuppressesHTTP2(t *testing.T) {
+	// Belt-and-braces: keep ambient DOCKER_HOST from contaminating
+	// resolveHostForDispatch's env fallback if hostFor were ever empty.
+	t.Setenv("DOCKER_HOST", "")
+	// Static host samples for each non-TLS scheme. Values don't matter
+	// beyond parsing — createHTTPClient never dials.
+	hostFor := map[string]string{
+		schemeUnix:  "unix:///var/run/docker.sock",
+		schemeTCP:   "tcp://127.0.0.1:2375",
+		schemeHTTP:  "http://127.0.0.1:2375",
+		schemeNpipe: "npipe://./pipe/docker_engine",
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			transport := &http.Transport{}
-			tc.apply(transport, DefaultConfig(), tc.host)
+	const minNonTLSSchemes = 4
+	covered := 0
+	for scheme, handler := range schemeHandlers {
+		if handler.tlsCapable {
+			continue
+		}
+		host, ok := hostFor[scheme]
+		if !ok {
+			t.Fatalf("hostFor missing entry for scheme %q — extend the fixture when adding a new non-TLS scheme", scheme)
+		}
+		covered++
+		t.Run(scheme, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Host = host
+			client := createHTTPClient(cfg)
+			transport, ok := client.Transport.(*http.Transport)
+			if !ok {
+				t.Fatalf("createHTTPClient returned non-*http.Transport: %T", client.Transport)
+			}
 			if transport.TLSNextProto == nil {
-				t.Fatalf("apply%s did not call disableHTTP2AutoConfig — silent regression risk for #668", tc.name)
+				t.Fatalf("createHTTPClient(%s) left TLSNextProto nil — non-TLS scheme must suppress HTTP/2 auto-config (#668, structural fix in #683)", scheme)
 			}
 		})
+	}
+	if covered < minNonTLSSchemes {
+		t.Fatalf("only %d non-TLS schemes covered (want >=%d) — schemeHandlers shrank or all schemes flipped to tlsCapable=true", covered, minNonTLSSchemes)
+	}
+}
+
+// TestSchemeHandler_TLSCapableMeansHTTP2Allowed locks the inverse half of
+// #683's structural invariant: every scheme registered with tlsCapable=true
+// MUST keep TLSNextProto nil so ALPN h2 negotiation works. If a refactor
+// accidentally flips a TLS-capable scheme into the suppression path, HTTPS
+// Docker hosts silently lose HTTP/2.
+//
+// Asserts a minimum count of covered schemes so a future map-deletion that
+// silently empties the loop body fails loudly; requires hostFor entries to
+// be present so a new scheme without a fixture cannot fall back to env-
+// derived defaults and silently test the wrong scheme.
+func TestSchemeHandler_TLSCapableMeansHTTP2Allowed(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "")
+	hostFor := map[string]string{
+		schemeHTTPS:  "https://127.0.0.1:2376",
+		schemeTCPTLS: "tcp+tls://127.0.0.1:2376",
+	}
+	const minTLSSchemes = 2
+	covered := 0
+	for scheme, handler := range schemeHandlers {
+		if !handler.tlsCapable {
+			continue
+		}
+		host, ok := hostFor[scheme]
+		if !ok {
+			t.Fatalf("hostFor missing entry for scheme %q — extend the fixture when adding a new TLS-capable scheme", scheme)
+		}
+		covered++
+		t.Run(scheme, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Host = host
+			client := createHTTPClient(cfg)
+			transport, ok := client.Transport.(*http.Transport)
+			if !ok {
+				t.Fatalf("createHTTPClient returned non-*http.Transport: %T", client.Transport)
+			}
+			if transport.TLSNextProto != nil {
+				t.Fatalf("createHTTPClient(%s) set TLSNextProto on a tlsCapable scheme — ALPN h2 negotiation now broken (#683)", scheme)
+			}
+			if !transport.ForceAttemptHTTP2 {
+				t.Fatalf("createHTTPClient(%s) did not set ForceAttemptHTTP2=true on a tlsCapable scheme", scheme)
+			}
+		})
+	}
+	if covered < minTLSSchemes {
+		t.Fatalf("only %d TLS-capable schemes covered (want >=%d) — schemeHandlers shrank or all schemes flipped to tlsCapable=false", covered, minTLSSchemes)
 	}
 }
 
