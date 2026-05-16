@@ -4,6 +4,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -198,5 +199,73 @@ func TestRetryConfig(t *testing.T) {
 
 	if config.RetryMaxDelayMs != 120000 {
 		t.Errorf("Expected RetryMaxDelayMs=120000, got %d", config.RetryMaxDelayMs)
+	}
+}
+
+// TestExecuteWithRetry_HonorsContextCancellation pins the fix for
+// https://github.com/netresearch/ofelia/issues/687.
+//
+// Before the fix the inter-attempt backoff used a bare time.Sleep that
+// did not observe ctx cancellation, so SIGTERM on a daemon mid-retry kept
+// the job goroutine pinned for up to RetryDelay × MaxRetries (compounded
+// by exponential backoff) waiting for the sleep to return — keeping the
+// scheduler from draining on shutdown. The fix replaces the sleep with a
+// select over (time.After, ctx.RunContext().Done()) so retries drain
+// promptly. Sibling to #673 / #685 (webhook retry backoff).
+//
+// We assert two things:
+//  1. After cancellation, ExecuteWithRetry returns within a small window
+//     (well under the RetryDelay budget) instead of blocking through it.
+//  2. The returned error wraps context.Canceled so callers can branch on it.
+func TestExecuteWithRetry_HonorsContextCancellation(t *testing.T) {
+	logger := newDiscardLogger()
+	executor := NewRetryExecutor(logger)
+
+	// Big retry budget so a naive time.Sleep impl would block the test
+	// well past its deadline.
+	const retryDelay = 30 * time.Second
+	job := &testRetryJob{
+		BareJob: BareJob{
+			Name:         "test-ctx-cancel",
+			MaxRetries:   5,
+			RetryDelayMs: int(retryDelay / time.Millisecond),
+		},
+	}
+
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	ctx := &Context{
+		Execution: &Execution{},
+		Ctx:       cancelCtx,
+	}
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	attempts := 0
+	start := time.Now()
+	err := executor.ExecuteWithRetry(job, ctx, func(c *Context) error {
+		attempts++
+		return errors.New("persistent failure")
+	})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("ExecuteWithRetry should return an error after cancellation")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("ExecuteWithRetry should return an error chain containing context.Canceled, got: %v", err)
+	}
+	// Tolerate CI slowness but stay well under RetryDelay. If the fix
+	// regresses to time.Sleep, elapsed will balloon to ~retryDelay.
+	if elapsed >= 5*time.Second {
+		t.Errorf("ExecuteWithRetry should drain promptly on ctx cancel (elapsed=%v, retryDelay=%v)",
+			elapsed, retryDelay)
+	}
+	// Cancellation hit during the first backoff, so runFunc should have
+	// been called exactly once (the initial attempt that failed).
+	if attempts != 1 {
+		t.Errorf("Expected 1 attempt before cancellation, got %d", attempts)
 	}
 }
