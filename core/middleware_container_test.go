@@ -44,8 +44,8 @@ func (o *otherUnkeyedFakeMiddleware) ContinueOnStop() bool { return false }
 // emptyKeyedFake implements Middleware + Key() returning "". Used to lock
 // the opt-out path: a middleware that explicitly declines a custom key
 // gets the legacy type-string dedup, NOT a distinct empty-string-keyed
-// slot. *middlewares.Webhook does the same in #697 follow-ups when its
-// dedup is deferred to the WebhookMiddleware composite.
+// slot. Mirrors what any keyed-by-default middleware can do if it wants
+// to defer per-instance dedup to a wrapper / composite type.
 type emptyKeyedFake struct{}
 
 func (e *emptyKeyedFake) Run(_ *Context) error { return nil }

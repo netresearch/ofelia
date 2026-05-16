@@ -314,7 +314,7 @@ type Middleware interface {
 //
 // Tracks the structural fix for
 // https://github.com/netresearch/ofelia/issues/672; sibling to #670 /
-// PR #671 which workarounded the multi-webhook case at the webhook layer.
+// PR #671 which worked around the multi-webhook case at the webhook layer.
 type keyedMiddleware interface {
 	Key() string
 }
