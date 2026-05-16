@@ -241,17 +241,48 @@ func logUnknownKeyWarnings(logger *slog.Logger, filename string, res *parseResul
 		return
 	}
 
-	for _, key := range res.unknownGlobal {
-		logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [global] section (typo?)", key),
-			"key", key, "file", filename)
-	}
-	for _, key := range res.unknownDocker {
-		logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [docker] section (typo?)", key),
-			"key", key, "file", filename)
-	}
+	logSectionUnknownKeyWarnings(logger, "global", res.unknownGlobal, globalKnownKeys(), filename)
+	logSectionUnknownKeyWarnings(logger, "docker", res.unknownDocker, dockerKnownKeys(), filename)
 
 	// Log warnings for unknown keys in job sections
 	logJobUnknownKeyWarnings(logger, res.unknownJobs, filename)
+}
+
+// logSectionUnknownKeyWarnings emits a "Unknown configuration key … in [section]"
+// warning for each key, with a "did you mean?" suggestion when a close match is
+// found in knownKeys. Used by [global] and [docker] sections so the suggestion
+// behavior is at parity with the job-section path (issue #678).
+func logSectionUnknownKeyWarnings(logger *slog.Logger, section string, unknownKeys, knownKeys []string, filename string) {
+	for _, key := range unknownKeys {
+		suggestion := findClosestMatch(key, knownKeys)
+		var msg string
+		switch {
+		case suggestion != "" && filename != "":
+			msg = fmt.Sprintf("Unknown configuration key '%s' in [%s] section of %s (did you mean '%s'?)",
+				key, section, filename, suggestion)
+		case suggestion != "":
+			msg = fmt.Sprintf("Unknown configuration key '%s' in [%s] section (did you mean '%s'?)", key, section, suggestion)
+		case filename != "":
+			msg = fmt.Sprintf("Unknown configuration key '%s' in [%s] section of %s (typo?)", key, section, filename)
+		default:
+			msg = fmt.Sprintf("Unknown configuration key '%s' in [%s] section (typo?)", key, section)
+		}
+		logger.Warn(msg, "key", key, "file", filename)
+	}
+}
+
+// globalKnownKeys returns the list of valid mapstructure keys for the [global]
+// INI section. Derived from Config{}.Global so the suggestion list cannot
+// drift from the actual decoded struct.
+func globalKnownKeys() []string {
+	return extractMapstructureKeys(Config{}.Global)
+}
+
+// dockerKnownKeys returns the list of valid mapstructure keys for the [docker]
+// INI section. Derived from DockerConfig{} so the suggestion list cannot drift
+// from the actual decoded struct.
+func dockerKnownKeys() []string {
+	return extractMapstructureKeys(DockerConfig{})
 }
 
 // logJobUnknownKeyWarnings logs warnings for unknown keys in job sections with
@@ -322,13 +353,9 @@ func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 	if parseRes != nil {
 		usedKeys = parseRes.usedKeys
 
-		// Log warnings for unknown keys
-		for _, key := range parseRes.unknownGlobal {
-			logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [global] section (typo?)", key))
-		}
-		for _, key := range parseRes.unknownDocker {
-			logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [docker] section (typo?)", key))
-		}
+		// Log warnings for unknown keys (empty filename for string-based config)
+		logSectionUnknownKeyWarnings(logger, "global", parseRes.unknownGlobal, globalKnownKeys(), "")
+		logSectionUnknownKeyWarnings(logger, "docker", parseRes.unknownDocker, dockerKnownKeys(), "")
 
 		// Log warnings for unknown keys in job sections (empty filename for string-based config)
 		logJobUnknownKeyWarnings(logger, parseRes.unknownJobs, "")
