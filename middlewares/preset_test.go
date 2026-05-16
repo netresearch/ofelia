@@ -332,18 +332,27 @@ func TestPresetLoader_AddLocalPresetDir(t *testing.T) {
 // directory and emits a slog.Warn per collision so operators learn at startup
 // that their override won't take effect.
 //
+// Scope is restricted to *.yaml to mirror Load's resolution path: Load only
+// probes "<name>.yaml" in localPresetDirs, so *.yml files would not have
+// been loaded anyway and warning on them would mislead operators into
+// thinking a .yml -> .yaml rename is the fix. The .yml anti-warning case
+// pins that contract.
+//
 // Not parallel: shares slog.Default with other captureSlog tests in the
 // package (see the helper's comment).
 func TestPresetLoader_AddLocalPresetDir_WarnsOnBundledShadow(t *testing.T) {
 	dir := t.TempDir()
 
 	// json-post is a bundled preset (since #676) — placing a local file
-	// with the same stem must trigger the shadow warning. .yml extension
-	// is also recognized so a future operator pattern doesn't slip through.
+	// with the same stem and .yaml extension must trigger the shadow
+	// warning.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "json-post.yaml"), []byte("name: json-post\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "slack.yml"), []byte("name: slack\n"), 0o644))
-	// Non-colliding file in the same directory must NOT trigger a warning.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "slack.yaml"), []byte("name: slack\n"), 0o644))
+	// Non-colliding file must NOT trigger a warning.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "my-custom.yaml"), []byte("name: my-custom\n"), 0o644))
+	// .yml extension: Load only probes .yaml, so warning on .yml would
+	// mislead operators. This file's bundled stem must NOT trigger a warning.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "discord.yml"), []byte("name: discord\n"), 0o644))
 	// Non-yaml file must be ignored entirely.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "json-post.txt"), []byte("not yaml"), 0o644))
 
@@ -355,9 +364,13 @@ func TestPresetLoader_AddLocalPresetDir_WarnsOnBundledShadow(t *testing.T) {
 	assert.Contains(t, logs, "shadows bundled preset \\\"json-post\\\"",
 		"should warn that json-post.yaml shadows the bundled json-post preset")
 	assert.Contains(t, logs, "shadows bundled preset \\\"slack\\\"",
-		"should warn that slack.yml shadows the bundled slack preset (covers .yml ext)")
+		"should warn that slack.yaml shadows the bundled slack preset")
+	assert.Contains(t, logs, `"level":"WARN"`,
+		"shadow notices must use WARN level so operators don't have to raise log verbosity to see them")
 	assert.NotContains(t, logs, "my-custom",
 		"should NOT warn about non-colliding local presets")
+	assert.NotContains(t, logs, "discord",
+		"should NOT warn about .yml files — Load only probes .yaml, so .yml is not a shadow case")
 	assert.NotContains(t, logs, "json-post.txt",
 		"should NOT scan non-yaml files")
 }

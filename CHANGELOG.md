@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Fixed
 
-- `PresetLoader.AddLocalPresetDir` now scans the registered directory for `*.yaml` / `*.yml` files whose stem collides with a bundled preset name (`slack`, `discord`, `teams`, `matrix`, `ntfy`, `ntfy-token`, `pushover`, `pagerduty`, `gotify`, `json-post`) and emits a startup `slog.Warn` per collision. Pre-fix, `PresetLoader.Load` resolved bundled presets first and never fell through, so a file at `$LOCAL_DIR/json-post.yaml` placed hoping to override the bundled `json-post` was silently ignored at attach time. The warning surfaces the shadow at registration time. The lookup order is documented in `docs/webhooks.md` under "Preset Lookup Order"; inverting the order to prefer local files is deliberately rejected (a local typo shadowing `slack.yaml` would silently break Slack delivery host-wide). Closes [#679](https://github.com/netresearch/ofelia/issues/679).
+- `PresetLoader.AddLocalPresetDir` now scans the registered directory for `*.yaml` files whose stem collides with a bundled preset name (`slack`, `discord`, `teams`, `matrix`, `ntfy`, `ntfy-token`, `pushover`, `pagerduty`, `gotify`, `json-post`) and emits a startup `slog.Warn` per collision. Pre-fix, `PresetLoader.Load` resolved bundled presets first and never fell through, so a file at `$LOCAL_DIR/json-post.yaml` placed hoping to override the bundled `json-post` was silently ignored at attach time. The warning matches `Load`'s `.yaml`-only resolution path so a `.yml` rename suggestion never misleads operators. The lookup order is documented in `docs/webhooks.md` under "Preset Lookup Order"; inverting the order to prefer local files is deliberately rejected (a local typo shadowing `slack.yaml` would silently break Slack delivery host-wide). Closes [#679](https://github.com/netresearch/ofelia/issues/679).
 
 ### Removed
 

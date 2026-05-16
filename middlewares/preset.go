@@ -8,7 +8,9 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -160,16 +162,29 @@ func (l *PresetLoader) AddLocalPresetDir(dir string) {
 }
 
 // warnOnBundledShadow scans dir for *.yaml files whose stem matches a
-// bundled preset name and emits one slog.Warn per collision. Failures to
-// read the directory (missing, unreadable, not yet created) are silent —
-// AddLocalPresetDir is documented as best-effort registration and may run
-// before the operator has populated the directory.
+// bundled preset name and emits one slog.Warn per collision. Restricted to
+// the *.yaml extension on purpose: Load() only probes "<name>.yaml" in
+// localPresetDirs, so a *.yml file would not have been loaded anyway and
+// warning on it would mislead operators into thinking the rename to .yaml
+// is sufficient.
+//
+// A non-existent directory (operator registered before populating) is
+// silent. Other read failures are debug-logged so a permission-denied or
+// I/O error is still discoverable when an operator turns up the log level,
+// without becoming a startup-noise floor on a clean install.
 func (l *PresetLoader) warnOnBundledShadow(dir string) {
 	if len(l.bundledPresets) == 0 {
 		return
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			slog.Default().Debug(
+				"PresetLoader: could not scan local preset dir for bundled-name shadows",
+				"dir", dir,
+				"error", err,
+			)
+		}
 		return
 	}
 	for _, entry := range entries {
@@ -177,11 +192,10 @@ func (l *PresetLoader) warnOnBundledShadow(dir string) {
 			continue
 		}
 		name := entry.Name()
-		ext := filepath.Ext(name)
-		if ext != ".yaml" && ext != ".yml" {
+		if filepath.Ext(name) != ".yaml" {
 			continue
 		}
-		stem := strings.TrimSuffix(name, ext)
+		stem := strings.TrimSuffix(name, ".yaml")
 		if _, shadowed := l.bundledPresets[stem]; !shadowed {
 			continue
 		}
