@@ -241,8 +241,12 @@ func logUnknownKeyWarnings(logger *slog.Logger, filename string, res *parseResul
 		return
 	}
 
-	logSectionUnknownKeyWarnings(logger, "global", res.unknownGlobal, globalKnownKeys(), filename)
-	logSectionUnknownKeyWarnings(logger, "docker", res.unknownDocker, dockerKnownKeys(), filename)
+	if len(res.unknownGlobal) > 0 {
+		logSectionUnknownKeyWarnings(logger, "global", res.unknownGlobal, globalKnownKeys(), filename)
+	}
+	if len(res.unknownDocker) > 0 {
+		logSectionUnknownKeyWarnings(logger, "docker", res.unknownDocker, dockerKnownKeys(), filename)
+	}
 
 	// Log warnings for unknown keys in job sections
 	logJobUnknownKeyWarnings(logger, res.unknownJobs, filename)
@@ -361,8 +365,12 @@ func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 		usedKeys = parseRes.usedKeys
 
 		// Log warnings for unknown keys (empty filename for string-based config)
-		logSectionUnknownKeyWarnings(logger, "global", parseRes.unknownGlobal, globalKnownKeys(), "")
-		logSectionUnknownKeyWarnings(logger, "docker", parseRes.unknownDocker, dockerKnownKeys(), "")
+		if len(parseRes.unknownGlobal) > 0 {
+			logSectionUnknownKeyWarnings(logger, "global", parseRes.unknownGlobal, globalKnownKeys(), "")
+		}
+		if len(parseRes.unknownDocker) > 0 {
+			logSectionUnknownKeyWarnings(logger, "docker", parseRes.unknownDocker, dockerKnownKeys(), "")
+		}
 
 		// Log warnings for unknown keys in job sections (empty filename for string-based config)
 		logJobUnknownKeyWarnings(logger, parseRes.unknownJobs, "")
