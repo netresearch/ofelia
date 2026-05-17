@@ -69,7 +69,7 @@ func (h *hangingDockerProvider) CreateContainer(_ context.Context, _ *domain.Con
 
 func (h *hangingDockerProvider) StartContainer(_ context.Context, _ string) error { return nil }
 
-func (h *hangingDockerProvider) StopContainer(_ context.Context, _ string, _ *time.Duration) error {
+func (h *hangingDockerProvider) StopContainer(_ context.Context, _ string, _ domain.StopOptions) error {
 	return nil
 }
 

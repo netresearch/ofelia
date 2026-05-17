@@ -362,7 +362,7 @@ func TestContainerStopAndKill(t *testing.T) {
 		}
 
 		timeout := 2 * time.Second
-		err = client.Containers().Stop(ctx, containerID, &timeout)
+		err = client.Containers().Stop(ctx, containerID, domain.StopOptions{Timeout: &timeout})
 		if err != nil {
 			t.Fatalf("Stop failed: %v", err)
 		}
