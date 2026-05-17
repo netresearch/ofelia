@@ -111,6 +111,63 @@ func TestRunJob_StopContainer_BareSignalSuffix(t *testing.T) {
 		"bare-suffix form 'INT' must reach the daemon verbatim — Docker accepts both 'INT' and 'SIGINT' and Ofelia should not normalize one form to the other")
 }
 
+// TestRunJob_CleanupOnDeadline_HonorsStopTimeout pins that a
+// configured RunJob.StopTimeout overrides the legacy 10s hardcoded
+// grace period in the deadline-cleanup path — the only path that
+// reads the field today. The docstring promises this behavior; this
+// test guards against a future refactor silently reverting it.
+func TestRunJob_CleanupOnDeadline_HonorsStopTimeout(t *testing.T) {
+	t.Parallel()
+
+	mc := mock.NewDockerClient()
+	containers := mc.Containers().(*mock.ContainerService)
+	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
+
+	j := NewRunJob(provider)
+	j.BareJob = BareJob{Name: "test-run-timeout"}
+	j.StopTimeout = 45 * time.Second
+	j.setContainerID("test-container")
+
+	// Drive cleanupOnDeadline directly with an already-expired ctx —
+	// the function ignores the passed ctx (it's only there for
+	// symmetry/diagnostics per #655) and builds its own.
+	expiredCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	logCtx := &Context{Logger: test.NewTestLogger(), Job: j}
+	j.cleanupOnDeadline(expiredCtx, logCtx)
+
+	require.Len(t, containers.StopCalls, 1, "cleanupOnDeadline must invoke Stop exactly once")
+	require.NotNil(t, containers.StopCalls[0].Options.Timeout)
+	assert.Equal(t, 45*time.Second, *containers.StopCalls[0].Options.Timeout,
+		"configured RunJob.StopTimeout must override the 10s default in cleanupOnDeadline")
+}
+
+// TestRunJob_CleanupOnDeadline_UnsetTimeoutDefaultsTo10s pins the
+// inverse: an unset StopTimeout preserves the pre-#234 hardcoded 10s
+// behavior. Unconfigured RunJobs see no change.
+func TestRunJob_CleanupOnDeadline_UnsetTimeoutDefaultsTo10s(t *testing.T) {
+	t.Parallel()
+
+	mc := mock.NewDockerClient()
+	containers := mc.Containers().(*mock.ContainerService)
+	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
+
+	j := NewRunJob(provider)
+	j.BareJob = BareJob{Name: "test-run-timeout-default"}
+	// StopTimeout intentionally left zero.
+	j.setContainerID("test-container")
+
+	expiredCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	logCtx := &Context{Logger: test.NewTestLogger(), Job: j}
+	j.cleanupOnDeadline(expiredCtx, logCtx)
+
+	require.Len(t, containers.StopCalls, 1)
+	require.NotNil(t, containers.StopCalls[0].Options.Timeout)
+	assert.Equal(t, 10*time.Second, *containers.StopCalls[0].Options.Timeout,
+		"unset StopTimeout must preserve the pre-#234 hardcoded 10s grace period")
+}
+
 // Compile-time field guard for domain.StopOptions. If a future
 // refactor renames Signal or Timeout this fails fast at build instead
 // of at first integration-test invocation.

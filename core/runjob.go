@@ -62,6 +62,18 @@ type RunJob struct {
 	// https://github.com/netresearch/ofelia/issues/234.
 	StopSignal string `gcfg:"stop-signal" mapstructure:"stop-signal" hash:"true"`
 
+	// StopTimeout is the grace period between the stop signal (see
+	// StopSignal) and the daemon's escalation to SIGKILL. Honored only
+	// by Ofelia's deadline-cleanup path today (cleanupOnDeadline);
+	// other shutdown paths inherit the daemon's default (typically 10s,
+	// matching the legacy hardcoded value this field replaces).
+	// Zero leaves the previous 10s default in effect, so unconfigured
+	// jobs see no behavior change. Pair with StopSignal to give apps
+	// enough time to flush state before SIGKILL — Node.js graceful
+	// shutdown often needs >10s, Java thread-dump on SIGQUIT can take
+	// 5-30s depending on heap size. See #234.
+	StopTimeout time.Duration `gcfg:"stop-timeout" mapstructure:"stop-timeout" hash:"true"`
+
 	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 
 	containerID string
@@ -185,6 +197,9 @@ func (j *RunJob) cleanupOnDeadline(_ context.Context, ctx *Context) {
 	cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), jobCleanupTimeout)
 	defer cancelCleanup()
 	stopTimeout := 10 * time.Second
+	if j.StopTimeout > 0 {
+		stopTimeout = j.StopTimeout
+	}
 	if stopErr := j.stopContainer(cleanupCtx, stopTimeout); stopErr != nil {
 		ctx.Warn("failed to stop container after deadline: " + stopErr.Error())
 	}
