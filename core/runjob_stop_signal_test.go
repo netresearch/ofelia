@@ -87,7 +87,31 @@ func TestRunJob_StopContainer_PropagatesTimeoutAlongsideSignal(t *testing.T) {
 	assert.Equal(t, "SIGUSR1", got.Signal)
 }
 
-// Compile-time assertion that domain.StopOptions has the expected
-// fields. If a future refactor renames Signal or Timeout this fails
-// fast at build instead of at first integration-test invocation.
-var _ = domain.StopOptions{Timeout: nil, Signal: ""}
+// TestRunJob_StopContainer_BareSignalSuffix pins the docstring claim
+// that "INT" (without the SIG prefix) is forwarded to the Docker
+// daemon verbatim — Docker accepts both forms and Ofelia should not
+// transform the operator's input. If a future contributor adds
+// client-side normalization (e.g., prepending "SIG"), this test
+// catches the silently-broken docstring contract.
+func TestRunJob_StopContainer_BareSignalSuffix(t *testing.T) {
+	t.Parallel()
+
+	mc := mock.NewDockerClient()
+	containers := mc.Containers().(*mock.ContainerService)
+	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
+
+	j := NewRunJob(provider)
+	j.BareJob = BareJob{Name: "test-run-bare"}
+	j.StopSignal = "INT" // bare suffix, no SIG prefix
+	j.setContainerID("test-container")
+
+	require.NoError(t, j.stopContainer(context.Background(), 10*time.Second))
+	require.Len(t, containers.StopCalls, 1)
+	assert.Equal(t, "INT", containers.StopCalls[0].Options.Signal,
+		"bare-suffix form 'INT' must reach the daemon verbatim — Docker accepts both 'INT' and 'SIGINT' and Ofelia should not normalize one form to the other")
+}
+
+// Compile-time field guard for domain.StopOptions. If a future
+// refactor renames Signal or Timeout this fails fast at build instead
+// of at first integration-test invocation.
+var _ = domain.StopOptions{Timeout: nil, Signal: ""} //nolint:exhaustruct // compile-time field guard
