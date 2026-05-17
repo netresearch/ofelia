@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -28,9 +29,26 @@ type Webhook struct {
 	Client       *http.Client
 }
 
-// NewWebhook creates a new Webhook middleware from configuration.
+// NewWebhook creates a new Webhook middleware from configuration. Builds a
+// fresh *http.Client per call — fine for tests and direct callers, but
+// production code paths that construct many webhooks per reconcile
+// (WebhookManager.GetMiddlewares) go through the cached-client path
+// internally to share keep-alive connections across rebuildAllMiddlewares
+// cycles. See https://github.com/netresearch/ofelia/issues/674.
+//
 // Returns (nil, nil) when config is nil, indicating no middleware should be created.
 func NewWebhook(config *WebhookConfig, loader *PresetLoader) (core.Middleware, error) {
+	return newWebhookWithClient(config, loader, nil)
+}
+
+// newWebhookWithClient is the shared construction path for NewWebhook and
+// the manager-cached path. When client is nil a fresh one is built (legacy
+// NewWebhook behavior); when client is non-nil it is used as-is — the
+// caller is responsible for sizing the client's Timeout to match
+// config.Timeout. WebhookManager.GetMiddlewares uses this with a per-
+// timeout-keyed client cache so keep-alive connections survive across
+// rebuildAllMiddlewares reconciles. See #674.
+func newWebhookWithClient(config *WebhookConfig, loader *PresetLoader, client *http.Client) (core.Middleware, error) {
 	if config == nil {
 		return nil, nil //nolint:nilnil // nil config means no middleware needed, not an error
 	}
@@ -85,14 +103,17 @@ func NewWebhook(config *WebhookConfig, loader *PresetLoader) (core.Middleware, e
 		return nil, fmt.Errorf("webhook %q: %w", config.Name, err)
 	}
 
+	if client == nil {
+		client = &http.Client{
+			Timeout:   config.Timeout,
+			Transport: TransportFactory(),
+		}
+	}
 	return &Webhook{
 		Config:       config,
 		Preset:       preset,
 		PresetLoader: loader,
-		Client: &http.Client{
-			Timeout:   config.Timeout,
-			Transport: TransportFactory(),
-		},
+		Client:       client,
 	}, nil
 }
 
@@ -358,6 +379,26 @@ type WebhookManager struct {
 	webhooks     map[string]*WebhookConfig
 	presetLoader *PresetLoader
 	globalConfig *WebhookGlobalConfig
+
+	// httpClients caches *http.Client per webhook Timeout so reconciles
+	// (cli.Config.rebuildAllMiddlewares after a Docker label change or
+	// INI reload) reuse the underlying transport's keep-alive connection
+	// pool instead of dropping it every time. Pre-#674, NewWebhook built
+	// a fresh client per call inside GetMiddlewares, so every reconcile
+	// started fresh TCP/TLS handshakes for every job's webhooks.
+	//
+	// Keyed by Timeout because that's the only per-webhook input that
+	// differs from the shared TransportFactory()-built transport posture.
+	// AllowedHosts and the SSRF allow-list live in the package-global
+	// security config (SetGlobalSecurityConfig), not on the per-client
+	// transport, so they don't need to be part of the key.
+	//
+	// Guarded by mu. The manager is constructed once per parsed Config
+	// and lives for the daemon's lifetime; GetMiddlewares is called from
+	// the reconcile goroutine while reads of m.webhooks could in principle
+	// race with Register from a parallel Docker-label sync, hence the lock.
+	mu          sync.Mutex
+	httpClients map[time.Duration]*http.Client
 }
 
 // NewWebhookManager creates a new webhook manager
@@ -375,7 +416,22 @@ func NewWebhookManager(globalConfig *WebhookGlobalConfig) *WebhookManager {
 		webhooks:     make(map[string]*WebhookConfig),
 		presetLoader: NewPresetLoader(globalConfig),
 		globalConfig: globalConfig,
+		httpClients:  make(map[time.Duration]*http.Client, 1),
 	}
+}
+
+// getOrBuildClient returns a cached *http.Client for the given timeout,
+// building one on first use. Concurrent callers with the same timeout
+// share the returned client. See #674 for the keep-alive rationale.
+func (m *WebhookManager) getOrBuildClient(timeout time.Duration) *http.Client {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c, ok := m.httpClients[timeout]; ok {
+		return c
+	}
+	c := &http.Client{Timeout: timeout, Transport: TransportFactory()}
+	m.httpClients[timeout] = c
+	return c
 }
 
 // Register adds a webhook configuration
@@ -408,7 +464,11 @@ func (m *WebhookManager) GetMiddlewares(names []string) ([]core.Middleware, erro
 			return nil, fmt.Errorf("webhook %q not found", name)
 		}
 
-		middleware, err := NewWebhook(config, m.presetLoader)
+		// ApplyDefaults runs inside newWebhookWithClient too, but we need
+		// the resolved Timeout HERE to key into the client cache before
+		// construction. Cheap and idempotent.
+		config.ApplyDefaults()
+		middleware, err := newWebhookWithClient(config, m.presetLoader, m.getOrBuildClient(config.Timeout))
 		if err != nil {
 			return nil, fmt.Errorf("create webhook %q: %w", name, err)
 		}
