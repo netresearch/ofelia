@@ -5,6 +5,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,48 @@ import (
 	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/test"
 )
+
+// runHostJobPolicy is the shared scaffolding for the
+// AllowHostJobsFromLabels integration tests for job-run / job-service-run
+// (see https://github.com/netresearch/ofelia/issues/462). Each caller
+// supplies the policy bit and a single attacker-container's labels;
+// the helper returns the parsed Config and the captured log handler so
+// the per-test assertions can pin (a) which jobs survived the filter
+// and (b) the SECURITY POLICY VIOLATION log content for triage.
+//
+// Centralizing the boilerplate keeps SonarCloud's "duplicated code on
+// new lines" gate happy without compromising per-test readability — the
+// test bodies still each read top-to-bottom as "set up labels, assert
+// expected job survival, assert expected log contents".
+func runHostJobPolicy(t *testing.T, allowHost bool, labels map[string]string) (*Config, *test.Handler) {
+	t.Helper()
+	logger, handler := test.NewTestLoggerWithHandler()
+	c := NewConfig(logger)
+	c.Global.AllowHostJobsFromLabels = allowHost
+
+	containers := []DockerContainerInfo{
+		{
+			Name:   "test-container",
+			State:  domain.ContainerState{Running: true},
+			Labels: labels,
+		},
+	}
+
+	require.NoError(t, c.buildFromDockerContainers(containers))
+	return c, handler
+}
+
+// baseRunJobLabels returns the minimum labels needed to enable a
+// runJob from a service container, parametrised by name.
+func baseRunJobLabels(name string) map[string]string {
+	return map[string]string{
+		"ofelia.enabled":                       "true",
+		"ofelia.service":                       "true",
+		"ofelia.job-run." + name + ".schedule": "@daily",
+		"ofelia.job-run." + name + ".image":    "alpine",
+		"ofelia.job-run." + name + ".command":  "echo ok",
+	}
+}
 
 // TestGlobalLabelAllowListBlocksRunJobHostMount pins the security policy
 // extension from https://github.com/netresearch/ofelia/issues/462: when
@@ -28,27 +71,10 @@ import (
 // volume specs.
 func TestGlobalLabelAllowListBlocksRunJobHostMount(t *testing.T) {
 	t.Parallel()
-	logger, handler := test.NewTestLoggerWithHandler()
-	c := NewConfig(logger)
-	c.Global.AllowHostJobsFromLabels = false
+	labels := baseRunJobLabels("host-pwn")
+	labels["ofelia.job-run.host-pwn.volume"] = "/:/host:rw"
 
-	containers := []DockerContainerInfo{
-		{
-			Name:  "attacker-container",
-			State: domain.ContainerState{Running: true},
-			Labels: map[string]string{
-				"ofelia.enabled":                   "true",
-				"ofelia.service":                   "true",
-				"ofelia.job-run.host-pwn.schedule": "@daily",
-				"ofelia.job-run.host-pwn.image":    "alpine",
-				"ofelia.job-run.host-pwn.command":  "sh -c 'cat /host/etc/shadow'",
-				"ofelia.job-run.host-pwn.volume":   "/:/host:rw",
-			},
-		},
-	}
-
-	err := c.buildFromDockerContainers(containers)
-	require.NoError(t, err)
+	c, handler := runHostJobPolicy(t, false, labels)
 
 	assert.Empty(t, c.RunJobs,
 		"job-run with host volume mount must be blocked when AllowHostJobsFromLabels=false (#462)")
@@ -67,27 +93,10 @@ func TestGlobalLabelAllowListBlocksRunJobHostMount(t *testing.T) {
 // volumes and anonymous data volumes.
 func TestGlobalLabelAllowListKeepsRunJobWithoutHostMount(t *testing.T) {
 	t.Parallel()
-	logger, _ := test.NewTestLoggerWithHandler()
-	c := NewConfig(logger)
-	c.Global.AllowHostJobsFromLabels = false
+	labels := baseRunJobLabels("named-vol")
+	labels["ofelia.job-run.named-vol.volume"] = "my-named-volume:/data"
 
-	containers := []DockerContainerInfo{
-		{
-			Name:  "legit-container",
-			State: domain.ContainerState{Running: true},
-			Labels: map[string]string{
-				"ofelia.enabled":                    "true",
-				"ofelia.service":                    "true",
-				"ofelia.job-run.named-vol.schedule": "@daily",
-				"ofelia.job-run.named-vol.image":    "alpine",
-				"ofelia.job-run.named-vol.command":  "echo ok",
-				"ofelia.job-run.named-vol.volume":   "my-named-volume:/data",
-			},
-		},
-	}
-
-	err := c.buildFromDockerContainers(containers)
-	require.NoError(t, err)
+	c, _ := runHostJobPolicy(t, false, labels)
 
 	assert.Contains(t, c.RunJobs, "named-vol",
 		"job-run with named volume (not host path) must NOT be blocked — only host mounts trigger the policy")
@@ -100,27 +109,10 @@ func TestGlobalLabelAllowListKeepsRunJobWithoutHostMount(t *testing.T) {
 // composeJobs "drop wholesale" pattern.
 func TestGlobalLabelAllowListBlocksRunJobHostMountJSONArray(t *testing.T) {
 	t.Parallel()
-	logger, handler := test.NewTestLoggerWithHandler()
-	c := NewConfig(logger)
-	c.Global.AllowHostJobsFromLabels = false
+	labels := baseRunJobLabels("mixed")
+	labels["ofelia.job-run.mixed.volume"] = `["my-named:/data","/etc:/host-etc:ro"]`
 
-	containers := []DockerContainerInfo{
-		{
-			Name:  "attacker-container",
-			State: domain.ContainerState{Running: true},
-			Labels: map[string]string{
-				"ofelia.enabled":                "true",
-				"ofelia.service":                "true",
-				"ofelia.job-run.mixed.schedule": "@daily",
-				"ofelia.job-run.mixed.image":    "alpine",
-				"ofelia.job-run.mixed.command":  "echo ok",
-				"ofelia.job-run.mixed.volume":   `["my-named:/data","/etc:/host-etc:ro"]`,
-			},
-		},
-	}
-
-	err := c.buildFromDockerContainers(containers)
-	require.NoError(t, err)
+	c, handler := runHostJobPolicy(t, false, labels)
 
 	assert.Empty(t, c.RunJobs,
 		"a single host mount in a multi-volume job-run must drop the entire job")
@@ -177,27 +169,10 @@ func TestIsHostVolumeMount(t *testing.T) {
 // conservative drop is the only safe call.
 func TestGlobalLabelAllowListBlocksRunJobVolumesFrom(t *testing.T) {
 	t.Parallel()
-	logger, handler := test.NewTestLoggerWithHandler()
-	c := NewConfig(logger)
-	c.Global.AllowHostJobsFromLabels = false
+	labels := baseRunJobLabels("vf-pwn")
+	labels["ofelia.job-run.vf-pwn.volumes-from"] = "ofelia"
 
-	containers := []DockerContainerInfo{
-		{
-			Name:  "attacker-container",
-			State: domain.ContainerState{Running: true},
-			Labels: map[string]string{
-				"ofelia.enabled":                     "true",
-				"ofelia.service":                     "true",
-				"ofelia.job-run.vf-pwn.schedule":     "@daily",
-				"ofelia.job-run.vf-pwn.image":        "alpine",
-				"ofelia.job-run.vf-pwn.command":      "sh -c 'ls /var/run/docker.sock'",
-				"ofelia.job-run.vf-pwn.volumes-from": "ofelia",
-			},
-		},
-	}
-
-	err := c.buildFromDockerContainers(containers)
-	require.NoError(t, err)
+	c, handler := runHostJobPolicy(t, false, labels)
 
 	assert.Empty(t, c.RunJobs,
 		"job-run with volumes-from must be blocked when AllowHostJobsFromLabels=false — inheriting a donor's bind mounts is an escape vector parallel to volume=")
@@ -212,69 +187,10 @@ func TestGlobalLabelAllowListBlocksRunJobVolumesFrom(t *testing.T) {
 // mounts nor volumes-from passes through even when the policy is on.
 func TestGlobalLabelAllowListAllowsRunJobWithoutEscalationVectors(t *testing.T) {
 	t.Parallel()
-	logger, _ := test.NewTestLoggerWithHandler()
-	c := NewConfig(logger)
-	c.Global.AllowHostJobsFromLabels = false
-
-	containers := []DockerContainerInfo{
-		{
-			Name:  "legit-container",
-			State: domain.ContainerState{Running: true},
-			Labels: map[string]string{
-				"ofelia.enabled":               "true",
-				"ofelia.service":               "true",
-				"ofelia.job-run.safe.schedule": "@daily",
-				"ofelia.job-run.safe.image":    "alpine",
-				"ofelia.job-run.safe.command":  "echo ok",
-				// no volume, no volumes-from
-			},
-		},
-	}
-
-	err := c.buildFromDockerContainers(containers)
-	require.NoError(t, err)
+	c, _ := runHostJobPolicy(t, false, baseRunJobLabels("safe"))
 
 	assert.Contains(t, c.RunJobs, "safe",
 		"job-run without any escalation vectors must NOT be blocked")
-}
-
-// TestGlobalLabelAllowListBlocksServiceJobHostMount pins the
-// job-service-run coverage flagged by Gemini's security-high review on
-// PR #698. RunServiceJob.Volume has the same shape and same Docker SDK
-// landing site as RunJob.Volume — a Swarm-orchestrated job that mounts
-// host paths is the same container-to-host escape vector despite the
-// different orchestration layer. Without this test, a future code
-// change that re-introduces the job-service-run bypass would pass CI.
-func TestGlobalLabelAllowListBlocksServiceJobHostMount(t *testing.T) {
-	t.Parallel()
-	logger, handler := test.NewTestLoggerWithHandler()
-	c := NewConfig(logger)
-	c.Global.AllowHostJobsFromLabels = false
-
-	containers := []DockerContainerInfo{
-		{
-			Name:  "attacker-container",
-			State: domain.ContainerState{Running: true},
-			Labels: map[string]string{
-				"ofelia.enabled": "true",
-				"ofelia.service": "true",
-				"ofelia.job-service-run.svc-pwn.schedule": "@daily",
-				"ofelia.job-service-run.svc-pwn.image":    "alpine",
-				"ofelia.job-service-run.svc-pwn.command":  "sh -c 'cat /host/etc/shadow'",
-				"ofelia.job-service-run.svc-pwn.volume":   "/:/host:rw",
-			},
-		},
-	}
-
-	err := c.buildFromDockerContainers(containers)
-	require.NoError(t, err)
-
-	assert.Empty(t, c.ServiceJobs,
-		"job-service-run with host volume mount must be blocked when AllowHostJobsFromLabels=false — same vector as job-run (#462)")
-	assert.True(t, handler.HasError("job-service-run"),
-		"violation log must name the job-service-run vector class for operator triage")
-	assert.True(t, handler.HasError("svc-pwn"),
-		"violation log must name the dropped service job")
 }
 
 // TestExtractHostVolumeMounts_FailsClosedOnUnexpectedType pins the
@@ -285,7 +201,7 @@ func TestGlobalLabelAllowListBlocksServiceJobHostMount(t *testing.T) {
 // guarantee for extractVolumesFromSpecs.
 func TestExtractHostVolumeMounts_FailsClosedOnUnexpectedType(t *testing.T) {
 	t.Parallel()
-	logger, _ := test.NewTestLoggerWithHandler()
+	logger := slog.New(slog.DiscardHandler)
 
 	hostMounts, safe := extractHostVolumeMounts([]any{"/etc:/host:ro"}, logger, "j")
 	assert.False(t, safe,
@@ -299,33 +215,44 @@ func TestExtractHostVolumeMounts_FailsClosedOnUnexpectedType(t *testing.T) {
 	assert.Empty(t, vf)
 }
 
-// TestGlobalLabelAllowListBlocksRunJobAcceptsRunJobsWhenAllowed verifies
-// the inverse: when AllowHostJobsFromLabels=true (operator opt-in for
+// TestGlobalLabelAllowListBlocksServiceJobHostMount pins the
+// job-service-run coverage flagged by Gemini's security-high review on
+// PR #698. RunServiceJob.Volume has the same shape and same Docker SDK
+// landing site as RunJob.Volume — a Swarm-orchestrated job that mounts
+// host paths is the same container-to-host escape vector despite the
+// different orchestration layer. Without this test, a future code
+// change that re-introduces the job-service-run bypass would pass CI.
+func TestGlobalLabelAllowListBlocksServiceJobHostMount(t *testing.T) {
+	t.Parallel()
+	labels := map[string]string{
+		"ofelia.enabled": "true",
+		"ofelia.service": "true",
+		"ofelia.job-service-run.svc-pwn.schedule": "@daily",
+		"ofelia.job-service-run.svc-pwn.image":    "alpine",
+		"ofelia.job-service-run.svc-pwn.command":  "sh -c 'cat /host/etc/shadow'",
+		"ofelia.job-service-run.svc-pwn.volume":   "/:/host:rw",
+	}
+
+	c, handler := runHostJobPolicy(t, false, labels)
+
+	assert.Empty(t, c.ServiceJobs,
+		"job-service-run with host volume mount must be blocked when AllowHostJobsFromLabels=false — same vector as job-run (#462)")
+	assert.True(t, handler.HasError("job-service-run"),
+		"violation log must name the job-service-run vector class for operator triage")
+	assert.True(t, handler.HasError("svc-pwn"),
+		"violation log must name the dropped service job")
+}
+
+// TestGlobalLabelAllowListAcceptsRunJobHostMountWhenAllowed verifies the
+// inverse: when AllowHostJobsFromLabels=true (operator opt-in for
 // trusted single-tenant environments), a job-run with a host mount
 // passes through unchanged.
 func TestGlobalLabelAllowListAcceptsRunJobHostMountWhenAllowed(t *testing.T) {
 	t.Parallel()
-	logger, _ := test.NewTestLoggerWithHandler()
-	c := NewConfig(logger)
-	c.Global.AllowHostJobsFromLabels = true
+	labels := baseRunJobLabels("host-job")
+	labels["ofelia.job-run.host-job.volume"] = "/host:/container"
 
-	containers := []DockerContainerInfo{
-		{
-			Name:  "trusted-container",
-			State: domain.ContainerState{Running: true},
-			Labels: map[string]string{
-				"ofelia.enabled":                   "true",
-				"ofelia.service":                   "true",
-				"ofelia.job-run.host-job.schedule": "@daily",
-				"ofelia.job-run.host-job.image":    "alpine",
-				"ofelia.job-run.host-job.command":  "echo ok",
-				"ofelia.job-run.host-job.volume":   "/host:/container",
-			},
-		},
-	}
-
-	err := c.buildFromDockerContainers(containers)
-	require.NoError(t, err)
+	c, _ := runHostJobPolicy(t, true, labels)
 
 	assert.Contains(t, c.RunJobs, "host-job",
 		"AllowHostJobsFromLabels=true must permit host-mounting job-runs from labels (operator opt-in)")
