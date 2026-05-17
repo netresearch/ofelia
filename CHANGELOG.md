@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Extended the `[global] allow-host-jobs-from-labels=false` policy to cover both `job-run` AND `job-service-run` entries that mount host filesystem paths via Docker labels (e.g. `ofelia.job-run.X.volume=/:/host:rw`) **or** inherit a donor container's bind mounts via `volumes-from` (e.g. `ofelia.job-run.X.volumes-from=ofelia` to pull in the daemon's `/var/run/docker.sock` mount). Pre-fix, only `job-local` and `job-compose` were filtered, leaving every container-spawning job type (`job-run` and Swarm `job-service-run`) with open container-to-host privilege-escalation vectors via `volume=` and `volumes-from=`. An attacker controlling labels on any container Ofelia watched could mount `/` into the spawned container directly, or chain via `volumes-from=ofelia` to inherit the Docker socket and gain full daemon access. The new per-job filter:
+  - Detects host mounts in `volume` (specs whose source starts with `/`, `.`, or `~`, after whitespace normalization) and drops the entire offending `job-run`.
+  - Treats any non-empty `volumes-from` as a violation, because the donor's mounts cannot be inspected at filter time — conservative drop is the only safe call.
+  - Fails closed on unexpected param shapes (e.g. a future refactor delivering `[]any` instead of `[]string` cannot silently bypass the policy).
+  - Logs a `SECURITY POLICY VIOLATION` per dropped job, naming the job, the vector class (`volume=` vs `volumes-from=`), and the specific specs so operators can triage.
+  Named volumes (`my-vol:/data`) and anonymous volumes (`/data` target-only) with no `volumes-from` are unaffected. Closes [#462](https://github.com/netresearch/ofelia/issues/462).
+
 ### Fixed
 
 - `PresetLoader.AddLocalPresetDir` now scans the registered directory for `*.yaml` files whose stem collides with a bundled preset name (`slack`, `discord`, `teams`, `matrix`, `ntfy`, `ntfy-token`, `pushover`, `pagerduty`, `gotify`, `json-post`) and emits a startup `slog.Warn` per collision. Pre-fix, `PresetLoader.Load` resolved bundled presets first and never fell through, so a file at `$LOCAL_DIR/json-post.yaml` placed hoping to override the bundled `json-post` was silently ignored at attach time. The warning matches `Load`'s `.yaml`-only resolution path so a `.yml` rename suggestion never misleads operators. The lookup order is documented in `docs/webhooks.md` under "Preset Lookup Order"; inverting the order to prefer local files is deliberately rejected (a local typo shadowing `slack.yaml` would silently break Slack delivery host-wide). Closes [#679](https://github.com/netresearch/ofelia/issues/679).
