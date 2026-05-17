@@ -245,6 +245,22 @@ type RemoveOptions struct {
 	Force         bool // Force removal of running container
 }
 
+// StopOptions represents options for stopping a container.
+// Mirrors the Docker SDK's container.StopOptions shape.
+type StopOptions struct {
+	// Timeout is the grace period before SIGKILL after the stop signal is
+	// sent. nil leaves the daemon's default in effect (typically 10s).
+	Timeout *time.Duration
+
+	// Signal is the signal sent to the main process to request termination.
+	// Empty defaults to whatever the container image declared via STOPSIGNAL
+	// (which falls back to SIGTERM). Accepts the bare name ("SIGINT") or
+	// just the suffix ("INT"). Requires Docker API v1.42+ (Docker Engine
+	// 20.10+, released 2020-12). See
+	// https://github.com/netresearch/ofelia/issues/234.
+	Signal string
+}
+
 // WaitResponse contains the response from waiting for a container.
 type WaitResponse struct {
 	StatusCode int64

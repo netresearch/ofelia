@@ -35,7 +35,7 @@ func (m *mockDockerProvider) StartContainer(ctx context.Context, containerID str
 	return nil
 }
 
-func (m *mockDockerProvider) StopContainer(ctx context.Context, containerID string, timeout *time.Duration) error {
+func (m *mockDockerProvider) StopContainer(ctx context.Context, containerID string, opts domain.StopOptions) error {
 	return nil
 }
 

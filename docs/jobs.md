@@ -113,6 +113,8 @@ This job can be used in 2 situations:
     empty, Docker will choose a random name.
 - `delete`: boolean = `true` (1)
   - Delete the container after the job is finished. Similar to `docker run --rm`
+- `stop-signal`: string = `""` (image's `STOPSIGNAL`, falling back to `SIGTERM`) (1, 2)
+  - Signal sent to the main process when Ofelia stops the container after execution. Accepts the canonical name (`SIGINT`, `SIGUSR1`) or the bare suffix (`INT`, `USR1`). Useful for apps with signal handlers (Node.js → `SIGINT`, Java thread-dump → `SIGQUIT`, custom cleanup → `SIGUSR1`/`SIGUSR2`). Pair with `stop-timeout` to give the application enough time to flush state before `SIGKILL`. Requires Docker API v1.42+ (Docker Engine 20.10+). See [#234](https://github.com/netresearch/ofelia/issues/234).
 - **`container`: string** (2)
   - Name of the container you want to start.
   - Required field in case parameter `image` is not specified, no default.

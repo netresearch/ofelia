@@ -26,14 +26,14 @@ func TestSDKDockerProvider_StopContainer_Error(t *testing.T) {
 	t.Parallel()
 	mc := mock.NewDockerClient()
 	containers := mc.Containers().(*mock.ContainerService)
-	containers.OnStop = func(_ context.Context, _ string, _ *time.Duration) error {
+	containers.OnStop = func(_ context.Context, _ string, _ domain.StopOptions) error {
 		return errors.New("stop failed")
 	}
 	pm := NewPerformanceMetrics()
 	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), pm)
 
 	timeout := 5 * time.Second
-	err := provider.StopContainer(context.Background(), "c1", &timeout)
+	err := provider.StopContainer(context.Background(), "c1", domain.StopOptions{Timeout: &timeout})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "stop")
 }

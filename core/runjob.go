@@ -51,6 +51,17 @@ type RunJob struct {
 	WorkingDir  string   `gcfg:"working-dir" mapstructure:"working-dir" hash:"true"`
 	Annotations []string `mapstructure:"annotations" hash:"true"`
 
+	// StopSignal is the signal sent to the main process when Ofelia
+	// stops the container after execution. Accepts the canonical name
+	// ("SIGINT") or the bare suffix ("INT"); empty defaults to whatever
+	// the container image declared via STOPSIGNAL (which itself falls
+	// back to SIGTERM). Useful for apps with signal handlers — Node.js
+	// (SIGINT), Java thread-dump-on-quit (SIGQUIT), or custom cleanup
+	// handlers (SIGUSR1/SIGUSR2). Requires Docker API v1.42+ (Docker
+	// Engine 20.10+, released 2020-12). See
+	// https://github.com/netresearch/ofelia/issues/234.
+	StopSignal string `gcfg:"stop-signal" mapstructure:"stop-signal" hash:"true"`
+
 	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 
 	containerID string
@@ -317,7 +328,8 @@ func (j *RunJob) startContainer(ctx context.Context) error {
 }
 
 func (j *RunJob) stopContainer(ctx context.Context, timeout time.Duration) error {
-	if err := j.Provider.StopContainer(ctx, j.getContainerID(), &timeout); err != nil {
+	opts := domain.StopOptions{Timeout: &timeout, Signal: j.StopSignal}
+	if err := j.Provider.StopContainer(ctx, j.getContainerID(), opts); err != nil {
 		return fmt.Errorf("stopping container: %w", err)
 	}
 	return nil

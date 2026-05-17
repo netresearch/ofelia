@@ -416,6 +416,7 @@ cpu-quota = 50000
 # Cleanup
 delete = true               # Delete container after execution
 delete-timeout = 30s        # Timeout for deletion
+stop-signal = SIGINT        # Signal sent at stop time (#234); empty = image's STOPSIGNAL or SIGTERM
 
 # Restart Policy
 restart-on-failure = 3      # Max restart attempts

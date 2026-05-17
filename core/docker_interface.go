@@ -17,7 +17,7 @@ type DockerProvider interface {
 	// Container operations
 	CreateContainer(ctx context.Context, config *domain.ContainerConfig, name string) (string, error)
 	StartContainer(ctx context.Context, containerID string) error
-	StopContainer(ctx context.Context, containerID string, timeout *time.Duration) error
+	StopContainer(ctx context.Context, containerID string, opts domain.StopOptions) error
 	RemoveContainer(ctx context.Context, containerID string, force bool) error
 	InspectContainer(ctx context.Context, containerID string) (*domain.Container, error)
 	ListContainers(ctx context.Context, opts domain.ListOptions) ([]domain.Container, error)
