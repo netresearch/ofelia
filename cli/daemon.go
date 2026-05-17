@@ -14,7 +14,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gobs/args"
+
+	cfgvalidator "github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/core/persist"
 	"github.com/netresearch/ofelia/middlewares"
 	"github.com/netresearch/ofelia/web"
 )
@@ -49,6 +53,18 @@ type DaemonCommand struct {
 	WebMaxLoginAttempts  int            `long:"web-max-login-attempts" env:"OFELIA_WEB_MAX_LOGIN_ATTEMPTS" description:"Lockout" default:"5"`                             //nolint:revive
 	WebTrustedProxies    []string       `long:"web-trusted-proxies" env:"OFELIA_WEB_TRUSTED_PROXIES" env-delim:"," description:"Trusted proxy CIDRs for X-Forwarded-For"` //nolint:revive
 
+	// Docker startup-retry knobs (#523). Placed at the end of the field
+	// block so the long descriptions don't push the existing columns past
+	// the line-length limit when gofmt aligns struct-tag columns.
+	DockerStartupRetryCount    *int           `long:"docker-startup-retry-count" env:"OFELIA_DOCKER_STARTUP_RETRY_COUNT" description:"Extra Docker connection attempts on startup beyond the initial ping (default 0)"` //nolint:revive,lll
+	DockerStartupRetryInterval *time.Duration `long:"docker-startup-retry-interval" env:"OFELIA_DOCKER_STARTUP_RETRY_INTERVAL" description:"Base interval for Docker startup retries; doubles each attempt"`            //nolint:revive,lll
+
+	// StateFile enables persistence of API-mutated state (jobs and
+	// disable flags) across daemon restarts. Empty (the default) means
+	// no persistence — every API-created job is lost on restart, the
+	// pre-#593 behavior. See [persist] for format and semantics.
+	StateFile string `long:"state-file" env:"OFELIA_STATE_FILE" description:"Path to JSON state file for API-mutated jobs and disable flags (#593); empty disables persistence" default-mask:"-"` //nolint:revive,lll
+
 	scheduler       *core.Scheduler
 	pprofServer     *http.Server
 	webServer       *web.Server
@@ -60,6 +76,7 @@ type DaemonCommand struct {
 	LevelVar        *slog.LevelVar
 	shutdownManager *core.ShutdownManager
 	healthChecker   *web.HealthChecker
+	persistStore    *persist.Store // #593; nil when --state-file is empty
 }
 
 // closeDone safely closes the done channel at most once, preventing
@@ -80,6 +97,13 @@ func (c *DaemonCommand) Execute(_ []string) error {
 	return c.shutdown()
 }
 
+// boot's cyclomatic complexity is one above the gocyclo threshold
+// since the #593 persist-store load became a required boot step. The
+// addition is a single `if err := … { return }`, structurally
+// identical to the surrounding branches — splitting boot itself would
+// be churn for negligible reader benefit.
+//
+//nolint:gocyclo // boot orchestrates the full daemon wiring; #593 added one branch
 func (c *DaemonCommand) boot() (err error) {
 	// Initialize done channel for clean shutdown
 	c.done = make(chan struct{})
@@ -141,6 +165,15 @@ func (c *DaemonCommand) boot() (err error) {
 	gracefulScheduler := core.NewGracefulScheduler(c.scheduler, c.shutdownManager)
 	c.scheduler = gracefulScheduler.Scheduler
 
+	// #593: load persisted API-mutated state and apply to the live
+	// scheduler before the web server starts accepting requests. The
+	// scheduler now sees: INI jobs + Docker label jobs + persisted API
+	// jobs (last). Persisted disable flags are applied on top so a
+	// paused INI/label job stays paused across restart.
+	if err := c.initPersistStore(); err != nil {
+		return fmt.Errorf("load state file: %w", err)
+	}
+
 	if c.EnableWeb {
 		var provider core.DockerProvider
 		if c.dockerHandler != nil {
@@ -175,6 +208,24 @@ func (c *DaemonCommand) boot() (err error) {
 		c.webServer = web.NewServerWithAuth(c.WebAddr, c.scheduler, c.config, provider, authCfg)
 		if c.webServer == nil {
 			return fmt.Errorf("failed to initialize web server (check logs for details)")
+		}
+
+		// #593: wire the persist store into the web server so API
+		// create/update/delete/disable/enable handlers record their
+		// mutations to disk. The store was already loaded earlier in
+		// boot (see initPersistStore) so the live scheduler already
+		// reflects whatever the file contained; from this point on,
+		// the store mirrors live mutations forward to disk.
+		if c.persistStore != nil {
+			c.webServer.SetPersistStore(c.persistStore)
+			// Re-establish origin="api" for every persisted job so the
+			// delete-gate (web/server.go) recognizes them as
+			// API-deletable after restart — otherwise jobOrigin() would
+			// return "" and any future tightening of the gate would
+			// silently break delete for persisted jobs.
+			for name := range c.persistStore.Snapshot().Jobs {
+				c.webServer.MarkOriginAPI(name)
+			}
 		}
 
 		c.webServer.RegisterHealthEndpoints(c.healthChecker)
@@ -289,6 +340,12 @@ func (c *DaemonCommand) applyOptions(config *Config) {
 	}
 	if c.DockerIncludeStopped != nil {
 		config.Docker.IncludeStopped = *c.DockerIncludeStopped
+	}
+	if c.DockerStartupRetryCount != nil {
+		config.Docker.StartupRetryCount = *c.DockerStartupRetryCount
+	}
+	if c.DockerStartupRetryInterval != nil {
+		config.Docker.StartupRetryInterval = *c.DockerStartupRetryInterval
 	}
 
 	c.applyWebOptions(config)
@@ -426,4 +483,171 @@ func waitForServerWithErrChan(ctx context.Context, addr string, errChan <-chan e
 			}
 		}
 	}
+}
+
+// initPersistStore constructs the persist.Store from the configured
+// --state-file path, loads its contents, and applies persisted jobs
+// and disable flags to the live scheduler. Called once during boot,
+// after INI/labels have populated the scheduler — so persisted API
+// jobs land last and shadow any same-named INI/label job (this is the
+// documented precedence). Persisted disable flags are applied
+// regardless of origin so an INI/label job an operator paused via the
+// UI stays paused after restart.
+//
+// Empty StateFile is a no-op (persistence disabled), keeping the
+// pre-#593 behavior for operators who haven't opted in.
+func (c *DaemonCommand) initPersistStore() error {
+	c.persistStore = persist.NewStore(c.StateFile)
+	if !c.persistStore.Enabled() {
+		return nil
+	}
+	if err := c.persistStore.Load(); err != nil {
+		return fmt.Errorf("persist load %q: %w", c.persistStore.Path(), err)
+	}
+	snap := c.persistStore.Snapshot()
+	for name, j := range snap.Jobs {
+		job, err := c.persistedJobToScheduler(name, j)
+		if err != nil {
+			c.Logger.Warn("skip persisted job (could not materialize)",
+				"job", name, "error", err)
+			continue
+		}
+		// Replace any same-named job from INI/labels — persisted API
+		// state is authoritative for its own jobs. Use UpdateJob when
+		// the slot exists, else AddJob. The RemoveJob error path is
+		// logged but not fatal: a failed remove typically means the
+		// job already vanished between GetAnyJob and RemoveJob (race
+		// with label sync); the subsequent AddJob will either succeed
+		// or hit a duplicate-name path, both of which are surfaced.
+		if existing := c.scheduler.GetAnyJob(name); existing != nil {
+			if rmErr := c.scheduler.RemoveJob(existing); rmErr != nil {
+				c.Logger.Warn("could not remove existing job to apply persisted state",
+					"job", name, "error", rmErr)
+			}
+		}
+		if err := c.scheduler.AddJob(job); err != nil {
+			c.Logger.Warn("could not apply persisted job", "job", name, "error", err)
+		}
+	}
+	for _, name := range snap.Disabled {
+		if err := c.scheduler.DisableJob(name); err != nil {
+			// Not an error worth failing boot on — the job may have
+			// been removed from INI/labels between snapshot and now.
+			c.Logger.Info("persisted disable target not present",
+				"job", name, "error", err)
+		}
+	}
+	c.Logger.Info("loaded persisted state",
+		"path", c.persistStore.Path(),
+		"jobs", len(snap.Jobs),
+		"disabled", len(snap.Disabled))
+	return nil
+}
+
+// persistedJobToScheduler reconstructs a scheduler-ready core.Job
+// from the on-disk persist.Job. Mirrors web.Server.jobFromRequest so
+// the round-trip from API → state-file → load lands the same job
+// shape. Returns an error on unknown type, when a job kind needs a
+// Docker provider that isn't available on this daemon, or when a
+// validation parity check fails — the state file is operator-trusted
+// but the same input validators that gate the API path also run on
+// load so a malformed hand-edit can't bypass the safety net.
+//
+// CONTRACT: any field web.jobFromRequest sets on a job MUST also be
+// captured here (and in persist.Job) — otherwise the round-trip
+// from API → state-file → load silently drops the field. When
+// jobRequest gains a field, mirror it in persist.Job and add the
+// matching switch arm here in the same commit.
+func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (core.Job, error) {
+	if err := validatePersistedJobName(name); err != nil {
+		return nil, err
+	}
+	provider := c.dockerProviderOrNil()
+	validator := cfgvalidator.NewCommandValidator()
+	switch j.Type {
+	case persist.JobTypeRun:
+		if provider == nil {
+			return nil, fmt.Errorf("docker provider unavailable for run job")
+		}
+		rj := core.NewRunJob(provider)
+		rj.Name = name
+		rj.Schedule = j.Schedule
+		rj.Command = j.Command
+		rj.Image = j.Image
+		rj.Container = j.Container
+		return rj, nil
+	case persist.JobTypeExec:
+		if provider == nil {
+			return nil, fmt.Errorf("docker provider unavailable for exec job")
+		}
+		ej := core.NewExecJob(provider)
+		ej.Name = name
+		ej.Schedule = j.Schedule
+		ej.Command = j.Command
+		ej.Container = j.Container
+		return ej, nil
+	case persist.JobTypeCompose:
+		if j.File != "" {
+			if err := validator.ValidateFilePath(j.File); err != nil {
+				return nil, fmt.Errorf("invalid compose file path: %w", err)
+			}
+		}
+		if err := validator.ValidateServiceName(j.Service); err != nil {
+			return nil, fmt.Errorf("invalid service name: %w", err)
+		}
+		if j.Command != "" {
+			if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
+				return nil, fmt.Errorf("invalid command arguments: %w", err)
+			}
+		}
+		cj := &core.ComposeJob{}
+		cj.Name = name
+		cj.Schedule = j.Schedule
+		cj.Command = j.Command
+		cj.File = j.File
+		cj.Service = j.Service
+		cj.Exec = j.Exec
+		return cj, nil
+	case persist.JobTypeLocal, "":
+		if j.Command != "" {
+			if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
+				return nil, fmt.Errorf("invalid command arguments: %w", err)
+			}
+		}
+		lj := &core.LocalJob{}
+		lj.Name = name
+		lj.Schedule = j.Schedule
+		lj.Command = j.Command
+		return lj, nil
+	default:
+		return nil, fmt.Errorf("unknown job type %q", j.Type)
+	}
+}
+
+// validatePersistedJobName mirrors web.validateJobName but lives in
+// cli to avoid a cli → web → cli import cycle. Kept aligned by a
+// docstring contract; both implementations must apply the same rules
+// (non-empty, ≤256 chars, no control chars). Job names land in INI
+// section headers and command-line args downstream, so the loose
+// checks are conservative defense-in-depth, not strict validation.
+func validatePersistedJobName(name string) error {
+	if name == "" {
+		return fmt.Errorf("persisted job name must not be empty")
+	}
+	if len(name) > 256 {
+		return fmt.Errorf("persisted job name exceeds 256 chars: %q", name[:32]+"…")
+	}
+	for _, r := range name {
+		if r < 32 || r == 127 {
+			return fmt.Errorf("persisted job name %q contains control character", name)
+		}
+	}
+	return nil
+}
+
+func (c *DaemonCommand) dockerProviderOrNil() core.DockerProvider {
+	if c.dockerHandler == nil {
+		return nil
+	}
+	return c.dockerHandler.GetDockerProvider()
 }

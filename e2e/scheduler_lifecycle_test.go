@@ -47,7 +47,7 @@ func (m *mockDockerProviderForE2E) StartContainer(ctx context.Context, container
 	return nil
 }
 
-func (m *mockDockerProviderForE2E) StopContainer(ctx context.Context, containerID string, timeout *time.Duration) error {
+func (m *mockDockerProviderForE2E) StopContainer(ctx context.Context, containerID string, opts domain.StopOptions) error {
 	if c, ok := m.containers[containerID]; ok {
 		c.State.Running = false
 	}

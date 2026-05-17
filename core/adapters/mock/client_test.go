@@ -192,7 +192,7 @@ func TestContainerServiceStop(t *testing.T) {
 	ctx := context.Background()
 
 	timeout := 10 * time.Second
-	err := containers.Stop(ctx, "container-id", &timeout)
+	err := containers.Stop(ctx, "container-id", domain.StopOptions{Timeout: &timeout})
 	if err != nil {
 		t.Fatalf("Stop() error = %v", err)
 	}
@@ -203,8 +203,8 @@ func TestContainerServiceStop(t *testing.T) {
 	if containers.StopCalls[0].ContainerID != "container-id" {
 		t.Errorf("StopCalls[0].ContainerID = %v, want container-id", containers.StopCalls[0].ContainerID)
 	}
-	if *containers.StopCalls[0].Timeout != timeout {
-		t.Errorf("StopCalls[0].Timeout = %v, want %v", *containers.StopCalls[0].Timeout, timeout)
+	if got := containers.StopCalls[0].Options.Timeout; got == nil || *got != timeout {
+		t.Errorf("StopCalls[0].Options.Timeout = %v, want %v", got, timeout)
 	}
 }
 
@@ -214,11 +214,11 @@ func TestContainerServiceStopWithCallback(t *testing.T) {
 	ctx := context.Background()
 
 	expectedErr := errors.New("stop failed")
-	containers.OnStop = func(ctx context.Context, containerID string, timeout *time.Duration) error {
+	containers.OnStop = func(ctx context.Context, containerID string, opts domain.StopOptions) error {
 		return expectedErr
 	}
 
-	err := containers.Stop(ctx, "container-id", nil)
+	err := containers.Stop(ctx, "container-id", domain.StopOptions{})
 	if !errors.Is(err, expectedErr) {
 		t.Errorf("Stop() error = %v, want %v", err, expectedErr)
 	}
@@ -2052,7 +2052,7 @@ func TestContainerServiceConcurrentAccess(t *testing.T) {
 	for range 10 {
 		go func() {
 			containers.Start(ctx, "container-id")
-			containers.Stop(ctx, "container-id", nil)
+			containers.Stop(ctx, "container-id", domain.StopOptions{})
 			containers.Inspect(ctx, "container-id")
 			done <- true
 		}()

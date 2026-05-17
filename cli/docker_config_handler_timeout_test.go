@@ -42,7 +42,7 @@ func (h *hangingHandlerProvider) CreateContainer(_ context.Context, _ *domain.Co
 	return "", nil
 }
 func (h *hangingHandlerProvider) StartContainer(_ context.Context, _ string) error { return nil }
-func (h *hangingHandlerProvider) StopContainer(_ context.Context, _ string, _ *time.Duration) error {
+func (h *hangingHandlerProvider) StopContainer(_ context.Context, _ string, _ domain.StopOptions) error {
 	return nil
 }
 

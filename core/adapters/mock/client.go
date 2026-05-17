@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/core/ports"
@@ -108,7 +107,7 @@ type ContainerService struct {
 	// Callbacks for customizing behavior
 	OnCreate  func(ctx context.Context, config *domain.ContainerConfig) (string, error)
 	OnStart   func(ctx context.Context, containerID string) error
-	OnStop    func(ctx context.Context, containerID string, timeout *time.Duration) error
+	OnStop    func(ctx context.Context, containerID string, opts domain.StopOptions) error
 	OnRemove  func(ctx context.Context, containerID string, opts domain.RemoveOptions) error
 	OnInspect func(ctx context.Context, containerID string) (*domain.Container, error)
 	OnList    func(ctx context.Context, opts domain.ListOptions) ([]domain.Container, error)
@@ -136,7 +135,7 @@ type CreateContainerCall struct {
 // StopContainerCall represents a call to Stop().
 type StopContainerCall struct {
 	ContainerID string
-	Timeout     *time.Duration
+	Options     domain.StopOptions
 }
 
 // RemoveContainerCall represents a call to Remove().
@@ -187,13 +186,13 @@ func (s *ContainerService) Start(ctx context.Context, containerID string) error 
 }
 
 // Stop stops a container.
-func (s *ContainerService) Stop(ctx context.Context, containerID string, timeout *time.Duration) error {
+func (s *ContainerService) Stop(ctx context.Context, containerID string, opts domain.StopOptions) error {
 	s.mu.Lock()
-	s.StopCalls = append(s.StopCalls, StopContainerCall{ContainerID: containerID, Timeout: timeout})
+	s.StopCalls = append(s.StopCalls, StopContainerCall{ContainerID: containerID, Options: opts})
 	s.mu.Unlock()
 
 	if s.OnStop != nil {
-		return s.OnStop(ctx, containerID, timeout)
+		return s.OnStop(ctx, containerID, opts)
 	}
 	return nil
 }

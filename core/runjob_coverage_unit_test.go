@@ -51,7 +51,7 @@ func TestRunJob_stopContainer_Error(t *testing.T) {
 	t.Parallel()
 	mc := mock.NewDockerClient()
 	containers := mc.Containers().(*mock.ContainerService)
-	containers.OnStop = func(_ context.Context, _ string, _ *time.Duration) error {
+	containers.OnStop = func(_ context.Context, _ string, _ domain.StopOptions) error {
 		return errors.New("stop failed")
 	}
 	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)

@@ -47,7 +47,7 @@ func (h *hangingDoctorProvider) CreateContainer(_ context.Context, _ *domain.Con
 	return "", nil
 }
 func (h *hangingDoctorProvider) StartContainer(_ context.Context, _ string) error { return nil }
-func (h *hangingDoctorProvider) StopContainer(_ context.Context, _ string, _ *time.Duration) error {
+func (h *hangingDoctorProvider) StopContainer(_ context.Context, _ string, _ domain.StopOptions) error {
 	return nil
 }
 

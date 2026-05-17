@@ -63,9 +63,17 @@ func NewWebhookConfigs() *WebhookConfigs {
 	}
 }
 
-// InitManager initializes the webhook manager with the parsed configurations
+// InitManager initializes the webhook manager with the parsed
+// configurations. Called on first init and on every reload (Docker
+// label sync, INI live-reload). The new manager adopts the prior
+// manager's *http.Client cache so keep-alive connection pools survive
+// the reload — without this carry-forward, every reload would drop
+// the underlying transports and defeat the #674 fix. See
+// (*middlewares.WebhookManager).AdoptClientCacheFrom for the contract.
 func (wc *WebhookConfigs) InitManager() error {
+	prior := wc.Manager
 	wc.Manager = middlewares.NewWebhookManager(wc.Global)
+	wc.Manager.AdoptClientCacheFrom(prior)
 
 	for name, config := range wc.Webhooks {
 		config.Name = name

@@ -23,6 +23,10 @@ This job is executed inside a running container, similar to `docker exec`.
   - If not set, uses the global `default-user` (default `nobody`); set to `default` to use the container's default user
 - `tty`: boolean = `false`
   - Allocate a pseudo-tty, similar to `docker exec -t`. See this [Stack Overflow answer](https://stackoverflow.com/questions/30137135/confused-about-docker-t-option-to-allocate-a-pseudo-tty) for more info.
+- `console-height`: uint = `0`
+  - Initial pseudo-TTY console size in rows. Only honored by the Docker daemon when `tty = true`; otherwise silently ignored. `0` means "use Docker's default size". Useful for jobs that render TUIs or formatted text that expects a specific terminal geometry (`htop`, `vim`, tables). Requires Docker API v1.42+ (Docker Engine 20.10+). See [#235](https://github.com/netresearch/ofelia/issues/235).
+- `console-width`: uint = `0`
+  - Initial pseudo-TTY console size in columns. Same TTY-gating and Docker API floor as `console-height`. Either field can be set independently; the daemon uses its default for any dimension left at `0`.
 - `environment`
   - Environment variables you want to set in the running container. **Note:** only supported in Docker API v1.30 and above
   - Same format as used with `-e` flag within `docker run`. For example: `FOO=bar`
@@ -109,6 +113,10 @@ This job can be used in 2 situations:
     empty, Docker will choose a random name.
 - `delete`: boolean = `true` (1)
   - Delete the container after the job is finished. Similar to `docker run --rm`
+- `stop-signal`: string = `""` (image's `STOPSIGNAL`, falling back to `SIGTERM`) (1, 2)
+  - Signal sent to the main process when Ofelia stops the container after execution. Accepts the canonical name (`SIGINT`, `SIGUSR1`) or the bare suffix (`INT`, `USR1`). Useful for apps with signal handlers (Node.js → `SIGINT`, Java thread-dump → `SIGQUIT`, custom cleanup → `SIGUSR1`/`SIGUSR2`). Pair with `stop-timeout` to give the application enough time to flush state before `SIGKILL`. Requires Docker API v1.42+ (Docker Engine 20.10+). See [#234](https://github.com/netresearch/ofelia/issues/234).
+- `stop-timeout`: duration = `0s` (preserves the legacy 10s default in `cleanupOnDeadline`) (1, 2)
+  - Grace period between the stop signal (see `stop-signal`) and the Docker daemon's escalation to `SIGKILL`. Honored only by Ofelia's deadline-cleanup path today (when a job exceeds its execution deadline); other shutdown paths inherit the daemon's default. Accepts a Go duration string (`30s`, `2m`, `1m30s`). Zero leaves the previous 10s default in effect so unconfigured jobs see no behavior change. See [#234](https://github.com/netresearch/ofelia/issues/234).
 - **`container`: string** (2)
   - Name of the container you want to start.
   - Required field in case parameter `image` is not specified, no default.

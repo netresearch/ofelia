@@ -35,6 +35,13 @@ type ExecConfig struct {
 
 	// Privileged mode
 	Privileged bool
+
+	// ConsoleSize is the initial pseudo-TTY console size as [height, width].
+	// nil means use Docker's default. Only honored by the Docker daemon
+	// when Tty is true — otherwise silently ignored. Requires Docker API
+	// v1.42+ (Docker Engine 20.10+, released 2020-12). See
+	// https://github.com/netresearch/ofelia/issues/235.
+	ConsoleSize *[2]uint
 }
 
 // ExecInspect represents the result of inspecting an exec instance.
