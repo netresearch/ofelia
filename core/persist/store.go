@@ -30,6 +30,13 @@ var ErrUnsupportedVersion = errors.New("persist: unsupported state-file version"
 // generic I/O errors that might warrant a retry.
 var ErrStateFileTooLarge = errors.New("persist: state file exceeds size limit")
 
+// ErrNullJobValue is returned by Load when the file contains a job
+// entry whose value is JSON `null` rather than an object. Pre-fix
+// this would surface as a nil-pointer panic on the next Snapshot or
+// Save; fail-closed at Load with a typed sentinel so callers can
+// distinguish hand-edit hazards from generic decode errors.
+var ErrNullJobValue = errors.New("persist: job entry is null (expected object)")
+
 // JobType enumerates the API-creatable job kinds. Mirrors web.jobRequest.Type
 // so the round-trip from API → state-file → load is lossless. Kept as
 // a string alias rather than an int enum so the on-disk format reads
@@ -133,6 +140,12 @@ func (s *Store) Load() error {
 			ErrStateFileTooLarge, s.path, info.Size(), maxStateFileBytes)
 	}
 	if info.Size() == 0 {
+		// File exists but is empty — treat as fresh start but make
+		// the in-memory Version explicit so the next save writes the
+		// canonical schema header.
+		s.mu.Lock()
+		s.state.Version = CurrentVersion
+		s.mu.Unlock()
 		return nil
 	}
 
@@ -148,6 +161,16 @@ func (s *Store) Load() error {
 	}
 	if loaded.Version == 0 {
 		loaded.Version = CurrentVersion
+	}
+	// JSON allows `{"jobs":{"x":null}}` which decodes Jobs["x"]=nil.
+	// Snapshot/save then dereferences every entry, so a corrupt or
+	// hand-edited file with a null value would panic the daemon at
+	// boot or on the next save. Reject up-front so the operator sees
+	// "decode" in the error message and knows where to look.
+	for name, job := range loaded.Jobs {
+		if job == nil {
+			return fmt.Errorf("%w: %s: job %q", ErrNullJobValue, s.path, name)
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -259,11 +282,11 @@ func (s *Store) saveLocked() error {
 	data = append(data, '\n')
 
 	dir := filepath.Dir(s.path)
-	// 0o700 (not 0o755): only the daemon user needs traversal. The
-	// state file contains operator-supplied command strings, image
-	// refs, and schedules — defense-in-depth against accidentally
-	// permissive parent dirs on shared volumes.
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	// 0o700 (not 0o755 or 0o750): only the daemon user needs
+	// traversal. The state file contains operator-supplied command
+	// strings, image refs, and schedules — defense-in-depth against
+	// accidentally permissive parent dirs on shared volumes.
+	if err := os.MkdirAll(dir, 0o700); err != nil { //nolint:gosec // G301: intentionally stricter than the 0o750 baseline
 		return fmt.Errorf("persist: mkdir %s: %w", dir, err)
 	}
 	tmp, err := os.CreateTemp(dir, ".state-*.json.tmp")

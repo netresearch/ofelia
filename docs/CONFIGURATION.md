@@ -11,13 +11,20 @@ Ofelia supports multiple configuration methods that can be used independently or
 
 ## Configuration Precedence
 
-Configuration sources are evaluated in the following order (highest to lowest priority):
+**Daemon/global settings** are evaluated in the following order (highest to lowest priority):
 
 1. Command-line flags
 2. Environment variables
 3. INI configuration file
 4. Docker labels
-5. **API state file** (`--state-file`) — for jobs created via the web UI or REST API; loads last and shadows same-named INI/label jobs
+
+**Job state** uses a separate precedence — for jobs with the same name across sources:
+
+1. **API state file** (`--state-file`) — highest; persisted API/UI mutations are authoritative for their own job names
+2. Docker labels
+3. INI configuration file
+
+Disable flags from the state file apply on top regardless of where the underlying job came from, so an INI/label job paused via the UI stays paused after restart.
 
 ## State File (`--state-file`)
 
