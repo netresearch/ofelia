@@ -72,7 +72,7 @@ func BenchmarkContainerStartStop(b *testing.B) {
 			b.Fatalf("Start failed: %v", err)
 		}
 		timeout := 5 * time.Second
-		if err := containers.Stop(ctx, id, &timeout); err != nil {
+		if err := containers.Stop(ctx, id, domain.StopOptions{Timeout: &timeout}); err != nil {
 			b.Fatalf("Stop failed: %v", err)
 		}
 	}
@@ -159,7 +159,7 @@ func BenchmarkExecRun(b *testing.B) {
 	}
 	defer func() {
 		timeout := 5 * time.Second
-		containers.Stop(ctx, id, &timeout)
+		containers.Stop(ctx, id, domain.StopOptions{Timeout: &timeout})
 	}()
 
 	// Wait for container to be ready
@@ -210,7 +210,7 @@ func BenchmarkExecRunParallel(b *testing.B) {
 	}
 	defer func() {
 		timeout := 5 * time.Second
-		containers.Stop(ctx, id, &timeout)
+		containers.Stop(ctx, id, domain.StopOptions{Timeout: &timeout})
 	}()
 
 	// Wait for container to be ready
@@ -385,7 +385,7 @@ func BenchmarkExecJobSimulation(b *testing.B) {
 	}
 	defer func() {
 		timeout := 5 * time.Second
-		containers.Stop(ctx, id, &timeout)
+		containers.Stop(ctx, id, domain.StopOptions{Timeout: &timeout})
 	}()
 
 	time.Sleep(500 * time.Millisecond)

@@ -16,6 +16,26 @@ import (
 	"github.com/netresearch/ofelia/test"
 )
 
+// newRunJobWithMock builds a RunJob wired to a fresh mock Docker
+// client and pre-populates the container ID so callers can immediately
+// drive stop/cleanup paths. Returned containers handle exposes the
+// recorded StopCalls. Configured by mutating the returned RunJob
+// (StopSignal, StopTimeout, etc.) before invoking the method under
+// test. Shared across the #234 stop-signal/timeout tests to keep the
+// per-test arrange section to the one or two lines that actually vary
+// (SonarCloud duplication budget on new code is 3%).
+func newRunJobWithMock(t *testing.T, jobName string) (*RunJob, *mock.ContainerService) {
+	t.Helper()
+	mc := mock.NewDockerClient()
+	containers, ok := mc.Containers().(*mock.ContainerService)
+	require.True(t, ok, "mock client must expose *mock.ContainerService")
+	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
+	j := NewRunJob(provider)
+	j.BareJob = BareJob{Name: jobName}
+	j.setContainerID("test-container")
+	return j, containers
+}
+
 // TestRunJob_StopContainer_PropagatesSignal is the integration test for
 // the #234 stop-signal feature: when an operator configures StopSignal
 // on a RunJob, the value reaches the Docker provider's StopContainer
@@ -24,14 +44,8 @@ import (
 func TestRunJob_StopContainer_PropagatesSignal(t *testing.T) {
 	t.Parallel()
 
-	mc := mock.NewDockerClient()
-	containers := mc.Containers().(*mock.ContainerService)
-	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
-
-	j := NewRunJob(provider)
-	j.BareJob = BareJob{Name: "test-run"}
+	j, containers := newRunJobWithMock(t, "test-run")
 	j.StopSignal = "SIGINT"
-	j.setContainerID("test-container")
 
 	require.NoError(t, j.stopContainer(context.Background(), 10*time.Second))
 	require.Len(t, containers.StopCalls, 1)
@@ -47,14 +61,8 @@ func TestRunJob_StopContainer_PropagatesSignal(t *testing.T) {
 func TestRunJob_StopContainer_EmptySignalPreservesPreFixBehavior(t *testing.T) {
 	t.Parallel()
 
-	mc := mock.NewDockerClient()
-	containers := mc.Containers().(*mock.ContainerService)
-	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
-
-	j := NewRunJob(provider)
-	j.BareJob = BareJob{Name: "test-run-default"}
+	j, containers := newRunJobWithMock(t, "test-run-default")
 	// StopSignal intentionally left empty.
-	j.setContainerID("test-container")
 
 	require.NoError(t, j.stopContainer(context.Background(), 10*time.Second))
 	require.Len(t, containers.StopCalls, 1)
@@ -68,14 +76,8 @@ func TestRunJob_StopContainer_EmptySignalPreservesPreFixBehavior(t *testing.T) {
 func TestRunJob_StopContainer_PropagatesTimeoutAlongsideSignal(t *testing.T) {
 	t.Parallel()
 
-	mc := mock.NewDockerClient()
-	containers := mc.Containers().(*mock.ContainerService)
-	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
-
-	j := NewRunJob(provider)
-	j.BareJob = BareJob{Name: "test-run-both"}
+	j, containers := newRunJobWithMock(t, "test-run-both")
 	j.StopSignal = "SIGUSR1"
-	j.setContainerID("test-container")
 
 	const wantTimeout = 30 * time.Second
 	require.NoError(t, j.stopContainer(context.Background(), wantTimeout))
@@ -96,19 +98,25 @@ func TestRunJob_StopContainer_PropagatesTimeoutAlongsideSignal(t *testing.T) {
 func TestRunJob_StopContainer_BareSignalSuffix(t *testing.T) {
 	t.Parallel()
 
-	mc := mock.NewDockerClient()
-	containers := mc.Containers().(*mock.ContainerService)
-	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
-
-	j := NewRunJob(provider)
-	j.BareJob = BareJob{Name: "test-run-bare"}
+	j, containers := newRunJobWithMock(t, "test-run-bare")
 	j.StopSignal = "INT" // bare suffix, no SIG prefix
-	j.setContainerID("test-container")
 
 	require.NoError(t, j.stopContainer(context.Background(), 10*time.Second))
 	require.Len(t, containers.StopCalls, 1)
 	assert.Equal(t, "INT", containers.StopCalls[0].Options.Signal,
 		"bare-suffix form 'INT' must reach the daemon verbatim — Docker accepts both 'INT' and 'SIGINT' and Ofelia should not normalize one form to the other")
+}
+
+// driveCleanupOnDeadline invokes cleanupOnDeadline with an
+// already-expired ctx (mirroring the production trigger — the parent
+// ran out of budget) and a minimal logger-bearing Context. Extracted
+// from the two cleanup tests below to keep duplication under SonarCloud's
+// 3% budget on new code.
+func driveCleanupOnDeadline(j *RunJob) {
+	expiredCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	logCtx := &Context{Logger: test.NewTestLogger(), Job: j}
+	j.cleanupOnDeadline(expiredCtx, logCtx)
 }
 
 // TestRunJob_CleanupOnDeadline_HonorsStopTimeout pins that a
@@ -119,22 +127,10 @@ func TestRunJob_StopContainer_BareSignalSuffix(t *testing.T) {
 func TestRunJob_CleanupOnDeadline_HonorsStopTimeout(t *testing.T) {
 	t.Parallel()
 
-	mc := mock.NewDockerClient()
-	containers := mc.Containers().(*mock.ContainerService)
-	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
-
-	j := NewRunJob(provider)
-	j.BareJob = BareJob{Name: "test-run-timeout"}
+	j, containers := newRunJobWithMock(t, "test-run-timeout")
 	j.StopTimeout = 45 * time.Second
-	j.setContainerID("test-container")
 
-	// Drive cleanupOnDeadline directly with an already-expired ctx —
-	// the function ignores the passed ctx (it's only there for
-	// symmetry/diagnostics per #655) and builds its own.
-	expiredCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	logCtx := &Context{Logger: test.NewTestLogger(), Job: j}
-	j.cleanupOnDeadline(expiredCtx, logCtx)
+	driveCleanupOnDeadline(j)
 
 	require.Len(t, containers.StopCalls, 1, "cleanupOnDeadline must invoke Stop exactly once")
 	require.NotNil(t, containers.StopCalls[0].Options.Timeout)
@@ -148,19 +144,10 @@ func TestRunJob_CleanupOnDeadline_HonorsStopTimeout(t *testing.T) {
 func TestRunJob_CleanupOnDeadline_UnsetTimeoutDefaultsTo10s(t *testing.T) {
 	t.Parallel()
 
-	mc := mock.NewDockerClient()
-	containers := mc.Containers().(*mock.ContainerService)
-	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), nil)
-
-	j := NewRunJob(provider)
-	j.BareJob = BareJob{Name: "test-run-timeout-default"}
+	j, containers := newRunJobWithMock(t, "test-run-timeout-default")
 	// StopTimeout intentionally left zero.
-	j.setContainerID("test-container")
 
-	expiredCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	logCtx := &Context{Logger: test.NewTestLogger(), Job: j}
-	j.cleanupOnDeadline(expiredCtx, logCtx)
+	driveCleanupOnDeadline(j)
 
 	require.Len(t, containers.StopCalls, 1)
 	require.NotNil(t, containers.StopCalls[0].Options.Timeout)
