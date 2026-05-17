@@ -16,6 +16,50 @@ import (
 	"github.com/netresearch/ofelia/core/domain"
 )
 
+// preStartedExecContainer creates and starts a long-running alpine
+// container suitable for repeated exec calls, then returns it along
+// with the bench client. Cleanup (stop + remove) is registered via
+// b.Cleanup so the caller doesn't need to defer anything. Extracted
+// from BenchmarkExecRun, BenchmarkExecRunParallel, and
+// BenchmarkExecJobSimulation — the three benchmarks that all needed
+// the same "pre-create a sleeping container, then time the exec loop"
+// preamble and shared ~30 lines of identical setup.
+func preStartedExecContainer(b *testing.B, namePrefix string) (*dockeradapter.Client, string) {
+	b.Helper()
+	client, err := dockeradapter.NewClient()
+	if err != nil {
+		b.Skipf("Docker not available: %v", err)
+	}
+	b.Cleanup(func() { client.Close() })
+
+	ctx := context.Background()
+	containers := client.Containers()
+	name := fmt.Sprintf("%s-%d", namePrefix, time.Now().UnixNano())
+	id, err := containers.Create(ctx, &domain.ContainerConfig{
+		Name:  name,
+		Image: "alpine:latest",
+		Cmd:   []string{"sleep", "300"},
+	})
+	if err != nil {
+		b.Fatalf("Create failed: %v", err)
+	}
+	b.Cleanup(func() {
+		_ = containers.Remove(ctx, id, domain.RemoveOptions{Force: true})
+	})
+
+	if err := containers.Start(ctx, id); err != nil {
+		b.Fatalf("Start failed: %v", err)
+	}
+	b.Cleanup(func() {
+		timeout := 5 * time.Second
+		_ = containers.Stop(ctx, id, domain.StopOptions{Timeout: &timeout})
+	})
+
+	// Settle — give the container a beat to be ready for exec.
+	time.Sleep(500 * time.Millisecond)
+	return client, id
+}
+
 // BenchmarkContainerCreate measures container creation performance.
 func BenchmarkContainerCreate(b *testing.B) {
 	client, err := dockeradapter.NewClient()
@@ -132,38 +176,9 @@ func BenchmarkContainerList(b *testing.B) {
 
 // BenchmarkExecRun measures exec run performance (the main job operation).
 func BenchmarkExecRun(b *testing.B) {
-	client, err := dockeradapter.NewClient()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
-	defer client.Close()
-
+	client, id := preStartedExecContainer(b, "bench-exec")
 	ctx := context.Background()
-	containers := client.Containers()
 	exec := client.Exec()
-
-	// Pre-create and start container
-	name := fmt.Sprintf("bench-exec-%d", time.Now().UnixNano())
-	id, err := containers.Create(ctx, &domain.ContainerConfig{
-		Name:  name,
-		Image: "alpine:latest",
-		Cmd:   []string{"sleep", "300"},
-	})
-	if err != nil {
-		b.Fatalf("Create failed: %v", err)
-	}
-	defer containers.Remove(ctx, id, domain.RemoveOptions{Force: true})
-
-	if err := containers.Start(ctx, id); err != nil {
-		b.Fatalf("Start failed: %v", err)
-	}
-	defer func() {
-		timeout := 5 * time.Second
-		containers.Stop(ctx, id, domain.StopOptions{Timeout: &timeout})
-	}()
-
-	// Wait for container to be ready
-	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
 	for range b.N {
@@ -183,38 +198,9 @@ func BenchmarkExecRun(b *testing.B) {
 
 // BenchmarkExecRunParallel measures parallel exec performance.
 func BenchmarkExecRunParallel(b *testing.B) {
-	client, err := dockeradapter.NewClient()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
-	defer client.Close()
-
+	client, id := preStartedExecContainer(b, "bench-exec-parallel")
 	ctx := context.Background()
-	containers := client.Containers()
 	exec := client.Exec()
-
-	// Pre-create and start container
-	name := fmt.Sprintf("bench-exec-parallel-%d", time.Now().UnixNano())
-	id, err := containers.Create(ctx, &domain.ContainerConfig{
-		Name:  name,
-		Image: "alpine:latest",
-		Cmd:   []string{"sleep", "300"},
-	})
-	if err != nil {
-		b.Fatalf("Create failed: %v", err)
-	}
-	defer containers.Remove(ctx, id, domain.RemoveOptions{Force: true})
-
-	if err := containers.Start(ctx, id); err != nil {
-		b.Fatalf("Start failed: %v", err)
-	}
-	defer func() {
-		timeout := 5 * time.Second
-		containers.Stop(ctx, id, domain.StopOptions{Timeout: &timeout})
-	}()
-
-	// Wait for container to be ready
-	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -358,37 +344,10 @@ func BenchmarkContainerFullLifecycle(b *testing.B) {
 
 // BenchmarkExecJobSimulation simulates a typical ExecJob workload.
 func BenchmarkExecJobSimulation(b *testing.B) {
-	client, err := dockeradapter.NewClient()
-	if err != nil {
-		b.Skipf("Docker not available: %v", err)
-	}
-	defer client.Close()
-
+	client, id := preStartedExecContainer(b, "bench-execjob")
 	ctx := context.Background()
 	containers := client.Containers()
 	exec := client.Exec()
-
-	// Pre-create and start container (simulating target container)
-	name := fmt.Sprintf("bench-execjob-%d", time.Now().UnixNano())
-	id, err := containers.Create(ctx, &domain.ContainerConfig{
-		Name:  name,
-		Image: "alpine:latest",
-		Cmd:   []string{"sleep", "300"},
-	})
-	if err != nil {
-		b.Fatalf("Create failed: %v", err)
-	}
-	defer containers.Remove(ctx, id, domain.RemoveOptions{Force: true})
-
-	if err := containers.Start(ctx, id); err != nil {
-		b.Fatalf("Start failed: %v", err)
-	}
-	defer func() {
-		timeout := 5 * time.Second
-		containers.Stop(ctx, id, domain.StopOptions{Timeout: &timeout})
-	}()
-
-	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
 	for range b.N {
