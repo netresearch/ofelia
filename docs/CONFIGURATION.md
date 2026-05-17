@@ -17,6 +17,59 @@ Configuration sources are evaluated in the following order (highest to lowest pr
 2. Environment variables
 3. INI configuration file
 4. Docker labels
+5. **API state file** (`--state-file`) — for jobs created via the web UI or REST API; loads last and shadows same-named INI/label jobs
+
+## State File (`--state-file`)
+
+When the daemon runs with `--state-file=/path/to/state.json` (or `OFELIA_STATE_FILE=...`), Ofelia persists API-mutated state to disk so changes survive restarts ([#593](https://github.com/netresearch/ofelia/issues/593)):
+
+- **Jobs created/updated via `POST /api/jobs/create` or `/api/jobs/update`** are recorded on each successful call and reapplied on the next daemon boot
+- **Disable flags** (`POST /api/jobs/disable` / `/enable`) are persisted regardless of the job's origin — operators can pause an INI-defined job from the UI and the pause survives restart
+
+**Lifecycle**:
+
+1. Boot loads INI + scans Docker labels (unchanged)
+2. State file loads last; persisted API-origin jobs shadow same-named INI/label jobs
+3. Persisted disable flags are applied to whatever jobs ended up in the scheduler
+
+**Delete semantics**:
+
+- `POST /api/jobs/delete` is **only** allowed against API-origin jobs; INI/Docker-label jobs return 403 with a message naming the origin so operators know which source file to edit. (Pre-fix this handler silently removed any job from memory until the next reload — a sharp edge that #593 tightens.)
+- To suppress an INI/label job temporarily, use `POST /api/jobs/disable` instead — that *does* persist across restart.
+
+**On-disk format** (JSON, atomic tmp+rename, schema-versioned):
+
+```json
+{
+  "version": 1,
+  "jobs": {
+    "backup-db": {
+      "type": "run",
+      "schedule": "@daily",
+      "image": "postgres:15",
+      "command": "pg_dump mydb"
+    }
+  },
+  "disabled": ["paused-job"]
+}
+```
+
+**Operator workflow** (typical):
+
+```yaml
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    command: daemon --config=/etc/ofelia/config.ini --state-file=/var/lib/ofelia/state.json
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.ini:/etc/ofelia/config.ini:ro
+      - ofelia-state:/var/lib/ofelia    # mount-mapped so the file survives container recycle
+volumes:
+  ofelia-state:
+```
+
+**Empty path = disabled** (the default) preserves the pre-#593 behavior.
 
 ### Hybrid Configuration (INI + Docker Labels)
 
@@ -174,6 +227,7 @@ services:
 | `OFELIA_WEB_MAX_LOGIN_ATTEMPTS` | Max login attempts per minute | 5 |
 | `OFELIA_ENABLE_PPROF` | Enable pprof profiling | false |
 | `OFELIA_PPROF_ADDRESS` | pprof bind address | 127.0.0.1:8080 |
+| `OFELIA_STATE_FILE` | JSON file persisting API-mutated jobs and disable flags across restarts (#593) | (none, disabled) |
 
 **Limitations of Labels-Only Configuration**:
 - No environment variable substitution in label values (`${VAR}` won't expand)
