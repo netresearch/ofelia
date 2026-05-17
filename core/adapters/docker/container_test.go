@@ -45,6 +45,27 @@ func TestContainerServiceAdapter_Inspect_EmptyID(t *testing.T) {
 	}
 }
 
+// newStopRequestCapturer builds a ContainerServiceAdapter pointed at
+// an httptest server that captures the query string of any POST to
+// /containers/{id}/stop. The returned pointer is populated on each
+// matched request; callers inspect it after invoking adapter.Stop.
+// Extracted from the two #234 SDK-boundary tests below to keep
+// duplication under SonarCloud's 3% budget on new code.
+func newStopRequestCapturer(t *testing.T) (*ContainerServiceAdapter, *url.Values) {
+	t.Helper()
+	var captured url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/stop") && r.Method == http.MethodPost {
+			captured = r.URL.Query()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	return &ContainerServiceAdapter{client: newSDKClientForStubServer(t, srv)}, &captured
+}
+
 // TestContainerServiceAdapter_Stop_PropagatesSignal pins the SDK
 // boundary for the #234 stop-signal feature: domain.StopOptions.Signal
 // must arrive at the Docker daemon as the documented `signal` query
@@ -56,18 +77,7 @@ func TestContainerServiceAdapter_Inspect_EmptyID(t *testing.T) {
 func TestContainerServiceAdapter_Stop_PropagatesSignal(t *testing.T) {
 	t.Parallel()
 
-	var capturedQuery url.Values
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/stop") && r.Method == http.MethodPost {
-			capturedQuery = r.URL.Query()
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	t.Cleanup(srv.Close)
-
-	adapter := &ContainerServiceAdapter{client: newSDKClientForStubServer(t, srv)}
+	adapter, captured := newStopRequestCapturer(t)
 
 	timeout := 15 * time.Second
 	err := adapter.Stop(context.Background(), "test-container",
@@ -76,10 +86,10 @@ func TestContainerServiceAdapter_Stop_PropagatesSignal(t *testing.T) {
 		t.Fatalf("Stop: %v", err)
 	}
 
-	if got := capturedQuery.Get("signal"); got != "SIGINT" {
+	if got := captured.Get("signal"); got != "SIGINT" {
 		t.Errorf("daemon `signal` query param = %q, want SIGINT (#234)", got)
 	}
-	if got := capturedQuery.Get("t"); got != "15" {
+	if got := captured.Get("t"); got != "15" {
 		t.Errorf("daemon `t` (timeout seconds) query param = %q, want 15", got)
 	}
 }
@@ -92,25 +102,14 @@ func TestContainerServiceAdapter_Stop_PropagatesSignal(t *testing.T) {
 func TestContainerServiceAdapter_Stop_OmitsSignalWhenEmpty(t *testing.T) {
 	t.Parallel()
 
-	var capturedQuery url.Values
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/stop") && r.Method == http.MethodPost {
-			capturedQuery = r.URL.Query()
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	t.Cleanup(srv.Close)
-
-	adapter := &ContainerServiceAdapter{client: newSDKClientForStubServer(t, srv)}
+	adapter, captured := newStopRequestCapturer(t)
 
 	err := adapter.Stop(context.Background(), "test-container", domain.StopOptions{})
 	if err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
 
-	if got := capturedQuery.Get("signal"); got != "" {
+	if got := captured.Get("signal"); got != "" {
 		t.Errorf("empty Signal must NOT be sent as a `signal=` query param (got %q); Docker would otherwise interpret a literal empty value differently than 'unset'", got)
 	}
 }
