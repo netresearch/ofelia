@@ -159,6 +159,53 @@ func TestApplyOptions_AllFields(t *testing.T) {
 	assert.Equal(t, "debug", config.Global.LogLevel)
 }
 
+// TestApplyOptions_DockerStartupRetryFlags pins the CLI/env wiring for
+// the new --docker-startup-retry-count / --docker-startup-retry-interval
+// flags introduced in PR #699 / #523. Two parity tests: pointer-nil
+// (no override) and pointer-set (override applied). Mirrors the existing
+// DockerPollInterval/DockerIncludeStopped patterns above so the
+// applyOptions seam stays mutation-test-covered.
+func TestApplyOptions_DockerStartupRetryFlags(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil-flags-preserve-config", func(t *testing.T) {
+		t.Parallel()
+		config := NewConfig(test.NewTestLogger())
+		config.Docker.StartupRetryCount = 5
+		config.Docker.StartupRetryInterval = 2 * time.Second
+
+		// All flag pointers nil — applyOptions must NOT touch the
+		// pre-existing config values (operator set them via INI).
+		cmd := &DaemonCommand{}
+		cmd.applyOptions(config)
+
+		assert.Equal(t, 5, config.Docker.StartupRetryCount,
+			"nil CLI flag must NOT clobber INI-supplied StartupRetryCount")
+		assert.Equal(t, 2*time.Second, config.Docker.StartupRetryInterval,
+			"nil CLI flag must NOT clobber INI-supplied StartupRetryInterval")
+	})
+
+	t.Run("flags-override-config", func(t *testing.T) {
+		t.Parallel()
+		config := NewConfig(test.NewTestLogger())
+		config.Docker.StartupRetryCount = 1
+		config.Docker.StartupRetryInterval = 100 * time.Millisecond
+
+		count := 7
+		interval := 3 * time.Second
+		cmd := &DaemonCommand{
+			DockerStartupRetryCount:    &count,
+			DockerStartupRetryInterval: &interval,
+		}
+		cmd.applyOptions(config)
+
+		assert.Equal(t, 7, config.Docker.StartupRetryCount,
+			"non-nil CLI flag must override INI-supplied StartupRetryCount")
+		assert.Equal(t, 3*time.Second, config.Docker.StartupRetryInterval,
+			"non-nil CLI flag must override INI-supplied StartupRetryInterval")
+	})
+}
+
 func TestApplyConfigDefaults(t *testing.T) {
 	t.Parallel()
 

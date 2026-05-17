@@ -247,16 +247,23 @@ func pingWithRetry(ctx context.Context, provider core.DockerProvider, count int,
 			break // exhausted; fall through to return lastErr
 		}
 		// Exponential backoff: baseInterval × 2^attempt, capped per step.
+		// baseInterval == 0 (operator explicitly chose "no sleep between
+		// attempts") skips the select entirely — without this branch the
+		// overflow guard below would silently promote 0 to maxBackoffStep,
+		// turning a fast-retry config into a 5-min-step config.
 		backoff := baseInterval << attempt //nolint:gosec // attempt bounded by StartupRetryCount validation (<=20)
-		if backoff > maxBackoffStep || backoff <= 0 {
+		if backoff > maxBackoffStep {
 			backoff = maxBackoffStep
 		}
 		logger.Warn(fmt.Sprintf("Docker ping failed (attempt %d/%d), retrying in %v",
 			attempt+1, count+1, backoff), "error", err)
+		if backoff <= 0 {
+			continue // immediate retry; honor ctx via the next Ping's pingCtx
+		}
 		select {
 		case <-time.After(backoff):
 		case <-ctx.Done():
-			return fmt.Errorf("docker startup retry canceled: %w", ctx.Err())
+			return fmt.Errorf("Docker startup retry canceled: %w", ctx.Err())
 		}
 	}
 	return lastErr
