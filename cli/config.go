@@ -1296,6 +1296,28 @@ type DockerConfig struct {
 	// Default is 10s for backwards compatibility.
 	PollingFallback time.Duration `mapstructure:"polling-fallback" validate:"gte=0" default:"10s"`
 
+	// StartupRetryCount sets the number of EXTRA Docker connection attempts
+	// at daemon startup beyond the initial ping. The total attempt budget is
+	// StartupRetryCount + 1; 0 (the default) preserves the pre-#523 behavior
+	// of a single ping that exits the daemon on failure. Useful with TCP-based
+	// Docker hosts (socket proxies, remote daemons, Docker-in-Docker) where
+	// the daemon may briefly be unreachable on startup before health checks
+	// settle. Per attempt the call is bounded by dockerStartupPingTimeout
+	// (10s) so the worst-case startup budget is
+	// (count+1) × dockerStartupPingTimeout + Σ backoffs.
+	// Can be set via --docker-startup-retry-count or
+	// OFELIA_DOCKER_STARTUP_RETRY_COUNT. See
+	// https://github.com/netresearch/ofelia/issues/523.
+	StartupRetryCount int `mapstructure:"startup-retry-count" validate:"gte=0,lte=20" default:"0"`
+
+	// StartupRetryInterval is the base interval between Docker connection
+	// retry attempts at daemon startup. Backoff is exponential
+	// (interval × 2^(attempt-1)) and is honored only when StartupRetryCount > 0.
+	// Defaults to 1s so the issue's suggested 5-retry budget produces a
+	// 1s → 2s → 4s → 8s → 16s spacing (≈31s total). Capped at 5min per
+	// step to bound the daemon's startup delay on a wedged Docker host.
+	StartupRetryInterval time.Duration `mapstructure:"startup-retry-interval" validate:"gte=0,lte=5m" default:"1s"`
+
 	// Deprecated: Use ConfigPollInterval and DockerPollInterval instead.
 	// If set, this value is used for both config and container polling (BC).
 	PollInterval time.Duration `mapstructure:"poll-interval" validate:"gte=0"`
