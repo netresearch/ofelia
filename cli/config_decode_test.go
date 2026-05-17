@@ -4,6 +4,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -468,6 +470,154 @@ typo2 = value2
 		"Should have warning for job1")
 	assert.True(t, handler.HasWarning("job-run \"job2\""),
 		"Should have warning for job2")
+}
+
+// TestGlobalSectionUnknownKeyWarning_DidYouMean pins the parity fix from
+// issue #678: a typo on any [global] mapstructure-tagged key should produce
+// a "did you mean?" line citing the nearest match within Levenshtein
+// threshold. Pre-fix, only job-section warnings carried the suggestion;
+// [global] just emitted "(typo?)" and left the operator to guess.
+func TestGlobalSectionUnknownKeyWarning_DidYouMean(t *testing.T) {
+	t.Parallel()
+
+	// "webhook-defauls-preset" swaps t/s on "webhook-default-preset" — the
+	// exact mistype called out in the issue body.
+	//nolint:misspell // intentional typo for did-you-mean assertion
+	configStr := `
+[global]
+webhook-defauls-preset = json-post
+`
+
+	logger, handler := test.NewTestLoggerWithHandler()
+	_, err := BuildFromString(configStr, logger)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	//nolint:misspell // intentional typo for did-you-mean assertion
+	assert.True(t, handler.HasWarning("Unknown configuration key 'webhook-defauls-preset'"),
+		"Should warn about 'webhook-defauls-preset'")
+	assert.True(t, handler.HasWarning("[global] section"),
+		"Should name the [global] section")
+	//nolint:misspell // intentional typo for did-you-mean assertion
+	assert.True(t, handler.HasWarning("did you mean 'webhook-default-preset'"),
+		"Should suggest 'webhook-default-preset' for 'webhook-defauls-preset'")
+}
+
+// TestGlobalSectionUnknownKeyWarning_NoSuggestion pins that the [global]
+// path still falls back to "(typo?)" — same shape as the existing job-section
+// no-suggestion test — when no close match exists. Asymmetry against the
+// suggestion case is what makes the parity fix meaningful.
+func TestGlobalSectionUnknownKeyWarning_NoSuggestion(t *testing.T) {
+	t.Parallel()
+
+	configStr := `
+[global]
+zzz-totally-unrelated-key = value
+`
+
+	logger, handler := test.NewTestLoggerWithHandler()
+	_, err := BuildFromString(configStr, logger)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	assert.True(t, handler.HasWarning("Unknown configuration key 'zzz-totally-unrelated-key'"),
+		"Should warn about 'zzz-totally-unrelated-key'")
+	assert.True(t, handler.HasWarning("[global] section"),
+		"Should name the [global] section")
+	assert.True(t, handler.HasWarning("typo?"),
+		"Should fall back to '(typo?)' when no close match found")
+	assert.False(t, handler.HasWarning("did you mean"),
+		"Should not suggest when no close match")
+}
+
+// TestDockerSectionUnknownKeyWarning_DidYouMean confirms the same parity fix
+// also applies to the [docker] section path (#678). The two sections share
+// the same code path, but explicitly asserting both prevents a future split
+// from silently dropping suggestions on one half. Also pins cross-section
+// isolation: a [docker] typo must NOT be misattributed to [global].
+func TestDockerSectionUnknownKeyWarning_DidYouMean(t *testing.T) {
+	t.Parallel()
+
+	// "inculde-stopped" swaps u/n on "include-stopped".
+	configStr := `
+[docker]
+inculde-stopped = true
+`
+
+	logger, handler := test.NewTestLoggerWithHandler()
+	_, err := BuildFromString(configStr, logger)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	assert.True(t, handler.HasWarning("Unknown configuration key 'inculde-stopped'"),
+		"Should warn about 'inculde-stopped'")
+	assert.True(t, handler.HasWarning("[docker] section"),
+		"Should name the [docker] section")
+	assert.False(t, handler.HasWarning("[global] section"),
+		"Should NOT misattribute a [docker] typo to the [global] section")
+	assert.True(t, handler.HasWarning("did you mean 'include-stopped'"),
+		"Should suggest 'include-stopped' for 'inculde-stopped'")
+}
+
+// TestGlobalSectionUnknownKeyWarning_NonSquashedKey complements the
+// _DidYouMean test (which targets `webhook-default-preset` inside the
+// squashed WebhookGlobalConfig) by exercising a key declared DIRECTLY on
+// the anonymous Global struct. Together they lock both halves of
+// extractMapstructureKeysFromType: squash recursion AND direct-field
+// enumeration. Without this, a refactor that breaks one path but not the
+// other could pass the existing tests.
+func TestGlobalSectionUnknownKeyWarning_NonSquashedKey(t *testing.T) {
+	t.Parallel()
+
+	// "enabel-pprof" swaps the el on "enable-pprof", a key declared
+	// directly on Config{}.Global (not via squash).
+	configStr := `
+[global]
+enabel-pprof = true
+`
+
+	logger, handler := test.NewTestLoggerWithHandler()
+	_, err := BuildFromString(configStr, logger)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	assert.True(t, handler.HasWarning("Unknown configuration key 'enabel-pprof'"),
+		"Should warn about 'enabel-pprof'")
+	assert.True(t, handler.HasWarning("did you mean 'enable-pprof'"),
+		"Should suggest 'enable-pprof' for 'enabel-pprof'")
+}
+
+// TestGlobalSectionUnknownKeyWarning_FileBased pins the suggestion
+// behavior on the BuildFromFile path (logUnknownKeyWarnings), the
+// production code path the issue reporter actually hits. The other
+// _DidYouMean tests cover BuildFromString (filename == ""); this one
+// covers the four-arm switch's filename != "" branch and asserts the
+// "of <filename>" substring lands in the message.
+func TestGlobalSectionUnknownKeyWarning_FileBased(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.ini")
+	//nolint:misspell // intentional typo for did-you-mean assertion
+	content := `[global]
+webhook-defauls-preset = json-post
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+
+	logger, handler := test.NewTestLoggerWithHandler()
+	_, err := BuildFromFile(configPath, logger)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, handler.WarningCount(), "Expected 1 warning for unknown key")
+	//nolint:misspell // intentional typo for did-you-mean assertion
+	assert.True(t, handler.HasWarning("Unknown configuration key 'webhook-defauls-preset'"),
+		"Should warn about the typo")
+	assert.True(t, handler.HasWarning("[global] section"),
+		"Should name the [global] section")
+	assert.True(t, handler.HasWarning("of "+configPath),
+		"Should include the filename (file-based path's message variant)")
+	assert.True(t, handler.HasWarning("did you mean 'webhook-default-preset'"),
+		"Should suggest 'webhook-default-preset' even on the file-based path")
 }
 
 // Phase 8: Additional coverage tests for config_decode.go

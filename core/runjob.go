@@ -51,6 +51,29 @@ type RunJob struct {
 	WorkingDir  string   `gcfg:"working-dir" mapstructure:"working-dir" hash:"true"`
 	Annotations []string `mapstructure:"annotations" hash:"true"`
 
+	// StopSignal is the signal sent to the main process when Ofelia
+	// stops the container after execution. Accepts the canonical name
+	// ("SIGINT") or the bare suffix ("INT"); empty defaults to whatever
+	// the container image declared via STOPSIGNAL (which itself falls
+	// back to SIGTERM). Useful for apps with signal handlers — Node.js
+	// (SIGINT), Java thread-dump-on-quit (SIGQUIT), or custom cleanup
+	// handlers (SIGUSR1/SIGUSR2). Requires Docker API v1.42+ (Docker
+	// Engine 20.10+, released 2020-12). See
+	// https://github.com/netresearch/ofelia/issues/234.
+	StopSignal string `gcfg:"stop-signal" mapstructure:"stop-signal" hash:"true"`
+
+	// StopTimeout is the grace period between the stop signal (see
+	// StopSignal) and the daemon's escalation to SIGKILL. Honored only
+	// by Ofelia's deadline-cleanup path today (cleanupOnDeadline);
+	// other shutdown paths inherit the daemon's default (typically 10s,
+	// matching the legacy hardcoded value this field replaces).
+	// Zero leaves the previous 10s default in effect, so unconfigured
+	// jobs see no behavior change. Pair with StopSignal to give apps
+	// enough time to flush state before SIGKILL — Node.js graceful
+	// shutdown often needs >10s, Java thread-dump on SIGQUIT can take
+	// 5-30s depending on heap size. See #234.
+	StopTimeout time.Duration `gcfg:"stop-timeout" mapstructure:"stop-timeout" hash:"true"`
+
 	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 
 	containerID string
@@ -174,6 +197,9 @@ func (j *RunJob) cleanupOnDeadline(_ context.Context, ctx *Context) {
 	cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), jobCleanupTimeout)
 	defer cancelCleanup()
 	stopTimeout := 10 * time.Second
+	if j.StopTimeout > 0 {
+		stopTimeout = j.StopTimeout
+	}
 	if stopErr := j.stopContainer(cleanupCtx, stopTimeout); stopErr != nil {
 		ctx.Warn("failed to stop container after deadline: " + stopErr.Error())
 	}
@@ -317,7 +343,8 @@ func (j *RunJob) startContainer(ctx context.Context) error {
 }
 
 func (j *RunJob) stopContainer(ctx context.Context, timeout time.Duration) error {
-	if err := j.Provider.StopContainer(ctx, j.getContainerID(), &timeout); err != nil {
+	opts := domain.StopOptions{Timeout: &timeout, Signal: j.StopSignal}
+	if err := j.Provider.StopContainer(ctx, j.getContainerID(), opts); err != nil {
 		return fmt.Errorf("stopping container: %w", err)
 	}
 	return nil

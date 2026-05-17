@@ -27,6 +27,18 @@ type ExecJob struct {
 	EnvFrom     []string `gcfg:"env-from" mapstructure:"env-from," hash:"true"`
 	WorkingDir  string   `mapstructure:"working-dir" hash:"true"`
 	Privileged  bool     `default:"false" hash:"true"`
+
+	// ConsoleHeight / ConsoleWidth set the initial pseudo-TTY console
+	// size (rows × columns) sent to the Docker daemon at exec creation
+	// — useful for jobs that render TUIs / tables and need a consistent
+	// terminal geometry. Both default to 0, meaning "use Docker's
+	// default size"; setting either populates the daemon's ConsoleSize
+	// parameter. Only honored when TTY is true; otherwise silently
+	// ignored by the daemon. Requires Docker API v1.42+ (Docker Engine
+	// 20.10+, released 2020-12).
+	// See https://github.com/netresearch/ofelia/issues/235.
+	ConsoleHeight uint `gcfg:"console-height" mapstructure:"console-height" hash:"true"`
+	ConsoleWidth  uint `gcfg:"console-width" mapstructure:"console-width" hash:"true"`
 }
 
 func NewExecJob(provider DockerProvider) *ExecJob {
@@ -39,6 +51,21 @@ func NewExecJob(provider DockerProvider) *ExecJob {
 // This should be called after the Provider field is set.
 func (j *ExecJob) InitializeRuntimeFields() {
 	// No additional initialization needed with DockerProvider
+}
+
+// consoleSize returns the [height, width] pair the Docker daemon
+// expects for ContainerExecCreate.ConsoleSize, or nil when neither
+// dimension was configured. nil means "use Docker's default size",
+// matching the daemon contract documented at #235.
+//
+// A partial value like {40, 0} is intentionally forwarded — the daemon
+// honors the 40 and uses its default for the zero dimension. Only the
+// "both zero" case collapses to nil (the unconfigured-by-operator case).
+func (j *ExecJob) consoleSize() *[2]uint {
+	if j.ConsoleHeight == 0 && j.ConsoleWidth == 0 {
+		return nil
+	}
+	return &[2]uint{j.ConsoleHeight, j.ConsoleWidth}
 }
 
 // Run executes the configured command inside the target container via
@@ -76,6 +103,7 @@ func (j *ExecJob) Run(ctx *Context) error {
 		AttachStderr: true,
 		Tty:          j.TTY,
 		Privileged:   j.Privileged,
+		ConsoleSize:  j.consoleSize(),
 	}
 
 	exitCode, err := j.Provider.RunExec(
@@ -117,6 +145,7 @@ func (j *ExecJob) RunWithStreams(ctx context.Context, stdout, stderr io.Writer) 
 		AttachStderr: true,
 		Tty:          j.TTY,
 		Privileged:   j.Privileged,
+		ConsoleSize:  j.consoleSize(),
 	}
 
 	exitCode, err := j.Provider.RunExec(ctx, j.Container, config, stdout, stderr)

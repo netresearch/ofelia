@@ -190,9 +190,6 @@ type ClientConfig struct {
 	// Version is the API version (empty for auto-negotiation)
 	Version string
 
-	// HTTPClient is a custom HTTP client (optional)
-	HTTPClient *http.Client
-
 	// HTTPHeaders are custom HTTP headers (optional)
 	HTTPHeaders map[string]string
 

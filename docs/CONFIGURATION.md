@@ -11,12 +11,72 @@ Ofelia supports multiple configuration methods that can be used independently or
 
 ## Configuration Precedence
 
-Configuration sources are evaluated in the following order (highest to lowest priority):
+**Daemon/global settings** are evaluated in the following order (highest to lowest priority):
 
 1. Command-line flags
 2. Environment variables
 3. INI configuration file
 4. Docker labels
+
+**Job state** uses a separate precedence — for jobs with the same name across sources:
+
+1. **API state file** (`--state-file`) — highest; persisted API/UI mutations are authoritative for their own job names
+2. Docker labels
+3. INI configuration file
+
+Disable flags from the state file apply on top regardless of where the underlying job came from, so an INI/label job paused via the UI stays paused after restart.
+
+## State File (`--state-file`)
+
+When the daemon runs with `--state-file=/path/to/state.json` (or `OFELIA_STATE_FILE=...`), Ofelia persists API-mutated state to disk so changes survive restarts ([#593](https://github.com/netresearch/ofelia/issues/593)):
+
+- **Jobs created/updated via `POST /api/jobs/create` or `/api/jobs/update`** are recorded on each successful call and reapplied on the next daemon boot
+- **Disable flags** (`POST /api/jobs/disable` / `/enable`) are persisted regardless of the job's origin — operators can pause an INI-defined job from the UI and the pause survives restart
+
+**Lifecycle**:
+
+1. Boot loads INI + scans Docker labels (unchanged)
+2. State file loads last; persisted API-origin jobs shadow same-named INI/label jobs
+3. Persisted disable flags are applied to whatever jobs ended up in the scheduler
+
+**Delete semantics**:
+
+- `POST /api/jobs/delete` is **only** allowed against API-origin jobs; INI/Docker-label jobs return 403 with a message naming the origin so operators know which source file to edit. (Pre-fix this handler silently removed any job from memory until the next reload — a sharp edge that #593 tightens.)
+- To suppress an INI/label job temporarily, use `POST /api/jobs/disable` instead — that *does* persist across restart.
+
+**On-disk format** (JSON, atomic tmp+rename, schema-versioned):
+
+```json
+{
+  "version": 1,
+  "jobs": {
+    "backup-db": {
+      "type": "run",
+      "schedule": "@daily",
+      "image": "postgres:15",
+      "command": "pg_dump mydb"
+    }
+  },
+  "disabled": ["paused-job"]
+}
+```
+
+**Operator workflow** (typical):
+
+```yaml
+services:
+  ofelia:
+    image: netresearch/ofelia:latest
+    command: daemon --config=/etc/ofelia/config.ini --state-file=/var/lib/ofelia/state.json
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./config.ini:/etc/ofelia/config.ini:ro
+      - ofelia-state:/var/lib/ofelia    # mount-mapped so the file survives container recycle
+volumes:
+  ofelia-state:
+```
+
+**Empty path = disabled** (the default) preserves the pre-#593 behavior.
 
 ### Hybrid Configuration (INI + Docker Labels)
 
@@ -174,6 +234,7 @@ services:
 | `OFELIA_WEB_MAX_LOGIN_ATTEMPTS` | Max login attempts per minute | 5 |
 | `OFELIA_ENABLE_PPROF` | Enable pprof profiling | false |
 | `OFELIA_PPROF_ADDRESS` | pprof bind address | 127.0.0.1:8080 |
+| `OFELIA_STATE_FILE` | JSON file persisting API-mutated jobs and disable flags across restarts (#593) | (none, disabled) |
 
 **Limitations of Labels-Only Configuration**:
 - No environment variable substitution in label values (`${VAR}` won't expand)
@@ -365,6 +426,8 @@ command = pg_dump mydb > /backup/db.sql
 user = postgres             # User to run command as
 environment = DB_NAME=mydb,BACKUP_RETENTION=7
 tty = false                 # Allocate TTY
+console-height = 24         # Initial pseudo-TTY rows (only honored when tty=true; #235)
+console-width  = 80         # Initial pseudo-TTY columns
 delay = 5s                  # Delay before execution
 
 # Middleware Configuration
@@ -414,6 +477,8 @@ cpu-quota = 50000
 # Cleanup
 delete = true               # Delete container after execution
 delete-timeout = 30s        # Timeout for deletion
+stop-signal = SIGINT        # Signal sent at stop time (#234); empty = image's STOPSIGNAL or SIGTERM
+stop-timeout = 30s          # Grace period before SIGKILL in cleanupOnDeadline (#234); 0 = legacy 10s default
 
 # Restart Policy
 restart-on-failure = 3      # Max restart attempts

@@ -129,6 +129,20 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 				"This prevents container-to-host privilege escalation attacks.", len(composeJobs)))
 			composeJobs = make(map[string]map[string]any)
 		}
+		// job-run / job-service-run privilege-escalation: a label-defined
+		// container-spawning job can specify `volume=/:/host:rw` to mount
+		// the host filesystem into the spawned container, or
+		// `volumes-from=<donor>` to inherit a donor's bind mounts (e.g.
+		// ofelia's own /var/run/docker.sock) — same class of escalation as
+		// job-local / job-compose. Filter per-job (not per-batch) so
+		// legitimate jobs with named/anonymous volumes and no volumes-from
+		// survive while the policy still blocks host mounts and
+		// volumes-from inheritance. Applies to BOTH job-run and
+		// job-service-run because RunServiceJob.Volume has the same shape
+		// and lands at the same Docker SDK call. See
+		// https://github.com/netresearch/ofelia/issues/462.
+		runJobs = filterJobsWithHostEscalation(runJobs, "job-run", c.logger)
+		serviceJobs = filterJobsWithHostEscalation(serviceJobs, "job-service-run", c.logger)
 	}
 
 	decodeInto := func(src map[string]map[string]any, dst any) error {
@@ -455,4 +469,200 @@ func setJobParam(params map[string]any, paramName, paramVal string) {
 	}
 
 	params[paramName] = paramVal
+}
+
+// isHostVolumeMount reports whether a Docker --volume spec mounts a host
+// filesystem path into the container. Docker's bind-mount syntax is
+// `source:target[:options]`; a host mount has the source as an absolute
+// path ("/foo"), a relative path ("./foo"), or a home-relative path
+// ("~/foo"). Named volumes ("my-vol:/data") and anonymous volumes
+// ("/data" with no colon source/target separator) are NOT host mounts.
+//
+// The predicate errs on the side of blocking: any source starting with
+// `/`, `.`, or `~` is treated as a host mount even though Docker'd valid
+// named-volume regex `[a-zA-Z0-9][a-zA-Z0-9_.-]+` technically allows a
+// volume name with an embedded `.` (e.g. `.hidden`). False positives
+// here cost the operator a renamed volume; false negatives cost
+// container-to-host escape, so the asymmetry is intentional.
+//
+// Whitespace and tab prefixes are stripped before the byte check so a
+// crafted spec like `" /host:/container"` cannot bypass the predicate
+// even if a future Docker daemon decides to be lenient about them.
+//
+// Examples:
+//
+//	"/host:/container"        -> true   (absolute host path)
+//	"/host:/container:ro"     -> true   (with options)
+//	"./relative:/container"   -> true   (relative host path)
+//	"~/home:/container"       -> true   (home-relative)
+//	"named-vol:/container"    -> false  (named volume)
+//	"/container"              -> false  (anonymous volume target, no source)
+//	"/:/host:rw"              -> true   (root mount — the original #462 vector)
+//
+// Note: Windows-style paths ("C:\foo:/container") are not handled — Ofelia
+// targets Linux Docker daemons in production. A Windows operator using
+// container labels for cross-host execution would already have other
+// portability concerns; revisit if that use case emerges.
+func isHostVolumeMount(spec string) bool {
+	parts := strings.Split(spec, ":")
+	if len(parts) < 2 {
+		return false // anonymous volume target — no source, just a path inside the container
+	}
+	src := strings.TrimSpace(parts[0])
+	if src == "" {
+		return false // malformed (":foo:bar" or "  :foo:bar")
+	}
+	switch src[0] {
+	case '/', '.', '~':
+		return true
+	default:
+		return false
+	}
+}
+
+// filterJobsWithHostEscalation returns container-spawning jobs (job-run
+// or job-service-run) with any entry that represents a container-to-host
+// privilege-escalation vector removed, emitting one SECURITY POLICY
+// VIOLATION log per dropped job that names the job-type, the job name,
+// the vector class, and the offending specs. Used to extend the
+// AllowHostJobsFromLabels policy beyond job-local / job-compose, closing
+// the escalation vectors tracked in
+// https://github.com/netresearch/ofelia/issues/462.
+//
+// Applied to both job-run (core.RunJob.Volume / VolumesFrom) and
+// job-service-run (core.RunServiceJob.Volume — Swarm services that mount
+// the host filesystem are the same escape vector despite the different
+// orchestration layer; the spec format is identical and lands at the
+// same Docker SDK volume parsing). The jobType arg is the operator-
+// facing label namespace ("job-run" / "job-service-run") used only in
+// the violation log for triage.
+//
+// Currently filters two vector classes:
+//
+//  1. "volume" — direct host bind mounts (e.g. /:/host:rw). Per-spec
+//     check so legitimate named/anonymous volumes survive.
+//
+//  2. "volumes-from" — indirect inheritance of a donor container's
+//     bind mounts. We cannot inspect the donor at filter time, so any
+//     non-empty volumes-from is treated as a violation: the donor might
+//     have /var/run/docker.sock bind-mounted (ofelia itself usually does),
+//     which would give the spawned container full Docker-daemon access.
+//
+// The job-local and job-compose entries in the same security block drop
+// wholesale (a single host job is a host job); for the container-
+// spawning jobs we filter per-job because legitimate use cases (named
+// volumes, anonymous volumes, and no volumes-from) are common — an
+// attacker controlling one container's labels should not be able to
+// silently disable unrelated legitimate jobs on the same container.
+//
+// The "volume" key in each job map can be either a single string (single
+// label like `ofelia.job-run.foo.volume=/host:/container`) or a []string
+// (JSON array like `ofelia.job-run.foo.volume=["/host:/container","other:/v"]`).
+// Both shapes are handled. Unexpected shapes are fail-closed: a future
+// refactor that delivers `[]any` or similar will drop the job rather
+// than silently bypass the security check.
+func filterJobsWithHostEscalation(jobs map[string]map[string]any, jobType string, logger *slog.Logger) map[string]map[string]any {
+	if len(jobs) == 0 {
+		return jobs
+	}
+	filtered := make(map[string]map[string]any, len(jobs))
+	for name, job := range jobs {
+		hostMounts, volSafe := extractHostVolumeMounts(job["volume"], logger, name)
+		volsFrom, vfSafe := extractVolumesFromSpecs(job["volumes-from"], logger, name)
+		if volSafe && vfSafe && len(hostMounts) == 0 && len(volsFrom) == 0 {
+			filtered[name] = job
+			continue
+		}
+		var vectors []string
+		if len(hostMounts) > 0 {
+			vectors = append(vectors, fmt.Sprintf("volume=%q", hostMounts))
+		}
+		if len(volsFrom) > 0 {
+			vectors = append(vectors, fmt.Sprintf("volumes-from=%q", volsFrom))
+		}
+		if !volSafe {
+			vectors = append(vectors, "volume=<unexpected-type>")
+		}
+		if !vfSafe {
+			vectors = append(vectors, "volumes-from=<unexpected-type>")
+		}
+		logger.Error(fmt.Sprintf("SECURITY POLICY VIOLATION: dropping %s %q with host-escalation vectors %v from container labels. "+
+			"Host bind mounts and volumes-from inheritance enable container-to-host privilege escalation "+
+			"(volumes-from inherits the donor container's mounts, e.g. /var/run/docker.sock). "+
+			"Set [global] allow-host-jobs-from-labels=true in INI to permit (NOT recommended for multi-tenant hosts). "+
+			"See https://github.com/netresearch/ofelia/issues/462.",
+			jobType, name, vectors))
+	}
+	return filtered
+}
+
+// extractHostVolumeMounts walks the "volume" param value and returns the
+// host-mount specs it contains. The bool return is true when the value's
+// type was recognized; false signals a fail-closed condition (an
+// unexpected type should drop the job rather than silently bypass the
+// security check).
+//
+// Recognized shapes:
+//   - nil          -> ([], true)   no volumes declared
+//   - string       -> per-spec scan
+//   - []string     -> per-spec scan
+//   - anything else -> ([], false) — fail closed, log at WARN
+func extractHostVolumeMounts(v any, logger *slog.Logger, jobName string) ([]string, bool) {
+	if v == nil {
+		return nil, true
+	}
+	var hostMounts []string
+	switch specs := v.(type) {
+	case string:
+		if isHostVolumeMount(specs) {
+			hostMounts = append(hostMounts, specs)
+		}
+		return hostMounts, true
+	case []string:
+		for _, spec := range specs {
+			if isHostVolumeMount(spec) {
+				hostMounts = append(hostMounts, spec)
+			}
+		}
+		return hostMounts, true
+	default:
+		logger.Warn(fmt.Sprintf("unexpected type %T for job-run %q volume key; treating as security violation (fail-closed). "+
+			"This usually means a code change broke the setJobParam contract — please file an issue.",
+			v, jobName))
+		return nil, false
+	}
+}
+
+// extractVolumesFromSpecs walks the "volumes-from" param value and
+// returns the donor container references it contains. Same shape
+// handling and fail-closed contract as extractHostVolumeMounts. Any
+// non-empty value is a violation because we cannot inspect the donor's
+// mounts at filter time — a donor with a host bind would silently
+// inherit those mounts into the spawned container.
+func extractVolumesFromSpecs(v any, logger *slog.Logger, jobName string) ([]string, bool) {
+	if v == nil {
+		return nil, true
+	}
+	switch specs := v.(type) {
+	case string:
+		if specs == "" {
+			return nil, true
+		}
+		return []string{specs}, true
+	case []string:
+		// Filter out empty strings the JSON array shorthand might have
+		// produced; an empty donor name is a no-op for Docker.
+		out := make([]string, 0, len(specs))
+		for _, s := range specs {
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out, true
+	default:
+		logger.Warn(fmt.Sprintf("unexpected type %T for job-run %q volumes-from key; treating as security violation (fail-closed). "+
+			"This usually means a code change broke the setJobParam contract — please file an issue.",
+			v, jobName))
+		return nil, false
+	}
 }

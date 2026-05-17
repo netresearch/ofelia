@@ -8,7 +8,10 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -140,9 +143,71 @@ func (l *PresetLoader) loadBundledPresets() error {
 	return nil
 }
 
-// AddLocalPresetDir adds a directory to search for local preset files
+// AddLocalPresetDir adds a directory to search for local preset files. It
+// also scans the directory for files whose names collide with a bundled
+// preset (e.g. "json-post.yaml" shadowing the bundled "json-post") and emits
+// a startup-time slog.Warn per collision. Load() resolves bundled presets
+// first and never falls through, so a local file at $dir/<name>.yaml meant
+// to override the bundled preset would silently be ignored — surfacing the
+// shadow at AddLocalPresetDir time turns a silent no-op into an actionable
+// warning. See https://github.com/netresearch/ofelia/issues/679.
+//
+// Inverting the lookup order to prefer local files is deliberately rejected:
+// a local typo that accidentally shadows "slack" would silently break Slack
+// delivery for every webhook on the host. Operators trust the bundled set
+// to behave consistently across hosts; warn-and-keep-bundled preserves that.
 func (l *PresetLoader) AddLocalPresetDir(dir string) {
 	l.localPresetDirs = append(l.localPresetDirs, dir)
+	l.warnOnBundledShadow(dir)
+}
+
+// warnOnBundledShadow scans dir for *.yaml files whose stem matches a
+// bundled preset name and emits one slog.Warn per collision. Restricted to
+// the *.yaml extension on purpose: Load() only probes "<name>.yaml" in
+// localPresetDirs, so a *.yml file would not have been loaded anyway and
+// warning on it would mislead operators into thinking the rename to .yaml
+// is sufficient.
+//
+// A non-existent directory (operator registered before populating) is
+// silent. Other read failures are debug-logged so a permission-denied or
+// I/O error is still discoverable when an operator turns up the log level,
+// without becoming a startup-noise floor on a clean install.
+func (l *PresetLoader) warnOnBundledShadow(dir string) {
+	if len(l.bundledPresets) == 0 {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			slog.Default().Debug(
+				"PresetLoader: could not scan local preset dir for bundled-name shadows",
+				"dir", dir,
+				"error", err,
+			)
+		}
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if filepath.Ext(name) != ".yaml" {
+			continue
+		}
+		stem := strings.TrimSuffix(name, ".yaml")
+		if _, shadowed := l.bundledPresets[stem]; !shadowed {
+			continue
+		}
+		fullPath := filepath.Join(dir, name)
+		slog.Default().Warn(
+			fmt.Sprintf("Local preset file %q shadows bundled preset %q; the bundled preset wins "+
+				"and the local file will not be loaded. Rename the file or remove it to silence this warning.",
+				fullPath, stem),
+			"file", fullPath,
+			"bundled", stem,
+		)
+	}
 }
 
 // DefaultPreset returns the effective global default preset name —
