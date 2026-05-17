@@ -14,6 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gobs/args"
+
+	cfgvalidator "github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/persist"
 	"github.com/netresearch/ofelia/middlewares"
@@ -210,11 +213,19 @@ func (c *DaemonCommand) boot() (err error) {
 		// #593: wire the persist store into the web server so API
 		// create/update/delete/disable/enable handlers record their
 		// mutations to disk. The store was already loaded earlier in
-		// boot (see applyPersistedState) so the live scheduler already
+		// boot (see initPersistStore) so the live scheduler already
 		// reflects whatever the file contained; from this point on,
 		// the store mirrors live mutations forward to disk.
 		if c.persistStore != nil {
 			c.webServer.SetPersistStore(c.persistStore)
+			// Re-establish origin="api" for every persisted job so the
+			// delete-gate (web/server.go) recognizes them as
+			// API-deletable after restart — otherwise jobOrigin() would
+			// return "" and any future tightening of the gate would
+			// silently break delete for persisted jobs.
+			for name := range c.persistStore.Snapshot().Jobs {
+				c.webServer.MarkOriginAPI(name)
+			}
 		}
 
 		c.webServer.RegisterHealthEndpoints(c.healthChecker)
@@ -529,10 +540,23 @@ func (c *DaemonCommand) initPersistStore() error {
 // persistedJobToScheduler reconstructs a scheduler-ready core.Job
 // from the on-disk persist.Job. Mirrors web.Server.jobFromRequest so
 // the round-trip from API → state-file → load lands the same job
-// shape. Returns an error on unknown type or when a job kind needs a
-// Docker provider that isn't available on this daemon.
+// shape. Returns an error on unknown type, when a job kind needs a
+// Docker provider that isn't available on this daemon, or when a
+// validation parity check fails — the state file is operator-trusted
+// but the same input validators that gate the API path also run on
+// load so a malformed hand-edit can't bypass the safety net.
+//
+// CONTRACT: any field web.jobFromRequest sets on a job MUST also be
+// captured here (and in persist.Job) — otherwise the round-trip
+// from API → state-file → load silently drops the field. When
+// jobRequest gains a field, mirror it in persist.Job and add the
+// matching switch arm here in the same commit.
 func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (core.Job, error) {
+	if err := validatePersistedJobName(name); err != nil {
+		return nil, err
+	}
 	provider := c.dockerProviderOrNil()
+	validator := cfgvalidator.NewCommandValidator()
 	switch j.Type {
 	case persist.JobTypeRun:
 		if provider == nil {
@@ -556,6 +580,19 @@ func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (co
 		ej.Container = j.Container
 		return ej, nil
 	case persist.JobTypeCompose:
+		if j.File != "" {
+			if err := validator.ValidateFilePath(j.File); err != nil {
+				return nil, fmt.Errorf("invalid compose file path: %w", err)
+			}
+		}
+		if err := validator.ValidateServiceName(j.Service); err != nil {
+			return nil, fmt.Errorf("invalid service name: %w", err)
+		}
+		if j.Command != "" {
+			if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
+				return nil, fmt.Errorf("invalid command arguments: %w", err)
+			}
+		}
 		cj := &core.ComposeJob{}
 		cj.Name = name
 		cj.Schedule = j.Schedule
@@ -565,6 +602,11 @@ func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (co
 		cj.Exec = j.Exec
 		return cj, nil
 	case persist.JobTypeLocal, "":
+		if j.Command != "" {
+			if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
+				return nil, fmt.Errorf("invalid command arguments: %w", err)
+			}
+		}
 		lj := &core.LocalJob{}
 		lj.Name = name
 		lj.Schedule = j.Schedule
@@ -573,6 +615,27 @@ func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (co
 	default:
 		return nil, fmt.Errorf("unknown job type %q", j.Type)
 	}
+}
+
+// validatePersistedJobName mirrors web.validateJobName but lives in
+// cli to avoid a cli → web → cli import cycle. Kept aligned by a
+// docstring contract; both implementations must apply the same rules
+// (non-empty, ≤256 chars, no control chars). Job names land in INI
+// section headers and command-line args downstream, so the loose
+// checks are conservative defense-in-depth, not strict validation.
+func validatePersistedJobName(name string) error {
+	if name == "" {
+		return fmt.Errorf("persisted job name must not be empty")
+	}
+	if len(name) > 256 {
+		return fmt.Errorf("persisted job name exceeds 256 chars: %q", name[:32]+"…")
+	}
+	for _, r := range name {
+		if r < 32 || r == 127 {
+			return fmt.Errorf("persisted job name %q contains control character", name)
+		}
+	}
+	return nil
 }
 
 func (c *DaemonCommand) dockerProviderOrNil() core.DockerProvider {

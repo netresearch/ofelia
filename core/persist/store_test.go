@@ -245,6 +245,140 @@ func TestStore_ConcurrentMutators(t *testing.T) {
 		"concurrent PutJob calls must all persist — no save-overwrite race")
 }
 
+// TestStore_Snapshot_IsolatedFromInternalState pins the deep-copy
+// claim in Snapshot's docstring. Mutating the returned slices/maps
+// must NOT bleed into the Store's internal state — otherwise a
+// caller iterating a snapshot while another goroutine mutates the
+// Store would race on the same backing array.
+func TestStore_Snapshot_IsolatedFromInternalState(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	s := NewStore(path)
+	require.NoError(t, s.PutJob("x", Job{Type: JobTypeLocal, Schedule: "@daily"}))
+	require.NoError(t, s.SetDisabled("y"))
+
+	snap := s.Snapshot()
+	snap.Jobs["x"].Schedule = "MUTATED" // mutate the returned struct
+	snap.Jobs["new"] = &Job{Type: JobTypeLocal}
+	snap.Disabled = append(snap.Disabled, "z")
+
+	second := s.Snapshot()
+	assert.Equal(t, "@daily", second.Jobs["x"].Schedule,
+		"mutating snapshot Job pointer must not bleed into Store state")
+	assert.NotContains(t, second.Jobs, "new",
+		"adding entries to snapshot map must not bleed into Store state")
+	assert.Equal(t, []string{"y"}, second.Disabled,
+		"appending to snapshot Disabled slice must not bleed into Store state")
+}
+
+// TestStore_Load_VersionZero_NormalizesToCurrent pins forward-compat
+// for files written by builds before the Version field existed (or by
+// hand-edited files where the field was dropped). Version 0 must
+// load as CurrentVersion so the next save writes the explicit field.
+func TestStore_Load_VersionZero_NormalizesToCurrent(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	require.NoError(t, os.WriteFile(path,
+		[]byte(`{"version":0,"jobs":{"x":{"type":"local","schedule":"@daily"}}}`),
+		0o600))
+	s := NewStore(path)
+	require.NoError(t, s.Load())
+	snap := s.Snapshot()
+	assert.Equal(t, CurrentVersion, snap.Version,
+		"version 0 must normalize to CurrentVersion so subsequent saves carry the explicit field")
+	assert.Contains(t, snap.Jobs, "x")
+}
+
+// TestStore_Load_ZeroByteFile_TreatsAsEmpty pins the empty-file path
+// in Load: a 0-byte state file (e.g. one that was created but never
+// successfully written, or truncated mid-save by some external tool)
+// must NOT fail boot — it's treated as "fresh start" so the daemon
+// can recover automatically on the next mutation.
+func TestStore_Load_ZeroByteFile_TreatsAsEmpty(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	require.NoError(t, os.WriteFile(path, nil, 0o600))
+	s := NewStore(path)
+	require.NoError(t, s.Load())
+	snap := s.Snapshot()
+	assert.Empty(t, snap.Jobs)
+	assert.Empty(t, snap.Disabled)
+}
+
+// TestStore_Load_RejectsUnknownFields pins DisallowUnknownFields —
+// a typo'd field in a hand-edited file (e.g. "scheduel" instead of
+// "schedule") must surface as a decode error rather than silently
+// load with the field dropped, which would look like the edit did
+// nothing.
+func TestStore_Load_RejectsUnknownFields(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	require.NoError(t, os.WriteFile(path,
+		[]byte(`{"version":1,"jobs":{"x":{"type":"local","schedule":"@daily","typo_field":"oops"}}}`),
+		0o600))
+	s := NewStore(path)
+	err := s.Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "typo_field",
+		"unknown fields must surface in the error so the operator sees what to fix")
+}
+
+// TestStore_Load_RejectsOversizeFile pins the 16 MiB ceiling — a
+// pathological file (corrupt growth, attacker-controlled) must not
+// OOM boot. Fake the size cap by tweaking the constant via a build
+// flag would be cleaner, but writing a real ~17 MiB file is portable
+// and exercises the same code path.
+func TestStore_Load_RejectsOversizeFile(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	huge := make([]byte, maxStateFileBytes+1)
+	for i := range huge {
+		huge[i] = ' '
+	}
+	require.NoError(t, os.WriteFile(path, huge, 0o600))
+	s := NewStore(path)
+	err := s.Load()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrStateFileTooLarge,
+		"oversize file must surface ErrStateFileTooLarge so callers can distinguish bootstrap-abort from generic I/O errors")
+}
+
+// TestStore_Save_FilePermissions pins the explicit 0o600 mode set in
+// saveLocked. State files contain operator-defined commands and
+// container names — must not be world-readable even on shared
+// volumes with permissive umasks.
+func TestStore_Save_FilePermissions(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	s := NewStore(path)
+	require.NoError(t, s.PutJob("x", Job{Type: JobTypeLocal, Schedule: "@daily"}))
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(),
+		"state file must be 0600 — contains operator-supplied command strings")
+}
+
+// TestStore_RemoveThenReadd_PersistsNewState pins the rename-then-add
+// round-trip: removing a job and adding it back with a different
+// schedule must not leave the old schedule resident anywhere — a
+// fresh reader sees only the new state.
+func TestStore_RemoveThenReadd_PersistsNewState(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	s := NewStore(path)
+	require.NoError(t, s.PutJob("x", Job{Type: JobTypeLocal, Schedule: "@daily"}))
+	require.NoError(t, s.RemoveJob("x"))
+	require.NoError(t, s.PutJob("x", Job{Type: JobTypeLocal, Schedule: "@hourly"}))
+
+	reader := NewStore(path)
+	require.NoError(t, reader.Load())
+	snap := reader.Snapshot()
+	require.Contains(t, snap.Jobs, "x")
+	assert.Equal(t, "@hourly", snap.Jobs["x"].Schedule,
+		"re-added job must reflect the latest schedule, not a stale value from the previous incarnation")
+}
+
 // helpers ---------------------------------------------------------------
 
 func jobName(prefix string, i int) string {

@@ -53,6 +53,30 @@ func (s *Server) SetPersistStore(store *persist.Store) {
 	s.persistStore = store
 }
 
+// originAPI is the marker stored in s.origins for jobs created or
+// updated via the web API / UI. Constant so the delete-gate, the
+// create/update handlers, and the persist boot-loader all agree on
+// the literal — pre-extraction this string was duplicated across six
+// sites and any single-letter typo would silently break the gate.
+const originAPI = "api"
+
+// MarkOriginAPI records that the named job came from the API so the
+// delete handler's origin gate (#593) recognizes it after a daemon
+// restart. The persist loader in cli/daemon.go calls this for every
+// job materialized from the state file — otherwise jobOrigin() would
+// return "" for those jobs and a future tightening of the gate from
+// `origin != "" && origin != originAPI` to `origin != originAPI` would
+// silently break delete for all persisted jobs. Safe to call only
+// before Start.
+func (s *Server) MarkOriginAPI(name string) {
+	s.originsMu.Lock()
+	if s.origins == nil {
+		s.origins = make(map[string]string)
+	}
+	s.origins[name] = originAPI
+	s.originsMu.Unlock()
+}
+
 // HTTPServer returns the underlying http.Server used by the web interface. It
 // is exposed for tests and may change if the Server struct evolves.
 func (s *Server) HTTPServer() *http.Server { return s.srv }
@@ -577,7 +601,7 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	origin := r.Header.Get("X-Origin")
 	if origin == "" {
-		origin = "api"
+		origin = originAPI
 	}
 	s.originsMu.Lock()
 	s.origins[req.Name] = origin
@@ -587,7 +611,7 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 	// rather than roll back the scheduler insert: the job is already
 	// live in memory and rolling back would surprise callers who
 	// got a successful response shape.
-	if origin == "api" {
+	if origin == originAPI {
 		if err := s.persistJob(req.Name, &req); err != nil {
 			s.scheduler.Logger.Warn("persist created job failed", "job", req.Name, "error", err)
 		}
@@ -637,13 +661,13 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 
 	origin := r.Header.Get("X-Origin")
 	if origin == "" {
-		origin = "api"
+		origin = originAPI
 	}
 	s.originsMu.Lock()
 	s.origins[req.Name] = origin
 	s.originsMu.Unlock()
 	// Persist (#593) API-origin updates — same rationale as create.
-	if origin == "api" {
+	if origin == originAPI {
 		if err := s.persistJob(req.Name, &req); err != nil {
 			s.scheduler.Logger.Warn("persist updated job failed", "job", req.Name, "error", err)
 		}
@@ -745,7 +769,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	// reject explicitly so the operator sees the right error path.
 	// Operators wanting to suppress an INI/label job temporarily
 	// should use POST /api/jobs/disable instead, which now persists.
-	if origin := s.jobOrigin(req.Name); origin != "" && origin != "api" {
+	if origin := s.jobOrigin(req.Name); origin != "" && origin != originAPI {
 		http.Error(w,
 			"job came from "+origin+" config; edit the source to delete it (or use /api/jobs/disable to suppress it)",
 			http.StatusForbidden)
