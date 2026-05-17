@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Extended the `[global] allow-host-jobs-from-labels=false` policy to cover `job-run` entries that mount host filesystem paths via Docker labels (e.g. `ofelia.job-run.X.volume=/:/host:rw`). Pre-fix, only `job-local` and `job-compose` were filtered, leaving `job-run` as an open container-to-host privilege-escalation vector: an attacker controlling labels on any container Ofelia watched could mount `/` into the spawned `job-run` container and read or write the host filesystem. The new per-job filter detects host mounts (volume specs whose source starts with `/`, `.`, or `~`) and drops the entire offending `job-run`, logging a `SECURITY POLICY VIOLATION` that names the job and the specific volume specs so operators can triage. Named volumes (`my-vol:/data`) and anonymous volumes (`/data` target-only) are unaffected — only host bind mounts trigger the policy. Closes [#462](https://github.com/netresearch/ofelia/issues/462).
+
 ### Fixed
 
 - `PresetLoader.AddLocalPresetDir` now scans the registered directory for `*.yaml` files whose stem collides with a bundled preset name (`slack`, `discord`, `teams`, `matrix`, `ntfy`, `ntfy-token`, `pushover`, `pagerduty`, `gotify`, `json-post`) and emits a startup `slog.Warn` per collision. Pre-fix, `PresetLoader.Load` resolved bundled presets first and never fell through, so a file at `$LOCAL_DIR/json-post.yaml` placed hoping to override the bundled `json-post` was silently ignored at attach time. The warning matches `Load`'s `.yaml`-only resolution path so a `.yml` rename suggestion never misleads operators. The lookup order is documented in `docs/webhooks.md` under "Preset Lookup Order"; inverting the order to prefer local files is deliberately rejected (a local typo shadowing `slack.yaml` would silently break Slack delivery host-wide). Closes [#679](https://github.com/netresearch/ofelia/issues/679).

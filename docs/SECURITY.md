@@ -669,12 +669,17 @@ DOCKER_TLS_VERIFY=1
 DOCKER_CERT_PATH=/certs
 ```
 
-**LocalJob Restrictions**:
+**Host-Job Restrictions**:
 ```ini
 [global]
-# Prevent LocalJobs from Docker labels
+# Prevent host-touching jobs from Docker labels.
+# Blocks: job-local (entirely), job-compose (entirely),
+# and job-run entries that mount host paths via volume=...
+# (e.g. volume=/:/host:rw). Named and anonymous volumes are unaffected.
 allow-host-jobs-from-labels = false
 ```
+
+The `job-run` filter is per-volume: a job whose `volume` list contains a host path (any spec where the source starts with `/`, `.`, or `~`) is dropped wholesale and a `SECURITY POLICY VIOLATION` is logged naming the offending mount. Named volumes (`my-vol:/data`) and anonymous volumes (`/data` with no source) pass through. See [#462](https://github.com/netresearch/ofelia/issues/462).
 
 ## Network Security
 
