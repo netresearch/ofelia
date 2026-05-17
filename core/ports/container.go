@@ -6,7 +6,6 @@ package ports
 import (
 	"context"
 	"io"
-	"time"
 
 	"github.com/netresearch/ofelia/core/domain"
 )
@@ -21,9 +20,12 @@ type ContainerService interface {
 	Start(ctx context.Context, containerID string) error
 
 	// Stop stops a running container.
-	// The timeout parameter specifies how long to wait before forcefully killing.
-	// If timeout is nil, the default timeout is used.
-	Stop(ctx context.Context, containerID string, timeout *time.Duration) error
+	// opts.Timeout specifies how long to wait before forcefully killing;
+	// nil leaves the daemon's default in effect.
+	// opts.Signal selects the termination signal (e.g. "SIGINT"); empty
+	// uses the container image's STOPSIGNAL or the daemon default
+	// (SIGTERM). See domain.StopOptions and #234.
+	Stop(ctx context.Context, containerID string, opts domain.StopOptions) error
 
 	// Remove removes a container.
 	Remove(ctx context.Context, containerID string, opts domain.RemoveOptions) error

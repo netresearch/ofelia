@@ -53,7 +53,7 @@ func TestContainerServiceAdapter_NilClient_NoPanic(t *testing.T) {
 			return err
 		}},
 		{"Start", func() error { return a.Start(ctx, "id") }},
-		{"Stop", func() error { return a.Stop(ctx, "id", nil) }},
+		{"Stop", func() error { return a.Stop(ctx, "id", domain.StopOptions{}) }},
 		{"Remove", func() error { return a.Remove(ctx, "id", domain.RemoveOptions{}) }},
 		{"Inspect", func() error {
 			_, err := a.Inspect(ctx, "id")

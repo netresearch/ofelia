@@ -69,7 +69,7 @@ func setupRunJobMockBehaviors(mockClient *mock.DockerClient) {
 		return nil
 	}
 
-	containers.OnStop = func(ctx context.Context, containerID string, timeout *time.Duration) error {
+	containers.OnStop = func(ctx context.Context, containerID string, opts domain.StopOptions) error {
 		if cont, ok := createdContainers[containerID]; ok {
 			cont.State.Running = false
 			cont.State.ExitCode = 0

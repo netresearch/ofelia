@@ -50,7 +50,7 @@ func TestRunJob_DeadlineFiresStopAndDelete(t *testing.T) {
 	// NOT the expired parent — cleanup must be best-effort against a
 	// fresh deadline.
 	var stopCtxLive, removeCtxLive bool
-	k.containers.OnStop = func(stopCtx context.Context, _ string, _ *time.Duration) error {
+	k.containers.OnStop = func(stopCtx context.Context, _ string, _ domain.StopOptions) error {
 		stopCtxLive = stopCtx.Err() == nil
 		return nil
 	}
@@ -103,7 +103,7 @@ func TestRunJob_DeadlineCleanupContinuesOnStopError(t *testing.T) {
 		}()
 		return r, e
 	}
-	k.containers.OnStop = func(_ context.Context, _ string, _ *time.Duration) error {
+	k.containers.OnStop = func(_ context.Context, _ string, _ domain.StopOptions) error {
 		return errors.New("stop failed")
 	}
 

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -74,16 +73,18 @@ func (s *ContainerServiceAdapter) Start(ctx context.Context, containerID string)
 }
 
 // Stop stops a container.
-func (s *ContainerServiceAdapter) Stop(ctx context.Context, containerID string, timeout *time.Duration) error {
+func (s *ContainerServiceAdapter) Stop(ctx context.Context, containerID string, opts domain.StopOptions) error {
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	opts := container.StopOptions{}
-	if timeout != nil {
-		seconds := int(timeout.Seconds())
-		opts.Timeout = &seconds
+	sdkOpts := container.StopOptions{
+		Signal: opts.Signal,
 	}
-	err := s.client.ContainerStop(ctx, containerID, opts)
+	if opts.Timeout != nil {
+		seconds := int(opts.Timeout.Seconds())
+		sdkOpts.Timeout = &seconds
+	}
+	err := s.client.ContainerStop(ctx, containerID, sdkOpts)
 	return convertError(err)
 }
 

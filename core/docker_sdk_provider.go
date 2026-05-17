@@ -118,11 +118,14 @@ func (p *SDKDockerProvider) StartContainer(ctx context.Context, containerID stri
 	return nil
 }
 
-// StopContainer stops a container.
-func (p *SDKDockerProvider) StopContainer(ctx context.Context, containerID string, timeout *time.Duration) error {
+// StopContainer stops a container. opts.Timeout overrides the daemon's
+// default grace period (typically 10s); opts.Signal selects the
+// termination signal (defaults to the image's STOPSIGNAL / SIGTERM).
+// See domain.StopOptions and #234.
+func (p *SDKDockerProvider) StopContainer(ctx context.Context, containerID string, opts domain.StopOptions) error {
 	p.recordOperation("stop_container")
 
-	if err := p.client.Containers().Stop(ctx, containerID, timeout); err != nil {
+	if err := p.client.Containers().Stop(ctx, containerID, opts); err != nil {
 		p.recordError("stop_container")
 		return WrapContainerError("stop", containerID, err)
 	}

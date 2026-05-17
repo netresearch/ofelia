@@ -108,7 +108,7 @@ func TestSDKDockerProviderStopContainer(t *testing.T) {
 	containers := mockClient.Containers().(*mock.ContainerService)
 
 	timeout := 10 * time.Second
-	err := provider.StopContainer(ctx, "container-id", &timeout)
+	err := provider.StopContainer(ctx, "container-id", domain.StopOptions{Timeout: &timeout})
 	if err != nil {
 		t.Fatalf("StopContainer() error = %v", err)
 	}
