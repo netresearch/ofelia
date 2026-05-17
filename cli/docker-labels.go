@@ -129,16 +129,20 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 				"This prevents container-to-host privilege escalation attacks.", len(composeJobs)))
 			composeJobs = make(map[string]map[string]any)
 		}
-		// job-run privilege-escalation: a label-defined run job can specify
-		// `volume=/:/host:rw` to mount the host filesystem into the spawned
-		// container, or `volumes-from=<donor>` to inherit a donor's bind
-		// mounts (e.g. ofelia's own /var/run/docker.sock) — same class of
-		// escalation as job-local / job-compose. Filter per-job (not
-		// per-batch) so legitimate runJobs with named/anonymous volumes and
-		// no volumes-from survive while the policy still blocks host
-		// mounts and volumes-from inheritance. See
+		// job-run / job-service-run privilege-escalation: a label-defined
+		// container-spawning job can specify `volume=/:/host:rw` to mount
+		// the host filesystem into the spawned container, or
+		// `volumes-from=<donor>` to inherit a donor's bind mounts (e.g.
+		// ofelia's own /var/run/docker.sock) — same class of escalation as
+		// job-local / job-compose. Filter per-job (not per-batch) so
+		// legitimate jobs with named/anonymous volumes and no volumes-from
+		// survive while the policy still blocks host mounts and
+		// volumes-from inheritance. Applies to BOTH job-run and
+		// job-service-run because RunServiceJob.Volume has the same shape
+		// and lands at the same Docker SDK call. See
 		// https://github.com/netresearch/ofelia/issues/462.
-		runJobs = filterRunJobsWithHostEscalation(runJobs, c.logger)
+		runJobs = filterJobsWithHostEscalation(runJobs, "job-run", c.logger)
+		serviceJobs = filterJobsWithHostEscalation(serviceJobs, "job-service-run", c.logger)
 	}
 
 	decodeInto := func(src map[string]map[string]any, dst any) error {
@@ -516,12 +520,22 @@ func isHostVolumeMount(spec string) bool {
 	}
 }
 
-// filterRunJobsWithHostEscalation returns runJobs with any entry that
-// represents a container-to-host privilege-escalation vector removed,
-// emitting one SECURITY POLICY VIOLATION log per dropped job that names
-// the job, the offending specs, and the vector class. Used to extend the
-// AllowHostJobsFromLabels policy to job-run, closing the escalation
-// vectors tracked in https://github.com/netresearch/ofelia/issues/462.
+// filterJobsWithHostEscalation returns container-spawning jobs (job-run
+// or job-service-run) with any entry that represents a container-to-host
+// privilege-escalation vector removed, emitting one SECURITY POLICY
+// VIOLATION log per dropped job that names the job-type, the job name,
+// the vector class, and the offending specs. Used to extend the
+// AllowHostJobsFromLabels policy beyond job-local / job-compose, closing
+// the escalation vectors tracked in
+// https://github.com/netresearch/ofelia/issues/462.
+//
+// Applied to both job-run (core.RunJob.Volume / VolumesFrom) and
+// job-service-run (core.RunServiceJob.Volume — Swarm services that mount
+// the host filesystem are the same escape vector despite the different
+// orchestration layer; the spec format is identical and lands at the
+// same Docker SDK volume parsing). The jobType arg is the operator-
+// facing label namespace ("job-run" / "job-service-run") used only in
+// the violation log for triage.
 //
 // Currently filters two vector classes:
 //
@@ -535,11 +549,11 @@ func isHostVolumeMount(spec string) bool {
 //     which would give the spawned container full Docker-daemon access.
 //
 // The job-local and job-compose entries in the same security block drop
-// wholesale (a single host job is a host job); for job-run we filter
-// per-job because legitimate use cases (named volumes, anonymous volumes,
-// and now also no volumes-from at all) are common — an attacker
-// controlling one container's labels should not be able to silently
-// disable unrelated legitimate job-run entries on the same container.
+// wholesale (a single host job is a host job); for the container-
+// spawning jobs we filter per-job because legitimate use cases (named
+// volumes, anonymous volumes, and no volumes-from) are common — an
+// attacker controlling one container's labels should not be able to
+// silently disable unrelated legitimate jobs on the same container.
 //
 // The "volume" key in each job map can be either a single string (single
 // label like `ofelia.job-run.foo.volume=/host:/container`) or a []string
@@ -547,12 +561,12 @@ func isHostVolumeMount(spec string) bool {
 // Both shapes are handled. Unexpected shapes are fail-closed: a future
 // refactor that delivers `[]any` or similar will drop the job rather
 // than silently bypass the security check.
-func filterRunJobsWithHostEscalation(runJobs map[string]map[string]any, logger *slog.Logger) map[string]map[string]any {
-	if len(runJobs) == 0 {
-		return runJobs
+func filterJobsWithHostEscalation(jobs map[string]map[string]any, jobType string, logger *slog.Logger) map[string]map[string]any {
+	if len(jobs) == 0 {
+		return jobs
 	}
-	filtered := make(map[string]map[string]any, len(runJobs))
-	for name, job := range runJobs {
+	filtered := make(map[string]map[string]any, len(jobs))
+	for name, job := range jobs {
 		hostMounts, volSafe := extractHostVolumeMounts(job["volume"], logger, name)
 		volsFrom, vfSafe := extractVolumesFromSpecs(job["volumes-from"], logger, name)
 		if volSafe && vfSafe && len(hostMounts) == 0 && len(volsFrom) == 0 {
@@ -572,12 +586,12 @@ func filterRunJobsWithHostEscalation(runJobs map[string]map[string]any, logger *
 		if !vfSafe {
 			vectors = append(vectors, "volumes-from=<unexpected-type>")
 		}
-		logger.Error(fmt.Sprintf("SECURITY POLICY VIOLATION: dropping job-run %q with host-escalation vectors %v from container labels. "+
+		logger.Error(fmt.Sprintf("SECURITY POLICY VIOLATION: dropping %s %q with host-escalation vectors %v from container labels. "+
 			"Host bind mounts and volumes-from inheritance enable container-to-host privilege escalation "+
 			"(volumes-from inherits the donor container's mounts, e.g. /var/run/docker.sock). "+
 			"Set [global] allow-host-jobs-from-labels=true in INI to permit (NOT recommended for multi-tenant hosts). "+
 			"See https://github.com/netresearch/ofelia/issues/462.",
-			name, vectors))
+			jobType, name, vectors))
 	}
 	return filtered
 }

@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -151,8 +152,12 @@ func TestIsHostVolumeMount(t *testing.T) {
 		{"\t/host:/container", true, "leading tab must NOT bypass"},
 		{"   :/host", false, "whitespace-only source — malformed, not a host mount"},
 	}
-	for _, tc := range cases {
-		t.Run(tc.spec, func(t *testing.T) {
+	for i, tc := range cases {
+		// Use index+why for the subtest name: tc.spec can be empty or
+		// contain whitespace/colons that t.Run will rewrite (per Copilot
+		// review on PR #698).
+		name := fmt.Sprintf("%02d_%s", i, tc.why)
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			got := isHostVolumeMount(tc.spec)
 			assert.Equal(t, tc.wantHost, got,
@@ -231,6 +236,45 @@ func TestGlobalLabelAllowListAllowsRunJobWithoutEscalationVectors(t *testing.T) 
 
 	assert.Contains(t, c.RunJobs, "safe",
 		"job-run without any escalation vectors must NOT be blocked")
+}
+
+// TestGlobalLabelAllowListBlocksServiceJobHostMount pins the
+// job-service-run coverage flagged by Gemini's security-high review on
+// PR #698. RunServiceJob.Volume has the same shape and same Docker SDK
+// landing site as RunJob.Volume — a Swarm-orchestrated job that mounts
+// host paths is the same container-to-host escape vector despite the
+// different orchestration layer. Without this test, a future code
+// change that re-introduces the job-service-run bypass would pass CI.
+func TestGlobalLabelAllowListBlocksServiceJobHostMount(t *testing.T) {
+	t.Parallel()
+	logger, handler := test.NewTestLoggerWithHandler()
+	c := NewConfig(logger)
+	c.Global.AllowHostJobsFromLabels = false
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "attacker-container",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled": "true",
+				"ofelia.service": "true",
+				"ofelia.job-service-run.svc-pwn.schedule": "@daily",
+				"ofelia.job-service-run.svc-pwn.image":    "alpine",
+				"ofelia.job-service-run.svc-pwn.command":  "sh -c 'cat /host/etc/shadow'",
+				"ofelia.job-service-run.svc-pwn.volume":   "/:/host:rw",
+			},
+		},
+	}
+
+	err := c.buildFromDockerContainers(containers)
+	require.NoError(t, err)
+
+	assert.Empty(t, c.ServiceJobs,
+		"job-service-run with host volume mount must be blocked when AllowHostJobsFromLabels=false — same vector as job-run (#462)")
+	assert.True(t, handler.HasError("job-service-run"),
+		"violation log must name the job-service-run vector class for operator triage")
+	assert.True(t, handler.HasError("svc-pwn"),
+		"violation log must name the dropped service job")
 }
 
 // TestExtractHostVolumeMounts_FailsClosedOnUnexpectedType pins the

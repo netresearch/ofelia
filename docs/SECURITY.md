@@ -676,15 +676,16 @@ DOCKER_CERT_PATH=/certs
 # Blocks:
 #   - job-local (entirely)
 #   - job-compose (entirely)
-#   - job-run entries that mount host paths via volume=...
-#     (e.g. volume=/:/host:rw), OR
-#   - job-run entries that inherit donor mounts via volumes-from=...
-#     (e.g. volumes-from=ofelia would inherit /var/run/docker.sock)
+#   - job-run / job-service-run entries that mount host paths via
+#     volume=... (e.g. volume=/:/host:rw), OR
+#   - job-run / job-service-run entries that inherit donor mounts via
+#     volumes-from=... (e.g. volumes-from=ofelia would inherit
+#     /var/run/docker.sock)
 # Named volumes and anonymous volumes pass through unchanged.
 allow-host-jobs-from-labels = false
 ```
 
-The `job-run` filter is **per-job**, not per-batch: a job whose `volume` list contains a host path (any spec where the source starts with `/`, `.`, or `~`, after whitespace normalization) **or** whose `volumes-from` is non-empty is dropped wholesale and a `SECURITY POLICY VIOLATION` is logged naming the job, the vector class, and the specific specs.
+The `job-run` and `job-service-run` filter is **per-job**, not per-batch: a job whose `volume` list contains a host path (any spec where the source starts with `/`, `.`, or `~`, after whitespace normalization) **or** whose `volumes-from` is non-empty is dropped wholesale and a `SECURITY POLICY VIOLATION` is logged naming the job-type, the job name, the vector class, and the specific specs.
 
 - **Volume filter**: per-spec — named volumes (`my-vol:/data`) and anonymous volumes (`/data` with no source) pass through; only host bind mounts trigger.
 - **Volumes-from filter**: any non-empty value is a violation. We cannot inspect the donor container at filter time, so a donor with `/`, `/var/run/docker.sock`, or any other host bind would silently inherit those mounts into the spawned container — bypassing the `volume=` filter entirely. Conservative drop is the only safe call.
