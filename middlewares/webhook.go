@@ -38,17 +38,29 @@ type Webhook struct {
 //
 // Returns (nil, nil) when config is nil, indicating no middleware should be created.
 func NewWebhook(config *WebhookConfig, loader *PresetLoader) (core.Middleware, error) {
-	return newWebhookWithClient(config, loader, nil)
+	return newWebhookWithClient(config, loader, nil, nil)
 }
 
 // newWebhookWithClient is the shared construction path for NewWebhook and
-// the manager-cached path. When client is nil a fresh one is built (legacy
-// NewWebhook behavior); when client is non-nil it is used as-is — the
-// caller is responsible for sizing the client's Timeout to match
-// config.Timeout. WebhookManager.GetMiddlewares uses this with a per-
-// timeout-keyed client cache so keep-alive connections survive across
-// rebuildAllMiddlewares reconciles. See #674.
-func newWebhookWithClient(config *WebhookConfig, loader *PresetLoader, client *http.Client) (core.Middleware, error) {
+// the manager-cached path.
+//
+//   - When client is non-nil it is used as-is — the caller is responsible
+//     for sizing the client's Timeout to match config.Timeout.
+//   - When client is nil and cachedClient is non-nil, cachedClient is
+//     called AFTER validation succeeds to source a client (so bad
+//     configs never mint or cache an entry). The WebhookManager-cached
+//     path uses this branch.
+//   - When both are nil a fresh client is built per call — the legacy
+//     standalone NewWebhook behavior, preserved for tests and direct
+//     callers.
+//
+// See #674 for the cache rationale.
+func newWebhookWithClient(
+	config *WebhookConfig,
+	loader *PresetLoader,
+	client *http.Client,
+	cachedClient func(time.Duration) *http.Client,
+) (core.Middleware, error) {
 	if config == nil {
 		return nil, nil //nolint:nilnil // nil config means no middleware needed, not an error
 	}
@@ -103,7 +115,15 @@ func newWebhookWithClient(config *WebhookConfig, loader *PresetLoader, client *h
 		return nil, fmt.Errorf("webhook %q: %w", config.Name, err)
 	}
 
-	if client == nil {
+	switch {
+	case client != nil:
+		// caller-supplied — use as-is
+	case cachedClient != nil:
+		// manager-cached path — resolve only AFTER validation succeeded
+		// so a bad-config error never mints / caches a client.
+		client = cachedClient(config.Timeout)
+	default:
+		// standalone — fresh client per call (legacy behavior).
 		client = &http.Client{
 			Timeout:   config.Timeout,
 			Transport: TransportFactory(),
@@ -420,9 +440,21 @@ func NewWebhookManager(globalConfig *WebhookGlobalConfig) *WebhookManager {
 	}
 }
 
+// cachedClient is the method-value form of getOrBuildClient passed to
+// newWebhookWithClient. Lets the helper call back into the manager's
+// cache only after validation succeeds.
+func (m *WebhookManager) cachedClient(timeout time.Duration) *http.Client {
+	return m.getOrBuildClient(timeout)
+}
+
 // getOrBuildClient returns a cached *http.Client for the given timeout,
 // building one on first use. Concurrent callers with the same timeout
 // share the returned client. See #674 for the keep-alive rationale.
+//
+// TODO if the transport ever grows per-webhook inputs (TLS cert override,
+// proxy override, custom dialer, etc.), expand the cache key to include
+// those — currently `Timeout` is sufficient because everything else is
+// shared via TransportFactory() and the package-global security config.
 func (m *WebhookManager) getOrBuildClient(timeout time.Duration) *http.Client {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -432,6 +464,38 @@ func (m *WebhookManager) getOrBuildClient(timeout time.Duration) *http.Client {
 	c := &http.Client{Timeout: timeout, Transport: TransportFactory()}
 	m.httpClients[timeout] = c
 	return c
+}
+
+// AdoptClientCacheFrom copies the prior manager's cached *http.Clients
+// into this manager. Lifecycle hook for WebhookConfigs.InitManager so
+// the cache survives across reloads (Docker label sync, INI live-
+// reload) — without this, every InitManager call would discard the
+// httpClients map and the underlying transports' keep-alive connection
+// pools, defeating the headline #674 benefit. Reloads do not change
+// per-webhook TLS/proxy posture (that lives in the package-global
+// security config), so the cached clients remain valid even when the
+// security config changes around them.
+//
+// Safe to pass a nil prior (no-op for first-init); safe to call
+// concurrently with GetMiddlewares (mu-guarded).
+func (m *WebhookManager) AdoptClientCacheFrom(prior *WebhookManager) {
+	if prior == nil {
+		return
+	}
+	prior.mu.Lock()
+	snapshot := make(map[time.Duration]*http.Client, len(prior.httpClients))
+	for k, v := range prior.httpClients {
+		snapshot[k] = v
+	}
+	prior.mu.Unlock()
+
+	m.mu.Lock()
+	for k, v := range snapshot {
+		if _, exists := m.httpClients[k]; !exists {
+			m.httpClients[k] = v
+		}
+	}
+	m.mu.Unlock()
 }
 
 // Register adds a webhook configuration
@@ -464,11 +528,11 @@ func (m *WebhookManager) GetMiddlewares(names []string) ([]core.Middleware, erro
 			return nil, fmt.Errorf("webhook %q not found", name)
 		}
 
-		// ApplyDefaults runs inside newWebhookWithClient too, but we need
-		// the resolved Timeout HERE to key into the client cache before
-		// construction. Cheap and idempotent.
-		config.ApplyDefaults()
-		middleware, err := newWebhookWithClient(config, m.presetLoader, m.getOrBuildClient(config.Timeout))
+		// newWebhookWithClient handles ApplyDefaults internally; pass a
+		// nil client so it can decide whether to source one from the
+		// cache after validation succeeds (so a bad-config error never
+		// mints a client). See managerClientGetter below.
+		middleware, err := newWebhookWithClient(config, m.presetLoader, nil, m.cachedClient)
 		if err != nil {
 			return nil, fmt.Errorf("create webhook %q: %w", name, err)
 		}

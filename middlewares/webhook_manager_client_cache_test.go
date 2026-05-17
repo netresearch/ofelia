@@ -52,6 +52,12 @@ func TestWebhookManager_SharesHTTPClientAcrossReconciles(t *testing.T) {
 
 	assert.Same(t, c1, c2,
 		"WebhookManager must reuse the cached *http.Client across reconciles so the transport's keep-alive connection pool survives rebuildAllMiddlewares (#674)")
+	// Belt-and-braces: the headline #674 benefit is the SHARED
+	// *http.Transport, not just the *http.Client wrapper. Same-pointer
+	// transport is what gives operators the keep-alive pool reuse.
+	require.NotNil(t, c1.Transport, "cached client must have a non-nil Transport (TransportFactory output)")
+	assert.Same(t, c1.Transport, c2.Transport,
+		"the underlying *http.Transport (and thus its keep-alive pool) must be the same instance — otherwise the cache helps nothing")
 }
 
 // TestWebhookManager_DifferentTimeoutsGetDifferentClients pins the
@@ -173,8 +179,69 @@ func TestWebhookManager_ConcurrentCacheReadsRaceFree(t *testing.T) {
 		require.NotNil(t, results[i].client, "goroutine %d got nil client", i)
 		distinct[results[i].client] = struct{}{}
 	}
-	assert.Len(t, distinct, 2,
+	assert.Lenf(t, distinct, 2,
 		"with 2 distinct timeouts the cache must yield exactly 2 client instances across 16 concurrent reconciles; got %d", len(distinct))
+}
+
+// TestWebhookManager_AdoptClientCacheFrom_PreservesAcrossReload pins
+// the most important half of the #674 fix: when WebhookConfigs.Init-
+// Manager replaces the manager on a Docker label sync or INI live-
+// reload, the new manager adopts the prior manager's *http.Client
+// cache so the keep-alive connection pools survive. Without this
+// carry-forward, every reload would discard the cache and the
+// reviewer's flagged-as-critical concern on PR #700 would defeat
+// the headline benefit.
+func TestWebhookManager_AdoptClientCacheFrom_PreservesAcrossReload(t *testing.T) {
+	t.Parallel()
+
+	mgr1 := NewWebhookManager(DefaultWebhookGlobalConfig())
+	require.NoError(t, mgr1.Register(&WebhookConfig{
+		Name: "wh", Preset: "slack", ID: "T1/B1", Secret: "s",
+		Timeout: 7 * time.Second,
+	}))
+	mws1, err := mgr1.GetMiddlewares([]string{"wh"})
+	require.NoError(t, err)
+	require.Len(t, mws1, 1)
+	originalClient := mws1[0].(*Webhook).Client
+
+	// Simulate a reload: build a fresh manager (the production path
+	// constructs a brand-new NewWebhookManager in InitManager) and
+	// adopt the prior cache before re-registering configs.
+	mgr2 := NewWebhookManager(DefaultWebhookGlobalConfig())
+	mgr2.AdoptClientCacheFrom(mgr1)
+	require.NoError(t, mgr2.Register(&WebhookConfig{
+		Name: "wh", Preset: "slack", ID: "T1/B1", Secret: "s",
+		Timeout: 7 * time.Second,
+	}))
+	mws2, err := mgr2.GetMiddlewares([]string{"wh"})
+	require.NoError(t, err)
+	require.Len(t, mws2, 1)
+	preservedClient := mws2[0].(*Webhook).Client
+
+	assert.Same(t, originalClient, preservedClient,
+		"AdoptClientCacheFrom must carry the *http.Client across the manager swap so keep-alive pools survive Docker-label-sync / INI-reload reconciles (#674)")
+	require.NotNil(t, preservedClient.Transport)
+	assert.Same(t, originalClient.Transport, preservedClient.Transport,
+		"the underlying transport (and its connection pool) is what gives operators the keep-alive benefit — verify it's the same pointer across the reload")
+}
+
+// TestWebhookManager_AdoptClientCacheFrom_NilPriorIsNoOp pins the
+// first-init contract: when there is no prior manager (the very first
+// InitManager call), AdoptClientCacheFrom must be a safe no-op.
+func TestWebhookManager_AdoptClientCacheFrom_NilPriorIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewWebhookManager(DefaultWebhookGlobalConfig())
+	mgr.AdoptClientCacheFrom(nil) // must not panic
+	require.NoError(t, mgr.Register(&WebhookConfig{
+		Name: "wh", Preset: "slack", ID: "T1/B1", Secret: "s",
+		Timeout: 5 * time.Second,
+	}))
+	mws, err := mgr.GetMiddlewares([]string{"wh"})
+	require.NoError(t, err)
+	require.Len(t, mws, 1)
+	assert.NotNil(t, mws[0].(*Webhook).Client.Transport,
+		"first-init via nil-prior must still build a client on demand")
 }
 
 // TestNewWebhook_StandaloneStillBuildsOwnClient confirms backward
