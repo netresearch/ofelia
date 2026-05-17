@@ -129,6 +129,13 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 				"This prevents container-to-host privilege escalation attacks.", len(composeJobs)))
 			composeJobs = make(map[string]map[string]any)
 		}
+		// job-run privilege-escalation: a label-defined run job can specify
+		// `volume=/:/host:rw` to mount the host filesystem into the spawned
+		// container — same escalation vector as job-local / job-compose.
+		// Filter per-job (not per-batch) so legitimate runJobs with named or
+		// anonymous volumes survive while the policy still blocks host
+		// mounts. See https://github.com/netresearch/ofelia/issues/462.
+		runJobs = filterRunJobsWithHostVolumes(runJobs, c.logger)
 	}
 
 	decodeInto := func(src map[string]map[string]any, dst any) error {
@@ -455,4 +462,100 @@ func setJobParam(params map[string]any, paramName, paramVal string) {
 	}
 
 	params[paramName] = paramVal
+}
+
+// isHostVolumeMount reports whether a Docker --volume spec mounts a host
+// filesystem path into the container. Docker's bind-mount syntax is
+// `source:target[:options]`; a host mount has the source as an absolute
+// path ("/foo"), a relative path ("./foo"), or a home-relative path
+// ("~/foo"). Named volumes ("my-vol:/data") and anonymous volumes
+// ("/data" with no colon source/target separator) are NOT host mounts.
+//
+// Examples:
+//
+//	"/host:/container"        -> true   (absolute host path)
+//	"/host:/container:ro"     -> true   (with options)
+//	"./relative:/container"   -> true   (relative host path)
+//	"~/home:/container"       -> true   (home-relative)
+//	"named-vol:/container"    -> false  (named volume)
+//	"/container"              -> false  (anonymous volume target, no source)
+//	"/:/host:rw"              -> true   (root mount — the original #462 vector)
+//
+// Note: Windows-style paths ("C:\foo:/container") are not handled — Ofelia
+// targets Linux Docker daemons in production. A Windows operator using
+// container labels for cross-host execution would already have other
+// portability concerns; revisit if that use case emerges.
+func isHostVolumeMount(spec string) bool {
+	parts := strings.Split(spec, ":")
+	if len(parts) < 2 {
+		return false // anonymous volume target — no source, just a path inside the container
+	}
+	src := parts[0]
+	if src == "" {
+		return false // malformed (":foo:bar")
+	}
+	switch src[0] {
+	case '/', '.', '~':
+		return true
+	default:
+		return false
+	}
+}
+
+// filterRunJobsWithHostVolumes returns runJobs with any entry containing
+// a host volume mount removed, emitting one SECURITY POLICY VIOLATION log
+// per dropped job that names the job and the offending specs. Used to
+// extend the AllowHostJobsFromLabels policy to job-run, closing the
+// privilege-escalation vector tracked in
+// https://github.com/netresearch/ofelia/issues/462. The job-local and
+// job-compose entries in the same security block drop wholesale (a single
+// host job is a host job); for job-run we filter per-job because the
+// non-host-mounting use cases (named volumes, anonymous volumes) are
+// common and legitimate.
+//
+// The "volume" key in each job map can be either a single string
+// (single-volume label like `ofelia.job-run.foo.volume=/host:/container`)
+// or a []string (JSON array like
+// `ofelia.job-run.foo.volume=["/host:/container","other:/v"]`). Both
+// shapes are handled.
+func filterRunJobsWithHostVolumes(runJobs map[string]map[string]any, logger *slog.Logger) map[string]map[string]any {
+	if len(runJobs) == 0 {
+		return runJobs
+	}
+	filtered := make(map[string]map[string]any, len(runJobs))
+	for name, job := range runJobs {
+		hostMounts := extractHostVolumeMounts(job["volume"])
+		if len(hostMounts) == 0 {
+			filtered[name] = job
+			continue
+		}
+		logger.Error(fmt.Sprintf("SECURITY POLICY VIOLATION: dropping job-run %q which mounts host paths %v from container labels. "+
+			"Host path mounts via labels enable container-to-host privilege escalation. "+
+			"Set [global] allow-host-jobs-from-labels=true in INI to permit (NOT recommended for multi-tenant hosts). "+
+			"See https://github.com/netresearch/ofelia/issues/462.",
+			name, hostMounts))
+	}
+	return filtered
+}
+
+// extractHostVolumeMounts walks the "volume" param value (which can be a
+// string or []string depending on whether the operator used the JSON
+// array shorthand) and returns the host-mount specs it contains. Any
+// other type, including nil, returns nil — the absence of volumes is not
+// a violation.
+func extractHostVolumeMounts(v any) []string {
+	var hostMounts []string
+	switch specs := v.(type) {
+	case string:
+		if isHostVolumeMount(specs) {
+			hostMounts = append(hostMounts, specs)
+		}
+	case []string:
+		for _, spec := range specs {
+			if isHostVolumeMount(spec) {
+				hostMounts = append(hostMounts, spec)
+			}
+		}
+	}
+	return hostMounts
 }
