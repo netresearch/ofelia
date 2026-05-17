@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -22,6 +23,12 @@ const CurrentVersion = 1
 // rather than guess at a forward migration the operator hasn't opted
 // into — silent data loss is the worse outcome.
 var ErrUnsupportedVersion = errors.New("persist: unsupported state-file version")
+
+// ErrStateFileTooLarge is returned by Load when the state file
+// exceeds maxStateFileBytes. Wrapping a sentinel lets callers
+// distinguish "boot must abort" (this + ErrUnsupportedVersion) from
+// generic I/O errors that might warrant a retry.
+var ErrStateFileTooLarge = errors.New("persist: state file exceeds size limit")
 
 // JobType enumerates the API-creatable job kinds. Mirrors web.jobRequest.Type
 // so the round-trip from API → state-file → load is lossless. Kept as
@@ -92,27 +99,47 @@ func (s *Store) Enabled() bool {
 // Path returns the configured file path (empty if disabled).
 func (s *Store) Path() string { return s.path }
 
+// maxStateFileBytes caps Load reads so a malicious/corrupt state
+// file can't OOM the daemon at boot. 16 MiB comfortably fits any
+// realistic operator deployment (thousands of jobs with full configs)
+// while bounding worst-case memory.
+const maxStateFileBytes = 16 * 1024 * 1024
+
 // Load reads the state file into memory. Missing file is treated as
 // "fresh start" (empty state, no error) so first boot with persistence
 // enabled doesn't fail before any API call has run. A malformed file
 // or a future Version returns an error — boot must fail loudly rather
-// than silently drop persisted state.
+// than silently drop persisted state. Unknown JSON fields fail decode
+// so hand-edit typos surface rather than silently no-op.
 func (s *Store) Load() error {
 	if !s.Enabled() {
 		return nil
 	}
-	raw, err := os.ReadFile(s.path)
+	f, err := os.Open(s.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return fmt.Errorf("persist: read %s: %w", s.path, err)
+		return fmt.Errorf("persist: open %s: %w", s.path, err)
 	}
-	if len(raw) == 0 {
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("persist: stat %s: %w", s.path, err)
+	}
+	if info.Size() > maxStateFileBytes {
+		return fmt.Errorf("%w: %s is %d bytes, limit is %d",
+			ErrStateFileTooLarge, s.path, info.Size(), maxStateFileBytes)
+	}
+	if info.Size() == 0 {
 		return nil
 	}
+
+	dec := json.NewDecoder(io.LimitReader(f, maxStateFileBytes))
+	dec.DisallowUnknownFields()
 	var loaded State
-	if err := json.Unmarshal(raw, &loaded); err != nil {
+	if err := dec.Decode(&loaded); err != nil {
 		return fmt.Errorf("persist: decode %s: %w", s.path, err)
 	}
 	if loaded.Version > CurrentVersion {
@@ -232,7 +259,11 @@ func (s *Store) saveLocked() error {
 	data = append(data, '\n')
 
 	dir := filepath.Dir(s.path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// 0o700 (not 0o755): only the daemon user needs traversal. The
+	// state file contains operator-supplied command strings, image
+	// refs, and schedules — defense-in-depth against accidentally
+	// permissive parent dirs on shared volumes.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("persist: mkdir %s: %w", dir, err)
 	}
 	tmp, err := os.CreateTemp(dir, ".state-*.json.tmp")
@@ -242,6 +273,14 @@ func (s *Store) saveLocked() error {
 	tmpPath := tmp.Name()
 	cleanup := func() { _ = os.Remove(tmpPath) }
 
+	// CreateTemp uses 0o600 by default but we set it explicitly so
+	// the contract is visible in code review and any non-default
+	// umask anomalies don't matter.
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return fmt.Errorf("persist: chmod tempfile: %w", err)
+	}
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		cleanup()
