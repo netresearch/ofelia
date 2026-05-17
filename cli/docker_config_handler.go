@@ -47,6 +47,13 @@ type DockerHandler struct {
 	dockerPollInterval time.Duration // For container polling (explicit)
 	pollingFallback    time.Duration // Auto-enable polling if events fail
 
+	// Startup retry — see DockerConfig.StartupRetryCount / .StartupRetryInterval
+	// and https://github.com/netresearch/ofelia/issues/523. Honored by both
+	// the buildSDKProvider post-construction ping and the NewDockerHandler
+	// externally-provided-provider ping.
+	startupRetryCount    int
+	startupRetryInterval time.Duration
+
 	// Runtime state for fallback mechanism
 	mu                    sync.Mutex
 	eventsFailed          bool
@@ -115,16 +122,18 @@ func NewDockerHandler(
 	configPoll, dockerPoll, fallback, useEvents := resolveConfig(cfg, logger)
 
 	c := &DockerHandler{
-		ctx:                ctx,
-		cancel:             cancel,
-		filters:            cfg.Filters,
-		notifier:           notifier,
-		logger:             logger,
-		configPollInterval: configPoll,
-		useEvents:          useEvents,
-		dockerPollInterval: dockerPoll,
-		pollingFallback:    fallback,
-		includeStopped:     cfg.IncludeStopped,
+		ctx:                  ctx,
+		cancel:               cancel,
+		filters:              cfg.Filters,
+		notifier:             notifier,
+		logger:               logger,
+		configPollInterval:   configPoll,
+		useEvents:            useEvents,
+		dockerPollInterval:   dockerPoll,
+		pollingFallback:      fallback,
+		includeStopped:       cfg.IncludeStopped,
+		startupRetryCount:    cfg.StartupRetryCount,
+		startupRetryInterval: cfg.StartupRetryInterval,
 	}
 
 	var err error
@@ -138,12 +147,10 @@ func NewDockerHandler(
 		c.dockerProvider = provider
 	}
 
-	// Do a sanity check on docker. Bound the call so a wedged daemon cannot
-	// hang Ofelia at startup; see https://github.com/netresearch/ofelia/issues/614.
-	pingCtx, pingCancel := context.WithTimeout(ctx, dockerStartupPingTimeout)
-	err = c.dockerProvider.Ping(pingCtx)
-	pingCancel()
-	if err != nil {
+	// Do a sanity check on docker. Bound each attempt so a wedged daemon
+	// cannot hang Ofelia at startup; see issue #614. Retry with exponential
+	// backoff when the operator opted in via StartupRetryCount > 0; see #523.
+	if err = pingWithRetry(ctx, c.dockerProvider, c.startupRetryCount, c.startupRetryInterval, logger); err != nil {
 		cancel()
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
 		return nil, fmt.Errorf("failed to connect to Docker daemon: %w\n  → Check Docker daemon is running: systemctl status docker\n  → Verify Docker API is accessible: docker info\n  → Check for Docker daemon errors: journalctl -u docker -n 50", err)
@@ -197,20 +204,62 @@ func (c *DockerHandler) buildSDKProvider() (core.DockerProvider, error) {
 		return nil, fmt.Errorf("failed to create SDK Docker provider: %w", err)
 	}
 
-	// Verify connection with a bounded context derived from the handler's own
-	// context so a SIGINT during startup also cancels the sanity ping. See
-	// https://github.com/netresearch/ofelia/issues/614 for the deadline; using
-	// c.ctx rather than context.Background propagates parent cancellation per
-	// PR #636 code review.
-	pingCtx, pingCancel := context.WithTimeout(c.ctx, dockerStartupPingTimeout)
-	err = provider.Ping(pingCtx)
-	pingCancel()
-	if err != nil {
+	// Verify connection; each attempt is bounded by dockerStartupPingTimeout
+	// (see issue #614) and the parent ctx (so SIGINT during startup cancels).
+	// Retries with exponential backoff are honored only when the operator
+	// opted in via StartupRetryCount > 0; see #523.
+	if err = pingWithRetry(c.ctx, provider, c.startupRetryCount, c.startupRetryInterval, c.logger); err != nil {
 		_ = provider.Close()
 		return nil, fmt.Errorf("SDK provider failed to connect to Docker: %w", err)
 	}
 
 	return provider, nil
+}
+
+// pingWithRetry calls provider.Ping with exponential backoff. The total
+// attempt budget is count+1 (the initial attempt plus `count` retries),
+// so count=0 collapses to a single ping — the pre-#523 behavior.
+// baseInterval × 2^(attempt-1) is the backoff before the n-th retry
+// (1s → 2s → 4s → ...). Each individual attempt is bounded by
+// dockerStartupPingTimeout. The backoff observes ctx cancellation via a
+// select over time.After / ctx.Done so SIGTERM during startup drains
+// promptly instead of blocking the full retry budget — same shape as
+// the retry-loop fixes in #685 (webhook) and #687 (job retries).
+//
+// Returns the last attempt's Ping error on exhaustion; returns a
+// wrapped context error if canceled during a backoff window.
+// See https://github.com/netresearch/ofelia/issues/523.
+func pingWithRetry(ctx context.Context, provider core.DockerProvider, count int, baseInterval time.Duration, logger *slog.Logger) error {
+	const maxBackoffStep = 5 * time.Minute
+	var lastErr error
+	for attempt := 0; attempt <= count; attempt++ {
+		pingCtx, pingCancel := context.WithTimeout(ctx, dockerStartupPingTimeout)
+		err := provider.Ping(pingCtx)
+		pingCancel()
+		if err == nil {
+			if attempt > 0 {
+				logger.Info(fmt.Sprintf("Docker reachable after %d retry attempt(s)", attempt))
+			}
+			return nil
+		}
+		lastErr = err
+		if attempt == count {
+			break // exhausted; fall through to return lastErr
+		}
+		// Exponential backoff: baseInterval × 2^attempt, capped per step.
+		backoff := baseInterval << attempt //nolint:gosec // attempt bounded by StartupRetryCount validation (<=20)
+		if backoff > maxBackoffStep || backoff <= 0 {
+			backoff = maxBackoffStep
+		}
+		logger.Warn(fmt.Sprintf("Docker ping failed (attempt %d/%d), retrying in %v",
+			attempt+1, count+1, backoff), "error", err)
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return fmt.Errorf("docker startup retry canceled: %w", ctx.Err())
+		}
+	}
+	return lastErr
 }
 
 // watchConfig handles INI configuration file polling (separate from container detection).
