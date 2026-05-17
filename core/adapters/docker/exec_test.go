@@ -5,7 +5,12 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/netresearch/ofelia/core/domain"
@@ -60,5 +65,100 @@ func TestExecServiceAdapter_Run_NilWritersNonTTY(t *testing.T) {
 	}
 	if code != -1 {
 		t.Errorf("expected exit code -1 on error, got %d", code)
+	}
+}
+
+// TestExecServiceAdapter_Create_PropagatesConsoleSize pins the SDK
+// boundary for the #235 console-size feature: domain.ExecConfig
+// .ConsoleSize must arrive at the Docker daemon's
+// /containers/{id}/exec endpoint as the documented [height, width]
+// JSON field. Without this test, a refactor that drops
+// `ConsoleSize: config.ConsoleSize` from the ExecOptions struct
+// literal in exec.go:64 would silently break #235 — and all the
+// core-level tests in core/execjob_console_size_test.go would still
+// pass because they only assert that the field reaches the mock
+// provider, not the SDK.
+//
+// Uses an httptest server to capture the SDK request body and
+// inspect the ConsoleSize field directly.
+func TestExecServiceAdapter_Create_PropagatesConsoleSize(t *testing.T) {
+	t.Parallel()
+
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Capture the exec-create POST body for inspection.
+		if strings.Contains(r.URL.Path, "/exec") && r.Method == http.MethodPost {
+			capturedBody, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"Id": "test-exec-id"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+
+	adapter := &ExecServiceAdapter{client: newSDKClientForStubServer(t, srv)}
+
+	cfg := &domain.ExecConfig{
+		Cmd:         []string{"echo", "ok"},
+		Tty:         true,
+		ConsoleSize: &[2]uint{30, 100},
+	}
+	id, err := adapter.Create(context.Background(), "test-container", cfg)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if id != "test-exec-id" {
+		t.Errorf("unexpected exec id: %q", id)
+	}
+
+	var body struct {
+		ConsoleSize *[2]uint
+	}
+	if err := json.Unmarshal(capturedBody, &body); err != nil {
+		t.Fatalf("unmarshal captured body %q: %v", string(capturedBody), err)
+	}
+	if body.ConsoleSize == nil {
+		t.Fatalf("ConsoleSize missing from exec-create request body; got: %s", string(capturedBody))
+	}
+	if got := *body.ConsoleSize; got != [2]uint{30, 100} {
+		t.Errorf("ConsoleSize = %v, want [30, 100] (#235 [height, width] order)", got)
+	}
+}
+
+// TestExecServiceAdapter_Create_OmitsConsoleSizeWhenNil pins the
+// inverse: a nil ConsoleSize (the default for legacy ExecJobs without
+// the new console-height/console-width fields) must NOT send a
+// ConsoleSize JSON key — Docker treats omitted as "use default" and
+// any populated zero-value {0,0} as an explicit override. The SDK
+// uses `omitempty` so this test is really pinning that the adapter
+// passes nil through unchanged rather than allocating a zero array.
+func TestExecServiceAdapter_Create_OmitsConsoleSizeWhenNil(t *testing.T) {
+	t.Parallel()
+
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/exec") && r.Method == http.MethodPost {
+			capturedBody, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"Id": "x"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+
+	adapter := &ExecServiceAdapter{client: newSDKClientForStubServer(t, srv)}
+
+	cfg := &domain.ExecConfig{Cmd: []string{"echo", "ok"}, Tty: true /* no ConsoleSize */}
+	if _, err := adapter.Create(context.Background(), "test-container", cfg); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// JSON omitempty contract: the field must NOT appear at all,
+	// otherwise Docker would interpret {0,0} as an explicit-default
+	// override rather than "use whatever the daemon picks".
+	if strings.Contains(string(capturedBody), "ConsoleSize") {
+		t.Errorf("ConsoleSize unexpectedly present in body: %s", string(capturedBody))
 	}
 }

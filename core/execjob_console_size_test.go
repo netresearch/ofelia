@@ -91,6 +91,35 @@ func TestExecJob_RunWithStreams_PropagatesConsoleSize(t *testing.T) {
 		"the [height, width] order Docker expects must survive the ExecJob → domain.ExecConfig handoff")
 }
 
+// TestExecJob_RunWithStreams_PropagatesConsoleSizeEvenWhenTTYFalse pins
+// that Ofelia owns the wire-the-value layer; the Docker daemon owns the
+// "honor it only when TTY is true" layer. Setting console-height /
+// console-width on a TTY=false job MUST still propagate — otherwise a
+// well-meaning future patch that adds `if j.TTY { config.ConsoleSize =
+// ... }` would silently swallow operator intent (and operators relying
+// on the daemon's documented "silently ignored when TTY=false" behavior
+// would see new, inconsistent behavior depending on Ofelia version).
+func TestExecJob_RunWithStreams_PropagatesConsoleSizeEvenWhenTTYFalse(t *testing.T) {
+	t.Parallel()
+
+	k := newTestExecJobKit(t)
+	k.job.TTY = false // deliberately false
+	k.job.ConsoleHeight = 24
+	k.job.ConsoleWidth = 80
+
+	var got *[2]uint
+	k.exec.OnRun = func(_ context.Context, _ string, config *domain.ExecConfig, _, _ io.Writer) (int, error) {
+		got = config.ConsoleSize
+		return 0, nil
+	}
+
+	_, err := k.job.RunWithStreams(context.Background(), io.Discard, io.Discard)
+	require.NoError(t, err)
+	require.NotNil(t, got,
+		"ConsoleSize must propagate regardless of TTY — the daemon, not Ofelia, owns the TTY-gating; suppressing it client-side would silently swallow operator intent")
+	assert.Equal(t, [2]uint{24, 80}, *got)
+}
+
 // TestExecJob_RunWithStreams_DefaultsToNilConsoleSize confirms backward
 // compatibility: an ExecJob with no ConsoleHeight/Width configured
 // produces a nil ConsoleSize on the Docker call — preserving the
