@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New `[docker] startup-retry-count` and `[docker] startup-retry-interval` config (also exposed as `--docker-startup-retry-count` / `OFELIA_DOCKER_STARTUP_RETRY_COUNT` and `--docker-startup-retry-interval` / `OFELIA_DOCKER_STARTUP_RETRY_INTERVAL`) retry the initial Docker connection with exponential backoff before the daemon exits. Default is `startup-retry-count=0`, which preserves the pre-fix "exit on first failure" behavior; setting `startup-retry-count=5 startup-retry-interval=1s` yields a 1s → 2s → 4s → 8s → 16s budget (~31s total). Each per-attempt ping is still bounded by `dockerStartupPingTimeout` (10s) so a wedged daemon cannot inflate startup beyond `(count+1)·10s + Σbackoffs`. The backoff window observes ctx cancellation so SIGTERM during startup drains promptly instead of blocking the full budget (same shape as [#685](https://github.com/netresearch/ofelia/pull/685) / [#687](https://github.com/netresearch/ofelia/pull/687)). Useful for TCP-based Docker hosts where the daemon may briefly be unreachable on startup before health checks settle (socket proxies, remote Docker hosts, Docker-in-Docker). Closes [#523](https://github.com/netresearch/ofelia/issues/523).
+
 ### Security
 
 - Extended the `[global] allow-host-jobs-from-labels=false` policy to cover both `job-run` AND `job-service-run` entries that mount host filesystem paths via Docker labels (e.g. `ofelia.job-run.X.volume=/:/host:rw`) **or** inherit a donor container's bind mounts via `volumes-from` (e.g. `ofelia.job-run.X.volumes-from=ofelia` to pull in the daemon's `/var/run/docker.sock` mount). Pre-fix, only `job-local` and `job-compose` were filtered, leaving every container-spawning job type (`job-run` and Swarm `job-service-run`) with open container-to-host privilege-escalation vectors via `volume=` and `volumes-from=`. An attacker controlling labels on any container Ofelia watched could mount `/` into the spawned container directly, or chain via `volumes-from=ofelia` to inherit the Docker socket and gain full daemon access. The new per-job filter:

@@ -49,6 +49,12 @@ type DaemonCommand struct {
 	WebMaxLoginAttempts  int            `long:"web-max-login-attempts" env:"OFELIA_WEB_MAX_LOGIN_ATTEMPTS" description:"Lockout" default:"5"`                             //nolint:revive
 	WebTrustedProxies    []string       `long:"web-trusted-proxies" env:"OFELIA_WEB_TRUSTED_PROXIES" env-delim:"," description:"Trusted proxy CIDRs for X-Forwarded-For"` //nolint:revive
 
+	// Docker startup-retry knobs (#523). Placed at the end of the field
+	// block so the long descriptions don't push the existing columns past
+	// the line-length limit when gofmt aligns struct-tag columns.
+	DockerStartupRetryCount    *int           `long:"docker-startup-retry-count" env:"OFELIA_DOCKER_STARTUP_RETRY_COUNT" description:"Extra Docker connection attempts on startup beyond the initial ping (default 0)"` //nolint:revive,lll
+	DockerStartupRetryInterval *time.Duration `long:"docker-startup-retry-interval" env:"OFELIA_DOCKER_STARTUP_RETRY_INTERVAL" description:"Base interval for Docker startup retries; doubles each attempt"`            //nolint:revive,lll
+
 	scheduler       *core.Scheduler
 	pprofServer     *http.Server
 	webServer       *web.Server
@@ -289,6 +295,12 @@ func (c *DaemonCommand) applyOptions(config *Config) {
 	}
 	if c.DockerIncludeStopped != nil {
 		config.Docker.IncludeStopped = *c.DockerIncludeStopped
+	}
+	if c.DockerStartupRetryCount != nil {
+		config.Docker.StartupRetryCount = *c.DockerStartupRetryCount
+	}
+	if c.DockerStartupRetryInterval != nil {
+		config.Docker.StartupRetryInterval = *c.DockerStartupRetryInterval
 	}
 
 	c.applyWebOptions(config)
