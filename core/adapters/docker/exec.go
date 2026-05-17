@@ -61,6 +61,7 @@ func (s *ExecServiceAdapter) Create(ctx context.Context, containerID string, con
 		Cmd:          config.Cmd,
 		Env:          config.Env,
 		WorkingDir:   config.WorkingDir,
+		ConsoleSize:  config.ConsoleSize,
 	}
 
 	resp, err := s.client.ContainerExecCreate(ctx, containerID, execConfig)

@@ -23,6 +23,10 @@ This job is executed inside a running container, similar to `docker exec`.
   - If not set, uses the global `default-user` (default `nobody`); set to `default` to use the container's default user
 - `tty`: boolean = `false`
   - Allocate a pseudo-tty, similar to `docker exec -t`. See this [Stack Overflow answer](https://stackoverflow.com/questions/30137135/confused-about-docker-t-option-to-allocate-a-pseudo-tty) for more info.
+- `console-height`: uint = `0`
+  - Initial pseudo-TTY console size in rows. Only honored by the Docker daemon when `tty = true`; otherwise silently ignored. `0` means "use Docker's default size". Useful for jobs that render TUIs or formatted text that expects a specific terminal geometry (`htop`, `vim`, tables). Requires Docker API v1.42+ (Docker Engine 20.10+). See [#235](https://github.com/netresearch/ofelia/issues/235).
+- `console-width`: uint = `0`
+  - Initial pseudo-TTY console size in columns. Same TTY-gating and Docker API floor as `console-height`. Either field can be set independently; the daemon uses its default for any dimension left at `0`.
 - `environment`
   - Environment variables you want to set in the running container. **Note:** only supported in Docker API v1.30 and above
   - Same format as used with `-e` flag within `docker run`. For example: `FOO=bar`
