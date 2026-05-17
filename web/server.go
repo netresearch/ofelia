@@ -21,6 +21,7 @@ import (
 
 	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/core/persist"
 	"github.com/netresearch/ofelia/static"
 )
 
@@ -37,6 +38,19 @@ type Server struct {
 	loginLimiter   *RateLimiter
 	rl             *rateLimiter
 	trustedProxies []*net.IPNet
+	// persistStore optionally tracks API-mutated state across daemon
+	// restarts (#593). Nil-safe: methods on persist.Store are no-ops
+	// when the store wasn't constructed with a path, so handlers don't
+	// have to branch on configuration.
+	persistStore *persist.Store
+}
+
+// SetPersistStore wires the daemon-owned persistence store into the
+// server so create/update/delete/disable/enable handlers can record
+// their mutations across restarts. Pass nil to disable persistence
+// (the default). Safe to call only before Start.
+func (s *Server) SetPersistStore(store *persist.Store) {
+	s.persistStore = store
 }
 
 // HTTPServer returns the underlying http.Server used by the web interface. It
@@ -431,14 +445,22 @@ func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) disableJobHandler(w http.ResponseWriter, r *http.Request) {
-	s.toggleJobHandler(w, r, s.scheduler.DisableJob, "disable")
+	s.toggleJobHandler(w, r, s.scheduler.DisableJob, "disable", s.persistDisable)
 }
 
 func (s *Server) enableJobHandler(w http.ResponseWriter, r *http.Request) {
-	s.toggleJobHandler(w, r, s.scheduler.EnableJob, "enable")
+	s.toggleJobHandler(w, r, s.scheduler.EnableJob, "enable", s.persistEnable)
 }
 
-func (s *Server) toggleJobHandler(w http.ResponseWriter, r *http.Request, toggle func(string) error, action string) {
+// toggleJobHandler is the shared body for enable/disable. The
+// `afterPersist` callback is invoked on success and records the new
+// state to the persist.Store (#593); it is nil-safe through the
+// persistDisable/persistEnable wrappers.
+func (s *Server) toggleJobHandler(
+	w http.ResponseWriter, r *http.Request,
+	toggle func(string) error, action string,
+	afterPersist func(string) error,
+) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -461,7 +483,72 @@ func (s *Server) toggleJobHandler(w http.ResponseWriter, r *http.Request, toggle
 		}
 		return
 	}
+	// #593: persist the disable/enable state regardless of the job's
+	// origin — operators can toggle INI/label jobs from the UI and
+	// expect that pause to survive restart, even though they cannot
+	// edit/delete the job through the API.
+	if afterPersist != nil {
+		if err := afterPersist(req.Name); err != nil {
+			s.scheduler.Logger.Warn("persist "+action+" failed", "job", req.Name, "error", err)
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// persistDisable / persistEnable are nil-safe wrappers around the
+// persist.Store so handlers don't have to branch on s.persistStore at
+// every call site.
+func (s *Server) persistDisable(name string) error {
+	if s.persistStore == nil {
+		return nil
+	}
+	if err := s.persistStore.SetDisabled(name); err != nil {
+		return fmt.Errorf("persist disable %q: %w", name, err)
+	}
+	return nil
+}
+
+func (s *Server) persistEnable(name string) error {
+	if s.persistStore == nil {
+		return nil
+	}
+	if err := s.persistStore.ClearDisabled(name); err != nil {
+		return fmt.Errorf("persist enable %q: %w", name, err)
+	}
+	return nil
+}
+
+// persistJob writes the create/update job into the state-file via
+// the persist.Store. Translates the API request struct into a
+// persist.Job (omitting fields irrelevant to the job type so the
+// on-disk shape stays clean). nil-safe.
+func (s *Server) persistJob(name string, req *jobRequest) error {
+	if s.persistStore == nil {
+		return nil
+	}
+	j := persist.Job{Schedule: req.Schedule, Command: req.Command}
+	switch req.Type {
+	case "run":
+		j.Type = persist.JobTypeRun
+		j.Image = req.Image
+		j.Container = req.Container
+	case "exec":
+		j.Type = persist.JobTypeExec
+		j.Container = req.Container
+	case "compose":
+		j.Type = persist.JobTypeCompose
+		j.File = req.File
+		j.Service = req.Service
+		j.Exec = req.ExecFlag
+	case "", "local":
+		j.Type = persist.JobTypeLocal
+	default:
+		return fmt.Errorf("unknown job type %q", req.Type)
+	}
+	if err := s.persistStore.PutJob(name, j); err != nil {
+		return fmt.Errorf("persist job %q: %w", name, err)
+	}
+	return nil
 }
 
 func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
@@ -495,6 +582,16 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 	s.originsMu.Lock()
 	s.origins[req.Name] = origin
 	s.originsMu.Unlock()
+	// Persist (#593) only API-origin mutations — INI/labels stay
+	// authoritative for their own jobs. Log + 201 on persist failure
+	// rather than roll back the scheduler insert: the job is already
+	// live in memory and rolling back would surprise callers who
+	// got a successful response shape.
+	if origin == "api" {
+		if err := s.persistJob(req.Name, &req); err != nil {
+			s.scheduler.Logger.Warn("persist created job failed", "job", req.Name, "error", err)
+		}
+	}
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -545,6 +642,12 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	s.originsMu.Lock()
 	s.origins[req.Name] = origin
 	s.originsMu.Unlock()
+	// Persist (#593) API-origin updates — same rationale as create.
+	if origin == "api" {
+		if err := s.persistJob(req.Name, &req); err != nil {
+			s.scheduler.Logger.Warn("persist updated job failed", "job", req.Name, "error", err)
+		}
+	}
 	w.WriteHeader(status)
 }
 
@@ -635,10 +738,28 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
+	// #593: only API-origin jobs can be deleted. INI/Docker-label
+	// jobs are owned by their source config — operators must edit the
+	// source to remove them. Pre-#593 this handler would silently
+	// remove from memory until next reload; the new behavior is to
+	// reject explicitly so the operator sees the right error path.
+	// Operators wanting to suppress an INI/label job temporarily
+	// should use POST /api/jobs/disable instead, which now persists.
+	if origin := s.jobOrigin(req.Name); origin != "" && origin != "api" {
+		http.Error(w,
+			"job came from "+origin+" config; edit the source to delete it (or use /api/jobs/disable to suppress it)",
+			http.StatusForbidden)
+		return
+	}
 	_ = s.scheduler.RemoveJob(j)
 	s.originsMu.Lock()
 	delete(s.origins, req.Name)
 	s.originsMu.Unlock()
+	if s.persistStore != nil {
+		if err := s.persistStore.RemoveJob(req.Name); err != nil {
+			s.scheduler.Logger.Warn("persist remove job failed", "job", req.Name, "error", err)
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
