@@ -413,10 +413,15 @@ type WebhookManager struct {
 	// security config (SetGlobalSecurityConfig), not on the per-client
 	// transport, so they don't need to be part of the key.
 	//
-	// Guarded by mu. The manager is constructed once per parsed Config
-	// and lives for the daemon's lifetime; GetMiddlewares is called from
-	// the reconcile goroutine while reads of m.webhooks could in principle
-	// race with Register from a parallel Docker-label sync, hence the lock.
+	// mu guards httpClients only. The webhooks map (registered at
+	// InitManager time and read by GetMiddlewares) is not locked: the
+	// production code paths that mutate it (cli.WebhookConfigs.InitManager
+	// from the INI loader + Docker-label sync) are sequential per reload
+	// — InitManager swaps the entire manager rather than mutating the
+	// webhooks map in place. AdoptClientCacheFrom is the only cross-
+	// manager handoff and it locks both sides correctly. If a future
+	// change ever exposes Register on the hot path concurrently with
+	// GetMiddlewares, lock the webhooks map too.
 	mu          sync.Mutex
 	httpClients map[time.Duration]*http.Client
 }
