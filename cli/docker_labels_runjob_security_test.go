@@ -147,6 +147,9 @@ func TestIsHostVolumeMount(t *testing.T) {
 		{"/container", false, "anonymous volume — target-only, no source"},
 		{"", false, "empty spec — malformed but not a host mount"},
 		{":/container", false, "empty source — malformed"},
+		{" /host:/container", true, "leading whitespace must NOT bypass — TrimSpace then check"},
+		{"\t/host:/container", true, "leading tab must NOT bypass"},
+		{"   :/host", false, "whitespace-only source — malformed, not a host mount"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.spec, func(t *testing.T) {
@@ -156,6 +159,100 @@ func TestIsHostVolumeMount(t *testing.T) {
 				"isHostVolumeMount(%q) = %v, want %v (%s)", tc.spec, got, tc.wantHost, tc.why)
 		})
 	}
+}
+
+// TestGlobalLabelAllowListBlocksRunJobVolumesFrom pins the sibling-
+// vector fix from PR #698 review: a job-run with `volumes-from=<donor>`
+// must also be dropped when AllowHostJobsFromLabels=false. Pre-fix, the
+// filter checked only `volume`, so an attacker could declare
+// `volumes-from=ofelia` (or any donor with host binds) and inherit those
+// bind mounts — including /var/run/docker.sock — bypassing the volume=
+// filter entirely. The filter now treats any non-empty volumes-from as a
+// violation: we cannot inspect the donor at filter time, so the
+// conservative drop is the only safe call.
+func TestGlobalLabelAllowListBlocksRunJobVolumesFrom(t *testing.T) {
+	t.Parallel()
+	logger, handler := test.NewTestLoggerWithHandler()
+	c := NewConfig(logger)
+	c.Global.AllowHostJobsFromLabels = false
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "attacker-container",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                     "true",
+				"ofelia.service":                     "true",
+				"ofelia.job-run.vf-pwn.schedule":     "@daily",
+				"ofelia.job-run.vf-pwn.image":        "alpine",
+				"ofelia.job-run.vf-pwn.command":      "sh -c 'ls /var/run/docker.sock'",
+				"ofelia.job-run.vf-pwn.volumes-from": "ofelia",
+			},
+		},
+	}
+
+	err := c.buildFromDockerContainers(containers)
+	require.NoError(t, err)
+
+	assert.Empty(t, c.RunJobs,
+		"job-run with volumes-from must be blocked when AllowHostJobsFromLabels=false — inheriting a donor's bind mounts is an escape vector parallel to volume=")
+	assert.True(t, handler.HasError("volumes-from"),
+		"violation log must name the volumes-from vector class for operator triage")
+	assert.True(t, handler.HasError("vf-pwn"),
+		"violation log must name the dropped job")
+}
+
+// TestGlobalLabelAllowListAllowsRunJobWithoutEscalationVectors confirms
+// the per-job filter does not over-block: a runJob with neither host
+// mounts nor volumes-from passes through even when the policy is on.
+func TestGlobalLabelAllowListAllowsRunJobWithoutEscalationVectors(t *testing.T) {
+	t.Parallel()
+	logger, _ := test.NewTestLoggerWithHandler()
+	c := NewConfig(logger)
+	c.Global.AllowHostJobsFromLabels = false
+
+	containers := []DockerContainerInfo{
+		{
+			Name:  "legit-container",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":               "true",
+				"ofelia.service":               "true",
+				"ofelia.job-run.safe.schedule": "@daily",
+				"ofelia.job-run.safe.image":    "alpine",
+				"ofelia.job-run.safe.command":  "echo ok",
+				// no volume, no volumes-from
+			},
+		},
+	}
+
+	err := c.buildFromDockerContainers(containers)
+	require.NoError(t, err)
+
+	assert.Contains(t, c.RunJobs, "safe",
+		"job-run without any escalation vectors must NOT be blocked")
+}
+
+// TestExtractHostVolumeMounts_FailsClosedOnUnexpectedType pins the
+// fail-closed contract for the type switch in extractHostVolumeMounts.
+// A future change to setJobParam (or a new JSON shorthand) that
+// delivers []any, map[string]any, etc. through the "volume" key MUST
+// drop the job rather than silently bypass the security check. Same
+// guarantee for extractVolumesFromSpecs.
+func TestExtractHostVolumeMounts_FailsClosedOnUnexpectedType(t *testing.T) {
+	t.Parallel()
+	logger, _ := test.NewTestLoggerWithHandler()
+
+	hostMounts, safe := extractHostVolumeMounts([]any{"/etc:/host:ro"}, logger, "j")
+	assert.False(t, safe,
+		"extractHostVolumeMounts must return safe=false for []any (fail closed); a future setJobParam change delivering []any would otherwise silently bypass the policy")
+	assert.Empty(t, hostMounts,
+		"the host-mount list is empty when the type is unknown — the caller drops the job based on safe=false alone")
+
+	vf, vfSafe := extractVolumesFromSpecs(map[string]any{"donor": true}, logger, "j")
+	assert.False(t, vfSafe,
+		"extractVolumesFromSpecs must return safe=false for map[string]any (fail closed)")
+	assert.Empty(t, vf)
 }
 
 // TestGlobalLabelAllowListBlocksRunJobAcceptsRunJobsWhenAllowed verifies

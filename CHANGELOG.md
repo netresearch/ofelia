@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Extended the `[global] allow-host-jobs-from-labels=false` policy to cover `job-run` entries that mount host filesystem paths via Docker labels (e.g. `ofelia.job-run.X.volume=/:/host:rw`). Pre-fix, only `job-local` and `job-compose` were filtered, leaving `job-run` as an open container-to-host privilege-escalation vector: an attacker controlling labels on any container Ofelia watched could mount `/` into the spawned `job-run` container and read or write the host filesystem. The new per-job filter detects host mounts (volume specs whose source starts with `/`, `.`, or `~`) and drops the entire offending `job-run`, logging a `SECURITY POLICY VIOLATION` that names the job and the specific volume specs so operators can triage. Named volumes (`my-vol:/data`) and anonymous volumes (`/data` target-only) are unaffected — only host bind mounts trigger the policy. Closes [#462](https://github.com/netresearch/ofelia/issues/462).
+- Extended the `[global] allow-host-jobs-from-labels=false` policy to cover `job-run` entries that mount host filesystem paths via Docker labels (e.g. `ofelia.job-run.X.volume=/:/host:rw`) **or** inherit a donor container's bind mounts via `volumes-from` (e.g. `ofelia.job-run.X.volumes-from=ofelia` to pull in the daemon's `/var/run/docker.sock` mount). Pre-fix, only `job-local` and `job-compose` were filtered, leaving both `volume=` and `volumes-from=` on `job-run` as open container-to-host privilege-escalation vectors: an attacker controlling labels on any container Ofelia watched could mount `/` into the spawned `job-run` container directly, or chain via `volumes-from=ofelia` to inherit the Docker socket and gain full daemon access. The new per-job filter:
+  - Detects host mounts in `volume` (specs whose source starts with `/`, `.`, or `~`, after whitespace normalization) and drops the entire offending `job-run`.
+  - Treats any non-empty `volumes-from` as a violation, because the donor's mounts cannot be inspected at filter time — conservative drop is the only safe call.
+  - Fails closed on unexpected param shapes (e.g. a future refactor delivering `[]any` instead of `[]string` cannot silently bypass the policy).
+  - Logs a `SECURITY POLICY VIOLATION` per dropped job, naming the job, the vector class (`volume=` vs `volumes-from=`), and the specific specs so operators can triage.
+  Named volumes (`my-vol:/data`) and anonymous volumes (`/data` target-only) with no `volumes-from` are unaffected. Closes [#462](https://github.com/netresearch/ofelia/issues/462).
 
 ### Fixed
 
