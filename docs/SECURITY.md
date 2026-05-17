@@ -830,7 +830,7 @@ trivy image ghcr.io/netresearch/ofelia:latest
 
 # Clair
 docker run -p 6060:6060 -d --name clair clair
-clairctl analyze netresearch/ofelia:latest
+clairctl analyze ghcr.io/netresearch/ofelia:latest
 ```
 
 **Code Scanning**:
