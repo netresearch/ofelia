@@ -57,6 +57,10 @@ func (j *ExecJob) InitializeRuntimeFields() {
 // expects for ContainerExecCreate.ConsoleSize, or nil when neither
 // dimension was configured. nil means "use Docker's default size",
 // matching the daemon contract documented at #235.
+//
+// A partial value like {40, 0} is intentionally forwarded — the daemon
+// honors the 40 and uses its default for the zero dimension. Only the
+// "both zero" case collapses to nil (the unconfigured-by-operator case).
 func (j *ExecJob) consoleSize() *[2]uint {
 	if j.ConsoleHeight == 0 && j.ConsoleWidth == 0 {
 		return nil

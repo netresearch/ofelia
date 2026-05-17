@@ -365,6 +365,8 @@ command = pg_dump mydb > /backup/db.sql
 user = postgres             # User to run command as
 environment = DB_NAME=mydb,BACKUP_RETENTION=7
 tty = false                 # Allocate TTY
+console-height = 24         # Initial pseudo-TTY rows (only honored when tty=true; #235)
+console-width  = 80         # Initial pseudo-TTY columns
 delay = 5s                  # Delay before execution
 
 # Middleware Configuration
