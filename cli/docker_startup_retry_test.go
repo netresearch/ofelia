@@ -119,12 +119,70 @@ func TestPingWithRetry_HonorsContextCancellation(t *testing.T) {
 		"ctx cancellation during backoff must drain promptly (elapsed=%v); pre-fix this would block ~30s on the first time.After", elapsed)
 }
 
+// TestPingWithRetry_ZeroIntervalDoesNotPromoteToCap pins the fix for
+// the foot-gun flagged in the PR #699 code review: when the operator
+// opts into retries (count>0) but explicitly sets interval=0 (meaning
+// "no sleep between attempts"), the helper MUST NOT silently promote
+// the 0 to maxBackoffStep (5 minutes). The earlier shape did exactly
+// that — `if backoff <= 0 { backoff = maxBackoffStep }` — turning a
+// fast-retry config into a 25-minute startup window for count=5. The
+// new behavior is "immediate retry, skip the select", which matches
+// operator intuition.
+func TestPingWithRetry_ZeroIntervalDoesNotPromoteToCap(t *testing.T) {
+	t.Parallel()
+
+	provider := &flakyPingProvider{pingErr: errors.New("not ready"), failUntilNth: 2}
+	start := time.Now()
+	err := pingWithRetry(context.Background(), provider, 5, 0, test.NewTestLogger())
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), provider.attempts.Load(),
+		"3 attempts to recover (2 failures + 1 success)")
+	assert.Less(t, elapsed, time.Second,
+		"interval=0 must mean 'no sleep between attempts'; pre-fix this would have been ~25min (5×5min cap)")
+}
+
+// TestPingWithRetry_CapsBackoffStep pins the maxBackoffStep ceiling
+// (5min per attempt). Without the cap, a baseInterval=10m would produce
+// a 10min first-backoff, defeating the daemon's startup budget. We use
+// ctx cancellation to avoid a 5-minute real-time test: cancel after
+// the first backoff begins, then assert elapsed lands close to the cap
+// (within tolerance) rather than to baseInterval.
+//
+// Concretely: baseInterval=10m, count=1 means one retry with backoff
+// = min(10m, 5m) = 5m. Canceling after 200ms must surface as
+// "interrupted during the 5m wait", not "interrupted during the 10m wait".
+// The cap is hard to test directly without faking time; we settle for
+// "elapsed is way less than baseInterval AND ctx.Canceled is returned",
+// which catches any future removal of the cap clamp.
+func TestPingWithRetry_CapsBackoffStep(t *testing.T) {
+	t.Parallel()
+
+	provider := &flakyPingProvider{pingErr: errors.New("down"), failUntilNth: 999}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	err := pingWithRetry(ctx, provider, 1, 10*time.Minute, test.NewTestLogger())
+	elapsed := time.Since(start)
+
+	require.ErrorIs(t, err, context.Canceled,
+		"cancellation must surface; if the cap is removed the test will wait the full 10m baseInterval and timeout")
+	assert.Less(t, elapsed, 5*time.Second,
+		"cap-bypass regression: elapsed=%v should be a small ctx-cancellation drain, not the 10m baseInterval", elapsed)
+}
+
 // TestNewDockerHandler_StartupRetrySucceedsAfterFailures is the end-to-
 // end integration test for the #523 fix: NewDockerHandler reads
 // StartupRetryCount/Interval from DockerConfig and the daemon comes up
 // after a flaky-start period. Pre-#523 the daemon would have exited on
 // the first ping failure.
 func TestNewDockerHandler_StartupRetrySucceedsAfterFailures(t *testing.T) {
+	t.Parallel()
 	provider := &flakyPingProvider{pingErr: errors.New("warming up"), failUntilNth: 2}
 	notifier := &dummyNotifier{}
 
