@@ -359,6 +359,26 @@ func TestStore_Save_FilePermissions(t *testing.T) {
 		"state file must be 0600 — contains operator-supplied command strings")
 }
 
+// TestStore_Load_RejectsNullJobValue pins fail-closed semantics for
+// a hand-edit hazard: `{"jobs":{"x":null}}` decodes into a nil entry
+// in the Jobs map. Pre-fix Snapshot() and saveLocked() would
+// dereference `*v` on every entry and panic the daemon at boot. The
+// load now refuses the file with a clear error naming the offending
+// key so the operator knows where to look.
+func TestStore_Load_RejectsNullJobValue(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	require.NoError(t, os.WriteFile(path,
+		[]byte(`{"version":1,"jobs":{"x":null}}`),
+		0o600))
+	s := NewStore(path)
+	err := s.Load()
+	require.ErrorIs(t, err, ErrNullJobValue,
+		"null job value must surface ErrNullJobValue rather than panic the daemon at boot")
+	assert.Contains(t, err.Error(), `"x"`,
+		"error must name the offending key so the operator knows where to look")
+}
+
 // TestStore_RemoveThenReadd_PersistsNewState pins the rename-then-add
 // round-trip: removing a job and adding it back with a different
 // schedule must not leave the old schedule resident anywhere — a

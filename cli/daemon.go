@@ -514,9 +514,16 @@ func (c *DaemonCommand) initPersistStore() error {
 		}
 		// Replace any same-named job from INI/labels — persisted API
 		// state is authoritative for its own jobs. Use UpdateJob when
-		// the slot exists, else AddJob.
+		// the slot exists, else AddJob. The RemoveJob error path is
+		// logged but not fatal: a failed remove typically means the
+		// job already vanished between GetAnyJob and RemoveJob (race
+		// with label sync); the subsequent AddJob will either succeed
+		// or hit a duplicate-name path, both of which are surfaced.
 		if existing := c.scheduler.GetAnyJob(name); existing != nil {
-			_ = c.scheduler.RemoveJob(existing)
+			if rmErr := c.scheduler.RemoveJob(existing); rmErr != nil {
+				c.Logger.Warn("could not remove existing job to apply persisted state",
+					"job", name, "error", rmErr)
+			}
 		}
 		if err := c.scheduler.AddJob(job); err != nil {
 			c.Logger.Warn("could not apply persisted job", "job", name, "error", err)

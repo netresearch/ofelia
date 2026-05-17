@@ -53,21 +53,39 @@ func (s *Server) SetPersistStore(store *persist.Store) {
 	s.persistStore = store
 }
 
-// originAPI is the marker stored in s.origins for jobs created or
-// updated via the web API / UI. Constant so the delete-gate, the
-// create/update handlers, and the persist boot-loader all agree on
-// the literal — pre-extraction this string was duplicated across six
-// sites and any single-letter typo would silently break the gate.
-const originAPI = "api"
+// Recognized origin tokens. Stored in s.origins (in-memory) or on
+// the JobConfig.JobSource field (config-reflected via jobOrigin()).
+// Used by the delete-gate and the persist hook to decide which jobs
+// are config-owned (and thus immutable via API) vs API-mutated (and
+// thus persistable + deletable).
+//
+// Pre-extraction these literals were sprinkled across six handler
+// sites; consolidating them lets the type checker catch typos and
+// makes the "what does this string mean" question one-grep-away.
+const (
+	originAPI   = "api"   // POST /api/jobs/{create,update} without an X-Origin header
+	originWeb   = "web"   // X-Origin: web (sent by static/ui/index.html)
+	originINI   = "ini"   // job-run "name" / job-exec "name" / etc. in the INI file
+	originLabel = "label" // ofelia.job-run.<name>.* Docker labels
+)
 
-// MarkOriginAPI records that the named job came from the API so the
-// delete handler's origin gate (#593) recognizes it after a daemon
-// restart. The persist loader in cli/daemon.go calls this for every
-// job materialized from the state file — otherwise jobOrigin() would
-// return "" for those jobs and a future tightening of the gate from
-// `origin != "" && origin != originAPI` to `origin != originAPI` would
-// silently break delete for all persisted jobs. Safe to call only
-// before Start.
+// isConfigOwned reports whether `origin` denotes a job whose
+// authoritative source is the INI file or Docker labels. Such jobs
+// are NOT deletable via the API and NOT persisted in the state file
+// (their source is already durable elsewhere). Everything else —
+// api, web, empty, future origins — is treated as API-mutated.
+func isConfigOwned(origin string) bool {
+	return origin == originINI || origin == originLabel
+}
+
+// MarkOriginAPI records that the named job came from the API/UI so
+// the delete handler's origin gate (#593) recognizes it after a
+// daemon restart. The persist loader in cli/daemon.go calls this for
+// every job materialized from the state file — otherwise jobOrigin()
+// would fall through to config reflection and either find the
+// stale INI entry (refusing delete) or return "" (passing the gate
+// only by the `origin != ""` clause, which any future tightening
+// would silently break). Safe to call only before Start.
 func (s *Server) MarkOriginAPI(name string) {
 	s.originsMu.Lock()
 	if s.origins == nil {
@@ -603,18 +621,26 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 	if origin == "" {
 		origin = originAPI
 	}
+	// Client-supplied X-Origin is treated as untrusted metadata: we
+	// accept "api"/"web" verbatim but force any "ini"/"label" claim
+	// to "api" so a malicious client can't mark its own job as
+	// config-owned (which would later block legitimate API delete).
+	// All requests reaching this handler are API mutations regardless
+	// of what the header says.
+	if isConfigOwned(origin) {
+		origin = originAPI
+	}
 	s.originsMu.Lock()
 	s.origins[req.Name] = origin
 	s.originsMu.Unlock()
-	// Persist (#593) only API-origin mutations — INI/labels stay
-	// authoritative for their own jobs. Log + 201 on persist failure
-	// rather than roll back the scheduler insert: the job is already
-	// live in memory and rolling back would surprise callers who
-	// got a successful response shape.
-	if origin == originAPI {
-		if err := s.persistJob(req.Name, &req); err != nil {
-			s.scheduler.Logger.Warn("persist created job failed", "job", req.Name, "error", err)
-		}
+	// Persist (#593) any successful API mutation — origin only gates
+	// what the delete handler can later remove, not whether the
+	// create was API-initiated. Log + 201 on persist failure rather
+	// than roll back the scheduler insert: the job is already live in
+	// memory and rolling back would surprise callers who got a
+	// successful response shape.
+	if err := s.persistJob(req.Name, &req); err != nil {
+		s.scheduler.Logger.Warn("persist created job failed", "job", req.Name, "error", err)
 	}
 	w.WriteHeader(http.StatusCreated)
 }
@@ -663,14 +689,15 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	if origin == "" {
 		origin = originAPI
 	}
+	if isConfigOwned(origin) {
+		origin = originAPI // see createJobHandler for the trust rationale
+	}
 	s.originsMu.Lock()
 	s.origins[req.Name] = origin
 	s.originsMu.Unlock()
-	// Persist (#593) API-origin updates — same rationale as create.
-	if origin == originAPI {
-		if err := s.persistJob(req.Name, &req); err != nil {
-			s.scheduler.Logger.Warn("persist updated job failed", "job", req.Name, "error", err)
-		}
+	// Persist (#593) any successful API update — same rationale as create.
+	if err := s.persistJob(req.Name, &req); err != nil {
+		s.scheduler.Logger.Warn("persist updated job failed", "job", req.Name, "error", err)
 	}
 	w.WriteHeader(status)
 }
@@ -762,14 +789,14 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
-	// #593: only API-origin jobs can be deleted. INI/Docker-label
+	// #593: only API-mutated jobs can be deleted. INI/Docker-label
 	// jobs are owned by their source config — operators must edit the
 	// source to remove them. Pre-#593 this handler would silently
 	// remove from memory until next reload; the new behavior is to
 	// reject explicitly so the operator sees the right error path.
 	// Operators wanting to suppress an INI/label job temporarily
 	// should use POST /api/jobs/disable instead, which now persists.
-	if origin := s.jobOrigin(req.Name); origin != "" && origin != originAPI {
+	if origin := s.jobOrigin(req.Name); isConfigOwned(origin) {
 		http.Error(w,
 			"job came from "+origin+" config; edit the source to delete it (or use /api/jobs/disable to suppress it)",
 			http.StatusForbidden)

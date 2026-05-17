@@ -166,6 +166,63 @@ func TestPersist_EnableJob_ClearsFromStateFile(t *testing.T) {
 		"enable handler must remove the name from persisted disabled list")
 }
 
+// TestPersist_CreateJob_IgnoresMaliciousXOriginIni pins the trust
+// hardening: a client setting `X-Origin: ini` (or `label`) on a
+// create request must NOT be marked as config-owned in the origin
+// map, because that would make the job non-deletable via the API.
+// All requests reaching this handler are API mutations regardless
+// of what the header claims.
+func TestPersist_CreateJob_IgnoresMaliciousXOriginIni(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	store := persist.NewStore(path)
+	srv := newWebServerWithStore(t, store)
+
+	body := `{"name":"trapped","type":"local","schedule":"@hourly"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Origin", "ini") // malicious: claim config ownership
+	w := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	// Job must still be persisted (since it was API-created in fact)
+	// AND delete must succeed (since origin was forced back to api).
+	reader := persist.NewStore(path)
+	require.NoError(t, reader.Load())
+	assert.Contains(t, reader.Snapshot().Jobs, "trapped",
+		"server must persist any successful API mutation regardless of client-supplied X-Origin")
+
+	resp := postJSON(t, srv, "/api/jobs/delete", `{"name":"trapped"}`)
+	assert.Equal(t, http.StatusNoContent, resp.Code,
+		"client-supplied X-Origin: ini must NOT lock the operator out of deleting their own API-created job")
+}
+
+// TestPersist_CreateJob_PersistsWhenOriginWeb pins that UI requests
+// (which send `X-Origin: web`, see static/ui/index.html) get
+// persisted too — pre-fix the check `if origin == "api"` only ever
+// fired for header-less requests, so the entire web UI path silently
+// dropped persistence.
+func TestPersist_CreateJob_PersistsWhenOriginWeb(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	store := persist.NewStore(path)
+	srv := newWebServerWithStore(t, store)
+
+	body := `{"name":"from-ui","type":"local","schedule":"@hourly"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Origin", "web") // exactly what static/ui/index.html sends
+	w := httptest.NewRecorder()
+	srv.HTTPServer().Handler.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	reader := persist.NewStore(path)
+	require.NoError(t, reader.Load())
+	assert.Contains(t, reader.Snapshot().Jobs, "from-ui",
+		"X-Origin: web requests must persist — the UI is the most common API client and the feature is moot without it")
+}
+
 // TestPersist_NoStore_HandlersUnchanged pins backward compatibility:
 // when no persist store is wired (the default, pre-#593 behavior),
 // the create/disable handlers still succeed and no file is touched —
