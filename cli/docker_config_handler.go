@@ -138,22 +138,28 @@ func NewDockerHandler(
 
 	var err error
 	if provider == nil {
+		// buildSDKProvider already runs pingWithRetry on the freshly-built
+		// SDK client, so we do NOT ping a second time here — that
+		// previously meant up to 2×(count+1) attempts in the SDK-built
+		// path, doubling the worst-case startup budget. Surfaced by
+		// Gemini's review on PR #699.
 		c.dockerProvider, err = c.buildSDKProvider()
 		if err != nil {
 			cancel()
-			return nil, err
+			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+			return nil, fmt.Errorf("failed to connect to Docker daemon: %w\n  → Check Docker daemon is running: systemctl status docker\n  → Verify Docker API is accessible: docker info\n  → Check for Docker daemon errors: journalctl -u docker -n 50", err)
 		}
 	} else {
 		c.dockerProvider = provider
-	}
-
-	// Do a sanity check on docker. Bound each attempt so a wedged daemon
-	// cannot hang Ofelia at startup; see issue #614. Retry with exponential
-	// backoff when the operator opted in via StartupRetryCount > 0; see #523.
-	if err = pingWithRetry(ctx, c.dockerProvider, c.startupRetryCount, c.startupRetryInterval, logger); err != nil {
-		cancel()
-		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
-		return nil, fmt.Errorf("failed to connect to Docker daemon: %w\n  → Check Docker daemon is running: systemctl status docker\n  → Verify Docker API is accessible: docker info\n  → Check for Docker daemon errors: journalctl -u docker -n 50", err)
+		// Sanity-check the externally-supplied provider. Bound each
+		// attempt so a wedged daemon cannot hang Ofelia at startup
+		// (issue #614). Retry with exponential backoff when the operator
+		// opted in via StartupRetryCount > 0 (issue #523).
+		if err = pingWithRetry(ctx, c.dockerProvider, c.startupRetryCount, c.startupRetryInterval, logger); err != nil {
+			cancel()
+			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+			return nil, fmt.Errorf("failed to connect to Docker daemon: %w\n  → Check Docker daemon is running: systemctl status docker\n  → Verify Docker API is accessible: docker info\n  → Check for Docker daemon errors: journalctl -u docker -n 50", err)
+		}
 	}
 
 	// Start config file watcher (separate from container detection)

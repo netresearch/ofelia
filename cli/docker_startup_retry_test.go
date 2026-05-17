@@ -20,9 +20,15 @@ import (
 // flakyPingProvider is a minimal core.DockerProvider that records ping
 // attempts and returns a configurable failure pattern. Used by the
 // startup-retry tests to verify the (count+1)-attempt budget and the
-// "succeed after N attempts" recovery path. Only Ping and Close are
-// exercised; the other methods panic so an accidental call surfaces in
-// the test output.
+// "succeed after N attempts" recovery path.
+//
+// Only Ping is overridden; everything else falls through to the embedded
+// mockDockerProviderForHandler, which returns zero values (nil errors,
+// empty slices, etc.). The startup-retry tests don't exercise those
+// methods, but if a future test does and depends on a specific behavior,
+// it should either override the method explicitly or use a different
+// mock. The attempt counter uses atomic.Int32 so concurrent retries
+// (none today) would still be race-free.
 type flakyPingProvider struct {
 	attempts     atomic.Int32
 	failUntilNth int32 // return pingErr for attempts 1..failUntilNth, nil after
