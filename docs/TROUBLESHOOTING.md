@@ -791,7 +791,7 @@ services:
 ```yaml
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
