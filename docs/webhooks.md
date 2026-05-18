@@ -127,7 +127,7 @@ webhooks = slack-alerts
 ```yaml
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     labels:
       ofelia.enabled: "true"
       ofelia.service: "true"

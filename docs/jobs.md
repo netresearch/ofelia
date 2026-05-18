@@ -191,7 +191,7 @@ docker run -it --rm \
     --label ofelia.job-run.print-write-date.volume="/tmp/test:/tmp/test:rw" \
     --label ofelia.job-run.print-write-date.environment="FOO=bar" \
     --label ofelia.job-run.print-write-date.command="sh -c 'date | tee -a /tmp/test/date'" \
-        netresearch/ofelia:latest daemon
+        ghcr.io/netresearch/ofelia:latest daemon
 
 # Example with annotations for tracking and observability
 docker run -it --rm \
@@ -201,7 +201,7 @@ docker run -it --rm \
     --label ofelia.job-run.backup.image="postgres:15" \
     --label ofelia.job-run.backup.command="pg_dump mydb" \
     --label ofelia.job-run.backup.annotations='["team=platform", "project=core-infra", "env=prod"]' \
-        netresearch/ofelia:latest daemon
+        ghcr.io/netresearch/ofelia:latest daemon
 ```
 
 ## `local`

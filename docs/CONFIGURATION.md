@@ -66,7 +66,7 @@ When the daemon runs with `--state-file=/path/to/state.json` (or `OFELIA_STATE_F
 ```yaml
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     command: daemon --config=/etc/ofelia/config.ini --state-file=/var/lib/ofelia/state.json
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -113,7 +113,7 @@ save-only-on-error = true
 version: '3.8'
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     command: daemon --config=/etc/ofelia/config.ini
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -164,7 +164,7 @@ Ofelia can run entirely without an INI configuration file, using only Docker lab
 version: '3.8'
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     command: daemon --docker-events
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -639,7 +639,7 @@ Docker labels configure **jobs and webhooks**, but not global settings like logg
 version: '3.8'
 services:
   ofelia:
-    image: netresearch/ofelia:latest
+    image: ghcr.io/netresearch/ofelia:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./logs:/var/log/ofelia  # Mount for save-folder
