@@ -239,7 +239,7 @@ ofelia.webhook-preset-cache-ttl=12h
 ofelia.job-exec.backup.webhooks=slack
 ```
 
-**Bundled Presets**: `slack`, `discord`, `teams`, `matrix`, `ntfy`, `pushover`, `pagerduty`, `gotify`
+**Bundled Presets**: `slack`, `discord`, `teams`, `matrix`, `ntfy`, `pushover`, `pagerduty`, `gotify`, `healthchecks`, `healthchecks-selfhosted`
 
 **Triggers**: `always` (default), `error`, `success`
 

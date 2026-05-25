@@ -101,7 +101,7 @@ exact payload shape and how to opt out of the fallback.
 ### With a bundled preset (Slack, Discord, Teams, Matrix, etc.)
 
 Use `preset = slack` (or `discord` / `teams` / `matrix` / `ntfy` /
-`gotify` / `pushover` / `pagerduty`) when the receiver expects a
+`gotify` / `pushover` / `pagerduty` / `healthchecks`) when the receiver expects a
 service-specific payload format:
 
 ```ini
@@ -216,6 +216,8 @@ Ofelia includes presets for popular notification services:
 | `pushover` | Pushover | `id` (user key), `secret` (API token) |
 | `pagerduty` | PagerDuty Events API v2 | `secret` (routing key) |
 | `gotify` | Gotify | `url`, `secret` (app token) |
+| `healthchecks` | Healthchecks.io | `id` (uuid or pingkey/slug) |
+| `healthchecks-selfhosted` | Healthchecks (self-hosted) | `url` (full ping URL) |
 
 ## Configuration Reference
 
@@ -438,6 +440,51 @@ url = https://gotify.example.com
 secret = app-token-here
 trigger = always
 ```
+
+### Healthchecks
+
+For the hosted Healthchecks.io service:
+
+```ini
+[webhook "healthchecks-ping"]
+preset = healthchecks
+id = 735c8c4e-32dd-49fd-a00b-3a8bcf6233f9
+trigger = always
+```
+
+For self-hosted instances, pass the full ping URL:
+
+```ini
+[webhook "healthchecks-ping"]
+preset = healthchecks-selfhosted
+url = https://health.example.com/ping/731c8c4e-32dd-49fd-a20b-3a8bcf6233f9
+trigger = always
+```
+
+> **Note**: `id` accepts a `uuid` or a `pingkey/slug`. Healthchecks decides the
+> up/down state from the URL *suffix*, not from the request body, so a single
+> `trigger = always` webhook that pings the base URL always reports success
+> (it still catches missed runs via the period/grace timeout, but never an
+> explicit failure).
+
+To report failures explicitly, use two webhooks — one for success and one
+that appends the `/fail` suffix to the same check:
+
+```ini
+[webhook "healthchecks-ok"]
+preset = healthchecks
+id = 735c8c4e-32dd-49fd-a00b-3a8bcf6233f9
+trigger = success
+
+[webhook "healthchecks-fail"]
+preset = healthchecks
+id = 735c8c4e-32dd-49fd-a00b-3a8bcf6233f9/fail
+trigger = error
+```
+
+Other suffixes such as `/start` or `/<exit-status>` work the same way. See the
+[Healthchecks signaling failures docs](https://healthchecks.io/docs/signaling_failures/)
+for the full list.
 
 ## Custom Webhooks (URL-only, no custom preset)
 

@@ -1,0 +1,41 @@
+name: healthchecks
+description: "Healthchecks.io Pinging API preset using simple HTTP pings with optional log suffix (success/fail)"
+version: "1.0.0"
+
+url_scheme: "https://hc-ping.com/{id}"
+
+method: POST
+
+headers:
+  Content-Type: "text/plain; charset=utf-8"
+
+variables:
+  id:
+    description: >
+      use {id} to configure a <uuid> or <pingkey/slug> with an optional suffix like /fail or /<exit-status>
+      # example: 735c8c4e-32dd-49fd-a00b-3a8bcf6233f9
+      # example: 735c8c4e-32dd-49fd-a00b-3a8bcf6233f9/fail
+      # healthchecks.io docs for suffix: https://healthchecks.io/docs/signaling_failures/
+    required: true
+
+body: |
+
+  Job:      {{ .Job.Name }}
+  Status:   {{if .Execution.Failed}}🔴{{else if .Execution.Skipped}}🟡{{else}}🟢{{end}} {{.Execution.Status}}
+  Duration: {{ formatDuration .Execution.Duration }}
+  Schedule: {{ .Job.Schedule }}
+  Command:  {{ .Job.Command }}
+
+  Started:  {{ isoTime .Execution.StartTime }}
+  Ended:    {{ isoTime .Execution.EndTime }}
+
+  Host:     {{ .Host.Hostname }}
+  Ofelia:   {{ .Ofelia.Version }}
+
+  {{- if .Execution.Failed }}
+  Error:    {{ .Execution.Error }}
+  {{- end }}
+
+  {{- if .Preset.Link }}
+  Link:     {{ .Preset.LinkText }} -> {{ .Preset.Link }}
+  {{- end }}
