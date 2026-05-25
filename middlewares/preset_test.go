@@ -116,6 +116,73 @@ func TestPresetLoader_LoadBundledPreset_Gotify(t *testing.T) {
 	assert.Equal(t, "gotify", preset.Name)
 }
 
+func TestPresetLoader_LoadBundledPreset_Healthchecks(t *testing.T) {
+	t.Parallel()
+
+	loader := NewPresetLoader(nil)
+	preset, err := loader.Load("healthchecks")
+
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "healthchecks", preset.Name)
+	assert.Equal(t, "https://hc-ping.com/{id}", preset.URLScheme)
+}
+
+func TestPresetLoader_LoadBundledPreset_HealthchecksSelfhosted(t *testing.T) {
+	t.Parallel()
+
+	loader := NewPresetLoader(nil)
+	preset, err := loader.Load("healthchecks-selfhosted")
+
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "healthchecks-selfhosted", preset.Name)
+	assert.Equal(t, "{url}", preset.URLScheme)
+}
+
+// TestPreset_BuildURL_Healthchecks verifies the {id} substitution, including
+// the documented pattern of appending a "/fail" suffix to the id so an
+// on-error webhook signals a down state to Healthchecks.
+func TestPreset_BuildURL_Healthchecks(t *testing.T) {
+	t.Parallel()
+
+	loader := NewPresetLoader(nil)
+	preset, err := loader.Load("healthchecks")
+	require.NoError(t, err)
+
+	url, err := preset.BuildURL(&WebhookConfig{ID: "735c8c4e-32dd-49fd-a00b-3a8bcf6233f9"})
+	require.NoError(t, err)
+	assert.Equal(t, "https://hc-ping.com/735c8c4e-32dd-49fd-a00b-3a8bcf6233f9", url)
+
+	failURL, err := preset.BuildURL(&WebhookConfig{ID: "735c8c4e-32dd-49fd-a00b-3a8bcf6233f9/fail"})
+	require.NoError(t, err)
+	assert.Equal(t, "https://hc-ping.com/735c8c4e-32dd-49fd-a00b-3a8bcf6233f9/fail", failURL)
+}
+
+// TestPreset_RenderBody_Healthchecks_Failed exercises the failed-execution
+// branches of the healthchecks body template (Error line + the .Preset.Link
+// block) so a template regression surfaces as a test failure.
+func TestPreset_RenderBody_Healthchecks_Failed(t *testing.T) {
+	t.Parallel()
+
+	loader := NewPresetLoader(nil)
+	preset, err := loader.Load("healthchecks")
+	require.NoError(t, err)
+
+	data := map[string]any{
+		"Job":       WebhookJobData{Name: "backup", Command: "/run-backup.sh"},
+		"Execution": WebhookExecutionData{Status: "failed", Failed: true, Error: "exit status 1", Duration: time.Second},
+		"Host":      WebhookHostData{Hostname: "test-host"},
+		"Ofelia":    WebhookOfeliaData{Version: "1.0.0"},
+		"Preset":    PresetDataForTemplate{ID: "abc", Link: "https://logs.example.com", LinkText: "View logs"},
+	}
+
+	body, err := preset.RenderBodyWithPreset(data)
+	require.NoError(t, err)
+	assert.Contains(t, body, "Error:    exit status 1")
+	assert.Contains(t, body, "Link:     View logs -> https://logs.example.com")
+}
+
 func TestPresetLoader_LoadNonExistent(t *testing.T) {
 	t.Parallel()
 
