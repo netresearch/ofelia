@@ -1,4 +1,4 @@
-<!-- Managed by agent: keep sections and order; edit content, not structure. Last updated: 2026-03-08 -->
+<!-- Managed by agent: keep sections and order; edit content, not structure. Last updated: 2026-06-03 -->
 
 # AGENTS.md (root)
 
@@ -18,6 +18,14 @@ This file explains repo‑wide conventions and where to find scoped rules.
 - Run tests: `go test ./...`  
 - Full lint check: `make lint`
 - Security check: `make security-check`
+
+## Local development
+- Requires a running Docker daemon (start it with `sudo systemctl start docker` on systemd hosts, or `sudo service docker start` otherwise)
+- Run the daemon with the bundled demo config: `go run . daemon --config example/ofelia.ini` — serves the web UI on `web-address` (default `:8081`, which binds all interfaces). The example config does not override it, so reach the UI at `http://127.0.0.1:8081/`; pass `--web-address 127.0.0.1:8081` to force loopback-only binding
+- `example/ofelia.ini` ships working demo jobs (`run-date` runs `date` in alpine every 30s; `local-echo` runs on the host every 45s); the swarm and compose examples are commented out as they need extra infrastructure
+- Web UI assets live in `static/ui/` and are embedded via `//go:embed ui/*` in `static/static.go`; new files added directly under `static/ui/` are picked up automatically (no registration needed). The `ui/*` pattern is not recursive, so a new nested subdirectory needs its own embed pattern (e.g. `ui/sub/*`)
+- After touching embedded assets, run `go build ./...` to confirm the embed still resolves
+- Web package tests: `go test ./web/... -v -count=1` (`-count=1` bypasses the test cache)
 
 ## Go JSON serialization
 - Struct fields with explicit `json` tags use the tag name (e.g., `json:"lastRun"` → `lastRun`)
