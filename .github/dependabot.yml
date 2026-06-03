@@ -1,3 +1,9 @@
+# Self-managed — intentional-drift from netresearch/.github templates/go-app.
+# Core ecosystems (gomod, github-actions, docker) track the go-app template;
+# the devcontainers block is kept here because this repo has a devcontainer the
+# trimmed template no longer declares (see netresearch/.github#166). This file
+# is listed under intentional-drift in .github/template.yaml so the template
+# sync leaves it alone — keep the core blocks in step with the template manually.
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -32,18 +38,6 @@ updates:
     open-pull-requests-limit: 3
     groups:
       docker:
-        patterns: ['*']
-    cooldown:
-      default-days: 7
-
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    groups:
-      npm:
         patterns: ['*']
     cooldown:
       default-days: 7
