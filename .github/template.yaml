@@ -7,3 +7,5 @@ intentional-drift:
   reason: "enable-integration-tests: true and enable-e2e-tests: true \u2014 repo has\
     \ integration tests (12 files, -tags=integration) and e2e tests (10 tests under\
     \ ./e2e/..., -tags=e2e) that run in CI."
+- path: .github/dependabot.yml
+  reason: "Opt-in devcontainers ecosystem. The trimmed go-app template (netresearch/.github#166) declares only gomod/github-actions/docker; this repo has a .devcontainer so it self-manages dependabot.yml to keep devcontainers updates. Core blocks are kept in step with the template manually."
