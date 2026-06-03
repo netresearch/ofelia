@@ -827,6 +827,16 @@ func TestApplyDefaultUser(t *testing.T) {
 	user = UserContainerDefault
 	cfg.applyDefaultUser(&user)
 	assert.Empty(t, user)
+
+	// Global default-user = "default" (the sentinel) must resolve to the
+	// container's default user for a job that does not set User explicitly,
+	// matching the documented per-job behavior. Regression: previously the
+	// else-if branch left the literal "default" username, which Docker
+	// rejects with "unable to find user default".
+	cfg.Global.DefaultUser = UserContainerDefault
+	user = ""
+	cfg.applyDefaultUser(&user)
+	assert.Empty(t, user)
 }
 
 func TestMergeMailDefaults(t *testing.T) {

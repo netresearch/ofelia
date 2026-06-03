@@ -702,11 +702,17 @@ const UserContainerDefault = "default"
 
 // applyDefaultUser sets the job's User field to the global default if not explicitly configured.
 // This allows per-job override while respecting the global default-user setting.
-// Special value "default" explicitly uses the container's default user (empty string).
+// The sentinel "default" (UserContainerDefault) explicitly requests the
+// container's default user (empty string) and is honored whether it originates
+// from the per-job value or from the global default-user setting — the two
+// checks are deliberately separate (not else-if) so that
+// `[global] default-user = default` resolves to the container default, matching
+// the documented per-job behavior.
 func (c *Config) applyDefaultUser(user *string) {
 	if *user == "" {
 		*user = c.Global.DefaultUser
-	} else if *user == UserContainerDefault {
+	}
+	if *user == UserContainerDefault {
 		*user = "" // Use container's default user
 	}
 }
