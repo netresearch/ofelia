@@ -123,6 +123,14 @@ func TestPushoverPreset_Device(t *testing.T) {
 	withoutDevice, err := preset.RenderBodyWithPreset(baseData(""))
 	require.NoError(t, err)
 	assert.NotContains(t, withoutDevice, "device=")
+
+	// The body is application/x-www-form-urlencoded, so device values must be
+	// escaped. A comma-separated multi-device list (Pushover-native) keeps its
+	// separator as %2C, and spaces/specials cannot inject extra parameters.
+	encoded, err := preset.RenderBodyWithPreset(baseData("my phone,desk&top"))
+	require.NoError(t, err)
+	assert.Contains(t, encoded, "&device=my+phone%2Cdesk%26top")
+	assert.NotContains(t, encoded, "device=my phone")
 }
 
 func TestPresetLoader_LoadBundledPreset_PagerDuty(t *testing.T) {

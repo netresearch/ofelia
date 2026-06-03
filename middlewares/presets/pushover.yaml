@@ -25,4 +25,4 @@ variables:
     example: "iphone,desktop"
 
 body: |
-  token={{.Preset.Secret}}&user={{.Preset.ID}}{{if .Preset.Device}}&device={{.Preset.Device}}{{end}}&title=Ofelia: {{.Job.Name}}&message=Job {{.Job.Name}} {{if .Execution.Failed}}failed{{else if .Execution.Skipped}}was skipped{{else}}completed{{end}} in {{.Execution.Duration}}{{if .Execution.Failed}}%0A%0AError: {{json .Execution.Error}}{{end}}&priority={{if .Execution.Failed}}1{{else}}0{{end}}&sound={{if .Execution.Failed}}siren{{else}}pushover{{end}}
+  token={{.Preset.Secret}}&user={{.Preset.ID}}{{if .Preset.Device}}&device={{urlquery .Preset.Device}}{{end}}&title=Ofelia: {{.Job.Name}}&message=Job {{.Job.Name}} {{if .Execution.Failed}}failed{{else if .Execution.Skipped}}was skipped{{else}}completed{{end}} in {{.Execution.Duration}}{{if .Execution.Failed}}%0A%0AError: {{json .Execution.Error}}{{end}}&priority={{if .Execution.Failed}}1{{else}}0{{end}}&sound={{if .Execution.Failed}}siren{{else}}pushover{{end}}
