@@ -469,6 +469,7 @@ preset = matrix
 url = https://matrix.example.com/hookshot/webhook/123
 link = https://logs.example.com/ofelia
 link-text = View Logs
+device = iphone,desktop
 trigger = error
 `
 	config, err := BuildFromString(iniContent, test.NewTestLogger())
@@ -487,5 +488,9 @@ trigger = error
 
 	if webhook.LinkText != "View Logs" {
 		t.Errorf("Expected link-text 'View Logs', got %q", webhook.LinkText)
+	}
+
+	if webhook.Device != "iphone,desktop" {
+		t.Errorf("Expected device 'iphone,desktop', got %q", webhook.Device)
 	}
 }

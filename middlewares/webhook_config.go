@@ -69,6 +69,11 @@ type WebhookConfig struct {
 	// LinkText is the display text for the link (defaults to "View Details" if link is set)
 	LinkText string `gcfg:"link-text" mapstructure:"link-text"`
 
+	// Device is an optional target device used by presets that support
+	// per-device delivery (currently the Pushover preset). Empty means the
+	// preset's default (e.g. all of the user's devices).
+	Device string `gcfg:"device" mapstructure:"device"`
+
 	// Trigger determines when to send notifications
 	Trigger TriggerType `gcfg:"trigger" mapstructure:"trigger"`
 
