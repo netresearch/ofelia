@@ -97,13 +97,6 @@ func (c *DaemonCommand) Execute(_ []string) error {
 	return c.shutdown()
 }
 
-// boot's cyclomatic complexity is one above the gocyclo threshold
-// since the #593 persist-store load became a required boot step. The
-// addition is a single `if err := … { return }`, structurally
-// identical to the surrounding branches — splitting boot itself would
-// be churn for negligible reader benefit.
-//
-//nolint:gocyclo // boot orchestrates the full daemon wiring; #593 added one branch
 func (c *DaemonCommand) boot() (err error) {
 	// Initialize done channel for clean shutdown
 	c.done = make(chan struct{})
@@ -175,66 +168,85 @@ func (c *DaemonCommand) boot() (err error) {
 	}
 
 	if c.EnableWeb {
-		var provider core.DockerProvider
-		if c.dockerHandler != nil {
-			provider = c.dockerHandler.GetDockerProvider()
+		if err := c.setupWebServer(); err != nil {
+			return err
 		}
-
-		var authCfg *web.SecureAuthConfig
-		if c.WebAuthEnabled {
-			if c.WebUsername == "" {
-				return ErrWebAuthUsername
-			}
-			if c.WebPasswordHash == "" {
-				return ErrWebAuthPassword
-			}
-
-			if c.WebSecretKey == "" {
-				c.Logger.Warn("No web-secret-key provided. " +
-					"Auth tokens will not survive daemon restarts. " +
-					"Set OFELIA_WEB_SECRET_KEY for persistent sessions.")
-			}
-
-			authCfg = &web.SecureAuthConfig{
-				Enabled:        true,
-				Username:       c.WebUsername,
-				PasswordHash:   c.WebPasswordHash,
-				SecretKey:      c.WebSecretKey,
-				TokenExpiry:    c.WebTokenExpiry,
-				MaxAttempts:    c.WebMaxLoginAttempts,
-				TrustedProxies: c.WebTrustedProxies,
-			}
-		}
-		c.webServer = web.NewServerWithAuth(c.WebAddr, c.scheduler, c.config, provider, authCfg)
-		if c.webServer == nil {
-			return fmt.Errorf("failed to initialize web server (check logs for details)")
-		}
-
-		// #593: wire the persist store into the web server so API
-		// create/update/delete/disable/enable handlers record their
-		// mutations to disk. The store was already loaded earlier in
-		// boot (see initPersistStore) so the live scheduler already
-		// reflects whatever the file contained; from this point on,
-		// the store mirrors live mutations forward to disk.
-		if c.persistStore != nil {
-			c.webServer.SetPersistStore(c.persistStore)
-			// Re-establish origin="api" for every persisted job so the
-			// delete-gate (web/server.go) recognizes them as
-			// API-deletable after restart — otherwise jobOrigin() would
-			// return "" and any future tightening of the gate would
-			// silently break delete for persisted jobs.
-			for name := range c.persistStore.Snapshot().Jobs {
-				c.webServer.MarkOriginAPI(name)
-			}
-		}
-
-		c.webServer.RegisterHealthEndpoints(c.healthChecker)
-
-		gracefulServer := core.NewGracefulServer(c.webServer.GetHTTPServer(), c.shutdownManager, c.Logger)
-		_ = gracefulServer
 	}
 
 	return err
+}
+
+// setupWebServer initializes the web server, authentication, persistence
+// wiring and health endpoints. Only called when web support is enabled.
+func (c *DaemonCommand) setupWebServer() error {
+	var provider core.DockerProvider
+	if c.dockerHandler != nil {
+		provider = c.dockerHandler.GetDockerProvider()
+	}
+
+	var authCfg *web.SecureAuthConfig
+	if c.WebAuthEnabled {
+		var err error
+		authCfg, err = c.buildWebAuthConfig()
+		if err != nil {
+			return err
+		}
+	}
+
+	c.webServer = web.NewServerWithAuth(c.WebAddr, c.scheduler, c.config, provider, authCfg)
+	if c.webServer == nil {
+		return fmt.Errorf("failed to initialize web server (check logs for details)")
+	}
+
+	// #593: wire the persist store into the web server so API
+	// create/update/delete/disable/enable handlers record their
+	// mutations to disk. The store was already loaded earlier in
+	// boot (see initPersistStore) so the live scheduler already
+	// reflects whatever the file contained; from this point on,
+	// the store mirrors live mutations forward to disk.
+	if c.persistStore != nil {
+		c.webServer.SetPersistStore(c.persistStore)
+		// Re-establish origin="api" for every persisted job so the
+		// delete-gate (web/server.go) recognizes them as
+		// API-deletable after restart — otherwise jobOrigin() would
+		// return "" and any future tightening of the gate would
+		// silently break delete for persisted jobs.
+		for name := range c.persistStore.Snapshot().Jobs {
+			c.webServer.MarkOriginAPI(name)
+		}
+	}
+
+	c.webServer.RegisterHealthEndpoints(c.healthChecker)
+
+	gracefulServer := core.NewGracefulServer(c.webServer.GetHTTPServer(), c.shutdownManager, c.Logger)
+	_ = gracefulServer
+	return nil
+}
+
+// buildWebAuthConfig builds the web authentication configuration from the
+// daemon's web-auth flags. Only called when web auth is enabled; it returns
+// an error when a required credential is missing.
+func (c *DaemonCommand) buildWebAuthConfig() (*web.SecureAuthConfig, error) {
+	if c.WebUsername == "" {
+		return nil, ErrWebAuthUsername
+	}
+	if c.WebPasswordHash == "" {
+		return nil, ErrWebAuthPassword
+	}
+	if c.WebSecretKey == "" {
+		c.Logger.Warn("No web-secret-key provided. " +
+			"Auth tokens will not survive daemon restarts. " +
+			"Set OFELIA_WEB_SECRET_KEY for persistent sessions.")
+	}
+	return &web.SecureAuthConfig{
+		Enabled:        true,
+		Username:       c.WebUsername,
+		PasswordHash:   c.WebPasswordHash,
+		SecretKey:      c.WebSecretKey,
+		TokenExpiry:    c.WebTokenExpiry,
+		MaxAttempts:    c.WebMaxLoginAttempts,
+		TrustedProxies: c.WebTrustedProxies,
+	}, nil
 }
 
 func (c *DaemonCommand) start() error {
