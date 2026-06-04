@@ -430,7 +430,7 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 		return
 	}
 
-	// scheduleMap maps job-type label prefix to (jobName→schedule) pairs.
+	// Collect every job's (kind, name, schedule) so all types validate in one loop.
 	type jobSchedule struct{ kind, name, schedule string }
 	var jobs []jobSchedule
 	for name, job := range conf.RunJobs {
