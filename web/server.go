@@ -69,6 +69,21 @@ const (
 	originLabel = "label" // ofelia.job-run.<name>.* Docker labels
 )
 
+// HTTP route paths, header names, and error messages reused across handlers.
+const (
+	pathAPILogin      = "/api/login"
+	pathAPIAuthStatus = "/api/auth/status"
+	pathAPICSRFToken  = "/api/csrf-token"
+	pathAPIJobsPrefix = "/api/jobs/"
+
+	headerContentType = "Content-Type"
+	contentTypeJSON   = "application/json"
+
+	msgMethodNotAllowed   = "method not allowed"
+	msgInvalidRequestBody = "invalid request body"
+	msgJobNotFound        = "job not found"
+)
+
 // isConfigOwned reports whether `origin` denotes a job whose
 // authoritative source is the INI file or Docker labels. Such jobs
 // are NOT deletable via the API and NOT persisted in the state file
@@ -153,10 +168,10 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 
 	if server.authConfig != nil && server.authConfig.Enabled {
 		loginHandler := NewSecureLoginHandler(server.authConfig, server.tokenManager, server.loginLimiter, server.trustedProxies...)
-		mux.Handle("/api/login", loginHandler)
+		mux.Handle(pathAPILogin, loginHandler)
 		mux.HandleFunc("/api/logout", server.logoutHandler)
-		mux.HandleFunc("/api/auth/status", server.authStatusHandler)
-		mux.HandleFunc("/api/csrf-token", server.csrfTokenHandler)
+		mux.HandleFunc(pathAPIAuthStatus, server.authStatusHandler)
+		mux.HandleFunc(pathAPICSRFToken, server.csrfTokenHandler)
 	}
 
 	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
@@ -167,7 +182,7 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 	mux.HandleFunc("/api/jobs/create", server.createJobHandler)
 	mux.HandleFunc("/api/jobs/update", server.updateJobHandler)
 	mux.HandleFunc("/api/jobs/delete", server.deleteJobHandler)
-	mux.HandleFunc("/api/jobs/", server.historyHandler)
+	mux.HandleFunc(pathAPIJobsPrefix, server.historyHandler)
 	mux.HandleFunc("/api/jobs", server.jobsHandler)
 	mux.HandleFunc("/api/config", server.configHandler)
 
@@ -220,10 +235,10 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 
 	if s.authConfig != nil && s.authConfig.Enabled {
 		loginHandler := NewSecureLoginHandler(s.authConfig, s.tokenManager, s.loginLimiter, s.trustedProxies...)
-		mux.Handle("/api/login", loginHandler)
+		mux.Handle(pathAPILogin, loginHandler)
 		mux.HandleFunc("/api/logout", s.logoutHandler)
-		mux.HandleFunc("/api/auth/status", s.authStatusHandler)
-		mux.HandleFunc("/api/csrf-token", s.csrfTokenHandler)
+		mux.HandleFunc(pathAPIAuthStatus, s.authStatusHandler)
+		mux.HandleFunc(pathAPICSRFToken, s.csrfTokenHandler)
 	}
 
 	mux.HandleFunc("/api/jobs/removed", s.removedJobsHandler)
@@ -234,7 +249,7 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 	mux.HandleFunc("/api/jobs/create", s.createJobHandler)
 	mux.HandleFunc("/api/jobs/update", s.updateJobHandler)
 	mux.HandleFunc("/api/jobs/delete", s.deleteJobHandler)
-	mux.HandleFunc("/api/jobs/", s.historyHandler)
+	mux.HandleFunc(pathAPIJobsPrefix, s.historyHandler)
 	mux.HandleFunc("/api/jobs", s.jobsHandler)
 	mux.HandleFunc("/api/config", s.configHandler)
 
@@ -415,19 +430,19 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 
 func (s *Server) jobsHandler(w http.ResponseWriter, _ *http.Request) {
 	jobs := s.buildAPIJobs(s.scheduler.GetActiveJobs())
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, contentTypeJSON)
 	_ = json.NewEncoder(w).Encode(jobs)
 }
 
 func (s *Server) removedJobsHandler(w http.ResponseWriter, _ *http.Request) {
 	jobs := s.buildAPIJobs(s.scheduler.GetRemovedJobs())
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, contentTypeJSON)
 	_ = json.NewEncoder(w).Encode(jobs)
 }
 
 func (s *Server) disabledJobsHandler(w http.ResponseWriter, _ *http.Request) {
 	jobs := s.buildAPIJobs(s.scheduler.GetDisabledJobs())
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, contentTypeJSON)
 	_ = json.NewEncoder(w).Encode(jobs)
 }
 
@@ -462,12 +477,12 @@ func validateJobName(name string) error {
 
 func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 	var req jobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 	if err := validateJobName(req.Name); err != nil {
@@ -476,7 +491,7 @@ func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.scheduler.RunJob(r.Context(), req.Name); err != nil {
 		if errors.Is(err, core.ErrJobNotFound) {
-			http.Error(w, "job not found", http.StatusNotFound)
+			http.Error(w, msgJobNotFound, http.StatusNotFound)
 		} else {
 			s.scheduler.Logger.Error("run job failed", "job", req.Name, "error", err)
 			http.Error(w, "failed to run job", http.StatusInternalServerError)
@@ -504,12 +519,12 @@ func (s *Server) toggleJobHandler(
 	afterPersist func(string) error,
 ) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 	var req jobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 	if err := validateJobName(req.Name); err != nil {
@@ -518,7 +533,7 @@ func (s *Server) toggleJobHandler(
 	}
 	if err := toggle(req.Name); err != nil {
 		if errors.Is(err, core.ErrJobNotFound) {
-			http.Error(w, "job not found", http.StatusNotFound)
+			http.Error(w, msgJobNotFound, http.StatusNotFound)
 		} else {
 			s.scheduler.Logger.Error(action+" job failed", "job", req.Name, "error", err)
 			http.Error(w, "failed to "+action+" job", http.StatusInternalServerError)
@@ -595,12 +610,12 @@ func (s *Server) persistJob(name string, req *jobRequest) error {
 
 func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 	var req jobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 	if err := validateJobName(req.Name); err != nil {
@@ -647,12 +662,12 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 	var req jobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 	if err := validateJobName(req.Name); err != nil {
@@ -772,12 +787,12 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 
 func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, msgMethodNotAllowed, http.StatusMethodNotAllowed)
 		return
 	}
 	var req jobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		http.Error(w, msgInvalidRequestBody, http.StatusBadRequest)
 		return
 	}
 	if err := validateJobName(req.Name); err != nil {
@@ -786,7 +801,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	j := s.scheduler.GetAnyJob(req.Name)
 	if j == nil {
-		http.Error(w, "job not found", http.StatusNotFound)
+		http.Error(w, msgJobNotFound, http.StatusNotFound)
 		return
 	}
 	// #593: only API-mutated jobs can be deleted. INI/Docker-label
@@ -815,7 +830,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) configHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, contentTypeJSON)
 	cfg := stripJobs(s.config)
 	_ = json.NewEncoder(w).Encode(cfg)
 }
@@ -854,7 +869,7 @@ func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/jobs/"), "/history")
+	name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, pathAPIJobsPrefix), "/history")
 	target := s.scheduler.GetAnyJob(name)
 	if target == nil {
 		http.NotFound(w, r)
@@ -886,7 +901,7 @@ func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
 			Stderr:   stderr,
 		})
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, contentTypeJSON)
 	_ = json.NewEncoder(w).Encode(out)
 }
 
@@ -916,7 +931,7 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) authStatusHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, contentTypeJSON)
 
 	if s.authConfig == nil || !s.authConfig.Enabled {
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -948,7 +963,7 @@ func (s *Server) authStatusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) csrfTokenHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, contentTypeJSON)
 
 	if s.tokenManager == nil {
 		http.Error(w, "Auth not enabled", http.StatusNotFound)
@@ -968,7 +983,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		if path == "/api/login" || path == "/api/csrf-token" || path == "/api/auth/status" ||
+		if path == pathAPILogin || path == pathAPICSRFToken || path == pathAPIAuthStatus ||
 			path == "/health" || path == "/healthz" || path == "/ready" || path == "/live" {
 			next.ServeHTTP(w, r)
 			return

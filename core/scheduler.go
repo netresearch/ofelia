@@ -14,6 +14,8 @@ import (
 	"github.com/netresearch/go-cron"
 )
 
+const errFmtWrapQuoted = "%w: %q"
+
 var (
 	ErrEmptyScheduler = errors.New("unable to start an empty scheduler")
 	ErrEmptySchedule  = errors.New("unable to add a job with an empty schedule")
@@ -624,7 +626,7 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 	_, disabled := s.disabledNames[name]
 	if oldJob == nil || disabled {
 		s.mu.RUnlock()
-		return fmt.Errorf("%w: %q", ErrJobNotFound, name)
+		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
 	}
 	s.mu.RUnlock()
 
@@ -664,7 +666,7 @@ func (s *Scheduler) DisableJob(name string) error {
 
 	j, _ := getJob(s.Jobs, name)
 	if j == nil {
-		return fmt.Errorf("%w: %q", ErrJobNotFound, name)
+		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
 	}
 	if _, already := s.disabledNames[name]; already {
 		return nil // already disabled
@@ -693,12 +695,12 @@ func (s *Scheduler) EnableJob(name string) error {
 		if _, active := s.jobsByName[name]; active {
 			return nil
 		}
-		return fmt.Errorf("%w: %q", ErrJobNotFound, name)
+		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
 	}
 
 	j, _ := getJob(s.Jobs, name)
 	if j == nil {
-		return fmt.Errorf("%w: %q", ErrJobNotFound, name)
+		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
 	}
 
 	if err := s.cron.ResumeEntryByName(name); err != nil {

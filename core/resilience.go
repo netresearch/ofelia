@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const errFmtWrapName = "%w: %s"
+
 // RetryPolicy defines retry behavior
 type RetryPolicy struct {
 	MaxAttempts     int
@@ -174,18 +176,18 @@ func (cb *CircuitBreaker) beforeCall() error {
 			cb.transitionToHalfOpen()
 			return nil
 		}
-		return fmt.Errorf("%w: %s", ErrCircuitBreakerOpen, cb.name)
+		return fmt.Errorf(errFmtWrapName, ErrCircuitBreakerOpen, cb.name)
 
 	case StateHalfOpen:
 		// Allow limited calls in half-open state
 		if cb.halfOpenCalls >= cb.halfOpenMaxCalls {
-			return fmt.Errorf("%w: %s", ErrCircuitBreakerHalfOpen, cb.name)
+			return fmt.Errorf(errFmtWrapName, ErrCircuitBreakerHalfOpen, cb.name)
 		}
 		cb.halfOpenCalls++
 		return nil
 
 	default:
-		return fmt.Errorf("%w: %s", ErrCircuitBreakerUnknown, cb.name)
+		return fmt.Errorf(errFmtWrapName, ErrCircuitBreakerUnknown, cb.name)
 	}
 }
 
