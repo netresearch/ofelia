@@ -434,7 +434,8 @@ func appendFieldHash(field reflect.StructField, fieldv reflect.Value, hash *stri
 		if field.Type.Elem().Kind() != reflect.String {
 			return ErrUnsupportedFieldType
 		}
-		for _, str := range fieldv.Interface().([]string) {
+		for i := range fieldv.Len() {
+			str := fieldv.Index(i).String()
 			*hash += fmt.Sprintf("%d:%s,", len(str), str)
 		}
 	case reflect.Pointer:

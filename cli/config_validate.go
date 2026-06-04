@@ -145,11 +145,14 @@ func dockerImageRegistryPortValid(value string) bool {
 	if len(parts) != 2 || !strings.Contains(parts[0], ":") {
 		return true
 	}
-	hostPort := strings.SplitN(parts[0], ":", 2)
-	if len(hostPort) != 2 || hostPort[1] == "" {
+	// Use the last ':' so IPv6 registry hosts (e.g. "[::1]:5000") parse the
+	// port correctly rather than splitting inside the address.
+	idx := strings.LastIndex(parts[0], ":")
+	port := parts[0][idx+1:]
+	if port == "" {
 		return true
 	}
-	for _, c := range hostPort[1] {
+	for _, c := range port {
 		if c < '0' || c > '9' {
 			return false
 		}
