@@ -420,13 +420,13 @@
     function stripControlChars(s) {
       if (!s) return '';
       // Strip Docker stream mux headers (8-byte prefix per frame) and other control chars
-      return s.replace(/[\x00-\x08\x0e-\x1f]/g, '');
+      return s.replaceAll(/[\x00-\x08\x0e-\x1f]/g, '');
     }
 
     function escapeHtml(str) {
       if (!str && str !== 0) return '';
-      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      return String(str).replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;')
+        .replaceAll(/>/g, '&gt;').replaceAll(/"/g, '&quot;').replaceAll(/'/g, '&#39;');
     }
 
     function statusDot(failed, skipped) {
