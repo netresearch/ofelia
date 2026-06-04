@@ -134,6 +134,29 @@ func validateCron(fl validator.FieldLevel) bool {
 }
 
 // validateDockerImage validates a Docker image reference
+// dockerImageRegistryPortValid reports whether the registry-port portion of a
+// Docker image reference (host:port/image) is numeric. References without a
+// registry port are treated as valid; only a non-numeric port is rejected.
+func dockerImageRegistryPortValid(value string) bool {
+	if !strings.Contains(value, ":") || !strings.Contains(value, "/") {
+		return true
+	}
+	parts := strings.SplitN(value, "/", 2)
+	if len(parts) != 2 || !strings.Contains(parts[0], ":") {
+		return true
+	}
+	hostPort := strings.SplitN(parts[0], ":", 2)
+	if len(hostPort) != 2 || hostPort[1] == "" {
+		return true
+	}
+	for _, c := range hostPort[1] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func validateDockerImage(fl validator.FieldLevel) bool {
 	value := fl.Field().String()
 	if value == "" {
@@ -148,27 +171,9 @@ func validateDockerImage(fl validator.FieldLevel) bool {
 		`(@sha256:[a-f0-9]{64})?$`
 	imageRegex := regexp.MustCompile(imagePattern)
 
-	// Handle registry with port: registry:port/image
-	if strings.Contains(value, ":") && strings.Contains(value, "/") {
-		// Split on first slash
-		parts := strings.SplitN(value, "/", 2)
-		if len(parts) == 2 {
-			// Check if first part looks like host:port
-			if strings.Contains(parts[0], ":") {
-				// Validate port part
-				hostPort := strings.SplitN(parts[0], ":", 2)
-				if len(hostPort) == 2 {
-					// Port should be numeric or omitted
-					if hostPort[1] != "" {
-						for _, c := range hostPort[1] {
-							if c < '0' || c > '9' {
-								return false
-							}
-						}
-					}
-				}
-			}
-		}
+	// Reject references whose registry port (host:port/image) is non-numeric.
+	if !dockerImageRegistryPortValid(value) {
+		return false
 	}
 
 	return imageRegex.MatchString(value) || strings.Contains(value, "/")
