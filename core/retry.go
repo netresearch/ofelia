@@ -90,18 +90,10 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 	attempt := 0
 
 	for attempt <= config.MaxRetries {
-		// Execute the job
 		err := runFunc(ctx)
 
-		// Success
 		if err == nil {
-			if attempt > 0 {
-				re.logger.Info(fmt.Sprintf("Job %s succeeded after %d retries", job.GetName(), attempt))
-				// Record retry success in metrics
-				if re.metrics != nil {
-					re.metrics.RecordJobRetry(job.GetName(), attempt, true)
-				}
-			}
+			re.recordRetrySuccess(job.GetName(), attempt)
 			return nil
 		}
 
@@ -119,10 +111,7 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 			"job", job.GetName(), "attempt", attempt+1, "maxRetries", config.MaxRetries+1,
 			"error", err, "backoff", delay)
 
-		// Record retry attempt in metrics
-		if re.metrics != nil {
-			re.metrics.RecordJobRetry(job.GetName(), attempt+1, false)
-		}
+		re.recordRetryAttempt(job.GetName(), attempt+1)
 
 		// Wait before retry, honoring scheduler / job cancellation so
 		// SIGTERM drains promptly even mid-retry. Pre-fix this was a bare
@@ -144,12 +133,26 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 	re.logger.Error(fmt.Sprintf("Job %s failed after %d retries: %v",
 		job.GetName(), config.MaxRetries+1, lastErr))
 
-	// Record final failure in metrics
-	if re.metrics != nil {
-		re.metrics.RecordJobRetry(job.GetName(), config.MaxRetries+1, false)
-	}
+	re.recordRetryAttempt(job.GetName(), config.MaxRetries+1)
 
 	return fmt.Errorf("job failed after %d attempts: %w", config.MaxRetries+1, lastErr)
+}
+
+// recordRetrySuccess logs and records a metric for a successful retry.
+func (re *RetryExecutor) recordRetrySuccess(jobName string, attempt int) {
+	if attempt > 0 {
+		re.logger.Info(fmt.Sprintf("Job %s succeeded after %d retries", jobName, attempt))
+		if re.metrics != nil {
+			re.metrics.RecordJobRetry(jobName, attempt, true)
+		}
+	}
+}
+
+// recordRetryAttempt records a failed retry attempt in metrics.
+func (re *RetryExecutor) recordRetryAttempt(jobName string, attempt int) {
+	if re.metrics != nil {
+		re.metrics.RecordJobRetry(jobName, attempt, false)
+	}
 }
 
 // calculateDelay calculates the retry delay based on configuration

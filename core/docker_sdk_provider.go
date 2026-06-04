@@ -189,27 +189,44 @@ func (p *SDKDockerProvider) WaitContainer(ctx context.Context, containerID strin
 			p.recordError("wait_container")
 			return -1, fmt.Errorf("waiting for container: %w", ctx.Err())
 		case err, ok := <-errCh:
-			if !ok {
-				// errCh closed, continue waiting for response
-				errCh = nil
-				continue
-			}
-			if err != nil {
-				p.recordError("wait_container")
-				return -1, WrapContainerError("wait", containerID, err)
+			if newErrCh, done, exitCode, exitErr := p.handleWaitErrCh(containerID, errCh, err, ok); done {
+				return exitCode, exitErr
+			} else {
+				errCh = newErrCh
 			}
 		case resp, ok := <-respCh:
-			if !ok {
-				// respCh closed without response, unexpected
-				return -1, WrapContainerError("wait", containerID, ErrResponseChannelClosed)
-			}
-			if resp.Error != nil && resp.Error.Message != "" {
-				p.recordError("wait_container")
-				return resp.StatusCode, WrapContainerError("wait", containerID, fmt.Errorf("%w: %s", ErrUnexpected, resp.Error.Message))
-			}
-			return resp.StatusCode, nil
+			exitCode, err := p.handleWaitRespCh(containerID, resp, ok)
+			return exitCode, err
 		}
 	}
+}
+
+// handleWaitErrCh processes one receive from the error channel of WaitContainer.
+// Returns (newErrCh, done, exitCode, err): when done is true the caller should
+// return (exitCode, err); when done is false the caller should replace errCh with newErrCh.
+func (p *SDKDockerProvider) handleWaitErrCh(containerID string, errCh <-chan error, err error, ok bool) (<-chan error, bool, int64, error) {
+	if !ok {
+		// errCh closed, continue waiting for response
+		return nil, false, 0, nil
+	}
+	if err != nil {
+		p.recordError("wait_container")
+		return nil, true, -1, WrapContainerError("wait", containerID, err)
+	}
+	return errCh, false, 0, nil
+}
+
+// handleWaitRespCh processes one receive from the response channel of WaitContainer.
+func (p *SDKDockerProvider) handleWaitRespCh(containerID string, resp domain.WaitResponse, ok bool) (int64, error) {
+	if !ok {
+		// respCh closed without response, unexpected
+		return -1, WrapContainerError("wait", containerID, ErrResponseChannelClosed)
+	}
+	if resp.Error != nil && resp.Error.Message != "" {
+		p.recordError("wait_container")
+		return resp.StatusCode, WrapContainerError("wait", containerID, fmt.Errorf("%w: %s", ErrUnexpected, resp.Error.Message))
+	}
+	return resp.StatusCode, nil
 }
 
 // GetContainerLogs retrieves container logs.

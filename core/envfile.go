@@ -38,34 +38,9 @@ func ParseEnvFile(path string) ([]string, error) {
 	buf := make([]byte, 64*1024)
 	scanner.Buffer(buf, 1024*1024) // Support long values (certs, JSON blobs)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip blank lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+		if entry, ok := parseEnvLine(scanner.Text()); ok {
+			result = append(result, entry)
 		}
-
-		// Strip "export " prefix
-		line = strings.TrimPrefix(line, "export ")
-
-		// Must contain = to be a valid env assignment
-		idx := strings.IndexByte(line, '=')
-		if idx <= 0 {
-			continue // skip lines without = or with empty key (e.g., "=value")
-		}
-
-		key := line[:idx]
-		value := line[idx+1:]
-
-		// Strip surrounding quotes from value
-		if len(value) >= 2 {
-			if (value[0] == '"' && value[len(value)-1] == '"') ||
-				(value[0] == '\'' && value[len(value)-1] == '\'') {
-				value = value[1 : len(value)-1]
-			}
-		}
-
-		result = append(result, key+"="+value)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -73,6 +48,40 @@ func ParseEnvFile(path string) ([]string, error) {
 	}
 
 	return result, nil
+}
+
+// parseEnvLine parses a single env-file line into a KEY=VALUE entry.
+// Returns the entry and true on success; returns "", false for blank lines,
+// comments, and lines without a valid key=value assignment.
+func parseEnvLine(raw string) (string, bool) {
+	line := strings.TrimSpace(raw)
+
+	// Skip blank lines and comments
+	if line == "" || strings.HasPrefix(line, "#") {
+		return "", false
+	}
+
+	// Strip "export " prefix
+	line = strings.TrimPrefix(line, "export ")
+
+	// Must contain = to be a valid env assignment
+	idx := strings.IndexByte(line, '=')
+	if idx <= 0 {
+		return "", false // skip lines without = or with empty key (e.g., "=value")
+	}
+
+	key := line[:idx]
+	value := line[idx+1:]
+
+	// Strip surrounding quotes from value
+	if len(value) >= 2 {
+		if (value[0] == '"' && value[len(value)-1] == '"') ||
+			(value[0] == '\'' && value[len(value)-1] == '\'') {
+			value = value[1 : len(value)-1]
+		}
+	}
+
+	return key + "=" + value, true
 }
 
 // ResolveEnvFrom inspects a running Docker container and returns its env vars.

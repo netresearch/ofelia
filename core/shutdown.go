@@ -113,46 +113,11 @@ func (sm *ShutdownManager) Shutdown() error {
 	var shutdownErrors []error
 
 	for _, priority := range priorities {
-		groupHooks := groups[priority]
-		var wg sync.WaitGroup
-		errChan := make(chan error, len(groupHooks))
-
-		for _, hook := range groupHooks {
-			wg.Add(1)
-			go func(h ShutdownHook) {
-				defer wg.Done()
-
-				sm.logger.Debug(fmt.Sprintf("Executing shutdown hook: %s (priority: %d)", h.Name, h.Priority))
-
-				if err := h.Hook(ctx); err != nil {
-					sm.logger.Error(fmt.Sprintf("Shutdown hook '%s' failed: %v", h.Name, err))
-					errChan <- fmt.Errorf("hook %s: %w", h.Name, err)
-				} else {
-					sm.logger.Debug(fmt.Sprintf("Shutdown hook '%s' completed successfully", h.Name))
-				}
-			}(hook)
-		}
-
-		// Wait for all hooks in this group with timeout enforcement.
-		// Without this select, a hook that ignores its context could block forever.
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			// Group completed normally
-		case <-ctx.Done():
-			sm.logger.Error(fmt.Sprintf("Graceful shutdown timed out after %v (waiting for priority %d hooks)", sm.timeout, priority))
+		errs, timedOut := sm.runHookGroup(ctx, groups[priority], priority)
+		if timedOut {
 			return ErrShutdownTimeout
 		}
-
-		close(errChan)
-		for err := range errChan {
-			shutdownErrors = append(shutdownErrors, err)
-		}
+		shutdownErrors = append(shutdownErrors, errs...)
 	}
 
 	sm.logger.Info("Graceful shutdown completed successfully")
@@ -162,6 +127,53 @@ func (sm *ShutdownManager) Shutdown() error {
 	}
 
 	return nil
+}
+
+// runHookGroup runs all hooks in a priority group concurrently and waits for
+// them to finish or for ctx to expire. It returns collected errors and a bool
+// indicating whether the context deadline was exceeded before all hooks finished.
+func (sm *ShutdownManager) runHookGroup(ctx context.Context, hooks []ShutdownHook, priority int) ([]error, bool) {
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(hooks))
+
+	for _, hook := range hooks {
+		wg.Add(1)
+		go func(h ShutdownHook) {
+			defer wg.Done()
+
+			sm.logger.Debug(fmt.Sprintf("Executing shutdown hook: %s (priority: %d)", h.Name, h.Priority))
+
+			if err := h.Hook(ctx); err != nil {
+				sm.logger.Error(fmt.Sprintf("Shutdown hook '%s' failed: %v", h.Name, err))
+				errChan <- fmt.Errorf("hook %s: %w", h.Name, err)
+			} else {
+				sm.logger.Debug(fmt.Sprintf("Shutdown hook '%s' completed successfully", h.Name))
+			}
+		}(hook)
+	}
+
+	// Wait for all hooks in this group with timeout enforcement.
+	// Without this select, a hook that ignores its context could block forever.
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Group completed normally
+	case <-ctx.Done():
+		sm.logger.Error(fmt.Sprintf("Graceful shutdown timed out after %v (waiting for priority %d hooks)", sm.timeout, priority))
+		return nil, true
+	}
+
+	close(errChan)
+	var errs []error
+	for err := range errChan {
+		errs = append(errs, err)
+	}
+	return errs, false
 }
 
 // ShutdownChan returns a channel that's closed when shutdown starts
