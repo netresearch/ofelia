@@ -394,7 +394,7 @@ func buildWebhookConfigsFromLabels(c *Config, webhookLabels map[string]map[strin
 // applyWebhookLabelParams applies flat label params to a WebhookConfig.
 // This mirrors parseWebhookConfig but works from a string map (Docker labels)
 // instead of an INI section.
-func applyWebhookLabelParams(config *middlewares.WebhookConfig, params map[string]string) {
+func applyWebhookLabelParams(config *middlewares.WebhookConfig, params map[string]string) { //nolint:gocyclo // flat label-dispatch table
 	for key, val := range params {
 		switch strings.ToLower(key) {
 		case "preset":

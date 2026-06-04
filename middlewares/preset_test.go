@@ -98,7 +98,7 @@ func TestPresetLoader_LoadBundledPreset_Pushover(t *testing.T) {
 
 // TestPushoverPreset_Device verifies the optional device parameter is only
 // emitted in the request body when configured, and omitted otherwise, so the
-// default behaviour (deliver to all of the user's devices) is preserved.
+// default behavior (deliver to all of the user's devices) is preserved.
 func TestPushoverPreset_Device(t *testing.T) {
 	t.Parallel()
 
