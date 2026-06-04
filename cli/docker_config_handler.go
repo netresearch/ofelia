@@ -568,10 +568,10 @@ func (c *DockerHandler) processEventStream(
 				// Channel closed, reconnect
 				return true, backoff
 			}
-			// Success - reset backoff and clear failed state
+			// Success - reset backoff and keep processing on the same subscription.
+			backoff = watchEventsInitialBackoff
 			c.clearEventStreamError()
 			c.refreshContainerLabels()
-			return true, watchEventsInitialBackoff
 		}
 	}
 }
