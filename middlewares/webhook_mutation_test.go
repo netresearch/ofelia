@@ -700,6 +700,7 @@ func runCtxCancelScenario(t *testing.T, cfg *WebhookConfig) time.Duration {
 	require.NoError(t, err)
 
 	cancelCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	ctx := core.NewContextWithContext(cancelCtx, sh, job, e)
 	ctx.Start()
 	ctx.Stop(nil)

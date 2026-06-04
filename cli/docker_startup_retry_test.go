@@ -107,6 +107,7 @@ func TestPingWithRetry_HonorsContextCancellation(t *testing.T) {
 
 	provider := &flakyPingProvider{pingErr: errors.New("never reachable"), failUntilNth: 999}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
@@ -167,6 +168,7 @@ func TestPingWithRetry_CapsBackoffStep(t *testing.T) {
 
 	provider := &flakyPingProvider{pingErr: errors.New("down"), failUntilNth: 999}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		time.Sleep(200 * time.Millisecond)
 		cancel()

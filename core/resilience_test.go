@@ -126,6 +126,7 @@ func TestRetryNonRetryableError(t *testing.T) {
 func TestRetryContextCanceled(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	policy := DefaultRetryPolicy()
 	policy.InitialDelay = 100 * time.Millisecond
 
@@ -424,6 +425,7 @@ func TestRateLimiterWaitContextCanceled(t *testing.T) {
 	t.Parallel()
 	rl := NewRateLimiter(0.1, 1)
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Use the token
 	rl.Allow()
