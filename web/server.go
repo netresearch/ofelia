@@ -73,7 +73,7 @@ const (
 const (
 	pathAPILogin      = "/api/login"
 	pathAPIAuthStatus = "/api/auth/status"
-	pathAPICSRFToken  = "/api/csrf-token"
+	pathAPICSRFToken  = "/api/csrf-token" // #nosec G101 -- public API route path, not a credential
 	pathAPIJobsPrefix = "/api/jobs/"
 
 	headerContentType = "Content-Type"
