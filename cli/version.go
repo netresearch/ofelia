@@ -33,9 +33,14 @@ func VersionString() string {
 		return "ofelia dev"
 	}
 
-	var parts []string
-	parts = append(parts, info.GoVersion)
+	return fmt.Sprintf("ofelia dev (%s)", strings.Join(devBuildParts(info), ", "))
+}
 
+// devBuildParts assembles the parenthesised components for a dev-build version
+// string: Go toolchain version, short VCS revision, and "dirty" when there are
+// uncommitted changes.
+func devBuildParts(info *debug.BuildInfo) []string {
+	parts := []string{info.GoVersion}
 	var vcsRev, vcsModified string
 	for _, s := range info.Settings {
 		switch s.Key {
@@ -56,8 +61,7 @@ func VersionString() string {
 	if vcsModified != "" {
 		parts = append(parts, vcsModified)
 	}
-
-	return fmt.Sprintf("ofelia dev (%s)", strings.Join(parts, ", "))
+	return parts
 }
 
 // VersionCommand prints version information.

@@ -430,90 +430,35 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 		return
 	}
 
-	allValid := true
-
-	// Check run jobs
+	// scheduleMap maps job-type label prefix to (jobName→schedule) pairs.
+	type jobSchedule struct{ kind, name, schedule string }
+	var jobs []jobSchedule
 	for name, job := range conf.RunJobs {
-		if err := validateCronSchedule(job.Schedule); err != nil {
-			allValid = false
-			report.Healthy = false
-			report.Checks = append(report.Checks, CheckResult{
-				Category: categoryJobSchedules,
-				Name:     fmt.Sprintf("job-run \"%s\"", name),
-				Status:   statusFail,
-				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
-				Hints: []string{
-					hintScheduleExamples,
-					hintScheduleTest,
-				},
-			})
-		}
+		jobs = append(jobs, jobSchedule{jobRun, name, job.Schedule})
 	}
-
-	// Check local jobs
 	for name, job := range conf.LocalJobs {
-		if err := validateCronSchedule(job.Schedule); err != nil {
-			allValid = false
-			report.Healthy = false
-			report.Checks = append(report.Checks, CheckResult{
-				Category: categoryJobSchedules,
-				Name:     fmt.Sprintf("job-local \"%s\"", name),
-				Status:   statusFail,
-				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
-				Hints: []string{
-					hintScheduleExamples,
-					hintScheduleTest,
-				},
-			})
-		}
+		jobs = append(jobs, jobSchedule{jobLocal, name, job.Schedule})
 	}
-
-	// Check exec jobs
 	for name, job := range conf.ExecJobs {
-		if err := validateCronSchedule(job.Schedule); err != nil {
-			allValid = false
-			report.Healthy = false
-			report.Checks = append(report.Checks, CheckResult{
-				Category: categoryJobSchedules,
-				Name:     fmt.Sprintf("job-exec \"%s\"", name),
-				Status:   statusFail,
-				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
-				Hints: []string{
-					hintScheduleExamples,
-					hintScheduleTest,
-				},
-			})
-		}
+		jobs = append(jobs, jobSchedule{jobExec, name, job.Schedule})
 	}
-
-	// Check service-run jobs
 	for name, job := range conf.ServiceJobs {
-		if err := validateCronSchedule(job.Schedule); err != nil {
-			allValid = false
-			report.Healthy = false
-			report.Checks = append(report.Checks, CheckResult{
-				Category: categoryJobSchedules,
-				Name:     fmt.Sprintf("job-service-run \"%s\"", name),
-				Status:   statusFail,
-				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
-				Hints: []string{
-					hintScheduleExamples,
-					hintScheduleTest,
-				},
-			})
-		}
+		jobs = append(jobs, jobSchedule{jobServiceRun, name, job.Schedule})
+	}
+	for name, job := range conf.ComposeJobs {
+		jobs = append(jobs, jobSchedule{jobCompose, name, job.Schedule})
 	}
 
-	// Check compose jobs
-	for name, job := range conf.ComposeJobs {
-		if err := validateCronSchedule(job.Schedule); err != nil {
+	allValid := true
+	for _, j := range jobs {
+		if err := validateCronSchedule(j.schedule); err != nil {
 			allValid = false
 			report.Healthy = false
 			report.Checks = append(report.Checks, CheckResult{
 				Category: categoryJobSchedules,
-				Name:     fmt.Sprintf("job-compose \"%s\"", name),
+				Name:     fmt.Sprintf("%s \"%s\"", j.kind, j.name),
 				Status:   statusFail,
-				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
+				Message:  fmt.Sprintf(msgInvalidScheduleFmt, j.schedule, err),
 				Hints: []string{
 					hintScheduleExamples,
 					hintScheduleTest,
@@ -523,13 +468,11 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 	}
 
 	if allValid {
-		totalJobs := len(conf.RunJobs) + len(conf.LocalJobs) +
-			len(conf.ExecJobs) + len(conf.ServiceJobs) + len(conf.ComposeJobs)
 		report.Checks = append(report.Checks, CheckResult{
 			Category: categoryJobSchedules,
 			Name:     "All Schedules Valid",
 			Status:   statusPass,
-			Message:  fmt.Sprintf("%d schedule(s) validated", totalJobs),
+			Message:  fmt.Sprintf("%d schedule(s) validated", len(jobs)),
 		})
 	}
 }
@@ -644,36 +587,32 @@ func (c *DoctorCommand) outputHuman(report *DoctorReport) error {
 		if !exists {
 			continue
 		}
-
-		icon := getCategoryIcon(category)
-		c.Logger.Info(fmt.Sprintf("%s %s", icon, category))
-
+		c.Logger.Info(fmt.Sprintf("%s %s", getCategoryIcon(category), category))
 		for _, check := range checks {
-			statusIcon := getStatusIcon(check.Status)
-			if check.Message != "" {
-				c.Logger.Info(fmt.Sprintf("  %s %s: %s", statusIcon, check.Name, check.Message))
-			} else {
-				c.Logger.Info(fmt.Sprintf("  %s %s", statusIcon, check.Name))
-			}
-
-			// Output hints
-			for _, hint := range check.Hints {
-				c.Logger.Info(fmt.Sprintf("    → %s", hint))
-			}
+			c.logCheckResult(check)
 		}
 		c.Logger.Info("")
 	}
 
-	// Summary
-	failCount := 0
-	skipCount := 0
-	for _, check := range report.Checks {
-		if check.Status == statusFail {
-			failCount++
-		} else if check.Status == statusSkip {
-			skipCount++
-		}
+	return c.outputHumanSummary(report)
+}
+
+// logCheckResult prints a single check result line and its hints.
+func (c *DoctorCommand) logCheckResult(check CheckResult) {
+	statusIcon := getStatusIcon(check.Status)
+	if check.Message != "" {
+		c.Logger.Info(fmt.Sprintf("  %s %s: %s", statusIcon, check.Name, check.Message))
+	} else {
+		c.Logger.Info(fmt.Sprintf("  %s %s", statusIcon, check.Name))
 	}
+	for _, hint := range check.Hints {
+		c.Logger.Info(fmt.Sprintf("    → %s", hint))
+	}
+}
+
+// outputHumanSummary prints the pass/fail summary line and returns an error when unhealthy.
+func (c *DoctorCommand) outputHumanSummary(report *DoctorReport) error {
+	failCount, skipCount := countCheckStatuses(report.Checks)
 
 	if report.Healthy {
 		c.Logger.Info("Summary: All checks passed")
@@ -688,6 +627,19 @@ func (c *DoctorCommand) outputHuman(report *DoctorReport) error {
 		c.Logger.Info(fmt.Sprintf("  (%d check(s) skipped due to blockers)", skipCount))
 	}
 	return fmt.Errorf("health check failed")
+}
+
+// countCheckStatuses returns the number of failed and skipped checks.
+func countCheckStatuses(checks []CheckResult) (failCount, skipCount int) {
+	for _, check := range checks {
+		switch check.Status {
+		case statusFail:
+			failCount++
+		case statusSkip:
+			skipCount++
+		}
+	}
+	return failCount, skipCount
 }
 
 // getCategoryIcon returns emoji for category

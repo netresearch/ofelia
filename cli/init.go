@@ -112,7 +112,7 @@ type runJobConfig struct {
 	Delete   bool
 }
 
-func (j *runJobConfig) Type() string { return "job-run" }
+func (j *runJobConfig) Type() string { return jobRun }
 func (j *runJobConfig) Name() string { return j.JobName }
 func (j *runJobConfig) ToINI(section *ini.Section) error {
 	section.Key("schedule").SetValue(j.Schedule)
@@ -138,7 +138,7 @@ type localJobConfig struct {
 	Dir      string
 }
 
-func (j *localJobConfig) Type() string { return "job-local" }
+func (j *localJobConfig) Type() string { return jobLocal }
 func (j *localJobConfig) Name() string { return j.JobName }
 func (j *localJobConfig) ToINI(section *ini.Section) error {
 	section.Key("schedule").SetValue(j.Schedule)
@@ -390,6 +390,18 @@ func (c *InitCommand) promptRunJob() (*runJobConfig, error) {
 		return nil, err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
 	}
 
+	if err := c.promptRunJobOptionals(job); err != nil {
+		return nil, err
+	}
+
+	return job, nil
+}
+
+// promptRunJobOptionals prompts for the optional fields of a run job: volume,
+// network, and whether to delete the container after execution.
+func (c *InitCommand) promptRunJobOptionals(job *runJobConfig) error {
+	var err error
+
 	// Volume (optional)
 	volumePrompt := promptui.Prompt{
 		Label:   "Volume mounts (optional, format: /host/path:/container/path)",
@@ -397,7 +409,7 @@ func (c *InitCommand) promptRunJob() (*runJobConfig, error) {
 	}
 	job.Volume, err = volumePrompt.Run()
 	if err != nil && !errors.Is(err, promptui.ErrAbort) {
-		return nil, err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
+		return err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
 	}
 
 	// Network (optional)
@@ -407,7 +419,7 @@ func (c *InitCommand) promptRunJob() (*runJobConfig, error) {
 	}
 	job.Network, err = networkPrompt.Run()
 	if err != nil && !errors.Is(err, promptui.ErrAbort) {
-		return nil, err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
+		return err //nolint:wrapcheck // promptui errors are user interaction failures, not internal errors
 	}
 
 	// Delete container after execution
@@ -418,8 +430,7 @@ func (c *InitCommand) promptRunJob() (*runJobConfig, error) {
 	}
 	_, err = deletePrompt.Run()
 	job.Delete = err == nil
-
-	return job, nil
+	return nil
 }
 
 // promptLocalJob prompts for job-local configuration

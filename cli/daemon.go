@@ -277,54 +277,67 @@ func (c *DaemonCommand) start() error {
 	}
 	c.Logger.Info("Scheduler started", "jobCount", jobCount)
 
-	if c.EnablePprof {
-		c.Logger.Info(fmt.Sprintf("Starting pprof server on %s...", c.PprofAddr))
-		pprofErrChan := make(chan error, 1)
-		go func() {
-			if err := c.pprofServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-				c.Logger.Error(fmt.Sprintf("Error starting HTTP server: %v", err))
-				pprofErrChan <- err
-				c.closeDone()
-			}
-		}()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := waitForServerWithErrChan(ctx, c.PprofAddr, pprofErrChan); err != nil {
-			c.Logger.Error(fmt.Sprintf("pprof server failed to start: %v", err))
-			return fmt.Errorf("pprof server startup failed: %w", err)
-		}
-		c.Logger.Info(fmt.Sprintf("pprof server ready on %s", c.PprofAddr))
-	} else {
-		c.Logger.Info("pprof server disabled")
+	if err := c.startPprofServer(); err != nil {
+		return err
 	}
-
-	if c.EnableWeb {
-		c.Logger.Info(fmt.Sprintf("Starting web server on %s...", c.WebAddr))
-		webErrChan := make(chan error, 1)
-		go func() {
-			if err := c.webServer.Start(); err != nil {
-				c.Logger.Error(fmt.Sprintf("Error starting web server: %v", err))
-				webErrChan <- err
-				c.closeDone()
-			}
-		}()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		if err := waitForServerWithErrChan(ctx, c.WebAddr, webErrChan); err != nil {
-			c.Logger.Error(fmt.Sprintf("web server failed to start: %v", err))
-			return fmt.Errorf("web server startup failed: %w", err)
-		}
-		c.Logger.Info(fmt.Sprintf("Web UI ready at http://%s", c.WebAddr))
-	} else {
-		c.Logger.Info("web server disabled")
+	if err := c.startWebServer(); err != nil {
+		return err
 	}
 
 	c.Logger.Info("Ofelia is now running. Press Ctrl+C to stop.")
 
+	return nil
+}
+
+// startPprofServer starts the pprof HTTP server when enabled, or logs that it
+// is disabled. Returns an error when the server fails to become ready within 5 s.
+func (c *DaemonCommand) startPprofServer() error {
+	if !c.EnablePprof {
+		c.Logger.Info("pprof server disabled")
+		return nil
+	}
+	c.Logger.Info(fmt.Sprintf("Starting pprof server on %s...", c.PprofAddr))
+	pprofErrChan := make(chan error, 1)
+	go func() {
+		if err := c.pprofServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			c.Logger.Error(fmt.Sprintf("Error starting HTTP server: %v", err))
+			pprofErrChan <- err
+			c.closeDone()
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := waitForServerWithErrChan(ctx, c.PprofAddr, pprofErrChan); err != nil {
+		c.Logger.Error(fmt.Sprintf("pprof server failed to start: %v", err))
+		return fmt.Errorf("pprof server startup failed: %w", err)
+	}
+	c.Logger.Info(fmt.Sprintf("pprof server ready on %s", c.PprofAddr))
+	return nil
+}
+
+// startWebServer starts the web UI server when enabled, or logs that it is
+// disabled. Returns an error when the server fails to become ready within 5 s.
+func (c *DaemonCommand) startWebServer() error {
+	if !c.EnableWeb {
+		c.Logger.Info("web server disabled")
+		return nil
+	}
+	c.Logger.Info(fmt.Sprintf("Starting web server on %s...", c.WebAddr))
+	webErrChan := make(chan error, 1)
+	go func() {
+		if err := c.webServer.Start(); err != nil {
+			c.Logger.Error(fmt.Sprintf("Error starting web server: %v", err))
+			webErrChan <- err
+			c.closeDone()
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := waitForServerWithErrChan(ctx, c.WebAddr, webErrChan); err != nil {
+		c.Logger.Error(fmt.Sprintf("web server failed to start: %v", err))
+		return fmt.Errorf("web server startup failed: %w", err)
+	}
+	c.Logger.Info(fmt.Sprintf("Web UI ready at http://%s", c.WebAddr))
 	return nil
 }
 
@@ -578,62 +591,82 @@ func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (co
 	validator := cfgvalidator.NewCommandValidator()
 	switch j.Type {
 	case persist.JobTypeRun:
-		if provider == nil {
-			return nil, fmt.Errorf("docker provider unavailable for run job")
-		}
-		rj := core.NewRunJob(provider)
-		rj.Name = name
-		rj.Schedule = j.Schedule
-		rj.Command = j.Command
-		rj.Image = j.Image
-		rj.Container = j.Container
-		return rj, nil
+		return c.buildPersistedRunJob(name, j, provider)
 	case persist.JobTypeExec:
-		if provider == nil {
-			return nil, fmt.Errorf("docker provider unavailable for exec job")
-		}
-		ej := core.NewExecJob(provider)
-		ej.Name = name
-		ej.Schedule = j.Schedule
-		ej.Command = j.Command
-		ej.Container = j.Container
-		return ej, nil
+		return c.buildPersistedExecJob(name, j, provider)
 	case persist.JobTypeCompose:
-		if j.File != "" {
-			if err := validator.ValidateFilePath(j.File); err != nil {
-				return nil, fmt.Errorf("invalid compose file path: %w", err)
-			}
-		}
-		if err := validator.ValidateServiceName(j.Service); err != nil {
-			return nil, fmt.Errorf("invalid service name: %w", err)
-		}
-		if j.Command != "" {
-			if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
-				return nil, fmt.Errorf("invalid command arguments: %w", err)
-			}
-		}
-		cj := &core.ComposeJob{}
-		cj.Name = name
-		cj.Schedule = j.Schedule
-		cj.Command = j.Command
-		cj.File = j.File
-		cj.Service = j.Service
-		cj.Exec = j.Exec
-		return cj, nil
+		return buildPersistedComposeJob(name, j, validator)
 	case persist.JobTypeLocal, "":
-		if j.Command != "" {
-			if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
-				return nil, fmt.Errorf("invalid command arguments: %w", err)
-			}
-		}
-		lj := &core.LocalJob{}
-		lj.Name = name
-		lj.Schedule = j.Schedule
-		lj.Command = j.Command
-		return lj, nil
+		return buildPersistedLocalJob(name, j, validator)
 	default:
 		return nil, fmt.Errorf("unknown job type %q", j.Type)
 	}
+}
+
+// buildPersistedRunJob materializes a persist.JobTypeRun into a core.RunJob.
+func (c *DaemonCommand) buildPersistedRunJob(name string, j *persist.Job, provider core.DockerProvider) (core.Job, error) {
+	if provider == nil {
+		return nil, fmt.Errorf("docker provider unavailable for run job")
+	}
+	rj := core.NewRunJob(provider)
+	rj.Name = name
+	rj.Schedule = j.Schedule
+	rj.Command = j.Command
+	rj.Image = j.Image
+	rj.Container = j.Container
+	return rj, nil
+}
+
+// buildPersistedExecJob materializes a persist.JobTypeExec into a core.ExecJob.
+func (c *DaemonCommand) buildPersistedExecJob(name string, j *persist.Job, provider core.DockerProvider) (core.Job, error) {
+	if provider == nil {
+		return nil, fmt.Errorf("docker provider unavailable for exec job")
+	}
+	ej := core.NewExecJob(provider)
+	ej.Name = name
+	ej.Schedule = j.Schedule
+	ej.Command = j.Command
+	ej.Container = j.Container
+	return ej, nil
+}
+
+// buildPersistedComposeJob materializes a persist.JobTypeCompose into a core.ComposeJob.
+func buildPersistedComposeJob(name string, j *persist.Job, validator *cfgvalidator.CommandValidator) (core.Job, error) {
+	if j.File != "" {
+		if err := validator.ValidateFilePath(j.File); err != nil {
+			return nil, fmt.Errorf("invalid compose file path: %w", err)
+		}
+	}
+	if err := validator.ValidateServiceName(j.Service); err != nil {
+		return nil, fmt.Errorf("invalid service name: %w", err)
+	}
+	if j.Command != "" {
+		if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
+			return nil, fmt.Errorf("invalid command arguments: %w", err)
+		}
+	}
+	cj := &core.ComposeJob{}
+	cj.Name = name
+	cj.Schedule = j.Schedule
+	cj.Command = j.Command
+	cj.File = j.File
+	cj.Service = j.Service
+	cj.Exec = j.Exec
+	return cj, nil
+}
+
+// buildPersistedLocalJob materializes a persist.JobTypeLocal into a core.LocalJob.
+func buildPersistedLocalJob(name string, j *persist.Job, validator *cfgvalidator.CommandValidator) (core.Job, error) {
+	if j.Command != "" {
+		if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
+			return nil, fmt.Errorf("invalid command arguments: %w", err)
+		}
+	}
+	lj := &core.LocalJob{}
+	lj.Name = name
+	lj.Schedule = j.Schedule
+	lj.Command = j.Command
+	return lj, nil
 }
 
 // validatePersistedJobName mirrors web.validateJobName but lives in

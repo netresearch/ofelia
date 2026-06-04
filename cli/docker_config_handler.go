@@ -289,14 +289,21 @@ func (c *DockerHandler) watchConfig() {
 		case <-c.ctx.Done():
 			return
 		case <-ticker.C:
-			if cfg, ok := c.notifier.(*Config); ok {
-				cfg.logger.Debug(fmt.Sprintf("checking config file %s", cfg.configPath))
-				if err := cfg.iniConfigUpdate(); err != nil {
-					if !errors.Is(err, os.ErrNotExist) {
-						c.logger.Warn(fmt.Sprintf("%v", err))
-					}
-				}
-			}
+			c.pollConfigFile()
+		}
+	}
+}
+
+// pollConfigFile triggers a config file reload when the notifier is a *Config.
+func (c *DockerHandler) pollConfigFile() {
+	cfg, ok := c.notifier.(*Config)
+	if !ok {
+		return
+	}
+	cfg.logger.Debug(fmt.Sprintf("checking config file %s", cfg.configPath))
+	if err := cfg.iniConfigUpdate(); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			c.logger.Warn(fmt.Sprintf("%v", err))
 		}
 	}
 }
@@ -364,22 +371,9 @@ func (c *DockerHandler) refreshContainerLabels() {
 }
 
 func (c *DockerHandler) GetDockerContainers() ([]DockerContainerInfo, error) {
-	filters := map[string][]string{
-		"label": {requiredLabelFilter},
-	}
-	for _, f := range c.filters {
-		parts := strings.SplitN(f, "=", 2)
-		if len(parts) != 2 {
-			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
-			return nil, fmt.Errorf("invalid docker filter %q\n  → Filters must use key=value format (e.g., 'label=app=web')\n  → Valid filter keys: label, name, id, status, network\n  → Example: --docker-filter='label=environment=production'\n  → Check your OFELIA_DOCKER_FILTER environment variable or config file", f)
-		}
-		key, value := parts[0], parts[1]
-		values, ok := filters[key]
-		if ok {
-			filters[key] = append(values, value)
-		} else {
-			filters[key] = []string{value}
-		}
+	filters, err := c.buildContainerFilters()
+	if err != nil {
+		return nil, err
 	}
 
 	conts, err := c.dockerProvider.ListContainers(c.ctx, domain.ListOptions{
@@ -395,32 +389,62 @@ func (c *DockerHandler) GetDockerContainers() ([]DockerContainerInfo, error) {
 		return nil, ErrNoContainerWithOfeliaEnabled
 	}
 
-	containers := make([]DockerContainerInfo, 0, len(conts))
+	return c.filterContainerInfos(conts), nil
+}
 
+// buildContainerFilters constructs the Docker API filter map from the handler's
+// configured filters. Returns an error if any filter is malformed.
+func (c *DockerHandler) buildContainerFilters() (map[string][]string, error) {
+	filters := map[string][]string{
+		"label": {requiredLabelFilter},
+	}
+	for _, f := range c.filters {
+		parts := strings.SplitN(f, "=", 2)
+		if len(parts) != 2 {
+			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+			return nil, fmt.Errorf("invalid docker filter %q\n  → Filters must use key=value format (e.g., 'label=app=web')\n  → Valid filter keys: label, name, id, status, network\n  → Example: --docker-filter='label=environment=production'\n  → Check your OFELIA_DOCKER_FILTER environment variable or config file", f)
+		}
+		key, value := parts[0], parts[1]
+		if existing, ok := filters[key]; ok {
+			filters[key] = append(existing, value)
+		} else {
+			filters[key] = []string{value}
+		}
+	}
+	return filters, nil
+}
+
+// filterContainerInfos converts raw container list entries to DockerContainerInfo,
+// keeping only containers that have a name and at least one Ofelia label.
+func (c *DockerHandler) filterContainerInfos(conts []domain.Container) []DockerContainerInfo {
+	containers := make([]DockerContainerInfo, 0, len(conts))
 	for _, cont := range conts {
 		if cont.Name == "" || len(cont.Labels) == 0 {
 			continue
 		}
-		ofeliaLabels := make(map[string]string)
-		for k, v := range cont.Labels {
-			if strings.HasPrefix(k, labelPrefix) || k == dockerComposeServiceLabel {
-				ofeliaLabels[k] = v
-			}
-		}
+		ofeliaLabels := extractOfeliaLabels(cont.Labels)
 		if len(ofeliaLabels) == 0 {
 			continue
 		}
-		name := cont.Name
-		containerInfo := DockerContainerInfo{
-			Name:    name,
+		containers = append(containers, DockerContainerInfo{
+			Name:    cont.Name,
 			Created: cont.Created,
 			State:   cont.State,
 			Labels:  ofeliaLabels,
-		}
-		containers = append(containers, containerInfo)
+		})
 	}
+	return containers
+}
 
-	return containers, nil
+// extractOfeliaLabels filters a raw label map to only the keys relevant to Ofelia.
+func extractOfeliaLabels(labels map[string]string) map[string]string {
+	result := make(map[string]string)
+	for k, v := range labels {
+		if strings.HasPrefix(k, labelPrefix) || k == dockerComposeServiceLabel {
+			result[k] = v
+		}
+	}
+	return result
 }
 
 // handleEventStreamError marks the event stream as failed and starts fallback polling if configured.
@@ -461,12 +485,11 @@ func (c *DockerHandler) clearEventStreamError() {
 
 func (c *DockerHandler) watchEvents() {
 	const (
-		initialBackoff = 1 * time.Second
-		maxBackoff     = 5 * time.Minute
-		backoffFactor  = 2
+		maxBackoff    = 5 * time.Minute
+		backoffFactor = 2
 	)
 
-	backoff := initialBackoff
+	backoff := watchEventsInitialBackoff
 
 	for {
 		// Check if context is canceled before attempting subscription
@@ -476,65 +499,85 @@ func (c *DockerHandler) watchEvents() {
 		default:
 		}
 
-		eventCh, errCh := c.dockerProvider.SubscribeEvents(c.ctx, domain.EventFilter{
-			Filters: map[string][]string{
-				"type":  {dockerEventTypeContainer},
-				"label": {"ofelia.enabled=true"},
-				"event": {
-					// Lifecycle events
-					domain.EventActionCreate,
-					domain.EventActionStart,
-					domain.EventActionRestart,
-					domain.EventActionStop,
-					domain.EventActionKill,
-					domain.EventActionDie,
-					domain.EventActionDestroy,
-					// Management events
-					domain.EventActionPause,
-					domain.EventActionUnpause,
-					domain.EventActionRename,
-					domain.EventActionUpdate,
-				},
-			},
-		})
-
-		// Inner loop: process events until error or shutdown
-	innerLoop:
-		for {
-			select {
-			case <-c.ctx.Done():
-				return
-			case err, ok := <-errCh:
-				if !ok {
-					// Channel closed, exit inner loop to reconnect
-					break innerLoop
-				}
-				if err != nil {
-					c.logger.Warn(fmt.Sprintf("Docker event stream error, reconnecting in %v: %v", backoff, err))
-					c.handleEventStreamError()
-				}
-				// Wait with backoff before reconnecting
-				select {
-				case <-c.ctx.Done():
-					return
-				case <-time.After(backoff):
-				}
-				// Increase backoff for next failure (capped at maxBackoff)
-				backoff = min(time.Duration(float64(backoff)*backoffFactor), maxBackoff)
-				break innerLoop // Exit inner loop to reconnect
-			case _, ok := <-eventCh:
-				if !ok {
-					// Channel closed, exit inner loop to reconnect
-					break innerLoop
-				}
-				// Success - reset backoff and clear failed state
-				backoff = initialBackoff
-				c.clearEventStreamError()
-				c.refreshContainerLabels()
-			}
+		eventCh, errCh := c.dockerProvider.SubscribeEvents(c.ctx, c.buildEventFilter())
+		reconnect, newBackoff := c.processEventStream(eventCh, errCh, backoff, maxBackoff, backoffFactor)
+		backoff = newBackoff
+		if !reconnect {
+			return
 		}
 	}
 }
+
+// buildEventFilter constructs the Docker event subscription filter for container events.
+func (c *DockerHandler) buildEventFilter() domain.EventFilter {
+	return domain.EventFilter{
+		Filters: map[string][]string{
+			"type":  {dockerEventTypeContainer},
+			"label": {"ofelia.enabled=true"},
+			"event": {
+				// Lifecycle events
+				domain.EventActionCreate,
+				domain.EventActionStart,
+				domain.EventActionRestart,
+				domain.EventActionStop,
+				domain.EventActionKill,
+				domain.EventActionDie,
+				domain.EventActionDestroy,
+				// Management events
+				domain.EventActionPause,
+				domain.EventActionUnpause,
+				domain.EventActionRename,
+				domain.EventActionUpdate,
+			},
+		},
+	}
+}
+
+// processEventStream runs the inner receive loop for one event-stream subscription.
+// Returns (reconnect=true, updatedBackoff) when the caller should reconnect, or
+// (reconnect=false, _) when the context is done and the outer loop should exit.
+func (c *DockerHandler) processEventStream(
+	eventCh <-chan domain.Event,
+	errCh <-chan error,
+	backoff, maxBackoff time.Duration,
+	backoffFactor float64,
+) (reconnect bool, newBackoff time.Duration) {
+	for {
+		select {
+		case <-c.ctx.Done():
+			return false, backoff
+		case err, ok := <-errCh:
+			if !ok {
+				// Channel closed, reconnect
+				return true, backoff
+			}
+			if err != nil {
+				c.logger.Warn(fmt.Sprintf("Docker event stream error, reconnecting in %v: %v", backoff, err))
+				c.handleEventStreamError()
+			}
+			// Wait with backoff before reconnecting
+			select {
+			case <-c.ctx.Done():
+				return false, backoff
+			case <-time.After(backoff):
+			}
+			// Increase backoff for next failure (capped at maxBackoff)
+			return true, min(time.Duration(float64(backoff)*backoffFactor), maxBackoff)
+		case _, ok := <-eventCh:
+			if !ok {
+				// Channel closed, reconnect
+				return true, backoff
+			}
+			// Success - reset backoff and clear failed state
+			c.clearEventStreamError()
+			c.refreshContainerLabels()
+			return true, watchEventsInitialBackoff
+		}
+	}
+}
+
+// watchEventsInitialBackoff is the reset value for the watchEvents reconnect backoff.
+const watchEventsInitialBackoff = 1 * time.Second
 
 func (c *DockerHandler) Shutdown(ctx context.Context) error {
 	if c.cancel != nil {
