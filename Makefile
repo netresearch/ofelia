@@ -54,14 +54,14 @@ tidy:
 .PHONY: lint
 lint:
 	@mkdir -p $(BUILD_PATH)/.tools
-	@GOTOOLCHAIN=go1.26.3 GOBIN=$(BUILD_PATH)/.tools go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@GOTOOLCHAIN=go1.26.4 GOBIN=$(BUILD_PATH)/.tools go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	@$(BUILD_PATH)/.tools/golangci-lint version || true
 	@$(BUILD_PATH)/.tools/golangci-lint run --timeout=5m
 
 .PHONY: lint-fix
 lint-fix:
 	@mkdir -p $(BUILD_PATH)/.tools
-	@GOTOOLCHAIN=go1.26.3 GOBIN=$(BUILD_PATH)/.tools go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@GOTOOLCHAIN=go1.26.4 GOBIN=$(BUILD_PATH)/.tools go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	@$(BUILD_PATH)/.tools/golangci-lint run --fix --timeout=5m
 
 .PHONY: lint-full
