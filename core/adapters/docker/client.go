@@ -281,37 +281,10 @@ func NewClientWithConfig(config *ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("creating docker client: %w", err)
 	}
 
-	// Fail-closed for tcp+tls:// without USABLE TLS material. tcp+tls:// is
-	// an EXPLICIT TLS opt-in. Invoke resolveTLSConfig so a typo or missing
-	// cert files at the path also fails closed at startup. See #627 / #646.
-	if scheme == schemeTCPTLS {
-		if !hasTLSMaterial(config) {
-			return nil, fmt.Errorf(
-				"%w: set DOCKER_CERT_PATH (or ClientConfig.TLSCertPath); see docs/TROUBLESHOOTING.md",
-				ErrTCPTLSRequiresCertMaterial,
-			)
-		}
-		if _, tlsErr := resolveTLSConfig(config); tlsErr != nil {
-			return nil, fmt.Errorf(
-				"%w: cert material at the configured path is unreadable or invalid; see docs/TROUBLESHOOTING.md: %w",
-				ErrTCPTLSRequiresCertMaterial, tlsErr,
-			)
-		}
-	}
-
-	// Fail-closed for https:// when TLS material IS configured but unloadable.
-	// Asymmetry vs tcp+tls://: https:// without ANY material is fine (operator
-	// uses system CA), so we only gate when hasTLSMaterial reports true.
-	// Without this gate, applyDockerTLS warns-and-continues with TLSClientConfig
-	// nil and the SDK dials with Go default TLS — system CA, no client cert —
-	// silently downgrading declared mTLS to unauthenticated TLS. See #653.
-	if scheme == schemeHTTPS && hasTLSMaterial(config) {
-		if _, tlsErr := resolveTLSConfig(config); tlsErr != nil {
-			return nil, fmt.Errorf(
-				"%w: cert material at the configured path is unreadable or invalid; see docs/TROUBLESHOOTING.md: %w",
-				ErrHTTPSRequiresUsableCertMaterial, tlsErr,
-			)
-		}
+	// Fail-closed for tcp+tls:// without USABLE TLS material, and for https://
+	// when material is configured but unloadable. See #627 / #646 / #653.
+	if err := validateTLSMaterial(scheme, config); err != nil {
+		return nil, err
 	}
 
 	// Mirror the docker CLI: when the host scheme is plain tcp:// AND TLS
@@ -654,6 +627,47 @@ func applyHTTPTransport(transport *http.Transport, cfg *ClientConfig, host strin
 // disableHTTP2AutoConfig call here.
 func applyPlainTransport(transport *http.Transport, _ *ClientConfig, _ string) {
 	transport.ForceAttemptHTTP2 = false
+}
+
+// validateTLSMaterial enforces the fail-closed TLS gates for NewClientWithConfig:
+//
+//   - tcp+tls://: requires TLS material to be both present and loadable (#627/#646).
+//   - https://: when TLS material IS configured, it must be loadable (#653).
+//     https:// without ANY material is fine (operator uses system CA).
+func validateTLSMaterial(scheme string, config *ClientConfig) error {
+	// Fail-closed for tcp+tls:// without USABLE TLS material. tcp+tls:// is
+	// an EXPLICIT TLS opt-in. Invoke resolveTLSConfig so a typo or missing
+	// cert files at the path also fails closed at startup. See #627 / #646.
+	if scheme == schemeTCPTLS {
+		if !hasTLSMaterial(config) {
+			return fmt.Errorf(
+				"%w: set DOCKER_CERT_PATH (or ClientConfig.TLSCertPath); see docs/TROUBLESHOOTING.md",
+				ErrTCPTLSRequiresCertMaterial,
+			)
+		}
+		if _, tlsErr := resolveTLSConfig(config); tlsErr != nil {
+			return fmt.Errorf(
+				"%w: cert material at the configured path is unreadable or invalid; see docs/TROUBLESHOOTING.md: %w",
+				ErrTCPTLSRequiresCertMaterial, tlsErr,
+			)
+		}
+	}
+
+	// Fail-closed for https:// when TLS material IS configured but unloadable.
+	// Asymmetry vs tcp+tls://: https:// without ANY material is fine (operator
+	// uses system CA), so we only gate when hasTLSMaterial reports true.
+	// Without this gate, applyDockerTLS warns-and-continues with TLSClientConfig
+	// nil and the SDK dials with Go default TLS — system CA, no client cert —
+	// silently downgrading declared mTLS to unauthenticated TLS. See #653.
+	if scheme == schemeHTTPS && hasTLSMaterial(config) {
+		if _, tlsErr := resolveTLSConfig(config); tlsErr != nil {
+			return fmt.Errorf(
+				"%w: cert material at the configured path is unreadable or invalid; see docs/TROUBLESHOOTING.md: %w",
+				ErrHTTPSRequiresUsableCertMaterial, tlsErr,
+			)
+		}
+	}
+	return nil
 }
 
 // upgradeTCPToHTTPSIfTLSMaterial mirrors the docker CLI's silent scheme

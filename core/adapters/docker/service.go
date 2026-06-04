@@ -189,19 +189,22 @@ func (s *SwarmServiceAdapter) WaitForServiceTasks(ctx context.Context, serviceID
 				continue
 			}
 
-			// Check if all tasks are in terminal state
-			allTerminal := true
-			for _, task := range tasks {
-				if !task.Status.State.IsTerminalState() {
-					allTerminal = false
-					break
-				}
-			}
-			if allTerminal {
+			if allTasksTerminal(tasks) {
 				return tasks, nil
 			}
 		}
 	}
+}
+
+// allTasksTerminal returns true when every task in the slice has reached a
+// terminal state. Returns true for an empty slice (vacuously true).
+func allTasksTerminal(tasks []domain.Task) bool {
+	for _, task := range tasks {
+		if !task.Status.State.IsTerminalState() {
+			return false
+		}
+	}
+	return true
 }
 
 // Conversion functions
@@ -322,18 +325,7 @@ func convertTaskTemplateToSwarm(src *domain.TaskSpec, dst *swarm.TaskSpec) {
 	}
 
 	if src.Placement != nil {
-		dst.Placement = &swarm.Placement{
-			Constraints: src.Placement.Constraints,
-		}
-		for _, pref := range src.Placement.Preferences {
-			sp := swarm.PlacementPreference{}
-			if pref.Spread != nil {
-				sp.Spread = &swarm.SpreadOver{
-					SpreadDescriptor: pref.Spread.SpreadDescriptor,
-				}
-			}
-			dst.Placement.Preferences = append(dst.Placement.Preferences, sp)
-		}
+		dst.Placement = convertPlacementToSwarm(src.Placement)
 	}
 
 	if src.LogDriver != nil {
@@ -349,6 +341,23 @@ func convertTaskTemplateToSwarm(src *domain.TaskSpec, dst *swarm.TaskSpec) {
 			Aliases: n.Aliases,
 		})
 	}
+}
+
+// convertPlacementToSwarm converts a domain Placement to the SDK swarm.Placement.
+func convertPlacementToSwarm(src *domain.Placement) *swarm.Placement {
+	dst := &swarm.Placement{
+		Constraints: src.Constraints,
+	}
+	for _, pref := range src.Preferences {
+		sp := swarm.PlacementPreference{}
+		if pref.Spread != nil {
+			sp.Spread = &swarm.SpreadOver{
+				SpreadDescriptor: pref.Spread.SpreadDescriptor,
+			}
+		}
+		dst.Preferences = append(dst.Preferences, sp)
+	}
+	return dst
 }
 
 // convertFromSwarmService translates a Docker SDK *swarm.Service to its
@@ -471,18 +480,7 @@ func convertTaskTemplateFromSwarm(src *swarm.TaskSpec, dst *domain.TaskSpec) {
 	}
 
 	if src.Placement != nil {
-		dst.Placement = &domain.Placement{
-			Constraints: src.Placement.Constraints,
-		}
-		for _, pref := range src.Placement.Preferences {
-			dp := domain.PlacementPreference{}
-			if pref.Spread != nil {
-				dp.Spread = &domain.SpreadOver{
-					SpreadDescriptor: pref.Spread.SpreadDescriptor,
-				}
-			}
-			dst.Placement.Preferences = append(dst.Placement.Preferences, dp)
-		}
+		dst.Placement = convertPlacementFromSwarm(src.Placement)
 	}
 
 	if src.LogDriver != nil {
@@ -491,6 +489,23 @@ func convertTaskTemplateFromSwarm(src *swarm.TaskSpec, dst *domain.TaskSpec) {
 			Options: src.LogDriver.Options,
 		}
 	}
+}
+
+// convertPlacementFromSwarm converts an SDK swarm.Placement to the domain Placement.
+func convertPlacementFromSwarm(src *swarm.Placement) *domain.Placement {
+	dst := &domain.Placement{
+		Constraints: src.Constraints,
+	}
+	for _, pref := range src.Preferences {
+		dp := domain.PlacementPreference{}
+		if pref.Spread != nil {
+			dp.Spread = &domain.SpreadOver{
+				SpreadDescriptor: pref.Spread.SpreadDescriptor,
+			}
+		}
+		dst.Preferences = append(dst.Preferences, dp)
+	}
+	return dst
 }
 
 // convertFromSwarmTask translates a Docker SDK *swarm.Task to its domain
