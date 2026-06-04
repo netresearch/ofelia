@@ -324,6 +324,9 @@ func mapJobSource(m reflect.Value, name string) (string, bool) {
 		return "", false
 	}
 	if jv.Kind() == reflect.Pointer {
+		if jv.IsNil() {
+			return "", false
+		}
 		jv = jv.Elem()
 	}
 	src := jv.FieldByName("JobSource")

@@ -182,8 +182,14 @@ func processHistoryFile(
 
 	// Verify path is within save folder (defense in depth for G304)
 	absPath, absErr := filepath.Abs(path)
-	if absErr != nil || !strings.HasPrefix(absPath, absSaveFolder) {
+	if absErr != nil {
 		return nil // Intentionally skip invalid paths
+	}
+	// Use filepath.Rel rather than a string prefix so "/tmp/save_other" is not
+	// treated as inside "/tmp/save" (partial-name match).
+	rel, relErr := filepath.Rel(absSaveFolder, absPath)
+	if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil // Intentionally skip paths outside the save folder
 	}
 
 	// Parse the JSON file
