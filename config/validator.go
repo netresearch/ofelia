@@ -203,45 +203,22 @@ func (cv *Validator2) Validate() error {
 
 // validateStruct recursively validates struct fields based on tags
 func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
-	val := reflect.ValueOf(obj)
-	if val.Kind() == reflect.Pointer {
-		if val.IsNil() {
-			return
-		}
-		val = val.Elem()
-	}
-
-	if val.Kind() != reflect.Struct {
+	val, ok := derefToStruct(obj)
+	if !ok {
 		return
 	}
 
 	typ := val.Type()
 	for fieldType := range typ.Fields() {
-		field := val.FieldByIndex(fieldType.Index)
-		fieldName := fieldType.Name
-
-		// Build field path for nested structs
-		fieldPath := fieldName
-		if path != "" {
-			fieldPath = path + "." + fieldName
-		}
-
 		// Skip unexported fields
 		if !fieldType.IsExported() {
 			continue
 		}
 
-		// Get field tags
-		gcfgTag := fieldType.Tag.Get("gcfg")
+		field := val.FieldByIndex(fieldType.Index)
 		mapstructureTag := fieldType.Tag.Get("mapstructure")
 		defaultTag := fieldType.Tag.Get("default")
-
-		// Use gcfg or mapstructure tag as field name if available
-		if gcfgTag != "" && gcfgTag != "-" {
-			fieldPath = gcfgTag
-		} else if mapstructureTag != "" && mapstructureTag != "-" && mapstructureTag != ",squash" {
-			fieldPath = mapstructureTag
-		}
+		fieldPath := resolveFieldPath(path, fieldType.Name, fieldType.Tag.Get("gcfg"), mapstructureTag)
 
 		// Handle nested structs
 		if field.Kind() == reflect.Struct && mapstructureTag != ",squash" {
@@ -252,6 +229,43 @@ func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
 		// Validate based on field type and value
 		cv.validateField(v, field, fieldPath, defaultTag)
 	}
+}
+
+// derefToStruct dereferences a pointer (if any) and returns the underlying
+// struct Value. It returns (zero, false) if obj is nil, a nil pointer, or
+// not a struct.
+func derefToStruct(obj any) (reflect.Value, bool) {
+	val := reflect.ValueOf(obj)
+	if val.Kind() == reflect.Pointer {
+		if val.IsNil() {
+			return reflect.Value{}, false
+		}
+		val = val.Elem()
+	}
+	if val.Kind() != reflect.Struct {
+		return reflect.Value{}, false
+	}
+	return val, true
+}
+
+// resolveFieldPath returns the canonical config key for a struct field.
+// It prefers the gcfg tag, then mapstructure (unless it is a squash
+// directive), and falls back to the Go field name. It also prepends
+// the parent path when non-empty.
+func resolveFieldPath(parentPath, fieldName, gcfgTag, mapstructureTag string) string {
+	fieldPath := fieldName
+	if parentPath != "" {
+		fieldPath = parentPath + "." + fieldName
+	}
+
+	// Use gcfg or mapstructure tag as field name if available
+	if gcfgTag != "" && gcfgTag != "-" {
+		return gcfgTag
+	}
+	if mapstructureTag != "" && mapstructureTag != "-" && mapstructureTag != ",squash" {
+		return mapstructureTag
+	}
+	return fieldPath
 }
 
 // validateField validates individual fields based on their type and tags
