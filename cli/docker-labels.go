@@ -289,92 +289,123 @@ func sortContainers(containers []DockerContainerInfo) []DockerContainerInfo {
 }
 
 // splitContainersLabelsIntoJobMapsByType partitions container labels and parses values into per-type job maps.
+// dockerLabelJobMaps groups the per-type job maps and config maps produced
+// while scanning a set of Docker containers' labels.
+type dockerLabelJobMaps struct {
+	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]any
+	globalConfigs                                          map[string]any
+	webhookConfigs                                         map[string]map[string]string
+}
+
+// containerScan holds the state for the container currently being scanned,
+// including its temporary run/exec job maps (merged into the scan-wide maps
+// once the container's labels have all been processed).
+type containerScan struct {
+	name      string
+	running   bool
+	isService bool
+	labels    map[string]string
+	runJobs   map[string]map[string]any
+	execJobs  map[string]map[string]any
+}
+
 func (c *Config) splitContainersLabelsIntoJobMapsByType(containers []DockerContainerInfo) (
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs map[string]map[string]any,
 	globalConfigs map[string]any,
 	webhookConfigs map[string]map[string]string,
 ) {
-	execJobs = make(map[string]map[string]any)
-	localJobs = make(map[string]map[string]any)
-	runJobs = make(map[string]map[string]any)
-	serviceJobs = make(map[string]map[string]any)
-	composeJobs = make(map[string]map[string]any)
-	globalConfigs = make(map[string]any)
-	webhookConfigs = make(map[string]map[string]string)
-
-	sortedContainers := sortContainers(containers)
-
-	for _, containerInfo := range sortedContainers {
-		containerName := containerInfo.Name
-		containerRunning := containerInfo.State.Running
-		labelSet := containerInfo.Labels
-		isService := hasServiceLabel(labelSet)
-
-		// New jobs for the container
-		// We merge them into the existing jobs later.
-		// This allows to have the prescedence of the set `image` parameter over the propagated by default `container` parameter.
-		containerRunJobs := make(map[string]map[string]any)
-		containerExecJobs := make(map[string]map[string]any)
-
-		for k, jobParamValue := range labelSet {
-			if k == requiredLabel || k == serviceLabel || k == dockerComposeServiceLabel {
-				// Do not track internal labels as global config parameters.
-				continue
-			}
-
-			parts := strings.Split(k, ".")
-			if len(parts) < 2 {
-				continue
-			}
-			if len(parts) < 4 {
-				if isService {
-					c.filterGlobalLabelKey(parts[1], jobParamValue, containerName, globalConfigs)
-				}
-				continue
-			}
-			jobType, jobName, jobParam := parts[1], parts[2], parts[3]
-
-			// Intercept webhook labels (e.g., ofelia.webhook.slack-alerts.preset=slack)
-			// Webhook labels are only processed from service containers.
-			if jobType == "webhook" {
-				if isService {
-					if _, ok := webhookConfigs[jobName]; !ok {
-						webhookConfigs[jobName] = make(map[string]string)
-					}
-					webhookConfigs[jobName][jobParam] = jobParamValue
-				}
-				continue
-			}
-
-			scopedName := jobName
-			if jobType == jobExec {
-				// Use Docker Compose service name if available, fallback to container name
-				jobPrefix := getJobPrefix(labelSet, containerName)
-				scopedName = jobPrefix + "." + jobName
-			}
-
-			if !canRunJobOnContainer(jobType, jobName, containerName, containerRunning, isService, c.logger) {
-				continue
-			}
-
-			applyJobParameterToJobMaps(jobType, jobName, jobParam, jobParamValue, scopedName,
-				containerExecJobs, localJobs, containerRunJobs, serviceJobs, composeJobs)
-		}
-
-		if !isService {
-			addContainerNameToJobsIfNeeded(containerExecJobs, containerName)
-			addContainerNameToJobsIfNeeded(containerRunJobs, containerName)
-		}
-
-		// Merge new jobs into existing jobs
-		// `job-exec` - do not overwrite existing jobs with new jobs, only add new jobs.
-		// There could not be dupes since the scoped name must be unique.
-		execJobs = mergeJobMaps(execJobs, containerExecJobs, false)
-
-		// `job-run` - overwrite existing jobs with new jobs if the container is running.
-		runJobs = mergeJobMaps(runJobs, containerRunJobs, containerRunning)
+	m := &dockerLabelJobMaps{
+		execJobs:       make(map[string]map[string]any),
+		localJobs:      make(map[string]map[string]any),
+		runJobs:        make(map[string]map[string]any),
+		serviceJobs:    make(map[string]map[string]any),
+		composeJobs:    make(map[string]map[string]any),
+		globalConfigs:  make(map[string]any),
+		webhookConfigs: make(map[string]map[string]string),
 	}
-	return
+
+	for _, containerInfo := range sortContainers(containers) {
+		c.scanContainerLabels(m, containerInfo)
+	}
+
+	return m.execJobs, m.localJobs, m.runJobs, m.serviceJobs, m.composeJobs, m.globalConfigs, m.webhookConfigs
+}
+
+// scanContainerLabels processes every label on a single container, then merges
+// the container's run/exec jobs into the scan-wide maps.
+func (c *Config) scanContainerLabels(m *dockerLabelJobMaps, containerInfo DockerContainerInfo) {
+	cs := &containerScan{
+		name:      containerInfo.Name,
+		running:   containerInfo.State.Running,
+		isService: hasServiceLabel(containerInfo.Labels),
+		labels:    containerInfo.Labels,
+		// New jobs for the container, merged into the existing jobs later so a
+		// set `image` parameter takes precedence over the default propagated
+		// `container` parameter.
+		runJobs:  make(map[string]map[string]any),
+		execJobs: make(map[string]map[string]any),
+	}
+
+	for k, jobParamValue := range cs.labels {
+		c.processContainerLabel(m, cs, k, jobParamValue)
+	}
+
+	if !cs.isService {
+		addContainerNameToJobsIfNeeded(cs.execJobs, cs.name)
+		addContainerNameToJobsIfNeeded(cs.runJobs, cs.name)
+	}
+
+	// `job-exec` - do not overwrite existing jobs with new jobs, only add new
+	// jobs. There could not be dupes since the scoped name must be unique.
+	m.execJobs = mergeJobMaps(m.execJobs, cs.execJobs, false)
+	// `job-run` - overwrite existing jobs with new jobs if the container is running.
+	m.runJobs = mergeJobMaps(m.runJobs, cs.runJobs, cs.running)
+}
+
+// processContainerLabel applies a single Docker label key/value to the
+// appropriate job or config map for the container being scanned.
+func (c *Config) processContainerLabel(m *dockerLabelJobMaps, cs *containerScan, k, jobParamValue string) {
+	if k == requiredLabel || k == serviceLabel || k == dockerComposeServiceLabel {
+		// Do not track internal labels as global config parameters.
+		return
+	}
+
+	parts := strings.Split(k, ".")
+	if len(parts) < 2 {
+		return
+	}
+	if len(parts) < 4 {
+		if cs.isService {
+			c.filterGlobalLabelKey(parts[1], jobParamValue, cs.name, m.globalConfigs)
+		}
+		return
+	}
+	jobType, jobName, jobParam := parts[1], parts[2], parts[3]
+
+	// Intercept webhook labels (e.g., ofelia.webhook.slack-alerts.preset=slack).
+	// Webhook labels are only processed from service containers.
+	if jobType == "webhook" {
+		if cs.isService {
+			if _, ok := m.webhookConfigs[jobName]; !ok {
+				m.webhookConfigs[jobName] = make(map[string]string)
+			}
+			m.webhookConfigs[jobName][jobParam] = jobParamValue
+		}
+		return
+	}
+
+	scopedName := jobName
+	if jobType == jobExec {
+		// Use Docker Compose service name if available, fallback to container name.
+		scopedName = getJobPrefix(cs.labels, cs.name) + "." + jobName
+	}
+
+	if !canRunJobOnContainer(jobType, jobName, cs.name, cs.running, cs.isService, c.logger) {
+		return
+	}
+
+	applyJobParameterToJobMaps(jobType, jobName, jobParam, jobParamValue, scopedName,
+		cs.execJobs, m.localJobs, cs.runJobs, m.serviceJobs, m.composeJobs)
 }
 
 func addContainerNameToJobsIfNeeded(jobs map[string]map[string]any, containerName string) {

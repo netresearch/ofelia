@@ -398,53 +398,62 @@ const hashmeTagEnabled = "true"
 func GetHash(t reflect.Type, v reflect.Value, hash *string) error {
 	for field := range t.Fields() {
 		fieldv := v.FieldByIndex(field.Index)
-		kind := field.Type.Kind()
 
-		if kind == reflect.Struct && field.Type != reflect.TypeFor[time.Duration]() {
+		if field.Type.Kind() == reflect.Struct && field.Type != reflect.TypeFor[time.Duration]() {
 			if err := GetHash(field.Type, fieldv, hash); err != nil {
 				return err
 			}
 			continue
 		}
 
-		hashmeTag := field.Tag.Get(HashmeTagName)
-		if hashmeTag != hashmeTagEnabled {
+		if field.Tag.Get(HashmeTagName) != hashmeTagEnabled {
 			continue
 		}
 
-		//nolint:exhaustive // reflect.Kind has many values; only relevant kinds are supported for hashing
-		switch kind {
-		case reflect.String:
-			*hash += fieldv.String()
-		case reflect.Int32, reflect.Int, reflect.Int64, reflect.Int16, reflect.Int8:
-			*hash += strconv.FormatInt(fieldv.Int(), 10)
-		case reflect.Bool:
-			*hash += strconv.FormatBool(fieldv.Bool())
-		case reflect.Slice:
-			if field.Type.Elem().Kind() != reflect.String {
-				return ErrUnsupportedFieldType
-			}
-			strs := fieldv.Interface().([]string)
-			for _, str := range strs {
-				*hash += fmt.Sprintf("%d:%s,", len(str), str)
-			}
-		case reflect.Pointer:
-			if fieldv.IsNil() {
-				*hash += "<nil>"
-				continue
-			}
-			elem := fieldv.Elem()
-			if elem.Kind() == reflect.String {
-				*hash += elem.String()
-				continue
-			}
-			return fmt.Errorf("%w: field '%s' of type '%s'", ErrUnsupportedFieldType, field.Name, field.Type)
-		// Other kinds are intentionally not part of the job hash. They are either
-		// not used in our job structs today or would require a more elaborate
-		// stable string representation that is out of scope here.
-		default:
-			return fmt.Errorf("%w: field '%s' of type '%s'", ErrUnsupportedFieldType, field.Name, field.Type)
+		if err := appendFieldHash(field, fieldv, hash); err != nil {
+			return err
 		}
+	}
+
+	return nil
+}
+
+// appendFieldHash appends the stable string representation of a single
+// hashme-tagged field to hash, returning ErrUnsupportedFieldType for kinds
+// that are not part of the job hash.
+func appendFieldHash(field reflect.StructField, fieldv reflect.Value, hash *string) error {
+	//nolint:exhaustive // reflect.Kind has many values; only relevant kinds are supported for hashing
+	switch field.Type.Kind() {
+	case reflect.String:
+		*hash += fieldv.String()
+	case reflect.Int32, reflect.Int, reflect.Int64, reflect.Int16, reflect.Int8:
+		*hash += strconv.FormatInt(fieldv.Int(), 10)
+	case reflect.Bool:
+		*hash += strconv.FormatBool(fieldv.Bool())
+	case reflect.Slice:
+		if field.Type.Elem().Kind() != reflect.String {
+			return ErrUnsupportedFieldType
+		}
+		for i := range fieldv.Len() {
+			str := fieldv.Index(i).String()
+			*hash += fmt.Sprintf("%d:%s,", len(str), str)
+		}
+	case reflect.Pointer:
+		if fieldv.IsNil() {
+			*hash += "<nil>"
+			return nil
+		}
+		elem := fieldv.Elem()
+		if elem.Kind() == reflect.String {
+			*hash += elem.String()
+			return nil
+		}
+		return fmt.Errorf("%w: field '%s' of type '%s'", ErrUnsupportedFieldType, field.Name, field.Type)
+	// Other kinds are intentionally not part of the job hash. They are either
+	// not used in our job structs today or would require a more elaborate
+	// stable string representation that is out of scope here.
+	default:
+		return fmt.Errorf("%w: field '%s' of type '%s'", ErrUnsupportedFieldType, field.Name, field.Type)
 	}
 
 	return nil
