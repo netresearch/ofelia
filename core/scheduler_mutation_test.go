@@ -657,9 +657,9 @@ func (m *mockMetricsRecorder) RecordJobStart(_ string)                { m.jobSta
 func (m *mockMetricsRecorder) RecordJobComplete(_ string, _ float64, _ bool) {
 	m.jobCompleted.Add(1)
 }
-func (m *mockMetricsRecorder) RecordJobScheduled(_ string)                { m.jobScheduled.Add(1) }
-func (m *mockMetricsRecorder) RecordWorkflowComplete(_ string, _ string)  {}
-func (m *mockMetricsRecorder) RecordWorkflowJobResult(_ string, _ string) {}
+func (m *mockMetricsRecorder) RecordJobScheduled(_ string)         { m.jobScheduled.Add(1) }
+func (m *mockMetricsRecorder) RecordWorkflowComplete(_, _ string)  {}
+func (m *mockMetricsRecorder) RecordWorkflowJobResult(_, _ string) {}
 
 // --- Test StopWithTimeout returns error on timeout ---
 func TestStopWithTimeout_Timeout(t *testing.T) {

@@ -70,7 +70,7 @@ func (v *Validator) Errors() ValidationErrors {
 }
 
 // ValidateRequired validates that a field is not empty
-func (v *Validator) ValidateRequired(field string, value string) {
+func (v *Validator) ValidateRequired(field, value string) {
 	if strings.TrimSpace(value) == "" {
 		v.AddError(field, value, "is required")
 	}
@@ -105,7 +105,7 @@ func (v *Validator) ValidatePositive(field string, value int) {
 }
 
 // ValidateURL validates that a string is a valid URL
-func (v *Validator) ValidateURL(field string, value string) {
+func (v *Validator) ValidateURL(field, value string) {
 	if value == "" {
 		return
 	}
@@ -117,7 +117,7 @@ func (v *Validator) ValidateURL(field string, value string) {
 }
 
 // ValidateEmail validates that a string is a valid email
-func (v *Validator) ValidateEmail(field string, value string) {
+func (v *Validator) ValidateEmail(field, value string) {
 	if value == "" {
 		return
 	}
@@ -131,7 +131,7 @@ func (v *Validator) ValidateEmail(field string, value string) {
 // ValidateCronExpression validates a cron expression using go-cron's parser.
 // This handles all formats: descriptors (@daily), @every intervals, standard
 // cron expressions with optional seconds, month/day names, and wraparound ranges.
-func (v *Validator) ValidateCronExpression(field string, value string) {
+func (v *Validator) ValidateCronExpression(field, value string) {
 	if value == "" {
 		return
 	}
@@ -162,7 +162,7 @@ func (v *Validator) ValidateEnum(field string, value string, allowed []string) {
 }
 
 // ValidatePath validates that a path exists or can be created
-func (v *Validator) ValidatePath(field string, value string) {
+func (v *Validator) ValidatePath(field, value string) {
 	if value == "" {
 		return
 	}

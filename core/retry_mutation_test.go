@@ -46,8 +46,8 @@ func (m *captureMetrics) RecordDockerError(operation string)                  {}
 func (m *captureMetrics) RecordJobStart(jobName string)                       {}
 func (m *captureMetrics) RecordJobComplete(jobName string, _ float64, _ bool) {}
 func (m *captureMetrics) RecordJobScheduled(jobName string)                   {}
-func (m *captureMetrics) RecordWorkflowComplete(_ string, _ string)           {}
-func (m *captureMetrics) RecordWorkflowJobResult(_ string, _ string)          {}
+func (m *captureMetrics) RecordWorkflowComplete(_, _ string)                  {}
+func (m *captureMetrics) RecordWorkflowJobResult(_, _ string)                 {}
 
 // retrySlogHandler captures slog records for assertion.
 type retrySlogHandler struct {

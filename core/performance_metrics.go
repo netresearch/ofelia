@@ -21,7 +21,7 @@ type PerformanceRecorder interface {
 
 	// Job operations (extended beyond MetricsRecorder)
 	RecordJobExecution(jobName string, duration time.Duration, success bool)
-	RecordJobSkipped(jobName string, reason string)
+	RecordJobSkipped(jobName, reason string)
 
 	// System metrics
 	RecordConcurrentJobs(count int64)
@@ -273,12 +273,12 @@ func (pm *PerformanceMetrics) RecordJobScheduled(jobName string) {
 
 // RecordWorkflowComplete records a workflow completion event.
 // No-op: workflow metrics are tracked via the Prometheus Collector, not PerformanceMetrics.
-func (pm *PerformanceMetrics) RecordWorkflowComplete(rootJobName string, status string) {
+func (pm *PerformanceMetrics) RecordWorkflowComplete(rootJobName, status string) {
 }
 
 // RecordWorkflowJobResult records an individual job result within a workflow.
 // No-op: workflow metrics are tracked via the Prometheus Collector, not PerformanceMetrics.
-func (pm *PerformanceMetrics) RecordWorkflowJobResult(jobName string, result string) {
+func (pm *PerformanceMetrics) RecordWorkflowJobResult(jobName, result string) {
 }
 
 // RecordJobStart records a job start (from go-cron ObservabilityHooks)
@@ -299,7 +299,7 @@ func (pm *PerformanceMetrics) RecordJobComplete(jobName string, durationSeconds 
 }
 
 // RecordJobSkipped records when a job is skipped
-func (pm *PerformanceMetrics) RecordJobSkipped(jobName string, reason string) {
+func (pm *PerformanceMetrics) RecordJobSkipped(jobName, reason string) {
 	atomic.AddInt64(&pm.totalJobsSkipped, 1)
 
 	pm.customMutex.Lock()
