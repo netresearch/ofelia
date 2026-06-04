@@ -174,6 +174,7 @@ func TestApplyWebhookLabelParams(t *testing.T) {
 		"retry-delay": "10s",
 		"link":        "https://logs.example.com",
 		"link-text":   "View Logs",
+		"device":      "iphone,desktop",
 	}
 
 	applyWebhookLabelParams(config, params)
@@ -207,6 +208,9 @@ func TestApplyWebhookLabelParams(t *testing.T) {
 	}
 	if config.LinkText != "View Logs" {
 		t.Errorf("Expected link-text 'View Logs', got %q", config.LinkText)
+	}
+	if config.Device != "iphone,desktop" {
+		t.Errorf("Expected device 'iphone,desktop', got %q", config.Device)
 	}
 }
 
@@ -510,6 +514,7 @@ func TestWebhookConfigChanged_AllFields(t *testing.T) {
 		{name: "RetryDelay changed", modify: func(c *middlewares.WebhookConfig) { c.RetryDelay = 15 * time.Second }, want: true},
 		{name: "Link changed", modify: func(c *middlewares.WebhookConfig) { c.Link = "https://dashboard.example.com" }, want: true},
 		{name: "LinkText changed", modify: func(c *middlewares.WebhookConfig) { c.LinkText = "Dashboard" }, want: true},
+		{name: "Device changed", modify: func(c *middlewares.WebhookConfig) { c.Device = "iphone" }, want: true},
 	}
 
 	for _, tt := range tests {

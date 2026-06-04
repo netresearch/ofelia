@@ -92,6 +92,45 @@ func TestPresetLoader_LoadBundledPreset_Pushover(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, preset)
 	assert.Equal(t, "pushover", preset.Name)
+	// device is an optional targeting variable
+	assert.False(t, preset.Variables["device"].Required)
+}
+
+// TestPushoverPreset_Device verifies the optional device parameter is only
+// emitted in the request body when configured, and omitted otherwise, so the
+// default behavior (deliver to all of the user's devices) is preserved.
+func TestPushoverPreset_Device(t *testing.T) {
+	t.Parallel()
+
+	loader := NewPresetLoader(nil)
+	preset, err := loader.Load("pushover")
+	require.NoError(t, err)
+
+	baseData := func(device string) map[string]any {
+		return map[string]any{
+			"Job":       WebhookJobData{Name: "backup", Type: "exec"},
+			"Execution": WebhookExecutionData{Status: "successful"},
+			"Host":      WebhookHostData{Hostname: "h"},
+			"Ofelia":    WebhookOfeliaData{Version: "v"},
+			"Preset":    PresetDataForTemplate{ID: "user", Secret: "token", Device: device},
+		}
+	}
+
+	withDevice, err := preset.RenderBodyWithPreset(baseData("iphone"))
+	require.NoError(t, err)
+	assert.Contains(t, withDevice, "&device=iphone")
+
+	withoutDevice, err := preset.RenderBodyWithPreset(baseData(""))
+	require.NoError(t, err)
+	assert.NotContains(t, withoutDevice, "device=")
+
+	// The body is application/x-www-form-urlencoded, so device values must be
+	// escaped. A comma-separated multi-device list (Pushover-native) keeps its
+	// separator as %2C, and spaces/specials cannot inject extra parameters.
+	encoded, err := preset.RenderBodyWithPreset(baseData("my phone,desk&top"))
+	require.NoError(t, err)
+	assert.Contains(t, encoded, "&device=my+phone%2Cdesk%26top")
+	assert.NotContains(t, encoded, "device=my phone")
 }
 
 func TestPresetLoader_LoadBundledPreset_PagerDuty(t *testing.T) {

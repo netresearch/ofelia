@@ -188,6 +188,10 @@ func parseWebhookConfig(section *ini.Section, config *middlewares.WebhookConfig)
 		config.LinkText = ExpandEnvVars(key.String())
 	}
 
+	if key, err := section.GetKey("device"); err == nil {
+		config.Device = ExpandEnvVars(key.String())
+	}
+
 	return nil
 }
 
@@ -280,7 +284,8 @@ func webhookConfigChanged(a, b *middlewares.WebhookConfig) bool {
 		a.ID != b.ID || a.Secret != b.Secret ||
 		a.Trigger != b.Trigger || a.Timeout != b.Timeout ||
 		a.RetryCount != b.RetryCount || a.RetryDelay != b.RetryDelay ||
-		a.Link != b.Link || a.LinkText != b.LinkText
+		a.Link != b.Link || a.LinkText != b.LinkText ||
+		a.Device != b.Device
 }
 
 // rebuildAllMiddlewares resets and rebuilds scheduler and job middlewares.
@@ -389,7 +394,7 @@ func buildWebhookConfigsFromLabels(c *Config, webhookLabels map[string]map[strin
 // applyWebhookLabelParams applies flat label params to a WebhookConfig.
 // This mirrors parseWebhookConfig but works from a string map (Docker labels)
 // instead of an INI section.
-func applyWebhookLabelParams(config *middlewares.WebhookConfig, params map[string]string) {
+func applyWebhookLabelParams(config *middlewares.WebhookConfig, params map[string]string) { //nolint:gocyclo // flat label-dispatch table
 	for key, val := range params {
 		switch strings.ToLower(key) {
 		case "preset":
@@ -418,6 +423,8 @@ func applyWebhookLabelParams(config *middlewares.WebhookConfig, params map[strin
 			config.Link = val
 		case "link-text":
 			config.LinkText = val
+		case "device":
+			config.Device = val
 		}
 	}
 }

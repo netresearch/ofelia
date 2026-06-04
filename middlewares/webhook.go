@@ -671,6 +671,7 @@ type PresetDataForTemplate struct {
 	URL      string
 	Link     string
 	LinkText string
+	Device   string
 }
 
 // buildWebhookDataWithPreset adds preset data to webhook data for templates that reference it
@@ -694,6 +695,7 @@ func (w *Webhook) buildWebhookDataWithPreset(ctx *core.Context) map[string]any {
 			URL:      w.Config.URL,
 			Link:     w.Config.Link,
 			LinkText: linkText,
+			Device:   w.Config.Device,
 		},
 	}
 }

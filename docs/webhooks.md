@@ -176,6 +176,7 @@ All webhook parameters can be set via Docker labels on the service container:
 | `ofelia.webhook.NAME.retry-delay` | Delay between retries (e.g., `5s`) |
 | `ofelia.webhook.NAME.link` | Optional URL to include in notification |
 | `ofelia.webhook.NAME.link-text` | Display text for link |
+| `ofelia.webhook.NAME.device` | Optional target device(s) for presets that support per-device delivery (Pushover); comma-separated |
 
 Two operator-tunable, non-SSRF-sensitive webhook globals are exposed via
 Docker labels. The SSRF-sensitive globals (`webhook-allowed-hosts`,
@@ -213,7 +214,7 @@ Ofelia includes presets for popular notification services:
 | `matrix` | Matrix (via hookshot bridge) | `url` |
 | `ntfy` | ntfy.sh (public topics) | `id` (topic) |
 | `ntfy-token` | ntfy.sh (with Bearer auth) | `id` (topic), `secret` (access token) |
-| `pushover` | Pushover | `id` (user key), `secret` (API token) |
+| `pushover` | Pushover | `id` (user key), `secret` (API token); optional `device` |
 | `pagerduty` | PagerDuty Events API v2 | `secret` (routing key) |
 | `gotify` | Gotify | `url`, `secret` (app token) |
 | `healthchecks` | Healthchecks.io | `id` (uuid or pingkey/slug) |
@@ -231,6 +232,7 @@ Ofelia includes presets for popular notification services:
 | `secret` | string | Service-specific secret/token |
 | `link` | string | Optional URL to include in notification (e.g., link to logs) |
 | `link-text` | string | Display text for link (default: "View Details") |
+| `device` | string | Optional target device(s) for presets that support per-device delivery (Pushover); comma-separated. Empty = preset default (all devices) |
 | `trigger` | string | When to send: `always`, `error`, `success`, `skipped` (default: `error`) |
 | `timeout` | duration | HTTP request timeout (default: `30s`) |
 | `retry-count` | int | Number of retries on failure (default: `3`) |
@@ -420,6 +422,9 @@ preset = pushover
 id = user-key-here
 secret = api-token-here
 trigger = error
+; Optional: target specific device(s) instead of all of the user's devices.
+; Comma-separate multiple device names. Omit to deliver to every device.
+device = iphone
 ```
 
 ### PagerDuty
