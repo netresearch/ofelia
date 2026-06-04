@@ -274,11 +274,13 @@ func (pm *PerformanceMetrics) RecordJobScheduled(jobName string) {
 // RecordWorkflowComplete records a workflow completion event.
 // No-op: workflow metrics are tracked via the Prometheus Collector, not PerformanceMetrics.
 func (pm *PerformanceMetrics) RecordWorkflowComplete(rootJobName, status string) {
+	// Intentional no-op; see method doc above.
 }
 
 // RecordWorkflowJobResult records an individual job result within a workflow.
 // No-op: workflow metrics are tracked via the Prometheus Collector, not PerformanceMetrics.
 func (pm *PerformanceMetrics) RecordWorkflowJobResult(jobName, result string) {
+	// Intentional no-op; see method doc above.
 }
 
 // RecordJobStart records a job start (from go-cron ObservabilityHooks)

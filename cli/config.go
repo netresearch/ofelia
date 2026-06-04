@@ -835,7 +835,7 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 			delete(current, name)
 			continue
 		}
-		if updated := replaceIfChanged(c, name, j, newJob, prep, source); updated {
+		if replaceIfChanged(c, name, j, newJob, prep, source) {
 			current[name] = newJob
 			continue
 		}

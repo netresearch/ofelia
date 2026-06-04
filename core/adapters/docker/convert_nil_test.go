@@ -10,7 +10,6 @@ import (
 
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
-	mounttypes "github.com/docker/docker/api/types/mount"
 	networktypes "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/stretchr/testify/assert"
@@ -386,8 +385,8 @@ func TestConvertToMount_ValidInput(t *testing.T) {
 	}
 
 	got := convertToMount(in)
-	if got.Type != mounttypes.TypeBind {
-		t.Errorf("Type = %q, want %q", got.Type, mounttypes.TypeBind)
+	if got.Type != mount.TypeBind {
+		t.Errorf("Type = %q, want %q", got.Type, mount.TypeBind)
 	}
 	if got.Source != "/host/path" {
 		t.Errorf("Source = %q, want %q", got.Source, "/host/path")
