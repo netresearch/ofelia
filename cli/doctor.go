@@ -15,6 +15,12 @@ import (
 	"github.com/netresearch/go-cron"
 )
 
+const (
+	msgInvalidScheduleFmt = "Invalid schedule \"%s\": %v"
+	hintScheduleExamples  = "Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *"
+	hintScheduleTest      = "Test schedule: https://crontab.guru"
+)
+
 // doctorDockerCallTimeout bounds each Docker SDK call performed by the doctor
 // command (Ping and per-image HasImageLocally). Without this, a wedged daemon
 // would hang the very diagnostic tool meant to surface this kind of failure.
@@ -435,10 +441,10 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 				Category: categoryJobSchedules,
 				Name:     fmt.Sprintf("job-run \"%s\"", name),
 				Status:   statusFail,
-				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
 				Hints: []string{
-					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
-					"Test schedule: https://crontab.guru",
+					hintScheduleExamples,
+					hintScheduleTest,
 				},
 			})
 		}
@@ -453,10 +459,10 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 				Category: categoryJobSchedules,
 				Name:     fmt.Sprintf("job-local \"%s\"", name),
 				Status:   statusFail,
-				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
 				Hints: []string{
-					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
-					"Test schedule: https://crontab.guru",
+					hintScheduleExamples,
+					hintScheduleTest,
 				},
 			})
 		}
@@ -471,10 +477,10 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 				Category: categoryJobSchedules,
 				Name:     fmt.Sprintf("job-exec \"%s\"", name),
 				Status:   statusFail,
-				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
 				Hints: []string{
-					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
-					"Test schedule: https://crontab.guru",
+					hintScheduleExamples,
+					hintScheduleTest,
 				},
 			})
 		}
@@ -489,10 +495,10 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 				Category: categoryJobSchedules,
 				Name:     fmt.Sprintf("job-service-run \"%s\"", name),
 				Status:   statusFail,
-				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
 				Hints: []string{
-					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
-					"Test schedule: https://crontab.guru",
+					hintScheduleExamples,
+					hintScheduleTest,
 				},
 			})
 		}
@@ -507,10 +513,10 @@ func (c *DoctorCommand) checkSchedules(report *DoctorReport) {
 				Category: categoryJobSchedules,
 				Name:     fmt.Sprintf("job-compose \"%s\"", name),
 				Status:   statusFail,
-				Message:  fmt.Sprintf("Invalid schedule \"%s\": %v", job.Schedule, err),
+				Message:  fmt.Sprintf(msgInvalidScheduleFmt, job.Schedule, err),
 				Hints: []string{
-					"Examples: @daily, @every 1h, 0 2 * * *, */15 * * * *",
-					"Test schedule: https://crontab.guru",
+					hintScheduleExamples,
+					hintScheduleTest,
 				},
 			})
 		}

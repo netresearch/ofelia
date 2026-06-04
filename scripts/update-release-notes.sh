@@ -18,10 +18,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_dry() { echo -e "${YELLOW}[DRY-RUN]${NC} $1"; }
+log_info() { local msg="$1"; echo -e "${BLUE}[INFO]${NC} ${msg}"; }
+log_success() { local msg="$1"; echo -e "${GREEN}[OK]${NC} ${msg}"; }
+log_warn() { local msg="$1"; echo -e "${YELLOW}[WARN]${NC} ${msg}"; }
+log_dry() { local msg="$1"; echo -e "${YELLOW}[DRY-RUN]${NC} ${msg}"; }
 
 # Update release notes for a single release
 update_release_notes() {

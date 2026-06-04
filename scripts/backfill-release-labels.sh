@@ -9,6 +9,7 @@
 set -euo pipefail
 
 DRY_RUN="${1:-}"
+readonly DRY_RUN_FLAG="--dry-run"
 REPO="netresearch/ofelia"
 
 # Colors for output
@@ -18,10 +19,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_dry() { echo -e "${YELLOW}[DRY-RUN]${NC} $1"; }
+log_info() { local msg="$1"; echo -e "${BLUE}[INFO]${NC} ${msg}"; }
+log_success() { local msg="$1"; echo -e "${GREEN}[OK]${NC} ${msg}"; }
+log_warn() { local msg="$1"; echo -e "${YELLOW}[WARN]${NC} ${msg}"; }
+log_dry() { local msg="$1"; echo -e "${YELLOW}[DRY-RUN]${NC} ${msg}"; }
 
 # Comment templates
 pr_comment() {
@@ -92,7 +93,7 @@ process_pr() {
         return 0
     fi
 
-    if [[ "$DRY_RUN" == "--dry-run" ]]; then
+    if [[ "$DRY_RUN" == "$DRY_RUN_FLAG" ]]; then
         log_dry "Would label PR #${pr} with '${label}'"
         log_dry "Would comment on PR #${pr}"
     else
@@ -124,7 +125,7 @@ process_issue() {
         return 0
     fi
 
-    if [[ "$DRY_RUN" == "--dry-run" ]]; then
+    if [[ "$DRY_RUN" == "$DRY_RUN_FLAG" ]]; then
         log_dry "Would label Issue #${issue} with '${label}'"
         log_dry "Would comment on Issue #${issue}"
     else
@@ -172,7 +173,7 @@ process_release() {
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
 
     # Ensure label exists
-    if [[ "$DRY_RUN" != "--dry-run" ]]; then
+    if [[ "$DRY_RUN" != "$DRY_RUN_FLAG" ]]; then
         gh label create "released:${tag}" --repo "$REPO" --color "0e8a16" \
             --description "Included in ${tag} release" 2>/dev/null || true
     fi
@@ -216,7 +217,7 @@ process_release() {
 
 # Main
 main() {
-    if [[ "$DRY_RUN" == "--dry-run" ]]; then
+    if [[ "$DRY_RUN" == "$DRY_RUN_FLAG" ]]; then
         echo -e "${YELLOW}╔═══════════════════════════════════════════════════════════════╗${NC}"
         echo -e "${YELLOW}║                      DRY RUN MODE                             ║${NC}"
         echo -e "${YELLOW}║           No changes will be made to GitHub                   ║${NC}"

@@ -217,13 +217,13 @@ func (mc *Collector) RecordJobScheduled(jobName string) {
 
 // RecordWorkflowComplete records a workflow completion (from go-cron ObservabilityHooks).
 // TODO: add label dimensions (root_job_name, status) once Collector supports labeled metrics.
-func (mc *Collector) RecordWorkflowComplete(rootJobName string, status string) {
+func (mc *Collector) RecordWorkflowComplete(rootJobName, status string) {
 	mc.IncrementCounter("ofelia_workflow_completions_total", 1)
 }
 
 // RecordWorkflowJobResult records an individual job result within a workflow (from go-cron ObservabilityHooks).
 // TODO: add label dimensions (job_name, result) once Collector supports labeled metrics.
-func (mc *Collector) RecordWorkflowJobResult(jobName string, result string) {
+func (mc *Collector) RecordWorkflowJobResult(jobName, result string) {
 	mc.IncrementCounter("ofelia_workflow_job_results_total", 1)
 }
 

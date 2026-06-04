@@ -267,7 +267,7 @@ func sortContainers(containers []DockerContainerInfo) []DockerContainerInfo {
 	sortedContainers := make([]DockerContainerInfo, len(containers))
 	copy(sortedContainers, containers)
 
-	slices.SortStableFunc(sortedContainers, func(left DockerContainerInfo, right DockerContainerInfo) int {
+	slices.SortStableFunc(sortedContainers, func(left, right DockerContainerInfo) int {
 		if left.State.Running != right.State.Running {
 			if left.State.Running {
 				return -1

@@ -10,12 +10,13 @@
     /* Apply saved preferences before first paint to avoid flash */
     (function() {
       var t = localStorage.getItem('theme');
-      if (t && t !== 'auto') document.documentElement.setAttribute('data-theme', t);
+      if (t && t !== 'auto') document.documentElement.dataset.theme = t;
       var d = localStorage.getItem('density') || 'auto';
-      var coarse = window.matchMedia('(pointer: coarse)').matches;
-      var narrow = window.matchMedia('(max-width: 600px)').matches;
-      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      var eff = d === 'auto' ? ((coarse || narrow || reduce) ? 'comfortable' : 'compact') : d;
+      var coarse = globalThis.matchMedia('(pointer: coarse)').matches;
+      var narrow = globalThis.matchMedia('(max-width: 600px)').matches;
+      var reduce = globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var eff = d;
+      if (d === 'auto') eff = (coarse || narrow || reduce) ? 'comfortable' : 'compact';
       if (eff === 'compact') document.body ? document.body.classList.add('compact') : document.documentElement.classList.add('compact-early');
     })();
   </script>
@@ -410,9 +411,9 @@
       if (dateStr === null || dateStr === undefined) return '';
       const str = String(dateStr);
       const dt = new Date(str);
-      if (isNaN(dt)) return '';
-      if (pref === 'utc') return dt.toISOString().replace('T',' ').replace('Z','');
-      if (pref === 'server') return str.replace('T',' ').replace('Z','');
+      if (Number.isNaN(dt.getTime())) return '';
+      if (pref === 'utc') return dt.toISOString().replaceAll('T',' ').replaceAll('Z','');
+      if (pref === 'server') return str.replaceAll('T',' ').replaceAll('Z','');
       return dt.toLocaleString();
     }
 
@@ -452,9 +453,9 @@
       currentTheme = t;
       localStorage.setItem('theme', t);
       if (t === 'auto') {
-        document.documentElement.removeAttribute('data-theme');
+        delete document.documentElement.dataset.theme;
       } else {
-        document.documentElement.setAttribute('data-theme', t);
+        document.documentElement.dataset.theme = t;
       }
       themeBtn.textContent = themeText[t];
       themeBtn.title = 'Theme: ' + themeText[t];
@@ -472,15 +473,16 @@
 
     /* Detect if device prefers comfortable: touch screen, narrow viewport, or prefers-reduced-motion */
     function systemWantsComfortable() {
-      return window.matchMedia('(pointer: coarse)').matches ||
-             window.matchMedia('(max-width: 600px)').matches ||
-             window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      return globalThis.matchMedia('(pointer: coarse)').matches ||
+             globalThis.matchMedia('(max-width: 600px)').matches ||
+             globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
     }
 
     function applyDensity(d) {
       currentDensity = d;
       localStorage.setItem('density', d);
-      const effective = d === 'auto' ? (systemWantsComfortable() ? 'comfortable' : 'compact') : d;
+      let effective = d;
+      if (d === 'auto') effective = systemWantsComfortable() ? 'comfortable' : 'compact';
       document.body.classList.toggle('compact', effective === 'compact');
       document.documentElement.classList.remove('compact-early');
       densityBtn.textContent = densityText[d];
@@ -491,7 +493,7 @@
     });
     applyDensity(currentDensity);
     /* Re-evaluate auto density on resize */
-    window.matchMedia('(max-width: 600px)').addEventListener('change', () => {
+    globalThis.matchMedia('(max-width: 600px)').addEventListener('change', () => {
       if (currentDensity === 'auto') applyDensity('auto');
     });
 
@@ -589,9 +591,10 @@
         const stdout = escapeHtml(stripControlChars(e.stdout));
         const stderr = escapeHtml(stripControlChars(e.stderr));
         const hasOut = stdout || stderr;
+        const stdoutBlock = stdout ? `<pre>${stdout}</pre>` : '';
+        const stderrBlock = stderr ? `<pre style="color:var(--pico-del-color)">${stderr}</pre>` : '';
         const output = hasOut ?
-          `<details><summary>view</summary><pre>${stdout}</pre>` +
-          (stderr ? `<pre style="color:var(--pico-del-color)">${stderr}</pre>` : '') + `</details>` : '';
+          `<details><summary>view</summary>` + stdoutBlock + stderrBlock + `</details>` : '';
         row.innerHTML = `<td>${dot}</td><td>${formatTime(e.date)}</td><td>${formatDuration(e.duration)}</td>` +
           `<td class="wrap">${err}</td><td>${output}</td>`;
         tbody.appendChild(row);

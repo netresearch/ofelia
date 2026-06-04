@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const deprecationRemovalVersion = "v1.0.0"
+
 // Names of currently deprecated options. Exported so callers (e.g. doctor
 // reports, label allowlists) can reference the canonical name without
 // duplicating string literals.
@@ -72,7 +74,7 @@ var Deprecations = []Deprecation{
 	{
 		Option:         DeprecatedSlackWebhook,
 		Replacement:    "[webhook \"name\"] sections with preset=slack",
-		RemovalVersion: "v1.0.0",
+		RemovalVersion: deprecationRemovalVersion,
 		Message: `Please migrate to the new webhook notification system:
   [webhook "slack"]
   preset = slack
@@ -119,7 +121,7 @@ See documentation: https://github.com/netresearch/ofelia#webhook-notifications`,
 	{
 		Option:         DeprecatedPollInterval,
 		Replacement:    "config-poll-interval and docker-poll-interval",
-		RemovalVersion: "v1.0.0",
+		RemovalVersion: deprecationRemovalVersion,
 		Message:        "Use 'config-poll-interval' for INI file watching and 'docker-poll-interval' for container polling fallback.",
 		KeyName:        deprecatedPollIntervalKey, // Normalized key for presence-based detection
 		CheckFunc: func(cfg *Config) bool {
@@ -146,7 +148,7 @@ See documentation: https://github.com/netresearch/ofelia#webhook-notifications`,
 	{
 		Option:         DeprecatedNoPoll,
 		Replacement:    "docker-poll-interval=0",
-		RemovalVersion: "v1.0.0",
+		RemovalVersion: deprecationRemovalVersion,
 		Message:        "Use 'docker-poll-interval=0' to disable container polling.",
 		KeyName:        deprecatedNoPollKey, // Normalized key for presence-based detection
 		CheckFunc: func(cfg *Config) bool {

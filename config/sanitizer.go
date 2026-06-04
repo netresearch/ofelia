@@ -92,7 +92,7 @@ func (s *Sanitizer) ValidateCommand(command string) error {
 }
 
 // ValidatePath validates file paths to prevent traversal attacks
-func (s *Sanitizer) ValidatePath(path string, allowedBasePath string) error {
+func (s *Sanitizer) ValidatePath(path, allowedBasePath string) error {
 	// Check for path traversal attempts
 	if s.pathTraversalPattern.MatchString(path) {
 		return fmt.Errorf("path contains directory traversal attempt")

@@ -84,6 +84,7 @@ func TestWaitForServerWithErrChan_DelayedStart(t *testing.T) {
 func TestWaitForServerWithErrChan_CancelContext(t *testing.T) {
 	addr := getUnusedAddr(t)
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)

@@ -15,6 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const metaFileSuffix = ".meta.yaml"
+
 const yamlExt = ".yaml"
 
 // PresetCache provides caching for remote presets
@@ -158,7 +160,7 @@ func (c *PresetCache) Put(url string, preset *Preset) error {
 
 // getFromDisk retrieves a preset from disk cache
 func (c *PresetCache) getFromDisk(key, url string) (*Preset, error) {
-	metaPath := filepath.Join(c.cacheDir, key+".meta.yaml")
+	metaPath := filepath.Join(c.cacheDir, key+metaFileSuffix)
 	presetPath := filepath.Join(c.cacheDir, key+".yaml")
 
 	// Read metadata
@@ -201,7 +203,7 @@ func (c *PresetCache) getFromDisk(key, url string) (*Preset, error) {
 
 // putToDisk stores a preset on disk
 func (c *PresetCache) putToDisk(key, url string, preset *Preset, expiresAt time.Time) error {
-	metaPath := filepath.Join(c.cacheDir, key+".meta.yaml")
+	metaPath := filepath.Join(c.cacheDir, key+metaFileSuffix)
 	presetPath := filepath.Join(c.cacheDir, key+".yaml")
 
 	// Write metadata
@@ -244,7 +246,7 @@ func (c *PresetCache) Invalidate(url string) {
 	c.mu.Unlock()
 
 	// Remove from disk
-	metaPath := filepath.Join(c.cacheDir, key+".meta.yaml")
+	metaPath := filepath.Join(c.cacheDir, key+metaFileSuffix)
 	presetPath := filepath.Join(c.cacheDir, key+".yaml")
 	_ = os.Remove(metaPath)
 	_ = os.Remove(presetPath)
@@ -320,7 +322,7 @@ func (c *PresetCache) Cleanup() error {
 		if now.After(meta.ExpiresAt) {
 			// Remove expired files
 			_ = os.Remove(metaPath)
-			presetPath := metaPath[:len(metaPath)-len(".meta.yaml")] + ".yaml"
+			presetPath := metaPath[:len(metaPath)-len(metaFileSuffix)] + ".yaml"
 			_ = os.Remove(presetPath)
 		}
 	}
@@ -330,7 +332,7 @@ func (c *PresetCache) Cleanup() error {
 
 // isMetaFile checks if a filename is a metadata file
 func isMetaFile(name string) bool {
-	return len(name) > 10 && name[len(name)-10:] == ".meta.yaml"
+	return len(name) > len(metaFileSuffix) && name[len(name)-len(metaFileSuffix):] == metaFileSuffix
 }
 
 // Stats returns cache statistics
