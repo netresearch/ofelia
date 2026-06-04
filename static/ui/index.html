@@ -591,9 +591,10 @@
         const stdout = escapeHtml(stripControlChars(e.stdout));
         const stderr = escapeHtml(stripControlChars(e.stderr));
         const hasOut = stdout || stderr;
+        const stdoutBlock = stdout ? `<pre>${stdout}</pre>` : '';
         const stderrBlock = stderr ? `<pre style="color:var(--pico-del-color)">${stderr}</pre>` : '';
         const output = hasOut ?
-          `<details><summary>view</summary><pre>${stdout}</pre>` + stderrBlock + `</details>` : '';
+          `<details><summary>view</summary>` + stdoutBlock + stderrBlock + `</details>` : '';
         row.innerHTML = `<td>${dot}</td><td>${formatTime(e.date)}</td><td>${formatDuration(e.duration)}</td>` +
           `<td class="wrap">${err}</td><td>${output}</td>`;
         tbody.appendChild(row);

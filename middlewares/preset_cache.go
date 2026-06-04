@@ -332,7 +332,7 @@ func (c *PresetCache) Cleanup() error {
 
 // isMetaFile checks if a filename is a metadata file
 func isMetaFile(name string) bool {
-	return len(name) > 10 && name[len(name)-10:] == metaFileSuffix
+	return len(name) > len(metaFileSuffix) && name[len(name)-len(metaFileSuffix):] == metaFileSuffix
 }
 
 // Stats returns cache statistics
