@@ -48,61 +48,71 @@ func (s *EventServiceAdapter) Subscribe(ctx context.Context, filter domain.Event
 		return eventCh, errCh
 	}
 
-	go func() {
-		defer close(eventCh)
-		defer close(errCh)
-
-		// Build filters
-		opts := events.ListOptions{}
-		if !filter.Since.IsZero() {
-			opts.Since = filter.Since.Format(time.RFC3339Nano)
-		}
-		if !filter.Until.IsZero() {
-			opts.Until = filter.Until.Format(time.RFC3339Nano)
-		}
-		if len(filter.Filters) > 0 {
-			opts.Filters = filters.NewArgs()
-			for key, values := range filter.Filters {
-				for _, v := range values {
-					opts.Filters.Add(key, v)
-				}
-			}
-		}
-
-		// Subscribe to events from SDK
-		// The SDK handles cleanup automatically when context is canceled
-		sdkEventCh, sdkErrCh := s.client.Events(ctx, opts)
-
-		for {
-			select {
-			case <-ctx.Done():
-				// Context canceled - clean exit
-				return
-
-			case err := <-sdkErrCh:
-				if err != nil {
-					errCh <- convertError(err)
-				}
-				return
-
-			case sdkEvent, ok := <-sdkEventCh:
-				if !ok {
-					// Channel closed
-					return
-				}
-
-				// Convert and send event
-				event := convertFromSDKEvent(&sdkEvent)
-				select {
-				case eventCh <- event:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}()
+	go s.streamEvents(ctx, filter, eventCh, errCh)
 
 	return eventCh, errCh
+}
+
+// buildEventListOptions converts a domain.EventFilter into the SDK events.ListOptions.
+func buildEventListOptions(filter domain.EventFilter) events.ListOptions {
+	opts := events.ListOptions{}
+	if !filter.Since.IsZero() {
+		opts.Since = filter.Since.Format(time.RFC3339Nano)
+	}
+	if !filter.Until.IsZero() {
+		opts.Until = filter.Until.Format(time.RFC3339Nano)
+	}
+	if len(filter.Filters) > 0 {
+		opts.Filters = filters.NewArgs()
+		for key, values := range filter.Filters {
+			for _, v := range values {
+				opts.Filters.Add(key, v)
+			}
+		}
+	}
+	return opts
+}
+
+// streamEvents drives the event loop for Subscribe. It is launched as a
+// goroutine and owns both eventCh and errCh until it returns (deferred
+// closes guarantee exactly-once close).
+func (s *EventServiceAdapter) streamEvents(ctx context.Context, filter domain.EventFilter, eventCh chan domain.Event, errCh chan error) {
+	defer close(eventCh)
+	defer close(errCh)
+
+	opts := buildEventListOptions(filter)
+
+	// Subscribe to events from SDK
+	// The SDK handles cleanup automatically when context is canceled
+	sdkEventCh, sdkErrCh := s.client.Events(ctx, opts)
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Context canceled - clean exit
+			return
+
+		case err := <-sdkErrCh:
+			if err != nil {
+				errCh <- convertError(err)
+			}
+			return
+
+		case sdkEvent, ok := <-sdkEventCh:
+			if !ok {
+				// Channel closed
+				return
+			}
+
+			// Convert and send event
+			event := convertFromSDKEvent(&sdkEvent)
+			select {
+			case eventCh <- event:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
 }
 
 // SubscribeWithCallback subscribes to events with a callback.

@@ -212,33 +212,32 @@ func (c *FakeClock) findEarliestEvent() *time.Time {
 	var earliest *time.Time
 
 	for _, t := range c.tickers {
-		if t.stopped {
-			continue
-		}
-		if earliest == nil || t.nextTick.Before(*earliest) {
-			tick := t.nextTick
-			earliest = &tick
+		if !t.stopped {
+			earliest = updateEarliest(earliest, t.nextTick)
 		}
 	}
 
 	for _, t := range c.timers {
-		if t.stopped || t.fired {
-			continue
-		}
-		if earliest == nil || t.deadline.Before(*earliest) {
-			d := t.deadline
-			earliest = &d
+		if !t.stopped && !t.fired {
+			earliest = updateEarliest(earliest, t.deadline)
 		}
 	}
 
 	for _, w := range c.waiters {
-		if earliest == nil || w.deadline.Before(*earliest) {
-			d := w.deadline
-			earliest = &d
-		}
+		earliest = updateEarliest(earliest, w.deadline)
 	}
 
 	return earliest
+}
+
+// updateEarliest returns a pointer to the earlier of current and candidate.
+// If current is nil, candidate is always returned.
+func updateEarliest(current *time.Time, candidate time.Time) *time.Time {
+	if current == nil || candidate.Before(*current) {
+		t := candidate
+		return &t
+	}
+	return current
 }
 
 func (c *FakeClock) fireTickers() {

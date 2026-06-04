@@ -121,6 +121,39 @@ func NewServer(addr string, s *core.Scheduler, cfg any, provider core.DockerProv
 	return NewServerWithAuth(addr, s, cfg, provider, nil)
 }
 
+// setupAuth initializes the token manager, rate limiter, and trusted
+// proxies on server from authCfg. Returns an error only when token
+// manager construction fails (caller should return nil on error).
+func setupAuth(server *Server, authCfg *SecureAuthConfig) error {
+	tokenExpiry := authCfg.TokenExpiry
+	if tokenExpiry == 0 {
+		tokenExpiry = 24
+	}
+	tm, err := NewSecureTokenManager(authCfg.SecretKey, tokenExpiry)
+	if err != nil {
+		return err
+	}
+	server.tokenManager = tm
+
+	maxAttempts := authCfg.MaxAttempts
+	if maxAttempts == 0 {
+		maxAttempts = 5
+	}
+	server.loginLimiter = NewRateLimiter(maxAttempts, maxAttempts)
+
+	// Parse trusted proxy CIDRs for X-Forwarded-For handling
+	if len(authCfg.TrustedProxies) > 0 {
+		tp, tpErr := ParseTrustedProxies(authCfg.TrustedProxies)
+		if tpErr != nil {
+			server.scheduler.Logger.Error("failed to parse trusted proxies", "error", tpErr)
+		} else {
+			server.trustedProxies = tp
+			server.scheduler.Logger.Info("trusted proxies configured", "count", len(tp))
+		}
+	}
+	return nil
+}
+
 func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.DockerProvider, authCfg *SecureAuthConfig) *Server {
 	server := &Server{
 		addr:       addr,
@@ -132,32 +165,9 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 	}
 
 	if authCfg != nil && authCfg.Enabled {
-		tokenExpiry := authCfg.TokenExpiry
-		if tokenExpiry == 0 {
-			tokenExpiry = 24
-		}
-		tm, err := NewSecureTokenManager(authCfg.SecretKey, tokenExpiry)
-		if err != nil {
+		if err := setupAuth(server, authCfg); err != nil {
 			s.Logger.Error("failed to initialize token manager", "error", err)
 			return nil
-		}
-		server.tokenManager = tm
-
-		maxAttempts := authCfg.MaxAttempts
-		if maxAttempts == 0 {
-			maxAttempts = 5
-		}
-		server.loginLimiter = NewRateLimiter(maxAttempts, maxAttempts)
-
-		// Parse trusted proxy CIDRs for X-Forwarded-For handling
-		if len(authCfg.TrustedProxies) > 0 {
-			tp, tpErr := ParseTrustedProxies(authCfg.TrustedProxies)
-			if tpErr != nil {
-				s.Logger.Error("failed to parse trusted proxies", "error", tpErr)
-			} else {
-				server.trustedProxies = tp
-				s.Logger.Info("trusted proxies configured", "count", len(tp))
-			}
 		}
 	}
 
@@ -302,6 +312,30 @@ type apiJob struct {
 	Config   json.RawMessage `json:"config"`
 }
 
+// mapJobSource looks up name in the map field m and returns the
+// JobSource string for that entry, if any. Returns ("", false) when
+// m is not a valid map or the entry/field is absent.
+func mapJobSource(m reflect.Value, name string) (string, bool) {
+	if !m.IsValid() || m.Kind() != reflect.Map {
+		return "", false
+	}
+	jv := m.MapIndex(reflect.ValueOf(name))
+	if !jv.IsValid() {
+		return "", false
+	}
+	if jv.Kind() == reflect.Pointer {
+		if jv.IsNil() {
+			return "", false
+		}
+		jv = jv.Elem()
+	}
+	src := jv.FieldByName("JobSource")
+	if !src.IsValid() {
+		return "", false
+	}
+	return src.String(), true
+}
+
 func jobOrigin(cfg any, name string) string {
 	if cfg == nil {
 		return ""
@@ -315,18 +349,8 @@ func jobOrigin(cfg any, name string) string {
 	}
 	fields := []string{"RunJobs", "ExecJobs", "ServiceJobs", "LocalJobs", "ComposeJobs"}
 	for _, f := range fields {
-		m := v.FieldByName(f)
-		if m.IsValid() && m.Kind() == reflect.Map {
-			jv := m.MapIndex(reflect.ValueOf(name))
-			if jv.IsValid() {
-				if jv.Kind() == reflect.Pointer {
-					jv = jv.Elem()
-				}
-				src := jv.FieldByName("JobSource")
-				if src.IsValid() {
-					return src.String()
-				}
-			}
+		if src, ok := mapJobSource(v.FieldByName(f), name); ok {
+			return src
 		}
 	}
 	return ""
@@ -366,6 +390,47 @@ func jobType(j core.Job) string {
 // scheduleRunCount is the number of next/previous execution times returned per job.
 const scheduleRunCount = 5
 
+// newAPIExecution converts a core.Execution into its API representation.
+// Returns nil when lr is nil.
+func newAPIExecution(lr *core.Execution) *apiExecution {
+	if lr == nil {
+		return nil
+	}
+	errStr := ""
+	if lr.Error != nil {
+		errStr = lr.Error.Error()
+	}
+	return &apiExecution{
+		Date:     lr.Date,
+		Duration: lr.Duration,
+		Failed:   lr.Failed,
+		Skipped:  lr.Skipped,
+		Error:    errStr,
+		Stdout:   lr.GetStdout(),
+		Stderr:   lr.GetStderr(),
+	}
+}
+
+// computeRunTimes returns the next/prev run-time slices for job.
+// Triggered-only jobs, disabled (paused) jobs, and jobs without a cron
+// entry return empty (non-nil) slices.
+func (s *Server) computeRunTimes(job core.Job, now time.Time) (next, prev []time.Time) {
+	if s.scheduler.GetDisabledJob(job.GetName()) == nil {
+		entry := s.scheduler.EntryByName(job.GetName())
+		if entry.Valid() && entry.Schedule != nil && !cron.IsTriggered(entry.Schedule) {
+			next = cron.NextN(entry.Schedule, now, scheduleRunCount)
+			prev = cron.PrevN(entry.Schedule, now, scheduleRunCount)
+		}
+	}
+	if next == nil {
+		next = []time.Time{}
+	}
+	if prev == nil {
+		prev = []time.Time{}
+	}
+	return next, prev
+}
+
 // buildAPIJobs converts a slice of core.Job into apiJob payloads.
 func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 	now := time.Now()
@@ -373,43 +438,10 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 	for _, job := range list {
 		var execInfo *apiExecution
 		if lrGetter, ok := job.(interface{ GetLastRun() *core.Execution }); ok {
-			if lr := lrGetter.GetLastRun(); lr != nil {
-				errStr := ""
-				if lr.Error != nil {
-					errStr = lr.Error.Error()
-				}
-				stdout := lr.GetStdout()
-				stderr := lr.GetStderr()
-				execInfo = &apiExecution{
-					Date:     lr.Date,
-					Duration: lr.Duration,
-					Failed:   lr.Failed,
-					Skipped:  lr.Skipped,
-					Error:    errStr,
-					Stdout:   stdout,
-					Stderr:   stderr,
-				}
-			}
+			execInfo = newAPIExecution(lrGetter.GetLastRun())
 		}
 
-		// Compute next/prev execution times from the cron schedule.
-		// Triggered-only jobs (detected via cron.IsTriggered on the entry's schedule),
-		// disabled (paused) jobs, and jobs without a cron entry return empty slices.
-		var nextRuns, prevRuns []time.Time
-		if s.scheduler.GetDisabledJob(job.GetName()) == nil {
-			entry := s.scheduler.EntryByName(job.GetName())
-			if entry.Valid() && entry.Schedule != nil && !cron.IsTriggered(entry.Schedule) {
-				nextRuns = cron.NextN(entry.Schedule, now, scheduleRunCount)
-				prevRuns = cron.PrevN(entry.Schedule, now, scheduleRunCount)
-			}
-		}
-		if nextRuns == nil {
-			nextRuns = []time.Time{}
-		}
-		if prevRuns == nil {
-			prevRuns = []time.Time{}
-		}
-
+		nextRuns, prevRuns := s.computeRunTimes(job, now)
 		origin := s.jobOrigin(job.GetName())
 		cfgBytes, _ := json.Marshal(job)
 		jobs = append(jobs, apiJob{
@@ -717,69 +749,86 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(status)
 }
 
+func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
+	if s.provider == nil {
+		return nil, fmt.Errorf("docker provider unavailable for run job")
+	}
+	j := core.NewRunJob(s.provider)
+	j.Name = req.Name
+	j.Schedule = req.Schedule
+	j.Command = req.Command
+	j.Image = req.Image
+	j.Container = req.Container
+	return j, nil
+}
+
+func (s *Server) newExecJobFromRequest(req *jobRequest) (core.Job, error) {
+	if s.provider == nil {
+		return nil, fmt.Errorf("docker provider unavailable for exec job")
+	}
+	j := core.NewExecJob(s.provider)
+	j.Name = req.Name
+	j.Schedule = req.Schedule
+	j.Command = req.Command
+	j.Container = req.Container
+	return j, nil
+}
+
+// newComposeJobFromRequest validates compose job parameters and builds the job.
+func newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
+	validator := config.NewCommandValidator()
+	if req.File != "" {
+		if err := validator.ValidateFilePath(req.File); err != nil {
+			return nil, fmt.Errorf("invalid compose file path: %w", err)
+		}
+	}
+	if err := validator.ValidateServiceName(req.Service); err != nil {
+		return nil, fmt.Errorf("invalid service name: %w", err)
+	}
+	if req.Command != "" {
+		cmdArgs := args.GetArgs(req.Command)
+		if err := validator.ValidateCommandArgs(cmdArgs); err != nil {
+			return nil, fmt.Errorf("invalid command arguments: %w", err)
+		}
+	}
+	j := &core.ComposeJob{}
+	j.Name = req.Name
+	j.Schedule = req.Schedule
+	j.Command = req.Command
+	j.File = req.File
+	j.Service = req.Service
+	j.Exec = req.ExecFlag
+	return j, nil
+}
+
+// newLocalJobFromRequest validates local job command and builds the job.
+// Note: Empty commands will be caught at runtime by LocalJob.buildCommand()
+func newLocalJobFromRequest(req *jobRequest) (core.Job, error) {
+	if req.Command != "" {
+		// Validate local job command if provided to prevent injection attacks
+		validator := config.NewCommandValidator()
+		cmdArgs := args.GetArgs(req.Command)
+		if err := validator.ValidateCommandArgs(cmdArgs); err != nil {
+			return nil, fmt.Errorf("invalid command arguments: %w", err)
+		}
+	}
+	j := &core.LocalJob{}
+	j.Name = req.Name
+	j.Schedule = req.Schedule
+	j.Command = req.Command
+	return j, nil
+}
+
 func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 	switch req.Type {
 	case "run":
-		if s.provider == nil {
-			return nil, fmt.Errorf("docker provider unavailable for run job")
-		}
-		j := core.NewRunJob(s.provider)
-		j.Name = req.Name
-		j.Schedule = req.Schedule
-		j.Command = req.Command
-		j.Image = req.Image
-		j.Container = req.Container
-		return j, nil
+		return s.newRunJobFromRequest(req)
 	case "exec":
-		if s.provider == nil {
-			return nil, fmt.Errorf("docker provider unavailable for exec job")
-		}
-		j := core.NewExecJob(s.provider)
-		j.Name = req.Name
-		j.Schedule = req.Schedule
-		j.Command = req.Command
-		j.Container = req.Container
-		return j, nil
+		return s.newExecJobFromRequest(req)
 	case "compose":
-		// Validate compose job parameters
-		validator := config.NewCommandValidator()
-		if req.File != "" {
-			if err := validator.ValidateFilePath(req.File); err != nil {
-				return nil, fmt.Errorf("invalid compose file path: %w", err)
-			}
-		}
-		if err := validator.ValidateServiceName(req.Service); err != nil {
-			return nil, fmt.Errorf("invalid service name: %w", err)
-		}
-		if req.Command != "" {
-			cmdArgs := args.GetArgs(req.Command)
-			if err := validator.ValidateCommandArgs(cmdArgs); err != nil {
-				return nil, fmt.Errorf("invalid command arguments: %w", err)
-			}
-		}
-		j := &core.ComposeJob{}
-		j.Name = req.Name
-		j.Schedule = req.Schedule
-		j.Command = req.Command
-		j.File = req.File
-		j.Service = req.Service
-		j.Exec = req.ExecFlag
-		return j, nil
+		return newComposeJobFromRequest(req)
 	case "", "local":
-		// Validate local job command if provided to prevent injection attacks
-		// Note: Empty commands will be caught at runtime by LocalJob.buildCommand()
-		if req.Command != "" {
-			validator := config.NewCommandValidator()
-			cmdArgs := args.GetArgs(req.Command)
-			if err := validator.ValidateCommandArgs(cmdArgs); err != nil {
-				return nil, fmt.Errorf("invalid command arguments: %w", err)
-			}
-		}
-		j := &core.LocalJob{}
-		j.Name = req.Name
-		j.Schedule = req.Schedule
-		j.Command = req.Command
-		return j, nil
+		return newLocalJobFromRequest(req)
 	default:
 		return nil, fmt.Errorf("unknown job type %q", req.Type)
 	}

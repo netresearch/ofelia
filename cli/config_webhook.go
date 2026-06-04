@@ -142,57 +142,61 @@ func parseWebhookName(sectionName string) string {
 //
 //nolint:unparam // error return kept for future validation additions
 func parseWebhookConfig(section *ini.Section, config *middlewares.WebhookConfig) error {
+	applyWebhookINIStrings(section, config)
+	applyWebhookINIDurations(section, config)
+	applyWebhookINIInts(section, config)
+	return nil
+}
+
+// applyWebhookINIStrings reads the string-typed webhook INI keys into config.
+func applyWebhookINIStrings(section *ini.Section, config *middlewares.WebhookConfig) {
 	if key, err := section.GetKey("preset"); err == nil {
 		config.Preset = ExpandEnvVars(key.String())
 	}
-
 	if key, err := section.GetKey("id"); err == nil {
 		config.ID = ExpandEnvVars(key.String())
 	}
-
 	if key, err := section.GetKey("secret"); err == nil {
 		config.Secret = ExpandEnvVars(key.String())
 	}
-
 	if key, err := section.GetKey("url"); err == nil {
 		config.URL = ExpandEnvVars(key.String())
 	}
-
 	if key, err := section.GetKey("trigger"); err == nil {
 		config.Trigger = middlewares.TriggerType(ExpandEnvVars(key.String()))
 	}
+	if key, err := section.GetKey("link"); err == nil {
+		config.Link = ExpandEnvVars(key.String())
+	}
+	if key, err := section.GetKey("link-text"); err == nil {
+		config.LinkText = ExpandEnvVars(key.String())
+	}
+	if key, err := section.GetKey("device"); err == nil {
+		config.Device = ExpandEnvVars(key.String())
+	}
+}
 
+// applyWebhookINIDurations reads duration-typed webhook INI keys into config.
+func applyWebhookINIDurations(section *ini.Section, config *middlewares.WebhookConfig) {
 	if key, err := section.GetKey("timeout"); err == nil {
 		if d, err := key.Duration(); err == nil {
 			config.Timeout = d
 		}
 	}
-
-	if key, err := section.GetKey("retry-count"); err == nil {
-		if n, err := key.Int(); err == nil {
-			config.RetryCount = n
-		}
-	}
-
 	if key, err := section.GetKey("retry-delay"); err == nil {
 		if d, err := key.Duration(); err == nil {
 			config.RetryDelay = d
 		}
 	}
+}
 
-	if key, err := section.GetKey("link"); err == nil {
-		config.Link = ExpandEnvVars(key.String())
+// applyWebhookINIInts reads integer-typed webhook INI keys into config.
+func applyWebhookINIInts(section *ini.Section, config *middlewares.WebhookConfig) {
+	if key, err := section.GetKey("retry-count"); err == nil {
+		if n, err := key.Int(); err == nil {
+			config.RetryCount = n
+		}
 	}
-
-	if key, err := section.GetKey("link-text"); err == nil {
-		config.LinkText = ExpandEnvVars(key.String())
-	}
-
-	if key, err := section.GetKey("device"); err == nil {
-		config.Device = ExpandEnvVars(key.String())
-	}
-
-	return nil
 }
 
 // JobWebhookConfig holds per-job webhook configuration

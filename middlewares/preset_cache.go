@@ -297,37 +297,45 @@ func (c *PresetCache) Cleanup() error {
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != yamlExt {
-			continue
-		}
-
-		// Skip preset files, only process metadata
-		if !isMetaFile(entry.Name()) {
-			continue
-		}
-
-		metaPath := filepath.Join(c.cacheDir, entry.Name())
-		metaData, err := os.ReadFile(metaPath) // #nosec G304 -- path is constructed from controlled cache directory
-		if err != nil {
-			continue
-		}
-
-		var meta cacheMetadata
-		if err := yaml.Unmarshal(metaData, &meta); err != nil {
-			// Invalid metadata, remove
-			_ = os.Remove(metaPath)
-			continue
-		}
-
-		if now.After(meta.ExpiresAt) {
-			// Remove expired files
-			_ = os.Remove(metaPath)
-			presetPath := metaPath[:len(metaPath)-len(metaFileSuffix)] + ".yaml"
-			_ = os.Remove(presetPath)
-		}
+		c.cleanupDiskEntry(entry, now)
 	}
 
 	return nil
+}
+
+// cleanupDiskEntry removes a single cache entry from disk if it is expired or
+// has invalid metadata. Only metadata files (.meta.yaml) are processed; plain
+// preset files are skipped (they are removed together with their paired
+// metadata file when expiry is detected).
+func (c *PresetCache) cleanupDiskEntry(entry os.DirEntry, now time.Time) {
+	if entry.IsDir() || filepath.Ext(entry.Name()) != yamlExt {
+		return
+	}
+
+	// Skip preset files, only process metadata
+	if !isMetaFile(entry.Name()) {
+		return
+	}
+
+	metaPath := filepath.Join(c.cacheDir, entry.Name())
+	metaData, err := os.ReadFile(metaPath) // #nosec G304 -- path is constructed from controlled cache directory
+	if err != nil {
+		return
+	}
+
+	var meta cacheMetadata
+	if err := yaml.Unmarshal(metaData, &meta); err != nil {
+		// Invalid metadata, remove
+		_ = os.Remove(metaPath)
+		return
+	}
+
+	if now.After(meta.ExpiresAt) {
+		// Remove expired files
+		_ = os.Remove(metaPath)
+		presetPath := metaPath[:len(metaPath)-len(metaFileSuffix)] + ".yaml"
+		_ = os.Remove(presetPath)
+	}
 }
 
 // isMetaFile checks if a filename is a metadata file

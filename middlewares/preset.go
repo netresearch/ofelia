@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -329,46 +330,9 @@ func (l *PresetLoader) loadFromURL(url string) (*Preset, error) {
 		return nil, fmt.Errorf("preset URL validation failed: %w", err)
 	}
 
-	// Fetch from remote with context
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	data, err := l.fetchURL(url)
 	if err != nil {
-		return nil, fmt.Errorf("create request for %s: %w", url, err)
-	}
-
-	// Use the cached *http.Client constructed in NewPresetLoader so bursty
-	// preset fetches reuse the underlying connection pool. The transport was
-	// produced by TransportFactory() at construction time so the TLS / proxy
-	// posture stays consistent with webhook delivery. The request-level
-	// deadline is already set by the context above, so we don't add a
-	// Client.Timeout.
-	resp, err := l.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch preset from %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch preset from %s: HTTP %d", url, resp.StatusCode)
-	}
-
-	// Read body with size limit (1MB)
-	const maxSize = 1024 * 1024
-	data := make([]byte, 0, 4096)
-	buf := make([]byte, 4096)
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			data = append(data, buf[:n]...)
-			if len(data) > maxSize {
-				return nil, fmt.Errorf("preset file too large (max %d bytes)", maxSize)
-			}
-		}
-		if err != nil {
-			break
-		}
+		return nil, err
 	}
 
 	preset, err := ParsePreset(data)
@@ -382,6 +346,60 @@ func (l *PresetLoader) loadFromURL(url string) (*Preset, error) {
 	}
 
 	return preset, nil
+}
+
+// fetchURL performs the HTTP GET for the given URL and returns the body,
+// enforcing a 1 MB size limit. It uses the cached HTTP client so that
+// bursty preset fetches reuse the underlying connection pool. The transport
+// was produced by TransportFactory() at construction time so the TLS/proxy
+// posture stays consistent with webhook delivery.
+func (l *PresetLoader) fetchURL(url string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request for %s: %w", url, err)
+	}
+
+	// The request-level deadline is already set by the context above, so we
+	// don't add a Client.Timeout.
+	resp, err := l.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch preset from %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch preset from %s: HTTP %d", url, resp.StatusCode)
+	}
+
+	return readBodyWithLimit(resp.Body)
+}
+
+// readBodyWithLimit reads from r up to maxPresetSize bytes, returning an error
+// if the body exceeds the limit. Any read error (including non-EOF) stops the
+// loop and the accumulated data is returned; this matches the original inline
+// behavior in loadFromURL which broke on any error and passed partial data to
+// ParsePreset rather than surfacing the read failure.
+func readBodyWithLimit(r io.Reader) ([]byte, error) {
+	// Read body with size limit (1MB)
+	const maxPresetSize = 1024 * 1024
+	data := make([]byte, 0, 4096)
+	buf := make([]byte, 4096)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			data = append(data, buf[:n]...)
+			if len(data) > maxPresetSize {
+				return nil, fmt.Errorf("preset file too large (max %d bytes)", maxPresetSize)
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	return data, nil //nolint:nilerr // partial/error reads are tolerated to match original loadFromURL semantics
 }
 
 // isTrustedSource checks if a preset source matches the trusted sources pattern

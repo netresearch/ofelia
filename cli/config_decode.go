@@ -142,42 +142,38 @@ func extractMapstructureKeysFromType(t reflect.Type) []string {
 
 	keys := make([]string, 0)
 	for field := range t.Fields() {
-		// Skip unexported fields
 		if !field.IsExported() {
 			continue
 		}
-
-		// Handle embedded structs (squash)
-		if field.Anonymous || hasSquashTag(field) {
-			embedded := extractMapstructureKeysFromType(field.Type)
-			keys = append(keys, embedded...)
-			continue
+		if k := mapstructureKeyForField(field); k != "" {
+			keys = append(keys, k)
+		} else if field.Anonymous || hasSquashTag(field) {
+			keys = append(keys, extractMapstructureKeysFromType(field.Type)...)
 		}
-
-		// Get mapstructure tag
-		tag := field.Tag.Get("mapstructure")
-
-		// Skip fields explicitly marked to ignore
-		if tag == "-" {
-			continue
-		}
-
-		// Parse tag (handle "name,omitempty" format)
-		if tag != "" {
-			parts := strings.Split(tag, ",")
-			name := parts[0]
-			if name != "" && name != "-" {
-				keys = append(keys, name)
-				continue
-			}
-		}
-
-		// No mapstructure tag or empty name - use lowercase field name
-		// mapstructure matches by lowercase field name when no tag is specified
-		keys = append(keys, strings.ToLower(field.Name))
 	}
-
 	return keys
+}
+
+// mapstructureKeyForField returns the configuration key name for a struct field,
+// or "" when the field should be skipped or expanded (embedded/squashed structs).
+// Priority: explicit mapstructure tag → lowercase field name. Returns "" for
+// ignored ("-") fields and for anonymous/squashed fields (handled by caller).
+func mapstructureKeyForField(field reflect.StructField) string {
+	// Embedded/squashed structs are expanded by the caller.
+	if field.Anonymous || hasSquashTag(field) {
+		return ""
+	}
+	tag := field.Tag.Get("mapstructure")
+	if tag == "-" {
+		return ""
+	}
+	if tag != "" {
+		if name := strings.SplitN(tag, ",", 2)[0]; name != "" && name != "-" {
+			return name
+		}
+	}
+	// No mapstructure tag or empty name - use lowercase field name.
+	return strings.ToLower(field.Name)
 }
 
 // hasSquashTag checks if a struct field has the mapstructure ",squash" tag option.

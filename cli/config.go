@@ -164,6 +164,44 @@ func resolveConfigFiles(pattern string) ([]string, error) {
 	return files, nil
 }
 
+// loadConfigFile reads one INI config file, parses it into c, merges used keys
+// into allUsedKeys, logs unknown-key warnings, and updates latest with the file
+// mod-time. Returns an error only when the file cannot be read or parsed.
+func loadConfigFile(f string, c *Config, logger *slog.Logger, allUsedKeys map[string]bool, latest *time.Time) error {
+	data, err := os.ReadFile(f) // #nosec G304 -- file path from user config flag, not external input
+	if err != nil {
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return fmt.Errorf("failed to load config file %q: %w\n  → Check file exists and is readable: ls -l %q\n  → Verify file path is correct\n  → Check file permissions (should be readable)", f, err, f)
+	}
+	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, data)
+	if err != nil {
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return fmt.Errorf("failed to parse config file %q: %w\n  → Check INI syntax is valid\n  → Verify environment variable substitutions resolve correctly", f, err)
+	}
+	parseRes, parseErr := parseIni(cfg, c)
+	if parseErr != nil {
+		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
+		return fmt.Errorf("failed to parse config file %q: %w\n  → Check INI syntax is valid (sections in [brackets], key=value pairs)\n  → Look for syntax errors near line mentioned in error\n  → Use 'ofelia validate --config=%q' to validate syntax", f, parseErr, f)
+	}
+
+	// Merge used keys from this file
+	if parseRes != nil {
+		for k, v := range parseRes.usedKeys {
+			if v {
+				allUsedKeys[k] = true
+			}
+		}
+		// Log warnings for unknown keys
+		logUnknownKeyWarnings(logger, f, parseRes)
+	}
+
+	if info, statErr := os.Stat(f); statErr == nil && info.ModTime().After(*latest) {
+		*latest = info.ModTime()
+	}
+	logger.Debug("loaded config file", "file", f)
+	return nil
+}
+
 // BuildFromFile builds a scheduler using the config from one or multiple files.
 // The filename may include glob patterns. When multiple files are matched,
 // they are parsed in lexical order and merged.
@@ -178,40 +216,9 @@ func BuildFromFile(filename string, logger *slog.Logger) (*Config, error) {
 	allUsedKeys := make(map[string]bool)
 
 	for _, f := range files {
-		data, err := os.ReadFile(f) // #nosec G304 -- file path from user config flag, not external input
-		if err != nil {
-			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
-			return nil, fmt.Errorf("failed to load config file %q: %w\n  → Check file exists and is readable: ls -l %q\n  → Verify file path is correct\n  → Check file permissions (should be readable)", f, err, f)
+		if err := loadConfigFile(f, c, logger, allUsedKeys, &latest); err != nil {
+			return nil, err
 		}
-		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, data)
-		if err != nil {
-			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
-			return nil, fmt.Errorf("failed to parse config file %q: %w\n  → Check INI syntax is valid\n  → Verify environment variable substitutions resolve correctly", f, err)
-		}
-		parseRes, parseErr := parseIni(cfg, c)
-		if parseErr != nil {
-			//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
-			return nil, fmt.Errorf("failed to parse config file %q: %w\n  → Check INI syntax is valid (sections in [brackets], key=value pairs)\n  → Look for syntax errors near line mentioned in error\n  → Use 'ofelia validate --config=%q' to validate syntax", f, parseErr, f)
-		}
-
-		// Merge used keys from this file
-		if parseRes != nil {
-			for k, v := range parseRes.usedKeys {
-				if v {
-					allUsedKeys[k] = true
-				}
-			}
-
-			// Log warnings for unknown keys
-			logUnknownKeyWarnings(logger, f, parseRes)
-		}
-
-		if info, statErr := os.Stat(f); statErr == nil {
-			if info.ModTime().After(latest) {
-				latest = info.ModTime()
-			}
-		}
-		logger.Debug("loaded config file", "file", f)
 	}
 	c.configPath = filename
 	c.configFiles = files
@@ -296,6 +303,26 @@ func dockerKnownKeys() []string {
 	return extractMapstructureKeys(DockerConfig{})
 }
 
+// jobUnknownKeyMessage builds the warning text for a single unknown key in a job
+// section. The shape is identical to logSectionUnknownKeyWarnings but includes
+// the job name in the section label.
+func jobUnknownKeyMessage(key, jobType, jobName, filename, suggestion string) string {
+	switch {
+	case suggestion != "" && filename != "":
+		return fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] of %s (did you mean '%s'?)",
+			key, jobType, jobName, filename, suggestion)
+	case suggestion != "":
+		return fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] (did you mean '%s'?)",
+			key, jobType, jobName, suggestion)
+	case filename != "":
+		return fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] of %s (typo?)",
+			key, jobType, jobName, filename)
+	default:
+		return fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] (typo?)",
+			key, jobType, jobName)
+	}
+}
+
 // logJobUnknownKeyWarnings logs warnings for unknown keys in job sections with
 // "did you mean?" suggestions. If filename is non-empty, it is included in the message.
 func logJobUnknownKeyWarnings(logger *slog.Logger, unknownJobs []jobUnknownKeys, filename string) {
@@ -303,23 +330,7 @@ func logJobUnknownKeyWarnings(logger *slog.Logger, unknownJobs []jobUnknownKeys,
 		knownKeys := getKnownKeysForJobType(job.JobType)
 		for _, key := range job.UnknownKeys {
 			suggestion := findClosestMatch(key, knownKeys)
-			if filename != "" {
-				if suggestion != "" {
-					logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] of %s (did you mean '%s'?)",
-						key, job.JobType, job.JobName, filename, suggestion))
-				} else {
-					logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] of %s (typo?)",
-						key, job.JobType, job.JobName, filename))
-				}
-			} else {
-				if suggestion != "" {
-					logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] (did you mean '%s'?)",
-						key, job.JobType, job.JobName, suggestion))
-				} else {
-					logger.Warn(fmt.Sprintf("Unknown configuration key '%s' in [%s \"%s\"] (typo?)",
-						key, job.JobType, job.JobName))
-				}
-			}
+			logger.Warn(jobUnknownKeyMessage(key, job.JobType, job.JobName, filename, suggestion))
 		}
 	}
 }
@@ -821,6 +832,29 @@ type jobConfig interface {
 	ResetMiddlewares(...core.Middleware)
 }
 
+// reconcileParsedJob decides whether a parsed job should be added to current.
+// Returns true when the caller should proceed to addNewJob (the existing entry,
+// if any, has already been removed from the scheduler). Returns false when the
+// job should be skipped (e.g. INI takes precedence over a label-defined entry).
+func reconcileParsedJob[J jobConfig](c *Config, name string, cur J, curOK bool, source JobSource, jobKind string) bool {
+	if !curOK {
+		return true // no existing entry — always add
+	}
+	switch {
+	case cur.GetJobSource() == source:
+		return false // same source, already updated in the first loop
+	case source == JobSourceINI && cur.GetJobSource() == JobSourceLabel:
+		c.logger.Warn(fmt.Sprintf("overriding label-defined %s job %q with INI job", jobKind, name))
+		_ = c.sh.RemoveJob(cur)
+		return true
+	case source == JobSourceLabel && cur.GetJobSource() == JobSourceINI:
+		c.logger.Warn(fmt.Sprintf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name))
+		return false
+	default:
+		return false
+	}
+}
+
 // syncJobMap updates the scheduler and the provided job map based on the parsed
 // configuration. The prep function is called on each job before comparison or
 // registration to set fields such as Name or Client and apply defaults.
@@ -837,26 +871,14 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 		}
 		if replaceIfChanged(c, name, j, newJob, prep, source) {
 			current[name] = newJob
-			continue
 		}
 	}
 
 	for name, j := range parsed {
-		if cur, ok := current[name]; ok {
-			switch {
-			case cur.GetJobSource() == source:
-				continue
-			case source == JobSourceINI && cur.GetJobSource() == JobSourceLabel:
-				c.logger.Warn(fmt.Sprintf("overriding label-defined %s job %q with INI job", jobKind, name))
-				_ = c.sh.RemoveJob(cur)
-			case source == JobSourceLabel && cur.GetJobSource() == JobSourceINI:
-				c.logger.Warn(fmt.Sprintf("ignoring label-defined %s job %q because an INI job with the same name exists", jobKind, name))
-				continue
-			default:
-				continue
-			}
+		cur, curOK := current[name]
+		if reconcileParsedJob(c, name, cur, curOK, source, jobKind) {
+			addNewJob(c, name, j, prep, source, current)
 		}
-		addNewJob(c, name, j, prep, source, current)
 	}
 }
 
@@ -1021,72 +1043,31 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	CheckDeprecations(parsedLabelConfig)
 }
 
-func (c *Config) iniConfigUpdate() error {
-	if c.configPath == "" {
-		return nil
-	}
-
-	files, err := resolveConfigFiles(c.configPath)
-	if err != nil {
-		return err
-	}
-
-	latest, changed, err := latestChanged(files, c.configModTime)
-	if err != nil {
-		return err
-	}
-	for _, f := range files {
-		c.logger.Debug(fmt.Sprintf("checking config file %s", f))
-	}
-	if !changed {
-		c.logger.Debug("config not changed")
-		return nil
-	}
-	c.logger.Debug(fmt.Sprintf("reloading config files from %s", strings.Join(files, ", ")))
-
-	parsed, err := BuildFromFile(c.configPath, c.logger)
-	if err != nil {
-		return err
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	globalChanged := !reflect.DeepEqual(parsed.Global, c.Global)
-	c.configFiles = files
-	c.configModTime = latest
-	c.logger.Debug(fmt.Sprintf("applied config files from %s", strings.Join(files, ", ")))
-	if globalChanged {
-		c.Global = parsed.Global
-		c.refreshWebhookManagerOnGlobalChange()
-		c.sh.ResetMiddlewares()
-		c.buildSchedulerMiddlewares(c.sh)
-		wm := c.getWebhookManager()
-		// All jobs (including disabled/paused) need middleware updates.
-		// Use safe accessors that hold the scheduler's own lock to get a copy.
-		allJobs := append(c.sh.GetActiveJobs(), c.sh.GetDisabledJobs()...)
-		for _, j := range allJobs {
-			if jc, ok := j.(jobConfig); ok {
-				jc.ResetMiddlewares()
-				jc.buildMiddlewares(c.logger, wm)
-				j.Use(c.sh.Middlewares()...)
-			}
-		}
-		if err := ApplyLogLevel(c.Global.LogLevel, c.levelVar); err != nil {
-			c.logger.Warn(fmt.Sprintf("Failed to apply global log level (using default): %v", err))
+// rebuildAfterGlobalChange re-wires scheduler middlewares and per-job
+// middleware chains when the [global] section changed on live-reload.
+func (c *Config) rebuildAfterGlobalChange() {
+	c.refreshWebhookManagerOnGlobalChange()
+	c.sh.ResetMiddlewares()
+	c.buildSchedulerMiddlewares(c.sh)
+	wm := c.getWebhookManager()
+	// All jobs (including disabled/paused) need middleware updates.
+	// Use safe accessors that hold the scheduler's own lock to get a copy.
+	allJobs := append(c.sh.GetActiveJobs(), c.sh.GetDisabledJobs()...)
+	for _, j := range allJobs {
+		if jc, ok := j.(jobConfig); ok {
+			jc.ResetMiddlewares()
+			jc.buildMiddlewares(c.logger, wm)
+			j.Use(c.sh.Middlewares()...)
 		}
 	}
-
-	// Surface newly added [webhook "name"] sections from the reloaded INI into
-	// the live config. Without this step a brand-new webhook block has no
-	// effect until restart — only the embedded global fields benefit from the
-	// dual-store collapse from #620. INI source wins on collisions; existing
-	// entries are left untouched (label-defined entries keep their state, and
-	// a webhook re-named in the INI is treated as a removal-then-add at the
-	// next reconcile rather than a silent overwrite). See #640.
-	if c.mergeReloadedWebhookSections(parsed) {
-		c.refreshWebhookManagerOnGlobalChange()
+	if err := ApplyLogLevel(c.Global.LogLevel, c.levelVar); err != nil {
+		c.logger.Warn(fmt.Sprintf("Failed to apply global log level (using default): %v", err))
 	}
+}
 
+// syncAllJobMapsFromINI propagates parsed INI job maps into the live job maps
+// via syncJobMap for all five job types.
+func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 	execPrep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
@@ -1141,7 +1122,59 @@ func (c *Config) iniConfigUpdate() error {
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 	}
 	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep, JobSourceINI, "compose")
+}
 
+func (c *Config) iniConfigUpdate() error {
+	if c.configPath == "" {
+		return nil
+	}
+
+	files, err := resolveConfigFiles(c.configPath)
+	if err != nil {
+		return err
+	}
+
+	latest, changed, err := latestChanged(files, c.configModTime)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		c.logger.Debug(fmt.Sprintf("checking config file %s", f))
+	}
+	if !changed {
+		c.logger.Debug("config not changed")
+		return nil
+	}
+	c.logger.Debug(fmt.Sprintf("reloading config files from %s", strings.Join(files, ", ")))
+
+	parsed, err := BuildFromFile(c.configPath, c.logger)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	globalChanged := !reflect.DeepEqual(parsed.Global, c.Global)
+	c.configFiles = files
+	c.configModTime = latest
+	c.logger.Debug(fmt.Sprintf("applied config files from %s", strings.Join(files, ", ")))
+	if globalChanged {
+		c.Global = parsed.Global
+		c.rebuildAfterGlobalChange()
+	}
+
+	// Surface newly added [webhook "name"] sections from the reloaded INI into
+	// the live config. Without this step a brand-new webhook block has no
+	// effect until restart — only the embedded global fields benefit from the
+	// dual-store collapse from #620. INI source wins on collisions; existing
+	// entries are left untouched (label-defined entries keep their state, and
+	// a webhook re-named in the INI is treated as a removal-then-add at the
+	// next reconcile rather than a silent overwrite). See #640.
+	if c.mergeReloadedWebhookSections(parsed) {
+		c.refreshWebhookManagerOnGlobalChange()
+	}
+
+	c.syncAllJobMapsFromINI(parsed)
 	return nil
 }
 
@@ -1156,6 +1189,15 @@ type ExecJobConfig struct {
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
+// jobNotificationConfigs bundles the four per-job middleware config pointers
+// so buildJobMiddlewares satisfies the S107 ≤7-parameter rule.
+type jobNotificationConfigs struct {
+	Overlap *middlewares.OverlapConfig
+	Slack   *middlewares.SlackConfig
+	Save    *middlewares.SaveConfig
+	Mail    *middlewares.MailConfig
+}
+
 // buildJobMiddlewares attaches the standard per-job middleware stack
 // (Overlap, Slack, Save, Mail) to job j, then the webhook composite resolved
 // from per-job names unioned with the global selector. Extracted from five
@@ -1165,23 +1207,20 @@ type ExecJobConfig struct {
 func buildJobMiddlewares(
 	logger *slog.Logger,
 	j core.Job,
-	overlap *middlewares.OverlapConfig,
-	slack *middlewares.SlackConfig,
-	save *middlewares.SaveConfig,
-	mail *middlewares.MailConfig,
+	cfg jobNotificationConfigs,
 	wm *middlewares.WebhookManager,
 	webhookNames []string,
 ) {
-	j.Use(middlewares.NewOverlap(overlap))
-	j.Use(middlewares.NewSlack(slack)) //nolint:staticcheck // deprecated but kept for backwards compatibility
-	j.Use(middlewares.NewSave(save))
-	j.Use(middlewares.NewMail(mail))
+	j.Use(middlewares.NewOverlap(cfg.Overlap))
+	j.Use(middlewares.NewSlack(cfg.Slack)) //nolint:staticcheck // deprecated but kept for backwards compatibility
+	j.Use(middlewares.NewSave(cfg.Save))
+	j.Use(middlewares.NewMail(cfg.Mail))
 	attachJobWebhookMiddlewares(logger, j.GetName(), wm, webhookNames, j.Use)
 }
 
 func (c *ExecJobConfig) buildMiddlewares(logger *slog.Logger, wm *middlewares.WebhookManager) {
 	buildJobMiddlewares(logger, &c.ExecJob,
-		&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig,
+		jobNotificationConfigs{&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig},
 		wm, c.GetWebhookNames())
 }
 
@@ -1214,7 +1253,7 @@ type RunJobConfig struct {
 
 func (c *RunJobConfig) buildMiddlewares(logger *slog.Logger, wm *middlewares.WebhookManager) {
 	buildJobMiddlewares(logger, &c.RunJob,
-		&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig,
+		jobNotificationConfigs{&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig},
 		wm, c.GetWebhookNames())
 }
 
@@ -1259,19 +1298,19 @@ func (c *ComposeJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
 func (c *LocalJobConfig) buildMiddlewares(logger *slog.Logger, wm *middlewares.WebhookManager) {
 	buildJobMiddlewares(logger, &c.LocalJob,
-		&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig,
+		jobNotificationConfigs{&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig},
 		wm, c.GetWebhookNames())
 }
 
 func (c *ComposeJobConfig) buildMiddlewares(logger *slog.Logger, wm *middlewares.WebhookManager) {
 	buildJobMiddlewares(logger, &c.ComposeJob,
-		&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig,
+		jobNotificationConfigs{&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig},
 		wm, c.GetWebhookNames())
 }
 
 func (c *RunServiceConfig) buildMiddlewares(logger *slog.Logger, wm *middlewares.WebhookManager) {
 	buildJobMiddlewares(logger, &c.RunServiceJob,
-		&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig,
+		jobNotificationConfigs{&c.OverlapConfig, &c.SlackConfig, &c.SaveConfig, &c.MailConfig},
 		wm, c.GetWebhookNames())
 }
 
@@ -1333,6 +1372,31 @@ type DockerConfig struct {
 	DisablePolling bool `mapstructure:"no-poll" default:"false"`
 }
 
+// decodeJobSection dispatches a single INI section to the appropriate decodeJob
+// call based on the section name prefix. Returns an error only when decoding
+// fails; sections that don't match a known job type are silently ignored.
+func decodeJobSection(section *ini.Section, name string, c *Config, unknownJobs *[]jobUnknownKeys) error {
+	switch {
+	case strings.HasPrefix(name, jobExec):
+		return decodeJob(section, &ExecJobConfig{JobSource: JobSourceINI},
+			func(n string, j *ExecJobConfig) { c.ExecJobs[n] = j }, jobExec, unknownJobs)
+	case strings.HasPrefix(name, jobServiceRun):
+		return decodeJob(section, &RunServiceConfig{JobSource: JobSourceINI},
+			func(n string, j *RunServiceConfig) { c.ServiceJobs[n] = j }, jobServiceRun, unknownJobs)
+	case strings.HasPrefix(name, jobRun):
+		return decodeJob(section, &RunJobConfig{JobSource: JobSourceINI},
+			func(n string, j *RunJobConfig) { c.RunJobs[n] = j }, jobRun, unknownJobs)
+	case strings.HasPrefix(name, jobLocal):
+		return decodeJob(section, &LocalJobConfig{JobSource: JobSourceINI},
+			func(n string, j *LocalJobConfig) { c.LocalJobs[n] = j }, jobLocal, unknownJobs)
+	case strings.HasPrefix(name, jobCompose):
+		return decodeJob(section, &ComposeJobConfig{JobSource: JobSourceINI},
+			func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j }, jobCompose, unknownJobs)
+	default:
+		return nil
+	}
+}
+
 func parseIni(cfg *ini.File, c *Config) (*parseResult, error) {
 	parseRes, err := parseGlobalAndDocker(cfg, c)
 	if err != nil {
@@ -1348,57 +1412,8 @@ func parseIni(cfg *ini.File, c *Config) (*parseResult, error) {
 
 	for _, section := range cfg.Sections() {
 		name := strings.TrimSpace(section.Name())
-		switch {
-		case strings.HasPrefix(name, jobExec):
-			if err := decodeJob(
-				section,
-				&ExecJobConfig{JobSource: JobSourceINI},
-				func(n string, j *ExecJobConfig) { c.ExecJobs[n] = j },
-				jobExec,
-				&unknownJobs,
-			); err != nil {
-				return nil, err
-			}
-		case strings.HasPrefix(name, jobRun):
-			if err := decodeJob(
-				section,
-				&RunJobConfig{JobSource: JobSourceINI},
-				func(n string, j *RunJobConfig) { c.RunJobs[n] = j },
-				jobRun,
-				&unknownJobs,
-			); err != nil {
-				return nil, err
-			}
-		case strings.HasPrefix(name, jobServiceRun):
-			if err := decodeJob(
-				section,
-				&RunServiceConfig{JobSource: JobSourceINI},
-				func(n string, j *RunServiceConfig) { c.ServiceJobs[n] = j },
-				jobServiceRun,
-				&unknownJobs,
-			); err != nil {
-				return nil, err
-			}
-		case strings.HasPrefix(name, jobLocal):
-			if err := decodeJob(
-				section,
-				&LocalJobConfig{JobSource: JobSourceINI},
-				func(n string, j *LocalJobConfig) { c.LocalJobs[n] = j },
-				jobLocal,
-				&unknownJobs,
-			); err != nil {
-				return nil, err
-			}
-		case strings.HasPrefix(name, jobCompose):
-			if err := decodeJob(
-				section,
-				&ComposeJobConfig{JobSource: JobSourceINI},
-				func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j },
-				jobCompose,
-				&unknownJobs,
-			); err != nil {
-				return nil, err
-			}
+		if err := decodeJobSection(section, name, c, &unknownJobs); err != nil {
+			return nil, err
 		}
 	}
 
@@ -1435,45 +1450,46 @@ type jobUnknownKeys struct {
 	UnknownKeys []string // Keys that didn't match any struct field
 }
 
+// decodeIniSection decodes a named INI section into dst. It merges the
+// decoded keys into usedKeys and returns the slice of unrecognized keys.
+// Returns a nil slice and no error when the section is absent.
+func decodeIniSection(cfg *ini.File, name string, dst any, usedKeys map[string]bool) ([]string, error) {
+	// ini.HasSection avoids the error-on-absent pattern that triggers nilerr.
+	if !cfg.HasSection(name) {
+		return nil, nil
+	}
+	sec, _ := cfg.GetSection(name) // HasSection guard above makes this safe
+	input := sectionToMap(sec)
+	decResult, decErr := decodeWithMetadata(input, dst)
+	if decErr != nil {
+		return nil, fmt.Errorf("decode [%s]: %w", name, decErr)
+	}
+	for k, v := range decResult.UsedKeys {
+		if v {
+			usedKeys[k] = true
+		}
+	}
+	return decResult.UnusedKeys, nil
+}
+
 func parseGlobalAndDocker(cfg *ini.File, c *Config) (*parseResult, error) {
 	result := &parseResult{
 		usedKeys: make(map[string]bool),
 	}
 
-	if sec, err := cfg.GetSection("global"); err == nil {
-		input := sectionToMap(sec)
-		decResult, decErr := decodeWithMetadata(input, &c.Global)
-		if decErr != nil {
-			return nil, fmt.Errorf("decode [global]: %w", decErr)
-		}
-		// Track used keys for deprecation detection
-		for k, v := range decResult.UsedKeys {
-			if v {
-				result.usedKeys[k] = true
-			}
-		}
-		result.unknownGlobal = decResult.UnusedKeys
-		// c.WebhookConfigs.Global aliases &c.Global.WebhookGlobalConfig (set in
-		// NewConfig), so mapstructure-decoded webhook-* keys are visible to the
-		// webhook subsystem without an explicit copy. The embedded struct was
-		// pre-seeded with defaults in NewConfig(), so unset keys retain them.
+	var err error
+	// c.WebhookConfigs.Global aliases &c.Global.WebhookGlobalConfig (set in
+	// NewConfig), so mapstructure-decoded webhook-* keys are visible to the
+	// webhook subsystem without an explicit copy. The embedded struct was
+	// pre-seeded with defaults in NewConfig(), so unset keys retain them.
+	result.unknownGlobal, err = decodeIniSection(cfg, "global", &c.Global, result.usedKeys)
+	if err != nil {
+		return nil, err
 	}
-
-	if sec, err := cfg.GetSection("docker"); err == nil {
-		input := sectionToMap(sec)
-		decResult, decErr := decodeWithMetadata(input, &c.Docker)
-		if decErr != nil {
-			return nil, fmt.Errorf("decode [docker]: %w", decErr)
-		}
-		// Track used keys for deprecation detection
-		for k, v := range decResult.UsedKeys {
-			if v {
-				result.usedKeys[k] = true
-			}
-		}
-		result.unknownDocker = decResult.UnusedKeys
+	result.unknownDocker, err = decodeIniSection(cfg, "docker", &c.Docker, result.usedKeys)
+	if err != nil {
+		return nil, err
 	}
-
 	return result, nil
 }
 

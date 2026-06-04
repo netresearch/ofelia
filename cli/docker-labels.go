@@ -234,27 +234,37 @@ func canRunJobOnContainer(jobType string, jobName string, containerName string, 
 
 // applyJobParameterToJobMaps updates the appropriate job map for the given parameter.
 // It is extracted to keep splitContainersLabelsIntoJobMapsByType cyclomatic complexity under the linter limit.
+// containerJobMaps groups the per-type job maps applied while processing a
+// single container's labels, keeping applyJobParameterToJobMaps's signature small.
+type containerJobMaps struct {
+	exec    map[string]map[string]any
+	local   map[string]map[string]any
+	run     map[string]map[string]any
+	service map[string]map[string]any
+	compose map[string]map[string]any
+}
+
 func applyJobParameterToJobMaps(
 	jobType, jobName, jobParam, paramValue string,
 	scopedJobName string,
-	execJobs, localJobs, containerRunJobs, serviceJobs, composeJobs map[string]map[string]any,
+	jm *containerJobMaps,
 ) {
 	switch jobType {
 	case jobExec:
-		ensureJob(execJobs, scopedJobName)
-		setJobParam(execJobs[scopedJobName], jobParam, paramValue)
+		ensureJob(jm.exec, scopedJobName)
+		setJobParam(jm.exec[scopedJobName], jobParam, paramValue)
 	case jobLocal:
-		ensureJob(localJobs, jobName)
-		setJobParam(localJobs[jobName], jobParam, paramValue)
+		ensureJob(jm.local, jobName)
+		setJobParam(jm.local[jobName], jobParam, paramValue)
 	case jobServiceRun:
-		ensureJob(serviceJobs, jobName)
-		setJobParam(serviceJobs[jobName], jobParam, paramValue)
+		ensureJob(jm.service, jobName)
+		setJobParam(jm.service[jobName], jobParam, paramValue)
 	case jobRun:
-		ensureJob(containerRunJobs, jobName)
-		setJobParam(containerRunJobs[jobName], jobParam, paramValue)
+		ensureJob(jm.run, jobName)
+		setJobParam(jm.run[jobName], jobParam, paramValue)
 	case jobCompose:
-		ensureJob(composeJobs, jobName)
-		setJobParam(composeJobs[jobName], jobParam, paramValue)
+		ensureJob(jm.compose, jobName)
+		setJobParam(jm.compose[jobName], jobParam, paramValue)
 	}
 }
 
@@ -405,7 +415,13 @@ func (c *Config) processContainerLabel(m *dockerLabelJobMaps, cs *containerScan,
 	}
 
 	applyJobParameterToJobMaps(jobType, jobName, jobParam, jobParamValue, scopedName,
-		cs.execJobs, m.localJobs, cs.runJobs, m.serviceJobs, m.composeJobs)
+		&containerJobMaps{
+			exec:    cs.execJobs,
+			local:   m.localJobs,
+			run:     cs.runJobs,
+			service: m.serviceJobs,
+			compose: m.composeJobs,
+		})
 }
 
 func addContainerNameToJobsIfNeeded(jobs map[string]map[string]any, containerName string) {

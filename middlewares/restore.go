@@ -94,30 +94,11 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 	restoredCount := 0
 	restoredJobCount := 0
 	for jobName, jobEntries := range entriesByJob {
-		job, exists := jobsByName[jobName]
-		if !exists {
-			logger.Debug(fmt.Sprintf("Skipping history for unknown job %q", jobName))
-			continue
+		n := restoreJobEntries(jobName, jobEntries, jobsByName, logger)
+		if n > 0 {
+			restoredCount += n
+			restoredJobCount++
 		}
-
-		// Sort by date ascending (oldest first) so SetLastRun works correctly
-		sort.Slice(jobEntries, func(i, j int) bool {
-			return jobEntries[i].Execution.Date.Before(jobEntries[j].Execution.Date)
-		})
-
-		// Check if job supports SetLastRun
-		setter, ok := job.(interface{ SetLastRun(*core.Execution) })
-		if !ok {
-			logger.Debug(fmt.Sprintf("Job %q does not support history restoration", jobName))
-			continue
-		}
-
-		// Restore each execution
-		for _, entry := range jobEntries {
-			setter.SetLastRun(entry.Execution)
-			restoredCount++
-		}
-		restoredJobCount++
 	}
 
 	if restoredCount > 0 {
@@ -125,6 +106,35 @@ func RestoreHistory(saveFolder string, maxAge time.Duration, jobs []core.Job, lo
 	}
 
 	return nil
+}
+
+// restoreJobEntries applies the saved executions for a single job to its
+// in-memory history. It returns the number of executions restored (0 if the
+// job is unknown or does not support SetLastRun).
+func restoreJobEntries(jobName string, jobEntries []*restoredEntry, jobsByName map[string]core.Job, logger *slog.Logger) int {
+	job, exists := jobsByName[jobName]
+	if !exists {
+		logger.Debug(fmt.Sprintf("Skipping history for unknown job %q", jobName))
+		return 0
+	}
+
+	// Check if job supports SetLastRun
+	setter, ok := job.(interface{ SetLastRun(*core.Execution) })
+	if !ok {
+		logger.Debug(fmt.Sprintf("Job %q does not support history restoration", jobName))
+		return 0
+	}
+
+	// Sort by date ascending (oldest first) so SetLastRun works correctly
+	sort.Slice(jobEntries, func(i, j int) bool {
+		return jobEntries[i].Execution.Date.Before(jobEntries[j].Execution.Date)
+	})
+
+	// Restore each execution
+	for _, entry := range jobEntries {
+		setter.SetLastRun(entry.Execution)
+	}
+	return len(jobEntries)
 }
 
 // parseHistoryFiles scans the save folder for JSON files and parses them.
@@ -138,45 +148,63 @@ func parseHistoryFiles(saveFolder string, cutoff time.Time, logger *slog.Logger)
 	}
 
 	err = filepath.Walk(saveFolder, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return nil //nolint:nilerr // Intentionally skip inaccessible files
+		entry := processHistoryFile(path, info, walkErr, absSaveFolder, cutoff, logger)
+		if entry != nil {
+			entries = append(entries, entry)
 		}
-
-		// Only process .json files
-		if info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
-			return nil
-		}
-
-		// Skip files older than cutoff based on modification time (quick filter)
-		if info.ModTime().Before(cutoff) {
-			return nil
-		}
-
-		// Verify path is within save folder (defense in depth for G304)
-		absPath, absErr := filepath.Abs(path)
-		if absErr != nil || !strings.HasPrefix(absPath, absSaveFolder) {
-			return nil //nolint:nilerr // Intentionally skip invalid paths
-		}
-
-		// Parse the JSON file
-		entry, err := parseHistoryFile(absPath)
-		if err != nil {
-			logger.Debug(fmt.Sprintf("Skipping invalid history file %q: %v", path, err))
-			return nil
-		}
-
-		// Skip if execution date is too old
-		if entry.Execution.Date.Before(cutoff) {
-			return nil
-		}
-
-		entries = append(entries, entry)
 		return nil
 	})
 	if err != nil {
 		return entries, fmt.Errorf("walk save folder: %w", err)
 	}
 	return entries, nil
+}
+
+// processHistoryFile evaluates a single Walk entry and returns a parsed
+// restoredEntry when the file passes all filters, or nil to skip it.
+func processHistoryFile(
+	path string, info os.FileInfo, walkErr error,
+	absSaveFolder string, cutoff time.Time, logger *slog.Logger,
+) *restoredEntry {
+	if walkErr != nil {
+		return nil // Intentionally skip inaccessible files
+	}
+
+	// Only process .json files
+	if info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {
+		return nil
+	}
+
+	// Skip files older than cutoff based on modification time (quick filter)
+	if info.ModTime().Before(cutoff) {
+		return nil
+	}
+
+	// Verify path is within save folder (defense in depth for G304)
+	absPath, absErr := filepath.Abs(path)
+	if absErr != nil {
+		return nil // Intentionally skip invalid paths
+	}
+	// Use filepath.Rel rather than a string prefix so "/tmp/save_other" is not
+	// treated as inside "/tmp/save" (partial-name match).
+	rel, relErr := filepath.Rel(absSaveFolder, absPath)
+	if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil // Intentionally skip paths outside the save folder
+	}
+
+	// Parse the JSON file
+	entry, err := parseHistoryFile(absPath)
+	if err != nil {
+		logger.Debug(fmt.Sprintf("Skipping invalid history file %q: %v", path, err))
+		return nil
+	}
+
+	// Skip if execution date is too old
+	if entry.Execution.Date.Before(cutoff) {
+		return nil
+	}
+
+	return entry
 }
 
 // parseHistoryFile reads and parses a single JSON history file.
