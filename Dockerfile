@@ -1,7 +1,7 @@
 # Binary selector stage — picks the correct pre-built binary for the target platform.
 # Docker automatically sets TARGETARCH and TARGETVARIANT during multi-platform builds.
 # All pre-built binaries must be in bin/ in the build context.
-FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11 AS binary-selector
+FROM alpine:3.24@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4 AS binary-selector
 
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -21,7 +21,7 @@ RUN set -eux; \
   chmod +x /usr/bin/ofelia
 
 # Runtime stage
-FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+FROM alpine:3.24@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
 
 # OCI Image Annotations
 # See: https://github.com/opencontainers/image-spec/blob/main/annotations.md
