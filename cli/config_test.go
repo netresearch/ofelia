@@ -1033,6 +1033,8 @@ func TestMergeSaveDefaults(t *testing.T) {
 	cfg := NewConfig(test.NewTestLogger())
 	cfg.Global.SaveConfig.SaveFolder = "/var/log/ofelia"
 	cfg.Global.SaveConfig.SaveOnlyOnError = new(true)
+	cfg.Global.SaveConfig.SaveMode = "0644"
+	cfg.Global.SaveConfig.SaveFolderMode = "0755"
 
 	// Job without save settings inherits from global
 	jobSave := middlewares.SaveConfig{}
@@ -1040,13 +1042,17 @@ func TestMergeSaveDefaults(t *testing.T) {
 	assert.Equal(t, "/var/log/ofelia", jobSave.SaveFolder)
 	require.NotNil(t, jobSave.SaveOnlyOnError, "Global save-only-on-error=true should propagate to job")
 	assert.True(t, *jobSave.SaveOnlyOnError)
+	assert.Equal(t, "0644", jobSave.SaveMode, "Global save-mode should propagate to job")
+	assert.Equal(t, "0755", jobSave.SaveFolderMode, "Global save-folder-mode should propagate to job")
 
-	// Job with explicit folder keeps its own
-	jobSave2 := middlewares.SaveConfig{SaveFolder: "/custom/logs"}
+	// Job with explicit folder/mode keeps its own
+	jobSave2 := middlewares.SaveConfig{SaveFolder: "/custom/logs", SaveMode: "0600"}
 	cfg.mergeSaveDefaults(&jobSave2)
 	assert.Equal(t, "/custom/logs", jobSave2.SaveFolder)
 	require.NotNil(t, jobSave2.SaveOnlyOnError)
 	assert.True(t, *jobSave2.SaveOnlyOnError, "SaveOnlyOnError should still inherit")
+	assert.Equal(t, "0600", jobSave2.SaveMode, "Job explicit save-mode must not be overridden by global")
+	assert.Equal(t, "0755", jobSave2.SaveFolderMode, "Unset save-folder-mode should still inherit from global")
 
 	// Job can explicitly override to false
 	jobSave3 := middlewares.SaveConfig{SaveOnlyOnError: new(false)}
@@ -1060,4 +1066,6 @@ func TestMergeSaveDefaults(t *testing.T) {
 	cfgEmpty.mergeSaveDefaults(&jobSave4)
 	assert.Empty(t, jobSave4.SaveFolder)
 	assert.Nil(t, jobSave4.SaveOnlyOnError)
+	assert.Empty(t, jobSave4.SaveMode)
+	assert.Empty(t, jobSave4.SaveFolderMode)
 }

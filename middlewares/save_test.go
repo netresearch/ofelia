@@ -247,6 +247,7 @@ func TestParseFileMode(t *testing.T) {
 		{in: "abc", wantErr: true},
 		{in: "", wantErr: true},
 	}
+	require.GreaterOrEqual(t, len(cases), 11, "table accidentally emptied — parseFileMode would be untested")
 	for _, tc := range cases {
 		got, err := parseFileMode(tc.in)
 		if tc.wantErr {
@@ -260,20 +261,35 @@ func TestParseFileMode(t *testing.T) {
 
 func TestSaveInvalidModeReturnsError(t *testing.T) {
 	t.Parallel()
-	ctx, job := setupSaveTestContext(t)
 
-	dir := filepath.Join(t.TempDir(), "logs")
+	// Both sibling mode resolvers must surface a clear, attributable error.
+	cases := []struct {
+		name    string
+		cfg     SaveConfig
+		wantMsg string
+	}{
+		{"invalid save-mode", SaveConfig{SaveMode: "not-octal"}, "save-mode"},
+		{"invalid save-folder-mode", SaveConfig{SaveFolderMode: "not-octal"}, "save-folder-mode"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctx, job := setupSaveTestContext(t)
 
-	ctx.Start()
-	ctx.Stop(nil)
+			dir := filepath.Join(t.TempDir(), "logs")
+			ctx.Start()
+			ctx.Stop(nil)
+			job.Name = testNameFoo
+			ctx.Execution.Date = time.Time{}
 
-	job.Name = testNameFoo
-	ctx.Execution.Date = time.Time{}
-
-	m := &Save{SaveConfig{SaveFolder: dir, SaveMode: "not-octal"}}
-	err := m.saveToDisk(ctx)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "save-mode")
+			cfg := tc.cfg
+			cfg.SaveFolder = dir
+			m := &Save{cfg}
+			err := m.saveToDisk(ctx)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantMsg)
+		})
+	}
 }
 
 func TestSaveRunOnlyOnError_Saves(t *testing.T) {

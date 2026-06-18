@@ -322,6 +322,14 @@ func (cv *Validator2) validateSpecificStringField(v *Validator, path string, str
 		cv.validateImageField(v, path, str)
 	case "save-folder", "working_dir":
 		cv.validatePathField(v, path, str)
+	// NOTE: save-mode/save-folder-mode (like save-folder and the other keys in
+	// this switch) only reach here when reflected from a non-squashed config.
+	// validateStruct skips ",squash"-embedded structs, so for the production
+	// Config — where SaveConfig is squash-embedded — these are not validated at
+	// load time. The authoritative guard is the runtime resolver
+	// (SaveConfig.GetSaveFileMode/GetSaveFolderMode), which fails the save with a
+	// clear error. This wiring is defense-in-depth, kept consistent with the
+	// sibling cases.
 	case "save-mode", "save-folder-mode":
 		cv.validateFileModeField(v, path, str)
 	}

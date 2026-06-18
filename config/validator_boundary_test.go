@@ -381,6 +381,9 @@ func TestValidator2ValidateFileModeField(t *testing.T) {
 		{"garbage", "rwx", true},
 	}
 
+	if len(tests) < 8 {
+		t.Fatalf("table accidentally emptied — validateFileModeField would be untested: got %d cases", len(tests))
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

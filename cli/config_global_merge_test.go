@@ -181,6 +181,8 @@ func TestMergeSaveGlobals_LabelFillsEmpty(t *testing.T) {
 		SaveOnlyOnError:      &srcOnly,
 		RestoreHistory:       &srcRestore,
 		RestoreHistoryMaxAge: 12 * time.Hour,
+		SaveMode:             "0644",
+		SaveFolderMode:       "0755",
 	}
 
 	changed := mergeSaveGlobals(&dst, &src)
@@ -192,6 +194,8 @@ func TestMergeSaveGlobals_LabelFillsEmpty(t *testing.T) {
 	require.NotNil(t, dst.RestoreHistory)
 	assert.False(t, *dst.RestoreHistory, "label-set RestoreHistory pointer must be inherited verbatim, including false")
 	assert.Equal(t, 12*time.Hour, dst.RestoreHistoryMaxAge)
+	assert.Equal(t, "0644", dst.SaveMode, "empty INI save-mode must inherit from label")
+	assert.Equal(t, "0755", dst.SaveFolderMode, "empty INI save-folder-mode must inherit from label")
 }
 
 // TestMergeSaveGlobals_INIWins pins the precedence half for Save fields.
@@ -205,6 +209,8 @@ func TestMergeSaveGlobals_INIWins(t *testing.T) {
 		SaveOnlyOnError:      &iniOnly,
 		RestoreHistory:       &iniRestore,
 		RestoreHistoryMaxAge: 6 * time.Hour,
+		SaveMode:             "0600",
+		SaveFolderMode:       "0750",
 	}
 	srcOnly := true
 	srcRestore := false
@@ -213,6 +219,8 @@ func TestMergeSaveGlobals_INIWins(t *testing.T) {
 		SaveOnlyOnError:      &srcOnly,
 		RestoreHistory:       &srcRestore,
 		RestoreHistoryMaxAge: 48 * time.Hour,
+		SaveMode:             "0644",
+		SaveFolderMode:       "0755",
 	}
 
 	changed := mergeSaveGlobals(&dst, &src)
@@ -224,6 +232,8 @@ func TestMergeSaveGlobals_INIWins(t *testing.T) {
 	require.NotNil(t, dst.RestoreHistory)
 	assert.True(t, *dst.RestoreHistory)
 	assert.Equal(t, 6*time.Hour, dst.RestoreHistoryMaxAge)
+	assert.Equal(t, "0600", dst.SaveMode, "INI save-mode wins over label")
+	assert.Equal(t, "0750", dst.SaveFolderMode, "INI save-folder-mode wins over label")
 }
 
 // TestMergeSchedulingGlobals_LabelFillsEmpty pins log-level / max-runtime /
