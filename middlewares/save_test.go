@@ -203,6 +203,79 @@ func TestSaveConfig_GetRestoreHistoryMaxAge_NegativeReturnsDefault(t *testing.T)
 	assert.Equal(t, 24*time.Hour, cfg.GetRestoreHistoryMaxAge())
 }
 
+func TestSaveConfig_GetSaveFileMode_DefaultAndCustom(t *testing.T) {
+	t.Parallel()
+
+	def, err := (&SaveConfig{}).GetSaveFileMode()
+	require.NoError(t, err)
+	assert.Equal(t, defaultSaveFileMode, def, "empty save-mode resolves to 0600")
+
+	custom, err := (&SaveConfig{SaveMode: "0644"}).GetSaveFileMode()
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), custom)
+}
+
+func TestSaveConfig_GetSaveFolderMode_DefaultAndCustom(t *testing.T) {
+	t.Parallel()
+
+	def, err := (&SaveConfig{}).GetSaveFolderMode()
+	require.NoError(t, err)
+	assert.Equal(t, defaultSaveFolderMode, def, "empty save-folder-mode resolves to 0750")
+
+	custom, err := (&SaveConfig{SaveFolderMode: "0755"}).GetSaveFolderMode()
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), custom)
+}
+
+func TestParseFileMode(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		in      string
+		want    os.FileMode
+		wantErr bool
+	}{
+		{in: "0644", want: 0o644},
+		{in: "0o644", want: 0o644},
+		{in: "0O644", want: 0o644},
+		{in: "644", want: 0o644},
+		{in: " 0755 ", want: 0o755},
+		{in: "0", want: 0},
+		{in: "0777", want: 0o777},
+		{in: "1777", wantErr: true}, // special bits rejected
+		{in: "0888", wantErr: true}, // not octal
+		{in: "abc", wantErr: true},
+		{in: "", wantErr: true},
+	}
+	for _, tc := range cases {
+		got, err := parseFileMode(tc.in)
+		if tc.wantErr {
+			require.Errorf(t, err, "parseFileMode(%q) should error", tc.in)
+			continue
+		}
+		require.NoErrorf(t, err, "parseFileMode(%q)", tc.in)
+		assert.Equalf(t, tc.want, got, "parseFileMode(%q)", tc.in)
+	}
+}
+
+func TestSaveInvalidModeReturnsError(t *testing.T) {
+	t.Parallel()
+	ctx, job := setupSaveTestContext(t)
+
+	dir := filepath.Join(t.TempDir(), "logs")
+
+	ctx.Start()
+	ctx.Stop(nil)
+
+	job.Name = testNameFoo
+	ctx.Execution.Date = time.Time{}
+
+	m := &Save{SaveConfig{SaveFolder: dir, SaveMode: "not-octal"}}
+	err := m.saveToDisk(ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "save-mode")
+}
+
 func TestSaveRunOnlyOnError_Saves(t *testing.T) {
 	t.Parallel()
 	ctx, job := setupSaveTestContext(t)

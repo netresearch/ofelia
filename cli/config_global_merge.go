@@ -178,6 +178,14 @@ func mergeSaveGlobals(dst, src *middlewares.SaveConfig) bool {
 		dst.RestoreHistoryMaxAge = src.RestoreHistoryMaxAge
 		changed = true
 	}
+	if dst.SaveMode == "" && src.SaveMode != "" {
+		dst.SaveMode = src.SaveMode
+		changed = true
+	}
+	if dst.SaveFolderMode == "" && src.SaveFolderMode != "" {
+		dst.SaveFolderMode = src.SaveFolderMode
+		changed = true
+	}
 	return changed
 }
 

@@ -287,6 +287,8 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 
 - `save-folder` - directory in which the reports shall be written. The folder is created automatically if it doesn't exist using an equivalent of `mkdir -p`.
 - `save-only-on-error` - only save a report if the execution was not successful.
+- `save-mode` - octal file mode for the per-execution log/JSON files (default `0600`, readable only by the daemon uid because job output may contain secrets/PII). Set a wider value such as `0644` to let non-root operators or a shared group read the logs on the host. Accepts `0644`, `0o644` or `644`. Like `save-folder`, this is **not** in the global Docker-label allow-list, so a container cannot change the daemon-wide default.
+- `save-folder-mode` - octal directory mode for `save-folder` (default `0750`). Accepts the same formats as `save-mode`. Applies only when Ofelia creates the folder; an existing `save-folder` keeps its current permissions (`mkdir -p` semantics).
 
 - `webhook-webhooks` - comma-separated list of webhook names to apply to every job by default.
 - `webhook-default-preset` - preset name used when a webhook configuration omits `preset` (default: `json-post`, the bundled JSON POST preset that lets `url = ...` work without authoring a custom preset). Set to empty (`webhook-default-preset =`) to opt out — webhooks must then declare `preset` explicitly or attachment fails. See [Webhook Documentation](docs/webhooks.md#custom-webhooks-url-only-no-custom-preset).
