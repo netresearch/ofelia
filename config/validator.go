@@ -336,6 +336,16 @@ func (cv *Validator2) validateSpecificStringField(v *Validator, path string, str
 		cv.validateImageField(v, path, str)
 	case "save-folder", "working_dir":
 		cv.validatePathField(v, path, str)
+	// NOTE: save-mode/save-folder-mode (like save-folder and the other keys in
+	// this switch) only reach here when reflected from a non-squashed config.
+	// validateStruct skips ",squash"-embedded structs, so for the production
+	// Config — where SaveConfig is squash-embedded — these are not validated at
+	// load time. The authoritative guard is the runtime resolver
+	// (SaveConfig.GetSaveFileMode/GetSaveFolderMode), which fails the save with a
+	// clear error. This wiring is defense-in-depth, kept consistent with the
+	// sibling cases.
+	case "save-mode", "save-folder-mode":
+		cv.validateFileModeField(v, path, str)
 	}
 }
 
@@ -414,6 +424,27 @@ func (cv *Validator2) validatePathField(v *Validator, path string, str string) {
 	}
 }
 
+// validateFileModeField validates octal file/directory mode fields
+// (save-mode, save-folder-mode). Mirrors middlewares.parseFileMode: accepts an
+// optional 0o/0O prefix, interprets the remainder as octal, and rejects values
+// outside the permission bits (0000-0777). The parser lives in the middlewares
+// package too, but config cannot import it (core->config import cycle), so this
+// stays a self-contained check.
+func (cv *Validator2) validateFileModeField(v *Validator, path, str string) {
+	if strings.TrimSpace(str) == "" {
+		return // empty resolves to the secure default downstream
+	}
+	trimmed := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(str), "0o"), "0O")
+	mode, err := strconv.ParseUint(trimmed, 8, 32)
+	if err != nil {
+		v.AddError(path, str, "invalid octal file mode (e.g. 0644)")
+		return
+	}
+	if mode > 0o777 {
+		v.AddError(path, str, "file mode out of range: only permission bits 0000-0777 are allowed")
+	}
+}
+
 // validateIntField validates integer type fields
 func (cv *Validator2) validateIntField(v *Validator, field reflect.Value, path string) {
 	val := field.Int()
@@ -439,7 +470,7 @@ func (cv *Validator2) validateSliceField(v *Validator, field reflect.Value, path
 func (cv *Validator2) isOptionalField(path string) bool {
 	optionalFields := []string{
 		"smtp-user", "smtp-password", "email-to", "email-from",
-		"slack-webhook", "save-folder",
+		"slack-webhook", "save-folder", "save-mode", "save-folder-mode",
 		"restore-history", "restore-history-max-age",
 		"container", "service", "image", "user", "network",
 		"environment", "secrets", "volumes", "working_dir",

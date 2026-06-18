@@ -888,6 +888,16 @@ command = export-data.sh
 save-folder = /var/log/ofelia/exports
 save-only-on-error = false
 
+# File/directory permissions for saved output (octal). Defaults are
+# security-hardened: 0600 files (daemon-uid only) and 0750 folder. Widen them
+# when a non-root operator or shared group must read the logs on the host.
+# Accepts 0644, 0o644 or 644. Like save-folder, these are not in the global
+# Docker-label allow-list, so a container cannot change the daemon-wide default.
+# save-folder-mode applies only when Ofelia creates the folder; an existing
+# folder keeps its current permissions (mkdir -p semantics).
+save-mode = 0644          # default 0600
+save-folder-mode = 0755   # default 0750
+
 # History restoration on startup (set on the [global] section)
 # - restore-history: enable/disable replaying saved executions on daemon start
 #   (default: enabled when save-folder is set)

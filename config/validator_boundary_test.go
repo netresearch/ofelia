@@ -361,6 +361,45 @@ func TestValidator2ValidateIntField(t *testing.T) {
 	}
 }
 
+// TestValidator2ValidateFileModeField tests octal mode validation for
+// save-mode / save-folder-mode.
+func TestValidator2ValidateFileModeField(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		value     string
+		wantError bool
+	}{
+		{"empty allowed", "", false},
+		{"octal with leading zero", "0644", false},
+		{"octal 0o prefix", "0o755", false},
+		{"bare octal", "750", false},
+		{"max perm bits", "0777", false},
+		{"special bits rejected", "1777", true},
+		{"non-octal digit", "0888", true},
+		{"garbage", "rwx", true},
+	}
+
+	if len(tests) < 8 {
+		t.Fatalf("table accidentally emptied — validateFileModeField would be untested: got %d cases", len(tests))
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cv := &Validator2{sanitizer: NewSanitizer()}
+			v := NewValidator()
+
+			cv.validateFileModeField(v, "save-mode", tt.value)
+
+			if v.HasErrors() != tt.wantError {
+				t.Errorf("validateFileModeField(save-mode, %q) hasError = %v, want %v",
+					tt.value, v.HasErrors(), tt.wantError)
+			}
+		})
+	}
+}
+
 // TestValidator2ValidateStringFieldDefaults tests string field with defaults
 func TestValidator2ValidateStringFieldDefaults(t *testing.T) {
 	t.Parallel()
@@ -411,7 +450,7 @@ func TestValidator2IsOptionalField(t *testing.T) {
 
 	optionalFields := []string{
 		"smtp-user", "smtp-password", "email-to", "email-from",
-		"slack-webhook", "save-folder",
+		"slack-webhook", "save-folder", "save-mode", "save-folder-mode",
 		"container", "service", "image", "user", "network",
 		"environment", "secrets", "volumes", "working_dir",
 		"log-level",

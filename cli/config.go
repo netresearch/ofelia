@@ -705,6 +705,12 @@ func (c *Config) mergeSaveDefaults(job *middlewares.SaveConfig) {
 	if job.SaveOnlyOnError == nil && global.SaveOnlyOnError != nil {
 		job.SaveOnlyOnError = new(*global.SaveOnlyOnError)
 	}
+	if job.SaveMode == "" {
+		job.SaveMode = global.SaveMode
+	}
+	if job.SaveFolderMode == "" {
+		job.SaveFolderMode = global.SaveFolderMode
+	}
 }
 
 // UserContainerDefault is the sentinel value that explicitly requests the container's default user,

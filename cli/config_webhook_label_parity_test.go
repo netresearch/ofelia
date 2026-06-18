@@ -99,6 +99,22 @@ func TestGlobalLabelAllowList_OmitsSSRFSensitiveWebhookKeys(t *testing.T) {
 	}
 }
 
+// TestGlobalLabelAllowList_OmitsSavePermissionKeys asserts that the save
+// permission keys (#729) stay out of the Docker label allow-list, mirroring
+// save-folder. A scheduled container must not be able to change the
+// daemon-wide save-folder permissions via a [global] label. This catches a
+// future allow-list edit that accidentally exposes them.
+func TestGlobalLabelAllowList_OmitsSavePermissionKeys(t *testing.T) {
+	t.Parallel()
+
+	forbidden := []string{"save-folder", "save-mode", "save-folder-mode"}
+	for _, key := range forbidden {
+		assert.Falsef(t, globalLabelAllowList[key],
+			"globalLabelAllowList must NOT contain %q — save permissions are INI-only at global scope (#729)",
+			key)
+	}
+}
+
 // TestGlobalLabelAllowList_AllowsOperationallyTunableWebhookKeys is the
 // positive counterpart to the SSRF guard above: the webhook-* keys that are
 // safe to set from a service-container label MUST be present in the

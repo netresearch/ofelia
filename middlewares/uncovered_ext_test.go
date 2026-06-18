@@ -999,7 +999,7 @@ func TestSave_WriteFile_Error(t *testing.T) {
 	t.Parallel()
 
 	s := &Save{}
-	err := s.writeFile([]byte("data"), "/nonexistent/path/file.txt")
+	err := s.writeFile([]byte("data"), "/nonexistent/path/file.txt", defaultSaveFileMode)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "write file")
 }
@@ -1012,7 +1012,7 @@ func TestSave_SaveContextToDisk_WriteError(t *testing.T) {
 	ctx.Start()
 	ctx.Stop(nil)
 
-	err := s.saveContextToDisk(ctx, "/nonexistent/path/file.json")
+	err := s.saveContextToDisk(ctx, "/nonexistent/path/file.json", defaultSaveFileMode)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "write json file")
 }
