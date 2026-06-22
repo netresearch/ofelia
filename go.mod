@@ -22,11 +22,11 @@ require (
 	github.com/netresearch/go-cron v0.15.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/crypto v0.52.0
-	golang.org/x/term v0.43.0
-	golang.org/x/text v0.37.0
+	golang.org/x/crypto v0.53.0
+	golang.org/x/term v0.44.0
+	golang.org/x/text v0.38.0
 	golang.org/x/time v0.15.0
-	gopkg.in/ini.v1 v1.67.2
+	gopkg.in/ini.v1 v1.67.3
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -61,7 +61,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/mail.v2 v2.3.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
