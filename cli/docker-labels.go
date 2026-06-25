@@ -99,6 +99,8 @@ func warnUnknownGlobalLabelKeys(logger *slog.Logger, unused []string) {
 }
 
 func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) error {
+	c.warnUnrecognizedJobExecLabelScope()
+
 	execJobs, localJobs, runJobs, serviceJobs, composeJobs, globals, webhookLabels := c.splitContainersLabelsIntoJobMapsByType(containers)
 
 	if len(globals) > 0 {
@@ -390,6 +392,9 @@ func (c *Config) scanContainerLabels(m *dockerLabelJobMaps, containerInfo Docker
 // switching [global] job-exec-label-scope to "container" or "container-service"
 // keeps the jobs distinct. See https://github.com/netresearch/ofelia/issues/734.
 func (c *Config) warnOnExecJobCollisions(m *dockerLabelJobMaps, cs *containerScan) {
+	if c.logger == nil {
+		return // collision warnings need a logger; match the nil-guarded sibling warn paths
+	}
 	for scopedName := range cs.execJobs {
 		owner, seen := m.execJobOwners[scopedName]
 		switch {
@@ -563,6 +568,27 @@ func getJobPrefix(labels map[string]string, containerName, scope string) string 
 		}
 		return containerName
 	}
+}
+
+// warnUnrecognizedJobExecLabelScope logs a warning when job-exec-label-scope is
+// set to a value getJobPrefix does not recognize (a typo such as "continer" or
+// wrong case). getJobPrefix degrades such values to the "service" default,
+// which silently reopens the #734 collision — so the misconfiguration is
+// surfaced loudly here instead of vanishing without a trace. INI validation of
+// this key is opt-in (enable-strict-validation); this warning fires regardless.
+func (c *Config) warnUnrecognizedJobExecLabelScope() {
+	switch c.Global.JobExecLabelScope {
+	case "", jobExecScopeService, jobExecScopeContainer, jobExecScopeContainerService:
+		return
+	}
+	if c.logger == nil {
+		return
+	}
+	c.logger.Warn(fmt.Sprintf(
+		"unrecognized [global] job-exec-label-scope %q — falling back to %q; valid values are %q, %q, %q. "+
+			"See https://github.com/netresearch/ofelia/issues/734.",
+		c.Global.JobExecLabelScope, jobExecScopeService,
+		jobExecScopeService, jobExecScopeContainer, jobExecScopeContainerService))
 }
 
 func ensureJob(m map[string]map[string]any, name string) {

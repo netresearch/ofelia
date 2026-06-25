@@ -228,6 +228,13 @@ func TestDockerLabels_ServiceScopeCollision_LogsWarning(t *testing.T) {
 			t.Errorf("collision warning is missing %q; got: %s", want, msg)
 		}
 	}
+	// Pin the deterministic owner/dropped roles: sortContainers orders running
+	// containers by name, so "acme-web" is scanned first (the surviving owner)
+	// and "globex-web" is the dropped duplicate. This guards against an arg-swap
+	// regression that would tell the operator the wrong container's job is lost.
+	if want := `"globex-web" is dropped because container "acme-web"`; !strings.Contains(msg, want) {
+		t.Errorf("collision warning should name globex-web as dropped and acme-web as owner; got: %s", msg)
+	}
 }
 
 // TestDockerLabels_ContainerScope_NoCollisionWarning ensures the collision
@@ -271,6 +278,85 @@ func TestDockerLabels_SingleContainer_NoCollisionWarning(t *testing.T) {
 	}
 	if h.HasWarning("name collision") {
 		t.Errorf("did not expect a collision warning for a single container; messages: %v", h.GetMessages())
+	}
+}
+
+// TestDockerLabels_UnrecognizedScope_LogsWarning guards against a silent
+// failure on this PR's own config surface: a typo'd job-exec-label-scope value
+// falls back to the collision-prone "service" default, so the misconfiguration
+// must be reported loudly rather than degrading without a trace.
+func TestDockerLabels_UnrecognizedScope_LogsWarning(t *testing.T) {
+	t.Parallel()
+	logger, h := test.NewTestLoggerWithHandler()
+	cfg := &Config{logger: logger}
+	cfg.Global.JobExecLabelScope = "continer" // typo for "container"
+
+	if err := cfg.buildFromDockerContainers(twoStacksSharingServiceName()); err != nil {
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
+	}
+
+	msg := firstWarningContaining(t, h, "unrecognized")
+	for _, want := range []string{"continer", "job-exec-label-scope", "service", "container", "container-service"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("unrecognized-scope warning is missing %q; got: %s", want, msg)
+		}
+	}
+}
+
+// TestDockerLabels_MultipleCollisions_WarnsPerDroppedJob pins warning
+// cardinality: the detector emits exactly one warning per dropped job, not a
+// single coalesced warning and not one per scan. Three stacks share the same
+// service + job name, so one survives and two are dropped.
+func TestDockerLabels_MultipleCollisions_WarnsPerDroppedJob(t *testing.T) {
+	t.Parallel()
+	logger, h := test.NewTestLoggerWithHandler()
+	cfg := &Config{logger: logger} // service default
+
+	mk := func(name string) DockerContainerInfo {
+		return DockerContainerInfo{
+			Name:  name,
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                     "true",
+				"com.docker.compose.service":         "web",
+				"ofelia.job-exec.sync-news.schedule": "@every 5m",
+				"ofelia.job-exec.sync-news.command":  "sync-news --tenant " + name,
+			},
+		}
+	}
+	containers := []DockerContainerInfo{mk("acme-web"), mk("globex-web"), mk("initech-web")}
+	if err := cfg.buildFromDockerContainers(containers); err != nil {
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
+	}
+
+	if len(cfg.ExecJobs) != 1 {
+		t.Errorf("expected 1 surviving job, got %d: %v", len(cfg.ExecJobs), getJobNames(cfg.ExecJobs))
+	}
+	collisions := 0
+	for _, e := range h.GetMessages() {
+		if e.Level == "WARN" && strings.Contains(e.Message, "name collision") {
+			collisions++
+		}
+	}
+	if collisions != 2 {
+		t.Errorf("expected exactly 2 collision warnings (one per dropped job), got %d: %v", collisions, h.GetMessages())
+	}
+}
+
+// TestDockerLabels_Collision_NilLoggerDoesNotPanic ensures the collision and
+// scope-warning paths degrade gracefully when no logger is configured, matching
+// the nil-guarded sibling label warnings rather than panicking on the very
+// condition they exist to report.
+func TestDockerLabels_Collision_NilLoggerDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("collision path panicked with a nil logger: %v", r)
+		}
+	}()
+	cfg := &Config{} // deliberately no logger
+	if err := cfg.buildFromDockerContainers(twoStacksSharingServiceName()); err != nil {
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
 	}
 }
 
