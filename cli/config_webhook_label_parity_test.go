@@ -115,6 +115,19 @@ func TestGlobalLabelAllowList_OmitsSavePermissionKeys(t *testing.T) {
 	}
 }
 
+// TestGlobalLabelAllowList_OmitsJobExecLabelScope asserts job-exec-label-scope
+// stays out of the Docker label allow-list. It is a daemon-wide naming policy:
+// a single container must not be able to redefine how every other container's
+// exec jobs are named (which would reopen the silent-drop class of #734). This
+// catches a future allow-list edit that accidentally exposes it.
+func TestGlobalLabelAllowList_OmitsJobExecLabelScope(t *testing.T) {
+	t.Parallel()
+
+	assert.Falsef(t, globalLabelAllowList["job-exec-label-scope"],
+		"globalLabelAllowList must NOT contain %q — it is a daemon-wide naming policy and stays INI-only (#734)",
+		"job-exec-label-scope")
+}
+
 // TestGlobalLabelAllowList_AllowsOperationallyTunableWebhookKeys is the
 // positive counterpart to the SSRF guard above: the webhook-* keys that are
 // safe to set from a service-container label MUST be present in the

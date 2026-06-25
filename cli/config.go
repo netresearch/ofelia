@@ -70,6 +70,22 @@ type Config struct {
 		// suppressed until this cooldown period expires. Set to 0 to disable deduplication.
 		// Default: 0 (disabled - all notifications sent)
 		NotificationCooldown time.Duration `gcfg:"notification-cooldown" mapstructure:"notification-cooldown" validate:"gte=0" default:"0"`
+		// JobExecLabelScope controls how label-defined job-exec job names are
+		// scoped to avoid collisions when one daemon watches multiple Compose
+		// projects. Values:
+		//   - "service" (default): {service}.{job}, falling back to the
+		//     container name when no com.docker.compose.service label is set.
+		//     This is load-bearing for cross-container depends-on references
+		//     (e.g. "database.backup") and so stays the default.
+		//   - "container": {container}.{job} — collision-safe across stacks that
+		//     reuse a service name (restores the #86/#114 protection).
+		//   - "container-service": {container}.{service}.{job} — descriptive and
+		//     collision-safe; falls back to {container}.{job} for non-Compose
+		//     containers. See https://github.com/netresearch/ofelia/issues/734.
+		// INI-only (not exposed via container labels): it is a daemon-wide
+		// naming policy and a single container must not redefine how every other
+		// container's jobs are named.
+		JobExecLabelScope string `gcfg:"job-exec-label-scope" mapstructure:"job-exec-label-scope" validate:"omitempty,oneof=service container container-service" default:"service"` //nolint:revive
 	}
 	ExecJobs          map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs           map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`

@@ -340,6 +340,15 @@ docker-events = true
 allow-host-jobs-from-labels = false
 default-user = nobody        # Default for exec/run/service; empty uses container default
 
+# How label-defined job-exec names are scoped (see "Cross-Container Job
+# References" below). Default `service` is collision-prone when one daemon
+# watches several Compose projects that reuse a service name; use `container`
+# or `container-service` to keep them distinct.
+#   service           - {service}.{job} (default; falls back to container name)
+#   container         - {container}.{job} (collision-safe per Docker daemon)
+#   container-service - {container}.{service}.{job} (descriptive + collision-safe)
+job-exec-label-scope = service
+
 # Notification deduplication: suppress duplicate error notifications (Slack, email,
 # save) for jobs that fail repeatedly with the same error. Set to 0 (default) to
 # disable deduplication and emit every notification. Accepts any Go duration
@@ -1036,6 +1045,26 @@ Jobs are named as `{service}.{job-name}`:
 - `app.notify` - Notify job on the app service
 
 For non-Compose containers (without the `com.docker.compose.service` label), the container name is used instead.
+
+#### Collision-safe scoping for multi-project hosts (`job-exec-label-scope`)
+
+The default `{service}.{job}` naming is **load-bearing** for the cross-container references above, but it is **not collision-safe** when one central Ofelia daemon watches several independent Compose projects that share a service name. Two stacks deployed from the same template — e.g. `acme-web` and `globex-web`, both with Compose service `web` and an identical `ofelia.job-exec.sync-news` label — both collapse to the single key `web.sync-news`. Only the first container (running → newest → name order) wins; the other stack's job is dropped (see [#734](https://github.com/netresearch/ofelia/issues/734)). Whenever this happens Ofelia logs a `job-exec name collision` **warning** naming both containers and this option, so a dropped job is never lost silently — but you still need to pick a collision-safe scope below to actually run both jobs.
+
+The `[global]` option `job-exec-label-scope` controls how job-exec names are scoped:
+
+| Value | Job name | Notes |
+|-------|----------|-------|
+| `service` (default) | `web.sync-news` | Compose service name (falls back to container name). Required for cross-container `depends-on`/`on-success` references. Collides across projects that reuse a service name. |
+| `container` | `acme-web.sync-news` | Container name, which Docker guarantees unique per daemon. Collision-safe. |
+| `container-service` | `acme-web.web.sync-news` | Container **and** service name — descriptive and collision-safe. Falls back to `{container}.{job}` for non-Compose containers. |
+
+```ini
+[global]
+# One daemon serving acme-web and globex-web (both Compose service "web"):
+job-exec-label-scope = container
+```
+
+This is a **daemon-wide** setting configured in the Ofelia `[global]` section (INI), not via container labels — a single container must not redefine how every other container's jobs are named. When you switch away from `service`, update any cross-container `depends-on`/`on-success`/`on-failure` references to use the new scoped names (e.g. `acme-database.backup` instead of `database.backup`).
 
 ### Important Notes
 
