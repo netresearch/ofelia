@@ -77,6 +77,11 @@ Middleware is a chain-of-responsibility, not a wrapper function: each
 `Middleware.Run(*Context)` must call `ctx.Next()` to continue to the next
 middleware and, once the chain is exhausted, to the job itself.
 
+Short-circuiting (e.g. the overlap middleware skipping an already-running job)
+is done by calling `ctx.Stop(err)`, not by omitting `ctx.Next()`: the middleware
+still calls `ctx.Next()`, and `doNext()` then stops advancing to any subsequent
+middleware whose `ContinueOnStop()` is false (`core/common.go`).
+
 ```go
 type Middleware interface {
     Run(*Context) error   // MUST call ctx.Next() to continue the chain
