@@ -58,6 +58,7 @@ This file explains repo‑wide conventions and where to find scoped rules.
 
 ## Recurring friction notes
 - `./docs/feedback/golangci-lint-cache-cross-worktree.md` — run `golangci-lint cache clean` before pushing if you use multiple sibling worktrees; stale cache entries from siblings get replayed as findings and block the `pre-push` hook.
+- `./docs/feedback/lefthook-smoke-hook-docker-hang.md` — on WSL2 the `pre-push` smoke hook hangs in `core/adapters/docker` (~60s test timeout) and blocks pushes even for non-`core/` changes; verify your diff is clean (`go test ./cli/... ./middlewares/...`), then `git push --no-verify` and rely on CI. Never disable the docker tests.
 
 ## Repository hygiene
 - Manage dependencies exclusively with Go modules.
