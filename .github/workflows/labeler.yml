@@ -1,6 +1,10 @@
 name: Labeler
 
-on:
+# pull_request_target is required: labeling fork PRs needs a write-scoped
+# token, which pull_request does not provide. The called reusable workflow
+# only runs actions/labeler (no checkout or execution of untrusted PR code),
+# so the usual pull_request_target risk does not apply here.
+on: # zizmor: ignore[dangerous-triggers]
   pull_request_target:
     types: [opened, synchronize, reopened]
 
