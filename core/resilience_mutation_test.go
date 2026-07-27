@@ -315,17 +315,23 @@ func TestRetry_BackoffCalculation(t *testing.T) {
 //
 //	CONDITIONALS_BOUNDARY at line 173:37 (time.Since(cb.lastFailureTime) > cb.resetTimeout)
 //
-// If > is changed to >=, then the transition happens at exactly the timeout.
-// We test that the circuit does NOT transition when time.Since == timeout (approximately)
-// and DOES transition when time.Since > timeout.
+// If > is changed to >=, the transition happens at exactly the timeout. The
+// breaker's clock is driven directly rather than slept against: sleeping to
+// just-below the boundary made the test depend on the scheduler returning
+// within a few tens of milliseconds, which it does not guarantee on a loaded
+// runner (see #750). Driving the clock also lets the exact-boundary case be
+// asserted, which no amount of sleeping could do reliably.
 func TestCircuitBreaker_HalfOpenTransitionBoundary(t *testing.T) {
 	t.Parallel()
 
-	// Use a short timeout for testing
 	timeout := 100 * time.Millisecond
 	cb := NewCircuitBreaker("boundary-test", 1, timeout)
 
-	// Trip the circuit breaker
+	base := time.Now()
+	current := base
+	cb.now = func() time.Time { return current }
+
+	// Trip the circuit breaker.
 	cb.Execute(func() error {
 		return errors.New("fail")
 	})
@@ -333,18 +339,23 @@ func TestCircuitBreaker_HalfOpenTransitionBoundary(t *testing.T) {
 		t.Fatal("expected circuit to be open")
 	}
 
-	// Wait slightly less than the timeout - should still be open
-	time.Sleep(timeout - 30*time.Millisecond)
-	err := cb.Execute(func() error { return nil })
-	if err == nil {
-		t.Error("expected error when timeout has not elapsed")
+	// Just below the timeout: still open.
+	current = base.Add(timeout - time.Nanosecond)
+	if err := cb.Execute(func() error { return nil }); err == nil {
+		t.Error("expected error just below the reset timeout")
 	}
 
-	// Wait past the timeout - should transition to half-open and allow call
-	time.Sleep(60 * time.Millisecond) // total wait > timeout
-	err = cb.Execute(func() error { return nil })
-	if err != nil {
-		t.Errorf("expected no error after timeout elapsed, got %v", err)
+	// Exactly at the timeout: still open, because the comparison is strictly
+	// greater. This is the mutation the test exists to catch.
+	current = base.Add(timeout)
+	if err := cb.Execute(func() error { return nil }); err == nil {
+		t.Error("expected error at exactly the reset timeout (> not >=)")
+	}
+
+	// Past the timeout: transitions to half-open and allows the call.
+	current = base.Add(timeout + time.Nanosecond)
+	if err := cb.Execute(func() error { return nil }); err != nil {
+		t.Errorf("expected no error past the reset timeout, got %v", err)
 	}
 }
 

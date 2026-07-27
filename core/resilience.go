@@ -129,6 +129,11 @@ type CircuitBreaker struct {
 	totalSuccesses uint64
 	lastOpenedAt   time.Time
 	openDuration   time.Duration
+
+	// now supplies the current time. It is always time.Now outside tests;
+	// the seam exists so the reset-timeout boundary can be exercised
+	// deterministically instead of by sleeping close to it.
+	now func() time.Time
 }
 
 // NewCircuitBreaker creates a new circuit breaker
@@ -139,6 +144,7 @@ func NewCircuitBreaker(name string, maxFailures uint32, resetTimeout time.Durati
 		resetTimeout:     resetTimeout,
 		halfOpenMaxCalls: 1,
 		state:            StateClosed,
+		now:              time.Now,
 	}
 }
 
@@ -172,7 +178,7 @@ func (cb *CircuitBreaker) beforeCall() error {
 
 	case StateOpen:
 		// Check if we should transition to half-open
-		if time.Since(cb.lastFailureTime) > cb.resetTimeout {
+		if cb.now().Sub(cb.lastFailureTime) > cb.resetTimeout {
 			cb.transitionToHalfOpen()
 			return nil
 		}
@@ -230,7 +236,7 @@ func (cb *CircuitBreaker) onFailure() {
 	atomic.AddUint64(&cb.totalFailures, 1)
 
 	cb.failures++
-	cb.lastFailureTime = time.Now()
+	cb.lastFailureTime = cb.now()
 
 	switch cb.state {
 	case StateClosed:
@@ -250,7 +256,7 @@ func (cb *CircuitBreaker) onFailure() {
 // transitionToOpen transitions the circuit breaker to open state
 func (cb *CircuitBreaker) transitionToOpen() {
 	cb.state = StateOpen
-	cb.lastOpenedAt = time.Now()
+	cb.lastOpenedAt = cb.now()
 	cb.failures = 0
 	cb.successCount = 0
 	cb.halfOpenCalls = 0
@@ -264,7 +270,7 @@ func (cb *CircuitBreaker) transitionToHalfOpen() {
 
 	// Track how long we were open
 	if !cb.lastOpenedAt.IsZero() {
-		cb.openDuration += time.Since(cb.lastOpenedAt)
+		cb.openDuration += cb.now().Sub(cb.lastOpenedAt)
 	}
 }
 
