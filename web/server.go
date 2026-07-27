@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/creasty/defaults"
 	"github.com/gobs/args"
 	cron "github.com/netresearch/go-cron"
 
@@ -754,17 +755,13 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 		return nil, fmt.Errorf("docker provider unavailable for run job")
 	}
 	j := core.NewRunJob(s.provider)
+	// struct-tag defaults are only applied by the config decoder — apply them here too.
+	_ = defaults.Set(j)
 	j.Name = req.Name
 	j.Schedule = req.Schedule
 	j.Command = req.Command
 	j.Image = req.Image
 	j.Container = req.Container
-	// RunJob.Delete only gets its "true" default (core/runjob.go) via the config.ini
-	// decoder's default-tag handling; jobs built here from a jobRequest never go through
-	// that decoder, so Delete was left at its zero value ("") and deleteContainer() treated
-	// that as false — the container from every API-created run job was left behind,
-	// colliding with the next run's `docker create` on the same name.
-	j.Delete = "true"
 	return j, nil
 }
 
