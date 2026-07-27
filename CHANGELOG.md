@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-07-27
+
+### Fixed
+
+- `type=run` jobs created through the web API or restored from the state file now remove their container after each execution, matching the behavior `config.ini` users already got. `RunJob.Delete` only received its `"true"` default via the config decoder's `default` struct tag, but `newRunJobFromRequest` (`web/server.go`) and `buildPersistedRunJob` (`cli/daemon.go`) construct the job directly and bypass that decoder, leaving `Delete` at its zero value `""` — which `deleteContainer` reads as `false` through `strconv.ParseBool`. Every API-created run job therefore left its container behind, and the next scheduled execution failed with `job run: creating container: create container "<name>": resource conflict`. Since `jobRequest` exposes no `delete` field, there was no way to work around it at the call site. Both construction paths now set the default explicitly, each covered by a regression test. ([#745](https://github.com/netresearch/ofelia/pull/745))
+
+### Dependencies
+
+- Go toolchain bumped 1.26.4 → 1.26.5 (`go.mod` plus the `make lint` / `make lint-fix` `GOTOOLCHAIN` pins). This clears [GO-2026-5856](https://pkg.go.dev/vuln/GO-2026-5856), an Encrypted Client Hello privacy leak in `crypto/tls` that `govulncheck` reported as reachable from the Docker client's TLS dialer. Direct and indirect modules were refreshed via `go get -u all`: `docker/cli` 29.5.3→29.6.2, `docker/go-connections` 0.7.0→0.8.1, `golang.org/x/crypto` 0.53.0→0.54.0, `golang.org/x/text` 0.38.0→0.40.0, `golang.org/x/term` 0.44.0→0.45.0, `golang.org/x/sys` 0.46.0→0.47.0, plus `docker-credential-helpers` 0.9.8, `felixge/httpsnoop` 1.1.0, `gabriel-vasile/mimetype` 1.4.15, `go-logr/logr` 1.4.4 and `leodido/go-urn` 1.5.0. Every module linked into the binary is on its latest release; the modules `go list -m -u all` still reports as outdated are test-dependencies-of-dependencies that MVS resolves but the binary never links. The remaining `govulncheck` findings are the unfixable upstream moby advisories on `docker/docker` v28.5.2 — [GO-2026-5668](https://pkg.go.dev/vuln/GO-2026-5668) and [GO-2026-5617](https://pkg.go.dev/vuln/GO-2026-5617) (`docker cp` race conditions), [GO-2026-4887](https://pkg.go.dev/vuln/GO-2026-4887) (AuthZ plugin bypass) and [GO-2026-4883](https://pkg.go.dev/vuln/GO-2026-4883) (plugin-privilege off-by-one) — all reachable only via `init()` chains, with no upstream patch on the v28 line. ([#744](https://github.com/netresearch/ofelia/pull/744), [#746](https://github.com/netresearch/ofelia/pull/746))
+
 ## [0.27.0] - 2026-06-25
 
 ### Added
