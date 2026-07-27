@@ -351,10 +351,13 @@ func NewClientWithConfig(config *ClientConfig) (*Client, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), negotiateTimeout)
 	defer cancel()
-	// The split SDK unexports negotiateAPIVersion; with
-	// client.WithAPIVersionNegotiation() set, a Ping performs the negotiation.
-	// The ping error stays ignored, as NegotiateAPIVersion's did.
-	_, _ = sdk.Ping(ctx, client.PingOptions{})
+	// The split SDK unexports negotiateAPIVersion. Ping is the exported entry
+	// point, and it only negotiates when asked: without NegotiateAPIVersion it
+	// returns the ping response and leaves the version unnegotiated, which
+	// would push negotiation back to the first real API call and reinstate the
+	// race this block exists to prevent. The ping error stays ignored, as
+	// NegotiateAPIVersion's did.
+	_, _ = sdk.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true})
 	// Negotiation swallows ping errors silently. Surface a deadline
 	// hit so operators can correlate startup slowness with daemon health
 	// rather than chasing phantom bugs - context cancellation is the only
