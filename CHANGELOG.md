@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Docker Engine 19.03 or newer (API v1.40+) is now required.** The new client enforces a minimum API version and refuses to negotiate below it, where the previous client had no floor and simply clamped down to whatever the daemon reported. Ofelia has no documented minimum until now; in practice several features already required v1.42 (Engine 20.10, released 2020-12), so only daemons older than 2019 are affected.
+- An invalid API version now fails at startup instead of later. `DOCKER_API_VERSION` and `[docker] version` are validated when the client is built, so a typo reports `invalid API version (…)` immediately; the previous client accepted any string and let the failure surface at request time. A leading `v` (`v1.44`) is now also accepted, where it used to be passed through unusable.
 - `Network.Containers` is no longer populated when listing networks — the Docker list endpoint does not return per-network endpoints, and the new API types reflect that. Inspecting a network still returns them. No Ofelia feature reads the field from list results.
 
 ### Fixed
