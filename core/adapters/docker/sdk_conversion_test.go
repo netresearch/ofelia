@@ -194,11 +194,32 @@ func TestToSDKFiltersResultIsAddable(t *testing.T) {
 func TestConsoleSize(t *testing.T) {
 	t.Parallel()
 
-	if got := consoleSize(nil); got != (client.ConsoleSize{}) {
-		t.Errorf("consoleSize(nil) = %+v, want zero (daemon default)", got)
+	if got := consoleSize(true, nil); got != (client.ConsoleSize{}) {
+		t.Errorf("consoleSize(tty, nil) = %+v, want zero (daemon default)", got)
 	}
-	if got := consoleSize(&[2]uint{24, 80}); got != (client.ConsoleSize{Height: 24, Width: 80}) {
-		t.Errorf("consoleSize([24,80]) = %+v, want height=24 width=80", got)
+	if got := consoleSize(true, &[2]uint{24, 80}); got != (client.ConsoleSize{Height: 24, Width: 80}) {
+		t.Errorf("consoleSize(tty, [24,80]) = %+v, want height=24 width=80", got)
+	}
+	// A partial value is forwarded; the daemon fills the zero dimension.
+	if got := consoleSize(true, &[2]uint{40, 0}); got != (client.ConsoleSize{Height: 40}) {
+		t.Errorf("consoleSize(tty, [40,0]) = %+v, want height=40 width=0", got)
+	}
+}
+
+// ofelia documents console-height/console-width as "only honored when tty =
+// true" and ships an example that sets them alongside tty = false. The frozen
+// SDK forwarded the size and the daemon ignored it (verified: the API returns
+// 201 for Tty:false with ConsoleSize set). The split SDK rejects that
+// combination client-side in getConsoleSize *before* issuing the request, so
+// forwarding it would fail ExecCreate on every run of such a job. The size must
+// be dropped instead.
+func TestConsoleSizeDroppedWithoutTTY(t *testing.T) {
+	t.Parallel()
+
+	for _, size := range []*[2]uint{{24, 80}, {40, 0}, {0, 80}} {
+		if got := consoleSize(false, size); got != (client.ConsoleSize{}) {
+			t.Errorf("consoleSize(no tty, %v) = %+v, want zero so ExecCreate is not rejected", *size, got)
+		}
 	}
 }
 

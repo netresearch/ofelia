@@ -337,6 +337,16 @@ func NewClientWithConfig(config *ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("creating docker client: %w", err)
 	}
 
+	// A pinned API version leaves nothing to negotiate. The frozen SDK's
+	// NegotiateAPIVersion wrapped its whole body in `if !cli.manualOverride`
+	// and so issued no request at all in that case, whereas every branch of the
+	// split SDK's Ping performs one. Skipping the warm-up keeps startup free of
+	// a blocking round-trip that a wedged daemon could stall for the full
+	// timeout — the very scenario #608 is about.
+	if config.Version != "" || strings.TrimSpace(os.Getenv(client.EnvOverrideAPIVersion)) != "" {
+		return newClientFromSDK(sdk), nil
+	}
+
 	// Force early API version negotiation to prevent race conditions.
 	// Without this, concurrent goroutines (e.g., Events and ContainerList) making their
 	// first API calls simultaneously will race on the lazy version negotiation.

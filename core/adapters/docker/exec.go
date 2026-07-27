@@ -45,8 +45,16 @@ func (s *ExecServiceAdapter) checkClient() error {
 // ConsoleSize struct. A nil pointer yields the zero struct, which the daemon
 // reads as "use the default size" — the same meaning the nil pointer carried
 // in the frozen SDK.
-func consoleSize(size *[2]uint) client.ConsoleSize {
-	if size == nil {
+//
+// The size is dropped unless a TTY was requested. The frozen SDK sent it
+// regardless and the daemon ignored it when Tty was false, which is the
+// contract ofelia documents ("only honored when tty = true") and ships an
+// example for. The split SDK instead rejects that combination client-side in
+// getConsoleSize before issuing the request, so forwarding it unconditionally
+// would turn a documented, previously working configuration into a permanent
+// per-run failure.
+func consoleSize(tty bool, size *[2]uint) client.ConsoleSize {
+	if !tty || size == nil {
 		return client.ConsoleSize{}
 	}
 	return client.ConsoleSize{Height: size[0], Width: size[1]}
@@ -72,7 +80,7 @@ func (s *ExecServiceAdapter) Create(ctx context.Context, containerID string, con
 		Cmd:          config.Cmd,
 		Env:          config.Env,
 		WorkingDir:   config.WorkingDir,
-		ConsoleSize:  consoleSize(config.ConsoleSize),
+		ConsoleSize:  consoleSize(config.Tty, config.ConsoleSize),
 	}
 
 	resp, err := s.client.ExecCreate(ctx, containerID, execConfig)
