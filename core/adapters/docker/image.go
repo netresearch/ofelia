@@ -189,9 +189,10 @@ func EncodeAuthConfig(auth domain.AuthConfig) (string, error) {
 		Username: auth.Username,
 		Password: auth.Password,
 		Auth:     auth.Auth,
-		// registry.AuthConfig dropped the long-deprecated Email field; the
-		// daemon has ignored it for years. domain.AuthConfig keeps it so the
-		// ports API is unchanged.
+		// registry.AuthConfig dropped the long-deprecated Email field. Nothing
+		// is lost: convertAuthConfig, the only producer of a domain.AuthConfig
+		// from the credential store, never populated it either. The domain type
+		// keeps the field so the ports API is unchanged.
 		ServerAddress: auth.ServerAddress,
 		IdentityToken: auth.IdentityToken,
 		RegistryToken: auth.RegistryToken,
