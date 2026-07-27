@@ -614,6 +614,10 @@ func (c *DaemonCommand) buildPersistedRunJob(name string, j *persist.Job, provid
 	rj.Command = j.Command
 	rj.Image = j.Image
 	rj.Container = j.Container
+	// Same gap as newRunJobFromRequest (web/server.go): Delete's "true" default only
+	// applies through the config.ini decoder, and persisted API jobs are rebuilt here on
+	// every daemon restart without going through it.
+	rj.Delete = "true"
 	return rj, nil
 }
 

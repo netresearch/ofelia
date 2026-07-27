@@ -759,6 +759,12 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 	j.Command = req.Command
 	j.Image = req.Image
 	j.Container = req.Container
+	// RunJob.Delete only gets its "true" default (core/runjob.go) via the config.ini
+	// decoder's default-tag handling; jobs built here from a jobRequest never go through
+	// that decoder, so Delete was left at its zero value ("") and deleteContainer() treated
+	// that as false — the container from every API-created run job was left behind,
+	// colliding with the next run's `docker create` on the same name.
+	j.Delete = "true"
 	return j, nil
 }
 
