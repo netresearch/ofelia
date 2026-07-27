@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-07-27
+
 ### Security
 
 - The Docker SDK moved from the frozen `github.com/docker/docker v28.5.2+incompatible` to the maintained split modules `github.com/moby/moby/client` and `github.com/moby/moby/api`. `govulncheck` now reports **zero** findings for this codebase, down from four: [GO-2026-5668](https://pkg.go.dev/vuln/GO-2026-5668) and [GO-2026-5617](https://pkg.go.dev/vuln/GO-2026-5617) (`docker cp` race conditions), [GO-2026-4887](https://pkg.go.dev/vuln/GO-2026-4887) (AuthZ plugin bypass) and [GO-2026-4883](https://pkg.go.dev/vuln/GO-2026-4883) (plugin-privilege off-by-one). None of the four had a fix on the v1 import path — upstream ended releases there, so leaving it was the only remedy. All four were reachable only through `init()` chains and were previously assessed as not exploitable in Ofelia's deployment shape, which is why this was deferred until `github.com/docker/cli` completed its own move to `moby/moby/client` (v29.6.2 imports it in 361 files against 7 still on the old path, and the `cli/config` subtree Ofelia depends on is clean of it). Closes [#667](https://github.com/netresearch/ofelia/issues/667).
