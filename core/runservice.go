@@ -348,7 +348,7 @@ func parseVolumeMount(bind string) (domain.ServiceMount, error) {
 		Target: parts[1],
 	}
 	if len(parts) >= 3 {
-		for _, opt := range strings.Split(parts[2], ",") {
+		for opt := range strings.SplitSeq(parts[2], ",") {
 			if opt == "ro" {
 				m.ReadOnly = true
 			}

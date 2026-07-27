@@ -23,9 +23,9 @@ import (
 func webhookGlobalConfigMapstructureTags(t *testing.T) map[string]bool {
 	t.Helper()
 	tags := make(map[string]bool)
-	rt := reflect.TypeOf(middlewares.WebhookGlobalConfig{})
-	for i := range rt.NumField() {
-		tag := rt.Field(i).Tag.Get("mapstructure")
+	rt := reflect.TypeFor[middlewares.WebhookGlobalConfig]()
+	for field := range rt.Fields() {
+		tag := field.Tag.Get("mapstructure")
 		if tag == "" || tag == "-" {
 			continue
 		}

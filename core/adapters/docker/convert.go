@@ -4,15 +4,62 @@
 package docker
 
 import (
+	"net/netip"
 	"strings"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
-	containertypes "github.com/docker/docker/api/types/container"
-	networktypes "github.com/docker/docker/api/types/network"
+	containertypes "github.com/moby/moby/api/types/container"
+	networktypes "github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 
 	"github.com/netresearch/ofelia/core/domain"
 )
+
+// prefixToString renders a netip.Prefix for the domain model. The zero Prefix
+// stringifies to "invalid Prefix", so unset values are mapped to "" to keep the
+// empty-means-unset contract the domain model had when the SDK used strings.
+func prefixToString(p netip.Prefix) string {
+	if !p.IsValid() {
+		return ""
+	}
+	return p.String()
+}
+
+// addrToString renders a netip.Addr for the domain model. See prefixToString:
+// the zero Addr stringifies to "invalid IP".
+func addrToString(a netip.Addr) string {
+	if !a.IsValid() {
+		return ""
+	}
+	return a.String()
+}
+
+// addrMapToString converts an auxiliary-address map to the domain's string map.
+func addrMapToString(in map[string]netip.Addr) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = addrToString(v)
+	}
+	return out
+}
+
+// toSDKFilters converts a domain filter map into the SDK's Filters type.
+// Returns nil for an empty map so the request omits the filters parameter,
+// and never returns the zero Filters, whose Add would panic on a nil map.
+func toSDKFilters(in map[string][]string) client.Filters {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(client.Filters, len(in))
+	for key, values := range in {
+		out.Add(key, values...)
+	}
+	return out
+}
 
 // convertError converts Docker SDK errors to domain errors.
 func convertError(err error) error {
@@ -76,7 +123,7 @@ func convertFromContainerJSON(c *containertypes.InspectResponse) *domain.Contain
 
 		if c.State.Health != nil {
 			container.State.Health = &domain.Health{
-				Status:        c.State.Health.Status,
+				Status:        string(c.State.Health.Status),
 				FailingStreak: c.State.Health.FailingStreak,
 			}
 			for _, log := range c.State.Health.Log {
@@ -184,27 +231,17 @@ func convertFromNetworkResource(n *networktypes.Summary) domain.Network {
 		}
 		for _, cfg := range n.IPAM.Config {
 			network.IPAM.Config = append(network.IPAM.Config, domain.IPAMConfig{
-				Subnet:     cfg.Subnet,
-				IPRange:    cfg.IPRange,
-				Gateway:    cfg.Gateway,
-				AuxAddress: cfg.AuxAddress,
+				Subnet:     prefixToString(cfg.Subnet),
+				IPRange:    prefixToString(cfg.IPRange),
+				Gateway:    addrToString(cfg.Gateway),
+				AuxAddress: addrMapToString(cfg.AuxAddress),
 			})
 		}
 	}
 
-	// Convert containers
-	if len(n.Containers) > 0 {
-		network.Containers = make(map[string]domain.EndpointResource)
-		for id, ep := range n.Containers {
-			network.Containers[id] = domain.EndpointResource{
-				Name:        ep.Name,
-				EndpointID:  ep.EndpointID,
-				MacAddress:  ep.MacAddress,
-				IPv4Address: ep.IPv4Address,
-				IPv6Address: ep.IPv6Address,
-			}
-		}
-	}
+	// network.Summary carries no Containers map: the list endpoint does not
+	// return per-network endpoints. Callers that need them must Inspect the
+	// network, which convertFromNetworkInspect still populates.
 
 	return network
 }
@@ -242,10 +279,10 @@ func convertFromNetworkInspect(n *networktypes.Inspect) *domain.Network {
 		}
 		for _, cfg := range n.IPAM.Config {
 			network.IPAM.Config = append(network.IPAM.Config, domain.IPAMConfig{
-				Subnet:     cfg.Subnet,
-				IPRange:    cfg.IPRange,
-				Gateway:    cfg.Gateway,
-				AuxAddress: cfg.AuxAddress,
+				Subnet:     prefixToString(cfg.Subnet),
+				IPRange:    prefixToString(cfg.IPRange),
+				Gateway:    addrToString(cfg.Gateway),
+				AuxAddress: addrMapToString(cfg.AuxAddress),
 			})
 		}
 	}
@@ -257,9 +294,9 @@ func convertFromNetworkInspect(n *networktypes.Inspect) *domain.Network {
 			network.Containers[id] = domain.EndpointResource{
 				Name:        ep.Name,
 				EndpointID:  ep.EndpointID,
-				MacAddress:  ep.MacAddress,
-				IPv4Address: ep.IPv4Address,
-				IPv6Address: ep.IPv6Address,
+				MacAddress:  ep.MacAddress.String(),
+				IPv4Address: prefixToString(ep.IPv4Address),
+				IPv6Address: prefixToString(ep.IPv6Address),
 			}
 		}
 	}

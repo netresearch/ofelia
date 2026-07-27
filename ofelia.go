@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/jessevdk/go-flags"
@@ -47,11 +48,9 @@ func main() {
 	cli.Build = build
 
 	// Handle --version flag before parser setup
-	for _, arg := range os.Args[1:] {
-		if arg == "--version" {
-			_, _ = fmt.Fprintln(os.Stdout, cli.VersionString())
-			return
-		}
+	if slices.Contains(os.Args[1:], "--version") {
+		_, _ = fmt.Fprintln(os.Stdout, cli.VersionString())
+		return
 	}
 
 	// Pre-parse log-level flag to configure logger early

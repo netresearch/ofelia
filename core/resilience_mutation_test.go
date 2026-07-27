@@ -643,14 +643,12 @@ func TestBulkhead_ActiveCounterConcurrent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 3 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			b.Execute(ctx, func() error {
 				time.Sleep(20 * time.Millisecond)
 				return nil
 			})
-		}()
+		})
 	}
 
 	// Let all goroutines start

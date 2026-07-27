@@ -4,13 +4,13 @@
 package docker
 
 import (
+	"net/netip"
 	"os"
 	"testing"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -72,10 +72,10 @@ func TestConvertToContainerConfig(t *testing.T) {
 				assert.True(t, result.OpenStdin)
 				assert.True(t, result.StdinOnce)
 				assert.Equal(t, []string{"FOO=bar", "BAZ=qux"}, result.Env)
-				assert.Equal(t, []string{"echo", "hello"}, []string(result.Cmd))
+				assert.Equal(t, []string{"echo", "hello"}, result.Cmd)
 				assert.Equal(t, "alpine:latest", result.Image)
 				assert.Equal(t, "/app", result.WorkingDir)
-				assert.Equal(t, []string{"/bin/sh"}, []string(result.Entrypoint))
+				assert.Equal(t, []string{"/bin/sh"}, result.Entrypoint)
 				assert.Equal(t, map[string]string{"app": "test"}, result.Labels)
 			},
 		},
@@ -128,10 +128,10 @@ func TestConvertToHostConfig(t *testing.T) {
 			},
 			validate: func(t *testing.T, result *container.HostConfig) {
 				require.NotNil(t, result)
-				bindings, ok := result.PortBindings[nat.Port("80/tcp")]
+				bindings, ok := result.PortBindings[network.MustParsePort("80/tcp")]
 				require.True(t, ok)
 				require.Len(t, bindings, 1)
-				assert.Equal(t, "0.0.0.0", bindings[0].HostIP)
+				assert.Equal(t, netip.MustParseAddr("0.0.0.0"), bindings[0].HostIP)
 				assert.Equal(t, "8080", bindings[0].HostPort)
 			},
 		},
@@ -221,7 +221,7 @@ func TestConvertToHostConfig(t *testing.T) {
 				assert.True(t, result.AutoRemove)
 				assert.True(t, result.Privileged)
 				assert.True(t, result.ReadonlyRootfs)
-				assert.Equal(t, []string{"8.8.8.8"}, result.DNS)
+				assert.Equal(t, []netip.Addr{netip.MustParseAddr("8.8.8.8")}, result.DNS)
 				assert.Equal(t, []string{"example.com"}, result.DNSSearch)
 				assert.Equal(t, []string{"myhost:192.168.1.1"}, result.ExtraHosts)
 				assert.Contains(t, result.CapAdd, "NET_ADMIN")
@@ -378,18 +378,18 @@ func TestConvertToEndpointSettings(t *testing.T) {
 				assert.Equal(t, []string{"web"}, result.Aliases)
 				assert.Equal(t, "net-abc", result.NetworkID)
 				assert.Equal(t, "ep-123", result.EndpointID)
-				assert.Equal(t, "172.17.0.1", result.Gateway)
-				assert.Equal(t, "172.17.0.5", result.IPAddress)
+				assert.Equal(t, netip.MustParseAddr("172.17.0.1"), result.Gateway)
+				assert.Equal(t, netip.MustParseAddr("172.17.0.5"), result.IPAddress)
 				assert.Equal(t, 16, result.IPPrefixLen)
-				assert.Equal(t, "fe80::1", result.IPv6Gateway)
-				assert.Equal(t, "2001:db8::5", result.GlobalIPv6Address)
+				assert.Equal(t, netip.MustParseAddr("fe80::1"), result.IPv6Gateway)
+				assert.Equal(t, netip.MustParseAddr("2001:db8::5"), result.GlobalIPv6Address)
 				assert.Equal(t, 64, result.GlobalIPv6PrefixLen)
-				assert.Equal(t, "02:42:ac:11:00:05", result.MacAddress)
+				assert.Equal(t, "02:42:ac:11:00:05", result.MacAddress.String())
 				assert.Equal(t, map[string]string{"opt1": "val1"}, result.DriverOpts)
 				require.NotNil(t, result.IPAMConfig)
-				assert.Equal(t, "172.17.0.10", result.IPAMConfig.IPv4Address)
-				assert.Equal(t, "2001:db8::10", result.IPAMConfig.IPv6Address)
-				assert.Equal(t, []string{"169.254.0.1"}, result.IPAMConfig.LinkLocalIPs)
+				assert.Equal(t, netip.MustParseAddr("172.17.0.10"), result.IPAMConfig.IPv4Address)
+				assert.Equal(t, netip.MustParseAddr("2001:db8::10"), result.IPAMConfig.IPv6Address)
+				assert.Equal(t, []netip.Addr{netip.MustParseAddr("169.254.0.1")}, result.IPAMConfig.LinkLocalIPs)
 			},
 		},
 		{
@@ -423,19 +423,19 @@ func TestConvertToPortMap(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    domain.PortMap
-		validate func(t *testing.T, result nat.PortMap)
+		validate func(t *testing.T, result network.PortMap)
 	}{
 		{
 			name:  "nil input returns nil",
 			input: nil,
-			validate: func(t *testing.T, result nat.PortMap) {
+			validate: func(t *testing.T, result network.PortMap) {
 				assert.Nil(t, result)
 			},
 		},
 		{
 			name:  "empty map returns nil",
 			input: domain.PortMap{},
-			validate: func(t *testing.T, result nat.PortMap) {
+			validate: func(t *testing.T, result network.PortMap) {
 				assert.Nil(t, result)
 			},
 		},
@@ -444,11 +444,11 @@ func TestConvertToPortMap(t *testing.T) {
 			input: domain.PortMap{
 				"80/tcp": {{HostIP: "0.0.0.0", HostPort: "8080"}},
 			},
-			validate: func(t *testing.T, result nat.PortMap) {
+			validate: func(t *testing.T, result network.PortMap) {
 				require.NotNil(t, result)
-				bindings := result[nat.Port("80/tcp")]
+				bindings := result[network.MustParsePort("80/tcp")]
 				require.Len(t, bindings, 1)
-				assert.Equal(t, "0.0.0.0", bindings[0].HostIP)
+				assert.Equal(t, netip.MustParseAddr("0.0.0.0"), bindings[0].HostIP)
 				assert.Equal(t, "8080", bindings[0].HostPort)
 			},
 		},
@@ -460,9 +460,9 @@ func TestConvertToPortMap(t *testing.T) {
 					{HostIP: "0.0.0.0", HostPort: "8443"},
 				},
 			},
-			validate: func(t *testing.T, result nat.PortMap) {
+			validate: func(t *testing.T, result network.PortMap) {
 				require.NotNil(t, result)
-				bindings := result[nat.Port("443/tcp")]
+				bindings := result[network.MustParsePort("443/tcp")]
 				require.Len(t, bindings, 2)
 			},
 		},
@@ -473,7 +473,7 @@ func TestConvertToPortMap(t *testing.T) {
 				"443/tcp":  {{HostIP: "", HostPort: "8443"}},
 				"3000/tcp": {{HostIP: "127.0.0.1", HostPort: "3000"}},
 			},
-			validate: func(t *testing.T, result nat.PortMap) {
+			validate: func(t *testing.T, result network.PortMap) {
 				require.NotNil(t, result)
 				assert.Len(t, result, 3)
 			},

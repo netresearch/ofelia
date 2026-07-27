@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 // newLoopbackSDKClient builds an SDK client pointed at a loopback address
@@ -18,7 +18,7 @@ import (
 // t.Cleanup to close the client.
 func newLoopbackSDKClient(t *testing.T) *client.Client {
 	t.Helper()
-	sdk, err := client.NewClientWithOpts(client.WithHost("tcp://127.0.0.1:1"))
+	sdk, err := client.New(client.WithHost("tcp://127.0.0.1:1"))
 	if err != nil {
 		t.Fatalf("constructing loopback SDK client: %v", err)
 	}
@@ -52,10 +52,10 @@ func newSDKClientForStubServer(t *testing.T, srv *httptest.Server) *client.Clien
 	if err != nil {
 		t.Fatalf("parsing stub server URL: %v", err)
 	}
-	sdk, err := client.NewClientWithOpts(
+	sdk, err := client.New(
 		client.WithHost("tcp://"+u.Host),
 		client.WithHTTPClient(srv.Client()),
-		client.WithVersion("1.43"),
+		client.WithAPIVersion("1.43"),
 	)
 	if err != nil {
 		t.Fatalf("constructing SDK client for stub: %v", err)

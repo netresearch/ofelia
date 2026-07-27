@@ -182,7 +182,7 @@ func TestJobType_NonPointerUnknownType(t *testing.T) {
 	// This test verifies the pointer dereference path is specific to pointers.
 
 	// Verify that reflect on a pointer type has empty Name().
-	ptrType := reflect.TypeOf(&customTestJob{})
+	ptrType := reflect.TypeFor[*customTestJob]()
 	assert.Equal(t, reflect.Pointer, ptrType.Kind())
 	assert.Empty(t, ptrType.Name(), "pointer types have empty Name()")
 

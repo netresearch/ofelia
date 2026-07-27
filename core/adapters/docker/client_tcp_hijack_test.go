@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	containertypes "github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 // TestPlainHijack_ContainerExecAttachWorks pins the hijack-path fixes for
@@ -85,13 +85,13 @@ func assertHijackOK(t *testing.T, host string) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if _, pingErr := c.SDK().Ping(ctx); pingErr != nil {
+	if _, pingErr := c.SDK().Ping(ctx, client.PingOptions{}); pingErr != nil {
 		t.Fatalf("Ping(%q): %v", host, pingErr)
 	}
 
-	resp, err := c.SDK().ContainerExecAttach(ctx, "deadbeef", containertypes.ExecAttachOptions{})
+	resp, err := c.SDK().ExecAttach(ctx, "deadbeef", client.ExecAttachOptions{})
 	if err != nil {
-		t.Fatalf("ContainerExecAttach(%q): %v", host, err)
+		t.Fatalf("ExecAttach(%q): %v", host, err)
 	}
 	defer resp.Close()
 	_, _ = io.Copy(io.Discard, resp.Reader)

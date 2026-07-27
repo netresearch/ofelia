@@ -42,7 +42,7 @@ func TestConfigGlobalKeysAreDocumented(t *testing.T) {
 	// Robust against future Config restructuring: look up the Global field by
 	// name rather than by index 0, so a refactor that adds a sibling field
 	// before Global doesn't silently change what this test inspects.
-	globalField, ok := reflect.TypeOf(Config{}).FieldByName("Global")
+	globalField, ok := reflect.TypeFor[Config]().FieldByName("Global")
 	if !ok {
 		t.Fatal("Config.Global field not found - did the struct get renamed?")
 	}
@@ -53,11 +53,9 @@ func TestConfigGlobalKeysAreDocumented(t *testing.T) {
 	// #635 / #656 — every operator-tunable key on Global is now drift-checked
 	// against the docs, regardless of whether it lives on an embedded struct
 	// or directly on Global.
-	for i := range globalT.NumField() {
-		f := globalT.Field(i)
+	for f := range globalT.Fields() {
 		if f.Anonymous {
-			for j := range f.Type.NumField() {
-				sub := f.Type.Field(j)
+			for sub := range f.Type.Fields() {
 				assertDocumented(t, docs, sub, f.Type.Name())
 			}
 			continue

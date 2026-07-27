@@ -413,13 +413,9 @@ func (pm *PerformanceMetrics) GetDockerMetrics() map[string]any {
 
 	// Return copies of the maps to avoid races after the RLock is released
 	ops := make(map[string]int64, len(pm.dockerOpsCount))
-	for k, v := range pm.dockerOpsCount {
-		ops[k] = v
-	}
+	maps.Copy(ops, pm.dockerOpsCount)
 	errs := make(map[string]int64, len(pm.dockerErrorsCount))
-	for k, v := range pm.dockerErrorsCount {
-		errs[k] = v
-	}
+	maps.Copy(errs, pm.dockerErrorsCount)
 
 	return map[string]any{
 		"total_operations":   totalOps,

@@ -7,15 +7,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
+	"net/netip"
 	"os"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/netresearch/ofelia/core/domain"
@@ -55,7 +55,13 @@ func (s *ContainerServiceAdapter) Create(ctx context.Context, config *domain.Con
 
 	var platform *ocispec.Platform // Let Docker choose the platform
 
-	resp, err := s.client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, platform, config.Name)
+	resp, err := s.client.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           containerConfig,
+		HostConfig:       hostConfig,
+		NetworkingConfig: networkConfig,
+		Platform:         platform,
+		Name:             config.Name,
+	})
 	if err != nil {
 		return "", convertError(err)
 	}
@@ -68,7 +74,7 @@ func (s *ContainerServiceAdapter) Start(ctx context.Context, containerID string)
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.ContainerStart(ctx, containerID, container.StartOptions{})
+	_, err := s.client.ContainerStart(ctx, containerID, client.ContainerStartOptions{})
 	return convertError(err)
 }
 
@@ -77,14 +83,14 @@ func (s *ContainerServiceAdapter) Stop(ctx context.Context, containerID string, 
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	sdkOpts := container.StopOptions{
+	sdkOpts := client.ContainerStopOptions{
 		Signal: opts.Signal,
 	}
 	if opts.Timeout != nil {
 		seconds := int(opts.Timeout.Seconds())
 		sdkOpts.Timeout = &seconds
 	}
-	err := s.client.ContainerStop(ctx, containerID, sdkOpts)
+	_, err := s.client.ContainerStop(ctx, containerID, sdkOpts)
 	return convertError(err)
 }
 
@@ -93,7 +99,7 @@ func (s *ContainerServiceAdapter) Remove(ctx context.Context, containerID string
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.ContainerRemove(ctx, containerID, container.RemoveOptions{
+	_, err := s.client.ContainerRemove(ctx, containerID, client.ContainerRemoveOptions{
 		RemoveVolumes: opts.RemoveVolumes,
 		RemoveLinks:   opts.RemoveLinks,
 		Force:         opts.Force,
@@ -106,12 +112,12 @@ func (s *ContainerServiceAdapter) Inspect(ctx context.Context, containerID strin
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	resp, err := s.client.ContainerInspect(ctx, containerID)
+	resp, err := s.client.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return nil, convertError(err)
 	}
 
-	return convertFromContainerJSON(&resp), nil
+	return convertFromContainerJSON(&resp.Container), nil
 }
 
 // List lists containers.
@@ -119,29 +125,22 @@ func (s *ContainerServiceAdapter) List(ctx context.Context, opts domain.ListOpti
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	listOpts := container.ListOptions{
+	listOpts := client.ContainerListOptions{
 		All:   opts.All,
 		Size:  opts.Size,
 		Limit: opts.Limit,
 	}
 
-	if len(opts.Filters) > 0 {
-		listOpts.Filters = filters.NewArgs()
-		for key, values := range opts.Filters {
-			for _, v := range values {
-				listOpts.Filters.Add(key, v)
-			}
-		}
-	}
+	listOpts.Filters = toSDKFilters(opts.Filters)
 
 	containers, err := s.client.ContainerList(ctx, listOpts)
 	if err != nil {
 		return nil, convertError(err)
 	}
 
-	result := make([]domain.Container, len(containers))
-	for i, c := range containers {
-		result[i] = convertFromAPIContainer(&c)
+	result := make([]domain.Container, len(containers.Items))
+	for i := range containers.Items {
+		result[i] = convertFromAPIContainer(&containers.Items[i])
 	}
 	return result, nil
 }
@@ -162,14 +161,16 @@ func (s *ContainerServiceAdapter) Wait(ctx context.Context, containerID string) 
 		defer close(respCh)
 		defer close(errCh)
 
-		statusCh, sdkErrCh := s.client.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
+		waitResult := s.client.ContainerWait(ctx, containerID, client.ContainerWaitOptions{
+			Condition: container.WaitConditionNotRunning,
+		})
 
 		select {
 		case <-ctx.Done():
 			errCh <- ctx.Err()
-		case err := <-sdkErrCh:
+		case err := <-waitResult.Error:
 			errCh <- convertError(err)
-		case status := <-statusCh:
+		case status := <-waitResult.Result:
 			resp := domain.WaitResponse{
 				StatusCode: status.StatusCode,
 			}
@@ -190,7 +191,7 @@ func (s *ContainerServiceAdapter) Logs(ctx context.Context, containerID string, 
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	reader, err := s.client.ContainerLogs(ctx, containerID, container.LogsOptions{
+	reader, err := s.client.ContainerLogs(ctx, containerID, client.ContainerLogsOptions{
 		ShowStdout: opts.ShowStdout,
 		ShowStderr: opts.ShowStderr,
 		Since:      opts.Since,
@@ -247,7 +248,7 @@ func (s *ContainerServiceAdapter) Kill(ctx context.Context, containerID string, 
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.ContainerKill(ctx, containerID, signal)
+	_, err := s.client.ContainerKill(ctx, containerID, client.ContainerKillOptions{Signal: signal})
 	return convertError(err)
 }
 
@@ -256,7 +257,7 @@ func (s *ContainerServiceAdapter) Pause(ctx context.Context, containerID string)
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.ContainerPause(ctx, containerID)
+	_, err := s.client.ContainerPause(ctx, containerID, client.ContainerPauseOptions{})
 	return convertError(err)
 }
 
@@ -265,7 +266,7 @@ func (s *ContainerServiceAdapter) Unpause(ctx context.Context, containerID strin
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.ContainerUnpause(ctx, containerID)
+	_, err := s.client.ContainerUnpause(ctx, containerID, client.ContainerUnpauseOptions{})
 	return convertError(err)
 }
 
@@ -274,7 +275,7 @@ func (s *ContainerServiceAdapter) Rename(ctx context.Context, containerID string
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.ContainerRename(ctx, containerID, newName)
+	_, err := s.client.ContainerRename(ctx, containerID, client.ContainerRenameOptions{NewName: newName})
 	return convertError(err)
 }
 
@@ -285,7 +286,7 @@ func (s *ContainerServiceAdapter) Attach(
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	resp, err := s.client.ContainerAttach(ctx, containerID, container.AttachOptions{
+	resp, err := s.client.ContainerAttach(ctx, containerID, client.ContainerAttachOptions{
 		Stream:     opts.Stream,
 		Stdin:      opts.Stdin,
 		Stdout:     opts.Stdout,
@@ -304,6 +305,66 @@ func (s *ContainerServiceAdapter) Attach(
 }
 
 // Helper conversion functions
+
+// The split SDK types network addresses (netip.Addr, network.HardwareAddr,
+// network.Port) where the frozen SDK used strings. ofelia's domain model keeps
+// strings, so the request path parses them here. Unparseable input yields the
+// zero value, i.e. "unset" — the same request the daemon would have received
+// for an empty string. No ofelia config path populates these fields today:
+// domain.NetworkConfig / EndpointSettings / HostConfig.DNS exist for the ports
+// abstraction but are never set by job definitions.
+func parseAddrOrZero(s string) netip.Addr {
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return netip.Addr{}
+	}
+	return addr
+}
+
+func parseAddrsOrEmpty(in []string) []netip.Addr {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]netip.Addr, 0, len(in))
+	for _, s := range in {
+		if addr, err := netip.ParseAddr(s); err == nil {
+			out = append(out, addr)
+		}
+	}
+	return out
+}
+
+func parsePrefixOrZero(s string) netip.Prefix {
+	prefix, err := netip.ParsePrefix(s)
+	if err != nil {
+		return netip.Prefix{}
+	}
+	return prefix
+}
+
+func parseAddrMapOrEmpty(in map[string]string) map[string]netip.Addr {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]netip.Addr, len(in))
+	for k, v := range in {
+		if addr, err := netip.ParseAddr(v); err == nil {
+			out[k] = addr
+		}
+	}
+	return out
+}
+
+func parseHardwareAddrOrZero(s string) network.HardwareAddr {
+	if s == "" {
+		return nil
+	}
+	hw, err := net.ParseMAC(s)
+	if err != nil {
+		return nil
+	}
+	return network.HardwareAddr(hw)
+}
 
 func convertToContainerConfig(config *domain.ContainerConfig) *container.Config {
 	if config == nil {
@@ -341,7 +402,7 @@ func convertToHostConfig(config *domain.HostConfig) *container.HostConfig {
 		AutoRemove:     config.AutoRemove,
 		Privileged:     config.Privileged,
 		ReadonlyRootfs: config.ReadonlyRootfs,
-		DNS:            config.DNS,
+		DNS:            parseAddrsOrEmpty(config.DNS),
 		DNSSearch:      config.DNSSearch,
 		ExtraHosts:     config.ExtraHosts,
 		CapAdd:         config.CapAdd,
@@ -412,38 +473,44 @@ func convertToEndpointSettings(settings *domain.EndpointSettings) *network.Endpo
 		Aliases:             settings.Aliases,
 		NetworkID:           settings.NetworkID,
 		EndpointID:          settings.EndpointID,
-		Gateway:             settings.Gateway,
-		IPAddress:           settings.IPAddress,
+		Gateway:             parseAddrOrZero(settings.Gateway),
+		IPAddress:           parseAddrOrZero(settings.IPAddress),
 		IPPrefixLen:         settings.IPPrefixLen,
-		IPv6Gateway:         settings.IPv6Gateway,
-		GlobalIPv6Address:   settings.GlobalIPv6Address,
+		IPv6Gateway:         parseAddrOrZero(settings.IPv6Gateway),
+		GlobalIPv6Address:   parseAddrOrZero(settings.GlobalIPv6Address),
 		GlobalIPv6PrefixLen: settings.GlobalIPv6PrefixLen,
-		MacAddress:          settings.MacAddress,
+		MacAddress:          parseHardwareAddrOrZero(settings.MacAddress),
 		DriverOpts:          settings.DriverOpts,
 	}
 
 	if settings.IPAMConfig != nil {
 		endpoint.IPAMConfig = &network.EndpointIPAMConfig{
-			IPv4Address:  settings.IPAMConfig.IPv4Address,
-			IPv6Address:  settings.IPAMConfig.IPv6Address,
-			LinkLocalIPs: settings.IPAMConfig.LinkLocalIPs,
+			IPv4Address:  parseAddrOrZero(settings.IPAMConfig.IPv4Address),
+			IPv6Address:  parseAddrOrZero(settings.IPAMConfig.IPv6Address),
+			LinkLocalIPs: parseAddrsOrEmpty(settings.IPAMConfig.LinkLocalIPs),
 		}
 	}
 
 	return endpoint
 }
 
-func convertToPortMap(pm domain.PortMap) nat.PortMap {
+func convertToPortMap(pm domain.PortMap) network.PortMap {
 	if len(pm) == 0 {
 		return nil
 	}
 
-	result := make(nat.PortMap)
+	result := make(network.PortMap)
 	for port, bindings := range pm {
-		natPort := nat.Port(port)
+		// An unparseable port spec is dropped rather than aborting the map:
+		// the frozen SDK's nat.Port(port) accepted it here and left rejection
+		// to the daemon.
+		sdkPort, err := network.ParsePort(string(port))
+		if err != nil {
+			continue
+		}
 		for _, b := range bindings {
-			result[natPort] = append(result[natPort], nat.PortBinding{
-				HostIP:   b.HostIP,
+			result[sdkPort] = append(result[sdkPort], network.PortBinding{
+				HostIP:   parseAddrOrZero(b.HostIP),
 				HostPort: b.HostPort,
 			})
 		}

@@ -458,7 +458,7 @@ func TestWebhookTemplateFuncs_JSON_RFC8259EscapeCoverage(t *testing.T) {
 
 	// Round-trip: helper output wrapped in quotes must parse as JSON
 	// and yield the original string for every control byte 0x00-0x1F.
-	for c := byte(0); c < 0x20; c++ {
+	for c := range byte(0x20) {
 		in := string([]byte{c})
 		quoted := `"` + fn(in) + `"`
 		var out string

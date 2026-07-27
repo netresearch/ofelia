@@ -154,7 +154,7 @@ See [SECURITY.md](SECURITY.md) for security policies and reporting vulnerabiliti
 ## Dependencies
 
 Key external dependencies:
-- `github.com/docker/docker` - Docker API client
+- `github.com/moby/moby/client` + `github.com/moby/moby/api` - Docker API client
 - `github.com/netresearch/go-cron` - Cron expression parsing
 - `gopkg.in/ini.v1` - INI file parsing
 

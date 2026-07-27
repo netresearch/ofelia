@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/swarm"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/api/types/swarm"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/netresearch/ofelia/core/domain"

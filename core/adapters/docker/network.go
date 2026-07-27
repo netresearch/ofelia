@@ -6,9 +6,8 @@ package docker
 import (
 	"context"
 
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 
 	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/core/ports"
@@ -38,7 +37,10 @@ func (s *NetworkServiceAdapter) Connect(ctx context.Context, networkID, containe
 		endpointConfig = convertToEndpointSettings(config)
 	}
 
-	err := s.client.NetworkConnect(ctx, networkID, containerID, endpointConfig)
+	_, err := s.client.NetworkConnect(ctx, networkID, client.NetworkConnectOptions{
+		Container:      containerID,
+		EndpointConfig: endpointConfig,
+	})
 	return convertError(err)
 }
 
@@ -47,7 +49,10 @@ func (s *NetworkServiceAdapter) Disconnect(ctx context.Context, networkID, conta
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.NetworkDisconnect(ctx, networkID, containerID, force)
+	_, err := s.client.NetworkDisconnect(ctx, networkID, client.NetworkDisconnectOptions{
+		Container: containerID,
+		Force:     force,
+	})
 	return convertError(err)
 }
 
@@ -56,25 +61,18 @@ func (s *NetworkServiceAdapter) List(ctx context.Context, opts domain.NetworkLis
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	listOpts := network.ListOptions{}
+	listOpts := client.NetworkListOptions{}
 
-	if len(opts.Filters) > 0 {
-		listOpts.Filters = filters.NewArgs()
-		for key, values := range opts.Filters {
-			for _, v := range values {
-				listOpts.Filters.Add(key, v)
-			}
-		}
-	}
+	listOpts.Filters = toSDKFilters(opts.Filters)
 
 	networks, err := s.client.NetworkList(ctx, listOpts)
 	if err != nil {
 		return nil, convertError(err)
 	}
 
-	result := make([]domain.Network, len(networks))
-	for i, n := range networks {
-		result[i] = convertFromNetworkResource(&n)
+	result := make([]domain.Network, len(networks.Items))
+	for i := range networks.Items {
+		result[i] = convertFromNetworkResource(&networks.Items[i])
 	}
 	return result, nil
 }
@@ -84,12 +82,12 @@ func (s *NetworkServiceAdapter) Inspect(ctx context.Context, networkID string) (
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	n, err := s.client.NetworkInspect(ctx, networkID, network.InspectOptions{})
+	n, err := s.client.NetworkInspect(ctx, networkID, client.NetworkInspectOptions{})
 	if err != nil {
 		return nil, convertError(err)
 	}
 
-	return convertFromNetworkInspect(&n), nil
+	return convertFromNetworkInspect(&n.Network), nil
 }
 
 // Create creates a network.
@@ -97,7 +95,7 @@ func (s *NetworkServiceAdapter) Create(ctx context.Context, name string, opts po
 	if err := s.checkClient(); err != nil {
 		return "", err
 	}
-	createOpts := network.CreateOptions{
+	createOpts := client.NetworkCreateOptions{
 		Driver:     opts.Driver,
 		Scope:      opts.Scope,
 		EnableIPv6: &opts.EnableIPv6,
@@ -115,10 +113,10 @@ func (s *NetworkServiceAdapter) Create(ctx context.Context, name string, opts po
 		}
 		for _, cfg := range opts.IPAM.Config {
 			createOpts.IPAM.Config = append(createOpts.IPAM.Config, network.IPAMConfig{
-				Subnet:     cfg.Subnet,
-				IPRange:    cfg.IPRange,
-				Gateway:    cfg.Gateway,
-				AuxAddress: cfg.AuxAddress,
+				Subnet:     parsePrefixOrZero(cfg.Subnet),
+				IPRange:    parsePrefixOrZero(cfg.IPRange),
+				Gateway:    parseAddrOrZero(cfg.Gateway),
+				AuxAddress: parseAddrMapOrEmpty(cfg.AuxAddress),
 			})
 		}
 	}
@@ -136,6 +134,6 @@ func (s *NetworkServiceAdapter) Remove(ctx context.Context, networkID string) er
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.NetworkRemove(ctx, networkID)
+	_, err := s.client.NetworkRemove(ctx, networkID, client.NetworkRemoveOptions{})
 	return convertError(err)
 }

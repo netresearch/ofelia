@@ -9,11 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/registry"
+	"github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"github.com/netresearch/ofelia/core/domain"
 )
@@ -37,9 +37,14 @@ func (s *ImageServiceAdapter) Pull(ctx context.Context, opts domain.PullOptions)
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	pullOpts := image.PullOptions{
+	pullOpts := client.ImagePullOptions{
 		RegistryAuth: opts.RegistryAuth,
-		Platform:     opts.Platform,
+	}
+	// PullOptions.Platform (a string) became Platforms ([]ocispec.Platform).
+	// No ofelia caller sets it today; an unparseable value is dropped, leaving
+	// the daemon to pick the platform as it did for an empty string.
+	if plat, ok := parsePlatform(opts.Platform); ok {
+		pullOpts.Platforms = []ocispec.Platform{plat}
 	}
 
 	ref := opts.Repository
@@ -73,31 +78,38 @@ func (s *ImageServiceAdapter) PullAndWait(ctx context.Context, opts domain.PullO
 	return nil
 }
 
+// parsePlatform parses an "os/arch[/variant]" platform string. It reports
+// false for the empty string and for anything without at least os and arch.
+func parsePlatform(s string) (ocispec.Platform, bool) {
+	parts := strings.Split(s, "/")
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return ocispec.Platform{}, false
+	}
+	plat := ocispec.Platform{OS: parts[0], Architecture: parts[1]}
+	if len(parts) > 2 {
+		plat.Variant = parts[2]
+	}
+	return plat, true
+}
+
 // List lists images.
 func (s *ImageServiceAdapter) List(ctx context.Context, opts domain.ImageListOptions) ([]domain.ImageSummary, error) {
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	listOpts := image.ListOptions{
+	listOpts := client.ImageListOptions{
 		All: opts.All,
 	}
 
-	if len(opts.Filters) > 0 {
-		listOpts.Filters = filters.NewArgs()
-		for key, values := range opts.Filters {
-			for _, v := range values {
-				listOpts.Filters.Add(key, v)
-			}
-		}
-	}
+	listOpts.Filters = toSDKFilters(opts.Filters)
 
 	images, err := s.client.ImageList(ctx, listOpts)
 	if err != nil {
 		return nil, convertError(err)
 	}
 
-	result := make([]domain.ImageSummary, len(images))
-	for i, img := range images {
+	result := make([]domain.ImageSummary, len(images.Items))
+	for i, img := range images.Items {
 		result[i] = domain.ImageSummary{
 			ID:          img.ID,
 			ParentID:    img.ParentID,
@@ -140,7 +152,7 @@ func (s *ImageServiceAdapter) Remove(ctx context.Context, imageID string, force,
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	_, err := s.client.ImageRemove(ctx, imageID, image.RemoveOptions{
+	_, err := s.client.ImageRemove(ctx, imageID, client.ImageRemoveOptions{
 		Force:         force,
 		PruneChildren: pruneChildren,
 	})
@@ -152,7 +164,7 @@ func (s *ImageServiceAdapter) Tag(ctx context.Context, source, target string) er
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.ImageTag(ctx, source, target)
+	_, err := s.client.ImageTag(ctx, client.ImageTagOptions{Source: source, Target: target})
 	return convertError(err)
 }
 
@@ -174,10 +186,13 @@ func (s *ImageServiceAdapter) Exists(ctx context.Context, imageRef string) (bool
 // EncodeAuthConfig encodes an auth config for use in API calls.
 func EncodeAuthConfig(auth domain.AuthConfig) (string, error) {
 	authConfig := registry.AuthConfig{
-		Username:      auth.Username,
-		Password:      auth.Password,
-		Auth:          auth.Auth,
-		Email:         auth.Email,
+		Username: auth.Username,
+		Password: auth.Password,
+		Auth:     auth.Auth,
+		// registry.AuthConfig dropped the long-deprecated Email field. Nothing
+		// is lost: convertAuthConfig, the only producer of a domain.AuthConfig
+		// from the credential store, never populated it either. The domain type
+		// keeps the field so the ports API is unchanged.
 		ServerAddress: auth.ServerAddress,
 		IdentityToken: auth.IdentityToken,
 		RegistryToken: auth.RegistryToken,

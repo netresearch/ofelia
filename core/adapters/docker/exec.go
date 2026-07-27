@@ -9,9 +9,8 @@ import (
 	"fmt"
 	"io"
 
-	containertypes "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/client"
 
 	"github.com/netresearch/ofelia/core/domain"
 )
@@ -42,6 +41,25 @@ func (s *ExecServiceAdapter) checkClient() error {
 }
 
 // Create creates an exec instance.
+// consoleSize maps the domain's optional [height, width] pair onto the SDK's
+// ConsoleSize struct. A nil pointer yields the zero struct, which the daemon
+// reads as "use the default size" — the same meaning the nil pointer carried
+// in the frozen SDK.
+//
+// The size is dropped unless a TTY was requested. The frozen SDK sent it
+// regardless and the daemon ignored it when Tty was false, which is the
+// contract ofelia documents ("only honored when tty = true") and ships an
+// example for. The split SDK instead rejects that combination client-side in
+// getConsoleSize before issuing the request, so forwarding it unconditionally
+// would turn a documented, previously working configuration into a permanent
+// per-run failure.
+func consoleSize(tty bool, size *[2]uint) client.ConsoleSize {
+	if !tty || size == nil {
+		return client.ConsoleSize{}
+	}
+	return client.ConsoleSize{Height: size[0], Width: size[1]}
+}
+
 func (s *ExecServiceAdapter) Create(ctx context.Context, containerID string, config *domain.ExecConfig) (string, error) {
 	if err := s.checkClient(); err != nil {
 		return "", err
@@ -50,21 +68,22 @@ func (s *ExecServiceAdapter) Create(ctx context.Context, containerID string, con
 		return "", ErrNilExecConfig
 	}
 
-	execConfig := containertypes.ExecOptions{
+	// ExecCreateOptions has no Detach field: detaching is decided at start
+	// time (ExecStartOptions.Detach), which Start already passes through.
+	execConfig := client.ExecCreateOptions{
 		User:         config.User,
 		Privileged:   config.Privileged,
-		Tty:          config.Tty,
+		TTY:          config.Tty,
 		AttachStdin:  config.AttachStdin,
 		AttachStdout: config.AttachStdout,
 		AttachStderr: config.AttachStderr,
-		Detach:       config.Detach,
 		Cmd:          config.Cmd,
 		Env:          config.Env,
 		WorkingDir:   config.WorkingDir,
-		ConsoleSize:  config.ConsoleSize,
+		ConsoleSize:  consoleSize(config.Tty, config.ConsoleSize),
 	}
 
-	resp, err := s.client.ContainerExecCreate(ctx, containerID, execConfig)
+	resp, err := s.client.ExecCreate(ctx, containerID, execConfig)
 	if err != nil {
 		return "", convertError(err)
 	}
@@ -77,12 +96,9 @@ func (s *ExecServiceAdapter) Start(ctx context.Context, execID string, opts doma
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	startConfig := containertypes.ExecStartOptions{
-		Detach: opts.Detach,
-		Tty:    opts.Tty,
-	}
-
-	resp, err := s.client.ContainerExecAttach(ctx, execID, startConfig)
+	resp, err := s.client.ExecAttach(ctx, execID, client.ExecAttachOptions{
+		TTY: opts.Tty,
+	})
 	if err != nil {
 		return nil, convertError(err)
 	}
@@ -98,17 +114,17 @@ func (s *ExecServiceAdapter) Inspect(ctx context.Context, execID string) (*domai
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	resp, err := s.client.ContainerExecInspect(ctx, execID)
+	resp, err := s.client.ExecInspect(ctx, execID, client.ExecInspectOptions{})
 	if err != nil {
 		return nil, convertError(err)
 	}
 
 	return &domain.ExecInspect{
-		ID:          resp.ExecID,
+		ID:          resp.ID,
 		ContainerID: resp.ContainerID,
 		Running:     resp.Running,
 		ExitCode:    resp.ExitCode,
-		Pid:         resp.Pid,
+		Pid:         resp.PID,
 		// ProcessConfig is not available in official Docker SDK
 		ProcessConfig: nil,
 	}, nil

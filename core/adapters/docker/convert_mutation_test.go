@@ -4,13 +4,25 @@
 package docker
 
 import (
+	"net"
+	"net/netip"
 	"testing"
 	"time"
 
-	networktypes "github.com/docker/docker/api/types/network"
+	networktypes "github.com/moby/moby/api/types/network"
 )
 
 // Tests targeting surviving CONDITIONALS_BOUNDARY and NEGATION mutations in convert.go
+
+// mustMAC parses a MAC address for test fixtures; network.HardwareAddr
+// replaced the plain string the frozen SDK used.
+func mustMAC(s string) networktypes.HardwareAddr {
+	hw, err := net.ParseMAC(s)
+	if err != nil {
+		panic(err)
+	}
+	return networktypes.HardwareAddr(hw)
+}
 
 func TestConvertFromNetworkResource_IPAMConditions(t *testing.T) {
 	// Targeting line 158: if n.IPAM.Driver != "" || len(n.IPAM.Config) > 0
@@ -27,13 +39,15 @@ func TestConvertFromNetworkResource_IPAMConditions(t *testing.T) {
 		{
 			name: "empty_driver_empty_config",
 			input: networktypes.Summary{
-				Name:   "test-network",
-				ID:     "abc123",
-				Driver: "bridge",
-				IPAM: networktypes.IPAM{
-					Driver:  "",
-					Config:  nil,
-					Options: nil,
+				Network: networktypes.Network{
+					Name:   "test-network",
+					ID:     "abc123",
+					Driver: "bridge",
+					IPAM: networktypes.IPAM{
+						Driver:  "",
+						Config:  nil,
+						Options: nil,
+					},
 				},
 			},
 			wantIPAM:   false,
@@ -43,13 +57,15 @@ func TestConvertFromNetworkResource_IPAMConditions(t *testing.T) {
 		{
 			name: "non_empty_driver_empty_config",
 			input: networktypes.Summary{
-				Name:   "test-network",
-				ID:     "abc123",
-				Driver: "bridge",
-				IPAM: networktypes.IPAM{
-					Driver:  "default",
-					Config:  nil,
-					Options: nil,
+				Network: networktypes.Network{
+					Name:   "test-network",
+					ID:     "abc123",
+					Driver: "bridge",
+					IPAM: networktypes.IPAM{
+						Driver:  "default",
+						Config:  nil,
+						Options: nil,
+					},
 				},
 			},
 			wantIPAM:   true,
@@ -60,15 +76,17 @@ func TestConvertFromNetworkResource_IPAMConditions(t *testing.T) {
 		{
 			name: "empty_driver_non_empty_config",
 			input: networktypes.Summary{
-				Name:   "test-network",
-				ID:     "abc123",
-				Driver: "bridge",
-				IPAM: networktypes.IPAM{
-					Driver: "",
-					Config: []networktypes.IPAMConfig{
-						{Subnet: "172.17.0.0/16"},
+				Network: networktypes.Network{
+					Name:   "test-network",
+					ID:     "abc123",
+					Driver: "bridge",
+					IPAM: networktypes.IPAM{
+						Driver: "",
+						Config: []networktypes.IPAMConfig{
+							{Subnet: netip.MustParsePrefix("172.17.0.0/16")},
+						},
+						Options: nil,
 					},
-					Options: nil,
 				},
 			},
 			wantIPAM:   true,
@@ -78,15 +96,17 @@ func TestConvertFromNetworkResource_IPAMConditions(t *testing.T) {
 		{
 			name: "both_driver_and_config",
 			input: networktypes.Summary{
-				Name:   "test-network",
-				ID:     "abc123",
-				Driver: "bridge",
-				IPAM: networktypes.IPAM{
-					Driver: "custom",
-					Config: []networktypes.IPAMConfig{
-						{Subnet: "10.0.0.0/8", Gateway: "10.0.0.1"},
+				Network: networktypes.Network{
+					Name:   "test-network",
+					ID:     "abc123",
+					Driver: "bridge",
+					IPAM: networktypes.IPAM{
+						Driver: "custom",
+						Config: []networktypes.IPAMConfig{
+							{Subnet: netip.MustParsePrefix("10.0.0.0/8"), Gateway: netip.MustParseAddr("10.0.0.1")},
+						},
+						Options: nil,
 					},
-					Options: nil,
 				},
 			},
 			wantIPAM:   true,
@@ -97,13 +117,15 @@ func TestConvertFromNetworkResource_IPAMConditions(t *testing.T) {
 		{
 			name: "single_config_item",
 			input: networktypes.Summary{
-				Name:   "test-network",
-				ID:     "abc123",
-				Driver: "bridge",
-				IPAM: networktypes.IPAM{
-					Driver: "",
-					Config: []networktypes.IPAMConfig{
-						{Subnet: "192.168.0.0/24"},
+				Network: networktypes.Network{
+					Name:   "test-network",
+					ID:     "abc123",
+					Driver: "bridge",
+					IPAM: networktypes.IPAM{
+						Driver: "",
+						Config: []networktypes.IPAMConfig{
+							{Subnet: netip.MustParsePrefix("192.168.0.0/24")},
+						},
 					},
 				},
 			},
@@ -115,12 +137,14 @@ func TestConvertFromNetworkResource_IPAMConditions(t *testing.T) {
 		{
 			name: "zero_config_items",
 			input: networktypes.Summary{
-				Name:   "test-network",
-				ID:     "abc123",
-				Driver: "bridge",
-				IPAM: networktypes.IPAM{
-					Driver: "",
-					Config: []networktypes.IPAMConfig{},
+				Network: networktypes.Network{
+					Name:   "test-network",
+					ID:     "abc123",
+					Driver: "bridge",
+					IPAM: networktypes.IPAM{
+						Driver: "",
+						Config: []networktypes.IPAMConfig{},
+					},
 				},
 			},
 			wantIPAM:   false,
@@ -140,80 +164,6 @@ func TestConvertFromNetworkResource_IPAMConditions(t *testing.T) {
 
 			if result.IPAM.Driver != tc.wantDriver {
 				t.Errorf("%s: IPAM.Driver = %q, want %q", tc.desc, result.IPAM.Driver, tc.wantDriver)
-			}
-		})
-	}
-}
-
-func TestConvertFromNetworkResource_ContainersCondition(t *testing.T) {
-	// Targeting line 174 (in convertFromNetworkResource): if len(n.Containers) > 0
-	// and line 223 (in convertFromNetworkInspect): if len(n.Containers) > 0
-
-	testCases := []struct {
-		name           string
-		containers     map[string]networktypes.EndpointResource
-		wantContainers bool
-		desc           string
-	}{
-		// Boundary: exactly 0 containers
-		{
-			name:           "nil_containers",
-			containers:     nil,
-			wantContainers: false,
-			desc:           "Nil containers should not set Containers map",
-		},
-		{
-			name:           "empty_containers",
-			containers:     map[string]networktypes.EndpointResource{},
-			wantContainers: false,
-			desc:           "Empty containers map should not set Containers",
-		},
-		// Boundary: exactly 1 container (len > 0)
-		{
-			name: "single_container",
-			containers: map[string]networktypes.EndpointResource{
-				"container1": {
-					Name:        "test-container",
-					EndpointID:  "ep1",
-					MacAddress:  "02:42:ac:11:00:02",
-					IPv4Address: "172.17.0.2/16",
-				},
-			},
-			wantContainers: true,
-			desc:           "Single container should set Containers map",
-		},
-		// Multiple containers
-		{
-			name: "multiple_containers",
-			containers: map[string]networktypes.EndpointResource{
-				"container1": {Name: "c1", IPv4Address: "172.17.0.2/16"},
-				"container2": {Name: "c2", IPv4Address: "172.17.0.3/16"},
-				"container3": {Name: "c3", IPv4Address: "172.17.0.4/16"},
-			},
-			wantContainers: true,
-			desc:           "Multiple containers should set Containers map",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			input := &networktypes.Summary{
-				Name:       "test-network",
-				ID:         "abc123",
-				Containers: tc.containers,
-			}
-
-			result := convertFromNetworkResource(input)
-
-			hasContainers := len(result.Containers) > 0
-			if hasContainers != tc.wantContainers {
-				t.Errorf("%s: hasContainers = %v, want %v", tc.desc, hasContainers, tc.wantContainers)
-			}
-
-			// Verify count matches if containers were expected
-			if tc.wantContainers && len(result.Containers) != len(tc.containers) {
-				t.Errorf("%s: container count = %d, want %d",
-					tc.desc, len(result.Containers), len(tc.containers))
 			}
 		})
 	}
@@ -255,7 +205,7 @@ func TestConvertFromNetworkInspect_IPAMConditions(t *testing.T) {
 			ipam: networktypes.IPAM{
 				Driver: "",
 				Config: []networktypes.IPAMConfig{
-					{Subnet: "10.0.0.0/8"},
+					{Subnet: netip.MustParsePrefix("10.0.0.0/8")},
 				},
 			},
 			wantIPAM:   true,
@@ -267,10 +217,12 @@ func TestConvertFromNetworkInspect_IPAMConditions(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			input := &networktypes.Inspect{
-				Name:    "test-network",
-				ID:      "abc123",
-				Created: time.Now(),
-				IPAM:    tc.ipam,
+				Network: networktypes.Network{
+					Name:    "test-network",
+					ID:      "abc123",
+					Created: time.Now(),
+					IPAM:    tc.ipam,
+				},
 			}
 
 			result := convertFromNetworkInspect(input)
@@ -311,19 +263,36 @@ func TestConvertFromNetworkInspect_ContainersCondition(t *testing.T) {
 		{
 			name: "one_container_boundary",
 			containers: map[string]networktypes.EndpointResource{
-				"c1": {Name: "container1", IPv4Address: "172.17.0.2/16"},
+				"c1": {
+					Name:        "container1",
+					EndpointID:  "ep1",
+					MacAddress:  mustMAC("02:42:ac:11:00:02"),
+					IPv4Address: netip.MustParsePrefix("172.17.0.2/16"),
+				},
 			},
 			wantContainers: true,
 			desc:           "Single container in Inspect should set map",
+		},
+		{
+			name: "multiple_containers",
+			containers: map[string]networktypes.EndpointResource{
+				"c1": {Name: "c1", IPv4Address: netip.MustParsePrefix("172.17.0.2/16")},
+				"c2": {Name: "c2", IPv4Address: netip.MustParsePrefix("172.17.0.3/16")},
+				"c3": {Name: "c3", IPv4Address: netip.MustParsePrefix("172.17.0.4/16")},
+			},
+			wantContainers: true,
+			desc:           "Multiple containers in Inspect should set map",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			input := &networktypes.Inspect{
-				Name:       "test-network",
-				ID:         "abc123",
-				Created:    time.Now(),
+				Network: networktypes.Network{
+					Name:    "test-network",
+					ID:      "abc123",
+					Created: time.Now(),
+				},
 				Containers: tc.containers,
 			}
 
@@ -332,6 +301,11 @@ func TestConvertFromNetworkInspect_ContainersCondition(t *testing.T) {
 			hasContainers := len(result.Containers) > 0
 			if hasContainers != tc.wantContainers {
 				t.Errorf("%s: hasContainers = %v, want %v", tc.desc, hasContainers, tc.wantContainers)
+			}
+
+			if tc.wantContainers && len(result.Containers) != len(tc.containers) {
+				t.Errorf("%s: container count = %d, want %d",
+					tc.desc, len(result.Containers), len(tc.containers))
 			}
 		})
 	}

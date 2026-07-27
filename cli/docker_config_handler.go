@@ -164,29 +164,23 @@ func NewDockerHandler(
 
 	// Start config file watcher (separate from container detection)
 	if c.configPollInterval > 0 {
-		c.wg.Add(1)
-		go func() {
-			defer c.wg.Done()
+		c.wg.Go(func() {
 			c.watchConfig()
-		}()
+		})
 	}
 
 	// Start container detection
 	if c.useEvents {
-		c.wg.Add(1)
-		go func() {
-			defer c.wg.Done()
+		c.wg.Go(func() {
 			c.watchEvents()
-		}()
+		})
 	}
 
 	// Start explicit container polling (if enabled, separate from events)
 	if c.dockerPollInterval > 0 {
-		c.wg.Add(1)
-		go func() {
-			defer c.wg.Done()
+		c.wg.Go(func() {
 			c.watchContainerPolling()
-		}()
+		})
 	}
 
 	return c, nil
@@ -257,10 +251,9 @@ func pingWithRetry(ctx context.Context, provider core.DockerProvider, count int,
 		// attempts") skips the select entirely — without this branch the
 		// overflow guard below would silently promote 0 to maxBackoffStep,
 		// turning a fast-retry config into a 5-min-step config.
-		backoff := baseInterval << attempt //nolint:gosec // attempt bounded by StartupRetryCount validation (<=20)
-		if backoff > maxBackoffStep {
-			backoff = maxBackoffStep
-		}
+		backoff := min(
+			//nolint:gosec // attempt bounded by StartupRetryCount validation (<=20)
+			baseInterval<<attempt, maxBackoffStep)
 		logger.Warn(fmt.Sprintf("Docker ping failed (attempt %d/%d), retrying in %v",
 			attempt+1, count+1, backoff), "error", err)
 		if backoff <= 0 {

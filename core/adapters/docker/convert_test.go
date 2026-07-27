@@ -5,79 +5,79 @@ package docker
 
 import (
 	"errors"
+	"net/netip"
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	containertypes "github.com/docker/docker/api/types/container"
-	networktypes "github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/errdefs"
+	cerrdefs "github.com/containerd/errdefs"
+	containertypes "github.com/moby/moby/api/types/container"
+	networktypes "github.com/moby/moby/api/types/network"
 
 	"github.com/netresearch/ofelia/core/domain"
 )
 
-// mockNotFoundError implements errdefs.ErrNotFound
+// mockNotFoundError implements cerrdefs.ErrNotFound
 type mockNotFoundError struct {
 	msg string
 }
 
 func (e mockNotFoundError) Error() string        { return e.msg }
 func (e mockNotFoundError) NotFound() bool       { return true }
-func (e mockNotFoundError) Is(target error) bool { return errdefs.IsNotFound(target) }
+func (e mockNotFoundError) Is(target error) bool { return cerrdefs.IsNotFound(target) }
 
-// mockConflictError implements errdefs.ErrConflict
+// mockConflictError implements cerrdefs.ErrConflict
 type mockConflictError struct {
 	msg string
 }
 
 func (e mockConflictError) Error() string        { return e.msg }
 func (e mockConflictError) Conflict() bool       { return true }
-func (e mockConflictError) Is(target error) bool { return errdefs.IsConflict(target) }
+func (e mockConflictError) Is(target error) bool { return cerrdefs.IsConflict(target) }
 
-// mockUnauthorizedError implements errdefs.ErrUnauthorized
+// mockUnauthorizedError implements cerrdefs.ErrUnauthorized
 type mockUnauthorizedError struct {
 	msg string
 }
 
 func (e mockUnauthorizedError) Error() string        { return e.msg }
 func (e mockUnauthorizedError) Unauthorized() bool   { return true }
-func (e mockUnauthorizedError) Is(target error) bool { return errdefs.IsUnauthorized(target) }
+func (e mockUnauthorizedError) Is(target error) bool { return cerrdefs.IsUnauthorized(target) }
 
-// mockForbiddenError implements errdefs.ErrForbidden
+// mockForbiddenError implements cerrdefs.ErrForbidden
 type mockForbiddenError struct {
 	msg string
 }
 
 func (e mockForbiddenError) Error() string        { return e.msg }
 func (e mockForbiddenError) Forbidden() bool      { return true }
-func (e mockForbiddenError) Is(target error) bool { return errdefs.IsForbidden(target) }
+func (e mockForbiddenError) Is(target error) bool { return cerrdefs.IsPermissionDenied(target) }
 
-// mockDeadlineError implements errdefs.ErrDeadline
+// mockDeadlineError implements cerrdefs.ErrDeadline
 type mockDeadlineError struct {
 	msg string
 }
 
 func (e mockDeadlineError) Error() string          { return e.msg }
 func (e mockDeadlineError) DeadlineExceeded() bool { return true }
-func (e mockDeadlineError) Is(target error) bool   { return errdefs.IsDeadline(target) }
+func (e mockDeadlineError) Is(target error) bool   { return cerrdefs.IsDeadlineExceeded(target) }
 
-// mockCanceledError implements errdefs.ErrCancelled.
+// mockCanceledError implements cerrdefs.ErrCancelled.
 type mockCanceledError struct {
 	msg string
 }
 
 func (e mockCanceledError) Error() string        { return e.msg }
 func (e mockCanceledError) Cancelled() bool      { return true } //nolint:misspell // Docker SDK uses British spelling
-func (e mockCanceledError) Is(target error) bool { return errdefs.IsCancelled(target) }
+func (e mockCanceledError) Is(target error) bool { return cerrdefs.IsCanceled(target) }
 
-// mockUnavailableError implements errdefs.ErrUnavailable
+// mockUnavailableError implements cerrdefs.ErrUnavailable
 type mockUnavailableError struct {
 	msg string
 }
 
 func (e mockUnavailableError) Error() string        { return e.msg }
 func (e mockUnavailableError) Unavailable() bool    { return true }
-func (e mockUnavailableError) Is(target error) bool { return errdefs.IsUnavailable(target) }
+func (e mockUnavailableError) Is(target error) bool { return cerrdefs.IsUnavailable(target) }
 
 func TestConvertError(t *testing.T) {
 	tests := []struct {
@@ -231,7 +231,7 @@ func TestConvertFromContainerJSON(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		input *types.ContainerJSON
+		input *containertypes.InspectResponse
 		check func(t *testing.T, result *domain.Container)
 	}{
 		{
@@ -245,13 +245,11 @@ func TestConvertFromContainerJSON(t *testing.T) {
 		},
 		{
 			name: "basic container",
-			input: &types.ContainerJSON{
-				ContainerJSONBase: &types.ContainerJSONBase{
-					ID:      "abc123",
-					Name:    "/my-container",
-					Image:   "sha256:abc123",
-					Created: validTime,
-				},
+			input: &containertypes.InspectResponse{
+				ID:      "abc123",
+				Name:    "/my-container",
+				Image:   "sha256:abc123",
+				Created: validTime,
 				Config: &containertypes.Config{
 					Labels: map[string]string{"app": "test"},
 				},
@@ -276,23 +274,21 @@ func TestConvertFromContainerJSON(t *testing.T) {
 		},
 		{
 			name: "container with state",
-			input: &types.ContainerJSON{
-				ContainerJSONBase: &types.ContainerJSONBase{
-					ID:      "def456",
-					Name:    "/stateful",
-					Created: validTime,
-					State: &types.ContainerState{
-						Running:    true,
-						Paused:     false,
-						Restarting: false,
-						OOMKilled:  false,
-						Dead:       false,
-						Pid:        12345,
-						ExitCode:   0,
-						Error:      "",
-						StartedAt:  startedTime,
-						FinishedAt: finishedTime,
-					},
+			input: &containertypes.InspectResponse{
+				ID:      "def456",
+				Name:    "/stateful",
+				Created: validTime,
+				State: &containertypes.State{
+					Running:    true,
+					Paused:     false,
+					Restarting: false,
+					OOMKilled:  false,
+					Dead:       false,
+					Pid:        12345,
+					ExitCode:   0,
+					Error:      "",
+					StartedAt:  startedTime,
+					FinishedAt: finishedTime,
 				},
 				Config: &containertypes.Config{},
 			},
@@ -317,22 +313,20 @@ func TestConvertFromContainerJSON(t *testing.T) {
 		},
 		{
 			name: "container with health",
-			input: &types.ContainerJSON{
-				ContainerJSONBase: &types.ContainerJSONBase{
-					ID:      "ghi789",
-					Name:    "/healthy",
-					Created: validTime,
-					State: &types.ContainerState{
-						Health: &types.Health{
-							Status:        "healthy",
-							FailingStreak: 0,
-							Log: []*types.HealthcheckResult{
-								{
-									Start:    time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
-									End:      time.Date(2024, 1, 15, 10, 30, 1, 0, time.UTC),
-									ExitCode: 0,
-									Output:   "OK",
-								},
+			input: &containertypes.InspectResponse{
+				ID:      "ghi789",
+				Name:    "/healthy",
+				Created: validTime,
+				State: &containertypes.State{
+					Health: &containertypes.Health{
+						Status:        "healthy",
+						FailingStreak: 0,
+						Log: []*containertypes.HealthcheckResult{
+							{
+								Start:    time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+								End:      time.Date(2024, 1, 15, 10, 30, 1, 0, time.UTC),
+								ExitCode: 0,
+								Output:   "OK",
 							},
 						},
 					},
@@ -362,12 +356,10 @@ func TestConvertFromContainerJSON(t *testing.T) {
 		},
 		{
 			name: "container with config",
-			input: &types.ContainerJSON{
-				ContainerJSONBase: &types.ContainerJSONBase{
-					ID:      "jkl012",
-					Name:    "/configured",
-					Created: validTime,
-				},
+			input: &containertypes.InspectResponse{
+				ID:      "jkl012",
+				Name:    "/configured",
+				Created: validTime,
 				Config: &containertypes.Config{
 					Image:        "nginx:latest",
 					Cmd:          []string{"nginx", "-g", "daemon off;"},
@@ -411,13 +403,11 @@ func TestConvertFromContainerJSON(t *testing.T) {
 		},
 		{
 			name: "container with mounts",
-			input: &types.ContainerJSON{
-				ContainerJSONBase: &types.ContainerJSONBase{
-					ID:      "mno345",
-					Name:    "/mounted",
-					Created: validTime,
-				},
-				Mounts: []types.MountPoint{
+			input: &containertypes.InspectResponse{
+				ID:      "mno345",
+				Name:    "/mounted",
+				Created: validTime,
+				Mounts: []containertypes.MountPoint{
 					{
 						Type:        "bind",
 						Source:      "/host/path",
@@ -459,14 +449,12 @@ func TestConvertFromContainerJSON(t *testing.T) {
 		},
 		{
 			name: "container with nil state",
-			input: &types.ContainerJSON{
-				ContainerJSONBase: &types.ContainerJSONBase{
-					ID:      "pqr678",
-					Name:    "/no-state",
-					Created: validTime,
-					State:   nil,
-				},
-				Config: &containertypes.Config{},
+			input: &containertypes.InspectResponse{
+				ID:      "pqr678",
+				Name:    "/no-state",
+				Created: validTime,
+				State:   nil,
+				Config:  &containertypes.Config{},
 			},
 			check: func(t *testing.T, result *domain.Container) {
 				if result == nil {
@@ -480,13 +468,11 @@ func TestConvertFromContainerJSON(t *testing.T) {
 		},
 		{
 			name: "container with empty config",
-			input: &types.ContainerJSON{
-				ContainerJSONBase: &types.ContainerJSONBase{
-					ID:      "stu901",
-					Name:    "/empty-config",
-					Created: validTime,
-				},
-				Config: &containertypes.Config{},
+			input: &containertypes.InspectResponse{
+				ID:      "stu901",
+				Name:    "/empty-config",
+				Created: validTime,
+				Config:  &containertypes.Config{},
 			},
 			check: func(t *testing.T, result *domain.Container) {
 				if result == nil {
@@ -637,17 +623,19 @@ func TestConvertFromNetworkResource(t *testing.T) {
 		{
 			name: "basic network",
 			input: &networktypes.Summary{
-				Name:       "my-network",
-				ID:         "net123",
-				Created:    validTime,
-				Scope:      "local",
-				Driver:     "bridge",
-				EnableIPv6: false,
-				Internal:   false,
-				Attachable: true,
-				Ingress:    false,
-				Options:    map[string]string{"com.docker.network.bridge.name": "docker0"},
-				Labels:     map[string]string{"env": "test"},
+				Network: networktypes.Network{
+					Name:       "my-network",
+					ID:         "net123",
+					Created:    validTime,
+					Scope:      "local",
+					Driver:     "bridge",
+					EnableIPv6: false,
+					Internal:   false,
+					Attachable: true,
+					Ingress:    false,
+					Options:    map[string]string{"com.docker.network.bridge.name": "docker0"},
+					Labels:     map[string]string{"env": "test"},
+				},
 			},
 			check: func(t *testing.T, result domain.Network) {
 				if result.Name != "my-network" {
@@ -673,22 +661,24 @@ func TestConvertFromNetworkResource(t *testing.T) {
 		{
 			name: "network with IPAM",
 			input: &networktypes.Summary{
-				Name:    "ipam-network",
-				ID:      "net456",
-				Created: validTime,
-				Driver:  "bridge",
-				IPAM: networktypes.IPAM{
-					Driver: "default",
-					Options: map[string]string{
-						"option1": "value1",
-					},
-					Config: []networktypes.IPAMConfig{
-						{
-							Subnet:  "172.20.0.0/16",
-							IPRange: "172.20.10.0/24",
-							Gateway: "172.20.0.1",
-							AuxAddress: map[string]string{
-								"host1": "172.20.0.2",
+				Network: networktypes.Network{
+					Name:    "ipam-network",
+					ID:      "net456",
+					Created: validTime,
+					Driver:  "bridge",
+					IPAM: networktypes.IPAM{
+						Driver: "default",
+						Options: map[string]string{
+							"option1": "value1",
+						},
+						Config: []networktypes.IPAMConfig{
+							{
+								Subnet:  netip.MustParsePrefix("172.20.0.0/16"),
+								IPRange: netip.MustParsePrefix("172.20.10.0/24"),
+								Gateway: netip.MustParseAddr("172.20.0.1"),
+								AuxAddress: map[string]netip.Addr{
+									"host1": netip.MustParseAddr("172.20.0.2"),
+								},
 							},
 						},
 					},
@@ -710,59 +700,17 @@ func TestConvertFromNetworkResource(t *testing.T) {
 			},
 		},
 		{
-			name: "network with containers",
-			input: &networktypes.Summary{
-				Name:    "container-network",
-				ID:      "net789",
-				Created: validTime,
-				Driver:  "bridge",
-				Containers: map[string]networktypes.EndpointResource{
-					"container1": {
-						Name:        "web",
-						EndpointID:  "ep123",
-						MacAddress:  "02:42:ac:11:00:02",
-						IPv4Address: "172.17.0.2/16",
-						IPv6Address: "",
-					},
-					"container2": {
-						Name:        "db",
-						EndpointID:  "ep456",
-						MacAddress:  "02:42:ac:11:00:03",
-						IPv4Address: "172.17.0.3/16",
-						IPv6Address: "fe80::42:acff:fe11:3/64",
-					},
-				},
-			},
-			check: func(t *testing.T, result domain.Network) {
-				if len(result.Containers) != 2 {
-					t.Fatalf("len(Containers) = %d, want 2", len(result.Containers))
-				}
-				web, ok := result.Containers["container1"]
-				if !ok {
-					t.Fatal("container1 not found in Containers")
-				}
-				if web.Name != "web" {
-					t.Errorf("Containers[container1].Name = %q, want %q", web.Name, "web")
-				}
-				if web.IPv4Address != "172.17.0.2/16" {
-					t.Errorf("Containers[container1].IPv4Address = %q, want %q", web.IPv4Address, "172.17.0.2/16")
-				}
-				db := result.Containers["container2"]
-				if db.IPv6Address != "fe80::42:acff:fe11:3/64" {
-					t.Errorf("Containers[container2].IPv6Address = %q, want %q", db.IPv6Address, "fe80::42:acff:fe11:3/64")
-				}
-			},
-		},
-		{
 			name: "network with empty IPAM",
 			input: &networktypes.Summary{
-				Name:    "no-ipam",
-				ID:      "net012",
-				Created: validTime,
-				Driver:  "bridge",
-				IPAM: networktypes.IPAM{
-					Driver: "",
-					Config: []networktypes.IPAMConfig{},
+				Network: networktypes.Network{
+					Name:    "no-ipam",
+					ID:      "net012",
+					Created: validTime,
+					Driver:  "bridge",
+					IPAM: networktypes.IPAM{
+						Driver: "",
+						Config: []networktypes.IPAMConfig{},
+					},
 				},
 			},
 			check: func(t *testing.T, result domain.Network) {
@@ -771,21 +719,6 @@ func TestConvertFromNetworkResource(t *testing.T) {
 				}
 				if len(result.IPAM.Config) != 0 {
 					t.Errorf("len(IPAM.Config) = %d, want 0", len(result.IPAM.Config))
-				}
-			},
-		},
-		{
-			name: "network with no containers",
-			input: &networktypes.Summary{
-				Name:       "empty-network",
-				ID:         "net345",
-				Created:    validTime,
-				Driver:     "bridge",
-				Containers: map[string]networktypes.EndpointResource{},
-			},
-			check: func(t *testing.T, result domain.Network) {
-				if result.Containers != nil {
-					t.Errorf("Containers = %v, want nil", result.Containers)
 				}
 			},
 		},
@@ -810,17 +743,19 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "basic network",
 			input: &networktypes.Inspect{
-				Name:       "inspect-network",
-				ID:         "net123",
-				Created:    validTime,
-				Scope:      "local",
-				Driver:     "bridge",
-				EnableIPv6: true,
-				Internal:   false,
-				Attachable: true,
-				Ingress:    false,
-				Options:    map[string]string{"mtu": "1500"},
-				Labels:     map[string]string{"owner": "admin"},
+				Network: networktypes.Network{
+					Name:       "inspect-network",
+					ID:         "net123",
+					Created:    validTime,
+					Scope:      "local",
+					Driver:     "bridge",
+					EnableIPv6: true,
+					Internal:   false,
+					Attachable: true,
+					Ingress:    false,
+					Options:    map[string]string{"mtu": "1500"},
+					Labels:     map[string]string{"owner": "admin"},
+				},
 			},
 			check: func(t *testing.T, result *domain.Network) {
 				if result == nil {
@@ -840,24 +775,26 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "network with IPAM",
 			input: &networktypes.Inspect{
-				Name:    "ipam-inspect",
-				ID:      "net456",
-				Created: validTime,
-				Driver:  "overlay",
-				IPAM: networktypes.IPAM{
-					Driver: "default",
-					Options: map[string]string{
-						"subnet": "custom",
-					},
-					Config: []networktypes.IPAMConfig{
-						{
-							Subnet:  "10.0.0.0/8",
-							IPRange: "10.0.1.0/24",
-							Gateway: "10.0.0.1",
+				Network: networktypes.Network{
+					Name:    "ipam-inspect",
+					ID:      "net456",
+					Created: validTime,
+					Driver:  "overlay",
+					IPAM: networktypes.IPAM{
+						Driver: "default",
+						Options: map[string]string{
+							"subnet": "custom",
 						},
-						{
-							Subnet:  "fd00::/64",
-							Gateway: "fd00::1",
+						Config: []networktypes.IPAMConfig{
+							{
+								Subnet:  netip.MustParsePrefix("10.0.0.0/8"),
+								IPRange: netip.MustParsePrefix("10.0.1.0/24"),
+								Gateway: netip.MustParseAddr("10.0.0.1"),
+							},
+							{
+								Subnet:  netip.MustParsePrefix("fd00::/64"),
+								Gateway: netip.MustParseAddr("fd00::1"),
+							},
 						},
 					},
 				},
@@ -880,17 +817,25 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "network with containers",
 			input: &networktypes.Inspect{
-				Name:    "inspect-containers",
-				ID:      "net789",
-				Created: validTime,
-				Driver:  "bridge",
+				Network: networktypes.Network{
+					Name:    "inspect-containers",
+					ID:      "net789",
+					Created: validTime,
+					Driver:  "bridge",
+				},
 				Containers: map[string]networktypes.EndpointResource{
 					"c1": {
 						Name:        "app",
 						EndpointID:  "endpoint1",
-						MacAddress:  "00:11:22:33:44:55",
-						IPv4Address: "192.168.1.10/24",
-						IPv6Address: "",
+						MacAddress:  mustMAC("00:11:22:33:44:55"),
+						IPv4Address: netip.MustParsePrefix("192.168.1.10/24"),
+					},
+					"c2": {
+						Name:        "db",
+						EndpointID:  "endpoint2",
+						MacAddress:  mustMAC("02:42:ac:11:00:03"),
+						IPv4Address: netip.MustParsePrefix("172.17.0.3/16"),
+						IPv6Address: netip.MustParsePrefix("fe80::42:acff:fe11:3/64"),
 					},
 				},
 			},
@@ -898,8 +843,8 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 				if result == nil {
 					t.Fatal("convertFromNetworkInspect() returned nil")
 				}
-				if len(result.Containers) != 1 {
-					t.Fatalf("len(Containers) = %d, want 1", len(result.Containers))
+				if len(result.Containers) != 2 {
+					t.Fatalf("len(Containers) = %d, want 2", len(result.Containers))
 				}
 				app, ok := result.Containers["c1"]
 				if !ok {
@@ -907,6 +852,16 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 				}
 				if app.Name != "app" {
 					t.Errorf("Containers[c1].Name = %q, want %q", app.Name, "app")
+				}
+				if app.IPv4Address != "192.168.1.10/24" {
+					t.Errorf("Containers[c1].IPv4Address = %q, want %q", app.IPv4Address, "192.168.1.10/24")
+				}
+				if app.IPv6Address != "" {
+					t.Errorf("Containers[c1].IPv6Address = %q, want empty", app.IPv6Address)
+				}
+				db := result.Containers["c2"]
+				if db.IPv6Address != "fe80::42:acff:fe11:3/64" {
+					t.Errorf("Containers[c2].IPv6Address = %q, want %q", db.IPv6Address, "fe80::42:acff:fe11:3/64")
 				}
 				if app.MacAddress != "00:11:22:33:44:55" {
 					t.Errorf("Containers[c1].MacAddress = %q, want %q", app.MacAddress, "00:11:22:33:44:55")
@@ -916,13 +871,15 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "network with only driver in IPAM",
 			input: &networktypes.Inspect{
-				Name:    "driver-only-ipam",
-				ID:      "net012",
-				Created: validTime,
-				Driver:  "bridge",
-				IPAM: networktypes.IPAM{
-					Driver: "custom-driver",
-					Config: []networktypes.IPAMConfig{},
+				Network: networktypes.Network{
+					Name:    "driver-only-ipam",
+					ID:      "net012",
+					Created: validTime,
+					Driver:  "bridge",
+					IPAM: networktypes.IPAM{
+						Driver: "custom-driver",
+						Config: []networktypes.IPAMConfig{},
+					},
 				},
 			},
 			check: func(t *testing.T, result *domain.Network) {
@@ -940,15 +897,17 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "network with only config in IPAM",
 			input: &networktypes.Inspect{
-				Name:    "config-only-ipam",
-				ID:      "net345",
-				Created: validTime,
-				Driver:  "bridge",
-				IPAM: networktypes.IPAM{
-					Driver: "",
-					Config: []networktypes.IPAMConfig{
-						{
-							Subnet: "172.30.0.0/16",
+				Network: networktypes.Network{
+					Name:    "config-only-ipam",
+					ID:      "net345",
+					Created: validTime,
+					Driver:  "bridge",
+					IPAM: networktypes.IPAM{
+						Driver: "",
+						Config: []networktypes.IPAMConfig{
+							{
+								Subnet: netip.MustParsePrefix("172.30.0.0/16"),
+							},
 						},
 					},
 				},

@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/tlsconfig"
+	"github.com/moby/moby/client"
 
 	"github.com/netresearch/ofelia/core/ports"
 )
@@ -308,15 +308,17 @@ func NewClientWithConfig(config *ClientConfig) (*Client, error) {
 	// Drop client.FromEnv: it would re-read DOCKER_HOST inside the SDK,
 	// recreating the dual-reader bug from #605 / #617. We mirror its
 	// host + TLS handling explicitly via WithHost / createHTTPClient and
-	// preserve the DOCKER_API_VERSION knob via WithVersionFromEnv.
+	// preserve the DOCKER_API_VERSION knob via WithAPIVersionFromEnv.
+	//
+	// No WithAPIVersionNegotiation: the split SDK negotiates by default and
+	// the option is a deprecated no-op.
 	opts := []client.Opt{
-		client.WithVersionFromEnv(),
-		client.WithAPIVersionNegotiation(),
+		client.WithAPIVersionFromEnv(),
 		client.WithHost(normalizedHost),
 	}
 
 	if config.Version != "" {
-		opts = append(opts, client.WithVersion(config.Version))
+		opts = append(opts, client.WithAPIVersion(config.Version))
 	}
 
 	if config.HTTPHeaders != nil {
@@ -330,9 +332,19 @@ func NewClientWithConfig(config *ClientConfig) (*Client, error) {
 		opts = append(opts, client.WithHTTPClient(httpClient))
 	}
 
-	sdk, err := client.NewClientWithOpts(opts...)
+	sdk, err := client.New(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("creating docker client: %w", err)
+	}
+
+	// A pinned API version leaves nothing to negotiate. The frozen SDK's
+	// NegotiateAPIVersion wrapped its whole body in `if !cli.manualOverride`
+	// and so issued no request at all in that case, whereas every branch of the
+	// split SDK's Ping performs one. Skipping the warm-up keeps startup free of
+	// a blocking round-trip that a wedged daemon could stall for the full
+	// timeout — the very scenario #608 is about.
+	if config.Version != "" || strings.TrimSpace(os.Getenv(client.EnvOverrideAPIVersion)) != "" {
+		return newClientFromSDK(sdk), nil
 	}
 
 	// Force early API version negotiation to prevent race conditions.
@@ -349,8 +361,14 @@ func NewClientWithConfig(config *ClientConfig) (*Client, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), negotiateTimeout)
 	defer cancel()
-	sdk.NegotiateAPIVersion(ctx)
-	// NegotiateAPIVersion swallows ping errors silently. Surface a deadline
+	// The split SDK unexports negotiateAPIVersion. Ping is the exported entry
+	// point, and it only negotiates when asked: without NegotiateAPIVersion it
+	// returns the ping response and leaves the version unnegotiated, which
+	// would push negotiation back to the first real API call and reinstate the
+	// race this block exists to prevent. The ping error stays ignored, as
+	// NegotiateAPIVersion's did.
+	_, _ = sdk.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true})
+	// Negotiation swallows ping errors silently. Surface a deadline
 	// hit so operators can correlate startup slowness with daemon health
 	// rather than chasing phantom bugs - context cancellation is the only
 	// observable signal the SDK leaves us.
