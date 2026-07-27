@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/creasty/defaults"
 	"github.com/gobs/args"
 
 	cfgvalidator "github.com/netresearch/ofelia/config"
@@ -609,6 +610,8 @@ func (c *DaemonCommand) buildPersistedRunJob(name string, j *persist.Job, provid
 		return nil, fmt.Errorf("docker provider unavailable for run job")
 	}
 	rj := core.NewRunJob(provider)
+	// struct-tag defaults are only applied by the config decoder — apply them here too.
+	_ = defaults.Set(rj)
 	rj.Name = name
 	rj.Schedule = j.Schedule
 	rj.Command = j.Command

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/creasty/defaults"
 	"github.com/gobs/args"
 	cron "github.com/netresearch/go-cron"
 
@@ -754,6 +755,8 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 		return nil, fmt.Errorf("docker provider unavailable for run job")
 	}
 	j := core.NewRunJob(s.provider)
+	// struct-tag defaults are only applied by the config decoder — apply them here too.
+	_ = defaults.Set(j)
 	j.Name = req.Name
 	j.Schedule = req.Schedule
 	j.Command = req.Command
