@@ -61,12 +61,7 @@ func buildEventListOptions(filter domain.EventFilter) client.EventsListOptions {
 	if !filter.Until.IsZero() {
 		opts.Until = filter.Until.Format(time.RFC3339Nano)
 	}
-	if len(filter.Filters) > 0 {
-		opts.Filters = make(client.Filters)
-		for key, values := range filter.Filters {
-			opts.Filters.Add(key, values...)
-		}
-	}
+	opts.Filters = toSDKFilters(filter.Filters)
 	return opts
 }
 

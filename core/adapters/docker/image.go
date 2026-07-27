@@ -101,12 +101,7 @@ func (s *ImageServiceAdapter) List(ctx context.Context, opts domain.ImageListOpt
 		All: opts.All,
 	}
 
-	if len(opts.Filters) > 0 {
-		listOpts.Filters = make(client.Filters)
-		for key, values := range opts.Filters {
-			listOpts.Filters.Add(key, values...)
-		}
-	}
+	listOpts.Filters = toSDKFilters(opts.Filters)
 
 	images, err := s.client.ImageList(ctx, listOpts)
 	if err != nil {

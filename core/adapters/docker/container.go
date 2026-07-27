@@ -131,12 +131,7 @@ func (s *ContainerServiceAdapter) List(ctx context.Context, opts domain.ListOpti
 		Limit: opts.Limit,
 	}
 
-	if len(opts.Filters) > 0 {
-		listOpts.Filters = make(client.Filters)
-		for key, values := range opts.Filters {
-			listOpts.Filters.Add(key, values...)
-		}
-	}
+	listOpts.Filters = toSDKFilters(opts.Filters)
 
 	containers, err := s.client.ContainerList(ctx, listOpts)
 	if err != nil {

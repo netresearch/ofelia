@@ -63,12 +63,7 @@ func (s *NetworkServiceAdapter) List(ctx context.Context, opts domain.NetworkLis
 	}
 	listOpts := client.NetworkListOptions{}
 
-	if len(opts.Filters) > 0 {
-		listOpts.Filters = make(client.Filters)
-		for key, values := range opts.Filters {
-			listOpts.Filters.Add(key, values...)
-		}
-	}
+	listOpts.Filters = toSDKFilters(opts.Filters)
 
 	networks, err := s.client.NetworkList(ctx, listOpts)
 	if err != nil {

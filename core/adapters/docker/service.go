@@ -67,12 +67,7 @@ func (s *SwarmServiceAdapter) List(ctx context.Context, opts domain.ServiceListO
 	}
 	listOpts := client.ServiceListOptions{}
 
-	if len(opts.Filters) > 0 {
-		listOpts.Filters = make(client.Filters)
-		for key, values := range opts.Filters {
-			listOpts.Filters.Add(key, values...)
-		}
-	}
+	listOpts.Filters = toSDKFilters(opts.Filters)
 
 	services, err := s.client.ServiceList(ctx, listOpts)
 	if err != nil {
@@ -102,12 +97,7 @@ func (s *SwarmServiceAdapter) ListTasks(ctx context.Context, opts domain.TaskLis
 	}
 	listOpts := client.TaskListOptions{}
 
-	if len(opts.Filters) > 0 {
-		listOpts.Filters = make(client.Filters)
-		for key, values := range opts.Filters {
-			listOpts.Filters.Add(key, values...)
-		}
-	}
+	listOpts.Filters = toSDKFilters(opts.Filters)
 
 	tasks, err := s.client.TaskList(ctx, listOpts)
 	if err != nil {

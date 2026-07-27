@@ -11,6 +11,7 @@ import (
 	cerrdefs "github.com/containerd/errdefs"
 	containertypes "github.com/moby/moby/api/types/container"
 	networktypes "github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 
 	"github.com/netresearch/ofelia/core/domain"
 )
@@ -42,6 +43,20 @@ func addrMapToString(in map[string]netip.Addr) map[string]string {
 	out := make(map[string]string, len(in))
 	for k, v := range in {
 		out[k] = addrToString(v)
+	}
+	return out
+}
+
+// toSDKFilters converts a domain filter map into the SDK's Filters type.
+// Returns nil for an empty map so the request omits the filters parameter,
+// and never returns the zero Filters, whose Add would panic on a nil map.
+func toSDKFilters(in map[string][]string) client.Filters {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(client.Filters, len(in))
+	for key, values := range in {
+		out.Add(key, values...)
 	}
 	return out
 }
