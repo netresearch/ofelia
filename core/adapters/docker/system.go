@@ -6,8 +6,8 @@ package docker
 import (
 	"context"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/system"
+	"github.com/moby/moby/client"
 
 	"github.com/netresearch/ofelia/core/domain"
 )
@@ -31,74 +31,74 @@ func (s *SystemServiceAdapter) Info(ctx context.Context) (*domain.SystemInfo, er
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	info, err := s.client.Info(ctx)
+	infoResult, err := s.client.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		return nil, convertError(err)
 	}
 
 	domainInfo := &domain.SystemInfo{
-		ID:                 info.ID,
-		Containers:         info.Containers,
-		ContainersRunning:  info.ContainersRunning,
-		ContainersPaused:   info.ContainersPaused,
-		ContainersStopped:  info.ContainersStopped,
-		Images:             info.Images,
-		Driver:             info.Driver,
-		MemoryLimit:        info.MemoryLimit,
-		SwapLimit:          info.SwapLimit,
-		CPUCfsPeriod:       info.CPUCfsPeriod,
-		CPUCfsQuota:        info.CPUCfsQuota,
-		CPUShares:          info.CPUShares,
-		CPUSet:             info.CPUSet,
-		PidsLimit:          info.PidsLimit,
-		IPv4Forwarding:     info.IPv4Forwarding,
-		Debug:              info.Debug,
-		NFd:                info.NFd,
-		OomKillDisable:     info.OomKillDisable,
-		NGoroutines:        info.NGoroutines,
-		SystemTime:         info.SystemTime,
-		LoggingDriver:      info.LoggingDriver,
-		CgroupDriver:       info.CgroupDriver,
-		CgroupVersion:      info.CgroupVersion,
-		NEventsListener:    info.NEventsListener,
-		KernelVersion:      info.KernelVersion,
-		OperatingSystem:    info.OperatingSystem,
-		OSVersion:          info.OSVersion,
-		OSType:             info.OSType,
-		Architecture:       info.Architecture,
-		IndexServerAddress: info.IndexServerAddress,
-		NCPU:               info.NCPU,
-		MemTotal:           info.MemTotal,
-		DockerRootDir:      info.DockerRootDir,
-		HTTPProxy:          info.HTTPProxy,
-		HTTPSProxy:         info.HTTPSProxy,
-		NoProxy:            info.NoProxy,
-		Name:               info.Name,
-		Labels:             info.Labels,
-		ExperimentalBuild:  info.ExperimentalBuild,
-		ServerVersion:      info.ServerVersion,
-		DefaultRuntime:     info.DefaultRuntime,
-		LiveRestoreEnabled: info.LiveRestoreEnabled,
-		Isolation:          string(info.Isolation),
-		InitBinary:         info.InitBinary,
-		SecurityOptions:    info.SecurityOptions,
-		Warnings:           info.Warnings,
+		ID:                 infoResult.Info.ID,
+		Containers:         infoResult.Info.Containers,
+		ContainersRunning:  infoResult.Info.ContainersRunning,
+		ContainersPaused:   infoResult.Info.ContainersPaused,
+		ContainersStopped:  infoResult.Info.ContainersStopped,
+		Images:             infoResult.Info.Images,
+		Driver:             infoResult.Info.Driver,
+		MemoryLimit:        infoResult.Info.MemoryLimit,
+		SwapLimit:          infoResult.Info.SwapLimit,
+		CPUCfsPeriod:       infoResult.Info.CPUCfsPeriod,
+		CPUCfsQuota:        infoResult.Info.CPUCfsQuota,
+		CPUShares:          infoResult.Info.CPUShares,
+		CPUSet:             infoResult.Info.CPUSet,
+		PidsLimit:          infoResult.Info.PidsLimit,
+		IPv4Forwarding:     infoResult.Info.IPv4Forwarding,
+		Debug:              infoResult.Info.Debug,
+		NFd:                infoResult.Info.NFd,
+		OomKillDisable:     infoResult.Info.OomKillDisable,
+		NGoroutines:        infoResult.Info.NGoroutines,
+		SystemTime:         infoResult.Info.SystemTime,
+		LoggingDriver:      infoResult.Info.LoggingDriver,
+		CgroupDriver:       infoResult.Info.CgroupDriver,
+		CgroupVersion:      infoResult.Info.CgroupVersion,
+		NEventsListener:    infoResult.Info.NEventsListener,
+		KernelVersion:      infoResult.Info.KernelVersion,
+		OperatingSystem:    infoResult.Info.OperatingSystem,
+		OSVersion:          infoResult.Info.OSVersion,
+		OSType:             infoResult.Info.OSType,
+		Architecture:       infoResult.Info.Architecture,
+		IndexServerAddress: infoResult.Info.IndexServerAddress,
+		NCPU:               infoResult.Info.NCPU,
+		MemTotal:           infoResult.Info.MemTotal,
+		DockerRootDir:      infoResult.Info.DockerRootDir,
+		HTTPProxy:          infoResult.Info.HTTPProxy,
+		HTTPSProxy:         infoResult.Info.HTTPSProxy,
+		NoProxy:            infoResult.Info.NoProxy,
+		Name:               infoResult.Info.Name,
+		Labels:             infoResult.Info.Labels,
+		ExperimentalBuild:  infoResult.Info.ExperimentalBuild,
+		ServerVersion:      infoResult.Info.ServerVersion,
+		DefaultRuntime:     infoResult.Info.DefaultRuntime,
+		LiveRestoreEnabled: infoResult.Info.LiveRestoreEnabled,
+		Isolation:          string(infoResult.Info.Isolation),
+		InitBinary:         infoResult.Info.InitBinary,
+		SecurityOptions:    infoResult.Info.SecurityOptions,
+		Warnings:           infoResult.Info.Warnings,
 	}
 
 	// Convert driver status
-	for _, ds := range info.DriverStatus {
+	for _, ds := range infoResult.Info.DriverStatus {
 		domainInfo.DriverStatus = append(domainInfo.DriverStatus, [2]string{ds[0], ds[1]})
 	}
 
 	// Convert system status
-	for _, ss := range info.SystemStatus {
+	for _, ss := range infoResult.Info.SystemStatus {
 		domainInfo.SystemStatus = append(domainInfo.SystemStatus, [2]string{ss[0], ss[1]})
 	}
 
 	// Convert runtimes
-	if len(info.Runtimes) > 0 {
+	if len(infoResult.Info.Runtimes) > 0 {
 		domainInfo.Runtimes = make(map[string]domain.Runtime)
-		for name, rt := range info.Runtimes {
+		for name, rt := range infoResult.Info.Runtimes {
 			domainInfo.Runtimes[name] = domain.Runtime{
 				Path: rt.Path,
 				Args: rt.Args,
@@ -108,35 +108,50 @@ func (s *SystemServiceAdapter) Info(ctx context.Context) (*domain.SystemInfo, er
 
 	// Convert swarm info
 	domainInfo.Swarm = domain.SwarmInfo{
-		NodeID:           info.Swarm.NodeID,
-		NodeAddr:         info.Swarm.NodeAddr,
-		LocalNodeState:   domain.LocalNodeState(info.Swarm.LocalNodeState),
-		ControlAvailable: info.Swarm.ControlAvailable,
-		Error:            info.Swarm.Error,
-		Nodes:            info.Swarm.Nodes,
-		Managers:         info.Swarm.Managers,
+		NodeID:           infoResult.Info.Swarm.NodeID,
+		NodeAddr:         infoResult.Info.Swarm.NodeAddr,
+		LocalNodeState:   domain.LocalNodeState(infoResult.Info.Swarm.LocalNodeState),
+		ControlAvailable: infoResult.Info.Swarm.ControlAvailable,
+		Error:            infoResult.Info.Swarm.Error,
+		Nodes:            infoResult.Info.Swarm.Nodes,
+		Managers:         infoResult.Info.Swarm.Managers,
 	}
 
-	for _, rm := range info.Swarm.RemoteManagers {
+	for _, rm := range infoResult.Info.Swarm.RemoteManagers {
 		domainInfo.Swarm.RemoteManagers = append(domainInfo.Swarm.RemoteManagers, domain.Peer{
 			NodeID: rm.NodeID,
 			Addr:   rm.Addr,
 		})
 	}
 
-	if info.Swarm.Cluster != nil {
+	if infoResult.Info.Swarm.Cluster != nil {
 		domainInfo.Swarm.Cluster = &domain.ClusterInfo{
-			ID: info.Swarm.Cluster.ID,
+			ID: infoResult.Info.Swarm.Cluster.ID,
 			Version: domain.ServiceVersion{
-				Index: info.Swarm.Cluster.Version.Index,
+				Index: infoResult.Info.Swarm.Cluster.Version.Index,
 			},
-			CreatedAt:              info.Swarm.Cluster.CreatedAt,
-			UpdatedAt:              info.Swarm.Cluster.UpdatedAt,
-			RootRotationInProgress: info.Swarm.Cluster.RootRotationInProgress,
+			CreatedAt:              infoResult.Info.Swarm.Cluster.CreatedAt,
+			UpdatedAt:              infoResult.Info.Swarm.Cluster.UpdatedAt,
+			RootRotationInProgress: infoResult.Info.Swarm.Cluster.RootRotationInProgress,
 		}
 	}
 
 	return domainInfo, nil
+}
+
+// engineDetail reads a key from the "Engine" component's Details map of the
+// /version response. ServerVersionResult no longer carries GitCommit,
+// GoVersion, KernelVersion and BuildTime as typed fields; the daemon still
+// reports them here. Upstream documents Details as informational and outside
+// the API specification, so a missing key yields "" rather than an error.
+func engineDetail(components []system.ComponentVersion, key string) string {
+	for _, comp := range components {
+		if comp.Name != "Engine" {
+			continue
+		}
+		return comp.Details[key]
+	}
+	return ""
 }
 
 // Ping pings the Docker server.
@@ -144,7 +159,7 @@ func (s *SystemServiceAdapter) Ping(ctx context.Context) (*domain.PingResponse, 
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	ping, err := s.client.Ping(ctx)
+	ping, err := s.client.Ping(ctx, client.PingOptions{})
 	if err != nil {
 		return nil, convertError(err)
 	}
@@ -162,7 +177,7 @@ func (s *SystemServiceAdapter) Version(ctx context.Context) (*domain.Version, er
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	version, err := s.client.ServerVersion(ctx)
+	version, err := s.client.ServerVersion(ctx, client.ServerVersionOptions{})
 	if err != nil {
 		return nil, convertError(err)
 	}
@@ -174,12 +189,12 @@ func (s *SystemServiceAdapter) Version(ctx context.Context) (*domain.Version, er
 		Version:       version.Version,
 		APIVersion:    version.APIVersion,
 		MinAPIVersion: version.MinAPIVersion,
-		GitCommit:     version.GitCommit,
-		GoVersion:     version.GoVersion,
+		GitCommit:     engineDetail(version.Components, "GitCommit"),
+		GoVersion:     engineDetail(version.Components, "GoVersion"),
 		Os:            version.Os,
 		Arch:          version.Arch,
-		KernelVersion: version.KernelVersion,
-		BuildTime:     version.BuildTime,
+		KernelVersion: engineDetail(version.Components, "KernelVersion"),
+		BuildTime:     engineDetail(version.Components, "BuildTime"),
 	}
 
 	for _, comp := range version.Components {
@@ -198,17 +213,17 @@ func (s *SystemServiceAdapter) DiskUsage(ctx context.Context) (*domain.DiskUsage
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	du, err := s.client.DiskUsage(ctx, types.DiskUsageOptions{})
+	du, err := s.client.DiskUsage(ctx, client.DiskUsageOptions{})
 	if err != nil {
 		return nil, convertError(err)
 	}
 
 	domainDU := &domain.DiskUsage{
-		LayersSize: du.LayersSize,
+		LayersSize: du.Images.TotalSize,
 	}
 
 	// Convert images
-	for _, img := range du.Images {
+	for _, img := range du.Images.Items {
 		domainDU.Images = append(domainDU.Images, domain.ImageSummary{
 			ID:          img.ID,
 			ParentID:    img.ParentID,
@@ -223,7 +238,7 @@ func (s *SystemServiceAdapter) DiskUsage(ctx context.Context) (*domain.DiskUsage
 	}
 
 	// Convert containers
-	for _, c := range du.Containers {
+	for _, c := range du.Containers.Items {
 		domainDU.Containers = append(domainDU.Containers, domain.ContainerSummary{
 			ID:         c.ID,
 			Names:      c.Names,
@@ -231,7 +246,7 @@ func (s *SystemServiceAdapter) DiskUsage(ctx context.Context) (*domain.DiskUsage
 			ImageID:    c.ImageID,
 			Command:    c.Command,
 			Created:    c.Created,
-			State:      c.State,
+			State:      string(c.State),
 			Status:     c.Status,
 			SizeRw:     c.SizeRw,
 			SizeRootFs: c.SizeRootFs,
@@ -239,7 +254,7 @@ func (s *SystemServiceAdapter) DiskUsage(ctx context.Context) (*domain.DiskUsage
 	}
 
 	// Convert volumes
-	for _, v := range du.Volumes {
+	for _, v := range du.Volumes.Items {
 		vol := domain.VolumeSummary{
 			Name:       v.Name,
 			Driver:     v.Driver,

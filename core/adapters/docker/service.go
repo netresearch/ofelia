@@ -7,10 +7,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/swarm"
+	"github.com/moby/moby/client"
 
 	"github.com/netresearch/ofelia/core/domain"
 )
@@ -36,11 +36,10 @@ func (s *SwarmServiceAdapter) Create(ctx context.Context, spec domain.ServiceSpe
 	}
 	swarmSpec := convertToSwarmSpec(&spec)
 
-	createOpts := swarm.ServiceCreateOptions{
+	resp, err := s.client.ServiceCreate(ctx, client.ServiceCreateOptions{
+		Spec:                swarmSpec,
 		EncodedRegistryAuth: opts.EncodedRegistryAuth,
-	}
-
-	resp, err := s.client.ServiceCreate(ctx, swarmSpec, createOpts)
+	})
 	if err != nil {
 		return "", convertError(err)
 	}
@@ -53,12 +52,12 @@ func (s *SwarmServiceAdapter) Inspect(ctx context.Context, serviceID string) (*d
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	service, _, err := s.client.ServiceInspectWithRaw(ctx, serviceID, swarm.ServiceInspectOptions{})
+	service, err := s.client.ServiceInspect(ctx, serviceID, client.ServiceInspectOptions{})
 	if err != nil {
 		return nil, convertError(err)
 	}
 
-	return convertFromSwarmService(&service), nil
+	return convertFromSwarmService(&service.Service), nil
 }
 
 // List lists services.
@@ -66,14 +65,12 @@ func (s *SwarmServiceAdapter) List(ctx context.Context, opts domain.ServiceListO
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	listOpts := swarm.ServiceListOptions{}
+	listOpts := client.ServiceListOptions{}
 
 	if len(opts.Filters) > 0 {
-		listOpts.Filters = filters.NewArgs()
+		listOpts.Filters = make(client.Filters)
 		for key, values := range opts.Filters {
-			for _, v := range values {
-				listOpts.Filters.Add(key, v)
-			}
+			listOpts.Filters.Add(key, values...)
 		}
 	}
 
@@ -82,9 +79,9 @@ func (s *SwarmServiceAdapter) List(ctx context.Context, opts domain.ServiceListO
 		return nil, convertError(err)
 	}
 
-	result := make([]domain.Service, len(services))
-	for i, svc := range services {
-		result[i] = *convertFromSwarmService(&svc)
+	result := make([]domain.Service, len(services.Items))
+	for i := range services.Items {
+		result[i] = *convertFromSwarmService(&services.Items[i])
 	}
 	return result, nil
 }
@@ -94,7 +91,7 @@ func (s *SwarmServiceAdapter) Remove(ctx context.Context, serviceID string) erro
 	if err := s.checkClient(); err != nil {
 		return err
 	}
-	err := s.client.ServiceRemove(ctx, serviceID)
+	_, err := s.client.ServiceRemove(ctx, serviceID, client.ServiceRemoveOptions{})
 	return convertError(err)
 }
 
@@ -103,14 +100,12 @@ func (s *SwarmServiceAdapter) ListTasks(ctx context.Context, opts domain.TaskLis
 	if err := s.checkClient(); err != nil {
 		return nil, err
 	}
-	listOpts := swarm.TaskListOptions{}
+	listOpts := client.TaskListOptions{}
 
 	if len(opts.Filters) > 0 {
-		listOpts.Filters = filters.NewArgs()
+		listOpts.Filters = make(client.Filters)
 		for key, values := range opts.Filters {
-			for _, v := range values {
-				listOpts.Filters.Add(key, v)
-			}
+			listOpts.Filters.Add(key, values...)
 		}
 	}
 
@@ -119,9 +114,9 @@ func (s *SwarmServiceAdapter) ListTasks(ctx context.Context, opts domain.TaskLis
 		return nil, convertError(err)
 	}
 
-	result := make([]domain.Task, len(tasks))
-	for i, task := range tasks {
-		result[i] = convertFromSwarmTask(&task)
+	result := make([]domain.Task, len(tasks.Items))
+	for i := range tasks.Items {
+		result[i] = convertFromSwarmTask(&tasks.Items[i])
 	}
 	return result, nil
 }
@@ -257,7 +252,7 @@ func convertToSwarmSpec(spec *domain.ServiceSpec) swarm.ServiceSpec {
 		for _, p := range spec.EndpointSpec.Ports {
 			swarmSpec.EndpointSpec.Ports = append(swarmSpec.EndpointSpec.Ports, swarm.PortConfig{
 				Name:          p.Name,
-				Protocol:      swarm.PortConfigProtocol(p.Protocol),
+				Protocol:      network.IPProtocol(p.Protocol),
 				TargetPort:    p.TargetPort,
 				PublishedPort: p.PublishedPort,
 				PublishMode:   swarm.PortConfigPublishMode(p.PublishMode),

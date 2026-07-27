@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 )
@@ -233,10 +234,8 @@ func (s *Store) SetDisabled(name string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, n := range s.state.Disabled {
-		if n == name {
-			return nil
-		}
+	if slices.Contains(s.state.Disabled, name) {
+		return nil
 	}
 	s.state.Disabled = append(s.state.Disabled, name)
 	sort.Strings(s.state.Disabled)

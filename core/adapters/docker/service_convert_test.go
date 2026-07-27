@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/swarm"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/swarm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 

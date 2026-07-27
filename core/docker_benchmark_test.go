@@ -12,9 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 func newBenchClient(b *testing.B) *client.Client {
@@ -29,10 +28,13 @@ func newBenchClient(b *testing.B) *client.Client {
 func createBenchContainer(b *testing.B, cli *client.Client, name string, cmd []string) string {
 	b.Helper()
 	ctx := context.Background()
-	resp, err := cli.ContainerCreate(ctx, &container.Config{
-		Image: "alpine:latest",
-		Cmd:   cmd,
-	}, nil, nil, nil, name)
+	resp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{
+			Image: "alpine:latest",
+			Cmd:   cmd,
+		},
+		Name: name,
+	})
 	if err != nil {
 		b.Fatalf("Create failed: %v", err)
 	}
@@ -41,7 +43,7 @@ func createBenchContainer(b *testing.B, cli *client.Client, name string, cmd []s
 
 func removeBenchContainer(b *testing.B, cli *client.Client, id string) {
 	b.Helper()
-	_ = cli.ContainerRemove(context.Background(), id, container.RemoveOptions{Force: true})
+	_, _ = cli.ContainerRemove(context.Background(), id, client.ContainerRemoveOptions{Force: true})
 }
 
 // BenchmarkContainerCreate measures container creation performance.
@@ -52,10 +54,13 @@ func BenchmarkContainerCreate(b *testing.B) {
 	b.ResetTimer()
 	for i := range b.N {
 		name := fmt.Sprintf("bench-create-%d-%d", time.Now().UnixNano(), i)
-		resp, err := cli.ContainerCreate(ctx, &container.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"true"},
-		}, nil, nil, nil, name)
+		resp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+			Config: &container.Config{
+				Image: "alpine:latest",
+				Cmd:   []string{"true"},
+			},
+			Name: name,
+		})
 		if err != nil {
 			b.Fatalf("Create failed: %v", err)
 		}
@@ -76,10 +81,10 @@ func BenchmarkContainerStartStop(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+		if _, err := cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 			b.Fatalf("Start failed: %v", err)
 		}
-		if err := cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout}); err != nil {
+		if _, err := cli.ContainerStop(ctx, id, client.ContainerStopOptions{Timeout: &timeout}); err != nil {
 			b.Fatalf("Stop failed: %v", err)
 		}
 	}
@@ -96,7 +101,7 @@ func BenchmarkContainerInspect(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		if _, err := cli.ContainerInspect(ctx, id); err != nil {
+		if _, err := cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{}); err != nil {
 			b.Fatalf("Inspect failed: %v", err)
 		}
 	}
@@ -109,7 +114,7 @@ func BenchmarkContainerList(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		if _, err := cli.ContainerList(ctx, container.ListOptions{All: true}); err != nil {
+		if _, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true}); err != nil {
 			b.Fatalf("List failed: %v", err)
 		}
 	}
@@ -124,17 +129,17 @@ func BenchmarkExecRun(b *testing.B) {
 	id := createBenchContainer(b, cli, name, []string{"sleep", "300"})
 	defer removeBenchContainer(b, cli, id)
 
-	if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+	if _, err := cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		b.Fatalf("Start failed: %v", err)
 	}
 	timeout := 5
-	defer func() { _ = cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout}) }()
+	defer func() { _, _ = cli.ContainerStop(ctx, id, client.ContainerStopOptions{Timeout: &timeout}) }()
 
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
 	for range b.N {
-		execResp, err := cli.ContainerExecCreate(ctx, id, container.ExecOptions{
+		execResp, err := cli.ExecCreate(ctx, id, client.ExecCreateOptions{
 			Cmd:          []string{"echo", "benchmark"},
 			AttachStdout: true,
 			AttachStderr: true,
@@ -143,7 +148,7 @@ func BenchmarkExecRun(b *testing.B) {
 			b.Fatalf("CreateExec failed: %v", err)
 		}
 
-		attach, err := cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{})
+		attach, err := cli.ExecAttach(ctx, execResp.ID, client.ExecAttachOptions{})
 		if err != nil {
 			b.Fatalf("AttachExec failed: %v", err)
 		}
@@ -161,18 +166,18 @@ func BenchmarkExecRunParallel(b *testing.B) {
 	id := createBenchContainer(b, cli, name, []string{"sleep", "300"})
 	defer removeBenchContainer(b, cli, id)
 
-	if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+	if _, err := cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		b.Fatalf("Start failed: %v", err)
 	}
 	timeout := 5
-	defer func() { _ = cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout}) }()
+	defer func() { _, _ = cli.ContainerStop(ctx, id, client.ContainerStopOptions{Timeout: &timeout}) }()
 
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			execResp, err := cli.ContainerExecCreate(ctx, id, container.ExecOptions{
+			execResp, err := cli.ExecCreate(ctx, id, client.ExecCreateOptions{
 				Cmd:          []string{"echo", "benchmark"},
 				AttachStdout: true,
 				AttachStderr: true,
@@ -182,7 +187,7 @@ func BenchmarkExecRunParallel(b *testing.B) {
 				return
 			}
 
-			attach, err := cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{})
+			attach, err := cli.ExecAttach(ctx, execResp.ID, client.ExecAttachOptions{})
 			if err != nil {
 				b.Errorf("AttachExec failed: %v", err)
 				return
@@ -200,7 +205,7 @@ func BenchmarkImageExists(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		_, _, err := cli.ImageInspectWithRaw(ctx, "alpine:latest")
+		_, err := cli.ImageInspect(ctx, "alpine:latest")
 		if err != nil {
 			b.Fatalf("InspectImage failed: %v", err)
 		}
@@ -214,7 +219,7 @@ func BenchmarkImageList(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		if _, err := cli.ImageList(ctx, image.ListOptions{All: true}); err != nil {
+		if _, err := cli.ImageList(ctx, client.ImageListOptions{All: true}); err != nil {
 			b.Fatalf("ListImages failed: %v", err)
 		}
 	}
@@ -227,7 +232,7 @@ func BenchmarkSystemPing(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		if _, err := cli.Ping(ctx); err != nil {
+		if _, err := cli.Ping(ctx, client.PingOptions{}); err != nil {
 			b.Fatalf("Ping failed: %v", err)
 		}
 	}
@@ -240,7 +245,7 @@ func BenchmarkSystemInfo(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		if _, err := cli.Info(ctx); err != nil {
+		if _, err := cli.Info(ctx, client.InfoOptions{}); err != nil {
 			b.Fatalf("Info failed: %v", err)
 		}
 	}
@@ -255,19 +260,25 @@ func BenchmarkContainerFullLifecycle(b *testing.B) {
 	for i := range b.N {
 		name := fmt.Sprintf("bench-lifecycle-%d-%d", time.Now().UnixNano(), i)
 
-		resp, err := cli.ContainerCreate(ctx, &container.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"echo", "done"},
-		}, nil, nil, nil, name)
+		resp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+			Config: &container.Config{
+				Image: "alpine:latest",
+				Cmd:   []string{"echo", "done"},
+			},
+			Name: name,
+		})
 		if err != nil {
 			b.Fatalf("Create failed: %v", err)
 		}
 
-		if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		if _, err := cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
 			b.Fatalf("Start failed: %v", err)
 		}
 
-		statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+		waitResult := cli.ContainerWait(ctx, resp.ID, client.ContainerWaitOptions{
+			Condition: container.WaitConditionNotRunning,
+		})
+		statusCh, errCh := waitResult.Result, waitResult.Error
 		select {
 		case <-statusCh:
 		case err := <-errCh:
@@ -276,7 +287,7 @@ func BenchmarkContainerFullLifecycle(b *testing.B) {
 			}
 		}
 
-		if err := cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true}); err != nil {
+		if _, err := cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true}); err != nil {
 			b.Fatalf("Remove failed: %v", err)
 		}
 	}
@@ -291,21 +302,21 @@ func BenchmarkExecJobSimulation(b *testing.B) {
 	id := createBenchContainer(b, cli, name, []string{"sleep", "300"})
 	defer removeBenchContainer(b, cli, id)
 
-	if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+	if _, err := cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		b.Fatalf("Start failed: %v", err)
 	}
 	timeout := 5
-	defer func() { _ = cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout}) }()
+	defer func() { _, _ = cli.ContainerStop(ctx, id, client.ContainerStopOptions{Timeout: &timeout}) }()
 
 	time.Sleep(500 * time.Millisecond)
 
 	b.ResetTimer()
 	for range b.N {
-		if _, err := cli.ContainerInspect(ctx, id); err != nil {
+		if _, err := cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{}); err != nil {
 			b.Fatalf("Inspect failed: %v", err)
 		}
 
-		execResp, err := cli.ContainerExecCreate(ctx, id, container.ExecOptions{
+		execResp, err := cli.ExecCreate(ctx, id, client.ExecCreateOptions{
 			Cmd:          []string{"sh", "-c", "echo 'job output'; echo 'error' >&2"},
 			AttachStdout: true,
 			AttachStderr: true,
@@ -314,7 +325,7 @@ func BenchmarkExecJobSimulation(b *testing.B) {
 			b.Fatalf("CreateExec failed: %v", err)
 		}
 
-		attach, err := cli.ContainerExecAttach(ctx, execResp.ID, container.ExecAttachOptions{})
+		attach, err := cli.ExecAttach(ctx, execResp.ID, client.ExecAttachOptions{})
 		if err != nil {
 			b.Fatalf("AttachExec failed: %v", err)
 		}
@@ -332,25 +343,31 @@ func BenchmarkRunJobSimulation(b *testing.B) {
 	for i := range b.N {
 		name := fmt.Sprintf("bench-runjob-%d-%d", time.Now().UnixNano(), i)
 
-		_, _, err := cli.ImageInspectWithRaw(ctx, "alpine:latest")
+		_, err := cli.ImageInspect(ctx, "alpine:latest")
 		if err != nil {
 			b.Fatalf("Image check failed: %v", err)
 		}
 
-		resp, err := cli.ContainerCreate(ctx, &container.Config{
-			Image: "alpine:latest",
-			Cmd:   []string{"sh", "-c", "echo 'job output'"},
-		}, nil, nil, nil, name)
+		resp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+			Config: &container.Config{
+				Image: "alpine:latest",
+				Cmd:   []string{"sh", "-c", "echo 'job output'"},
+			},
+			Name: name,
+		})
 		if err != nil {
 			b.Fatalf("Create failed: %v", err)
 		}
 
-		if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-			_ = cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+		if _, err := cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
+			_, _ = cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true})
 			b.Fatalf("Start failed: %v", err)
 		}
 
-		statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+		waitResult := cli.ContainerWait(ctx, resp.ID, client.ContainerWaitOptions{
+			Condition: container.WaitConditionNotRunning,
+		})
+		statusCh, errCh := waitResult.Result, waitResult.Error
 		select {
 		case <-statusCh:
 		case err := <-errCh:
@@ -359,7 +376,7 @@ func BenchmarkRunJobSimulation(b *testing.B) {
 			}
 		}
 
-		if err := cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true}); err != nil {
+		if _, err := cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true}); err != nil {
 			b.Fatalf("Remove failed: %v", err)
 		}
 	}

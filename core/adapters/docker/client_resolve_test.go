@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 // historicalAllowedSchemes is the SORTED list of schemes the public

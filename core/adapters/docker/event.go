@@ -7,9 +7,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/client"
 
 	"github.com/netresearch/ofelia/core/domain"
 	"github.com/netresearch/ofelia/core/ports"
@@ -54,8 +53,8 @@ func (s *EventServiceAdapter) Subscribe(ctx context.Context, filter domain.Event
 }
 
 // buildEventListOptions converts a domain.EventFilter into the SDK events.ListOptions.
-func buildEventListOptions(filter domain.EventFilter) events.ListOptions {
-	opts := events.ListOptions{}
+func buildEventListOptions(filter domain.EventFilter) client.EventsListOptions {
+	opts := client.EventsListOptions{}
 	if !filter.Since.IsZero() {
 		opts.Since = filter.Since.Format(time.RFC3339Nano)
 	}
@@ -63,11 +62,9 @@ func buildEventListOptions(filter domain.EventFilter) events.ListOptions {
 		opts.Until = filter.Until.Format(time.RFC3339Nano)
 	}
 	if len(filter.Filters) > 0 {
-		opts.Filters = filters.NewArgs()
+		opts.Filters = make(client.Filters)
 		for key, values := range filter.Filters {
-			for _, v := range values {
-				opts.Filters.Add(key, v)
-			}
+			opts.Filters.Add(key, values...)
 		}
 	}
 	return opts
@@ -84,7 +81,8 @@ func (s *EventServiceAdapter) streamEvents(ctx context.Context, filter domain.Ev
 
 	// Subscribe to events from SDK
 	// The SDK handles cleanup automatically when context is canceled
-	sdkEventCh, sdkErrCh := s.client.Events(ctx, opts)
+	eventsResult := s.client.Events(ctx, opts)
+	sdkEventCh, sdkErrCh := eventsResult.Messages, eventsResult.Err
 
 	for {
 		select {

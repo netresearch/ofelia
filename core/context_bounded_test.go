@@ -40,8 +40,7 @@ func TestContext_RunContext_PassThrough(t *testing.T) {
 	t.Parallel()
 
 	type ctxKey struct{}
-	parent, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	parent := t.Context()
 	parent = context.WithValue(parent, ctxKey{}, "marker")
 
 	c := &Context{Ctx: parent}
@@ -150,8 +149,7 @@ func TestBoundJobContext_FromJobMaxRuntime(t *testing.T) {
 	job.BareJob = BareJob{Name: "deadline-derived", Command: "true"}
 	job.MaxRuntime = 50 * time.Millisecond
 
-	parent, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	parent := t.Context()
 	bounded, boundedCancel := boundJobContext(parent, job, defaultJobMaxRuntime)
 	defer boundedCancel()
 
@@ -246,8 +244,7 @@ func TestBoundJobContext_GlobalDefault(t *testing.T) {
 	t.Parallel()
 
 	job := &BareJob{Name: "no-maxruntime"} // no MaxRuntime accessor
-	parent, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	parent := t.Context()
 
 	bounded, boundedCancel := boundJobContext(parent, job, defaultJobMaxRuntime)
 	defer boundedCancel()

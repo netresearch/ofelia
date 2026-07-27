@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -489,9 +490,7 @@ func (m *WebhookManager) AdoptClientCacheFrom(prior *WebhookManager) {
 	}
 	prior.mu.Lock()
 	snapshot := make(map[time.Duration]*http.Client, len(prior.httpClients))
-	for k, v := range prior.httpClients {
-		snapshot[k] = v
-	}
+	maps.Copy(snapshot, prior.httpClients)
 	prior.mu.Unlock()
 
 	m.mu.Lock()

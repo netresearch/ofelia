@@ -7,7 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/swarm"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/api/types/swarm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -529,7 +530,7 @@ func TestServiceSpec_RoundTrip_EndpointSpec(t *testing.T) {
 	assert.Equal(t, swarm.ResolutionModeVIP, swarmSpec.EndpointSpec.Mode)
 	require.Len(t, swarmSpec.EndpointSpec.Ports, 2)
 	assert.Equal(t, "http", swarmSpec.EndpointSpec.Ports[0].Name)
-	assert.Equal(t, swarm.PortConfigProtocolTCP, swarmSpec.EndpointSpec.Ports[0].Protocol)
+	assert.Equal(t, network.TCP, swarmSpec.EndpointSpec.Ports[0].Protocol)
 	assert.Equal(t, uint32(80), swarmSpec.EndpointSpec.Ports[0].TargetPort)
 	assert.Equal(t, uint32(8080), swarmSpec.EndpointSpec.Ports[0].PublishedPort)
 	assert.Equal(t, swarm.PortConfigPublishModeIngress, swarmSpec.EndpointSpec.Ports[0].PublishMode)

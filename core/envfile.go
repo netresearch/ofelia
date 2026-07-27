@@ -114,11 +114,11 @@ func MergeEnvironments(envFiles, envFrom, explicit []string) []string {
 
 	add := func(entries []string) {
 		for _, entry := range entries {
-			idx := strings.IndexByte(entry, '=')
-			if idx < 0 {
+			before, _, ok := strings.Cut(entry, "=")
+			if !ok {
 				continue
 			}
-			key := entry[:idx]
+			key := before
 			if i, ok := seen[key]; ok {
 				result[i] = entry // overwrite in place
 			} else {
