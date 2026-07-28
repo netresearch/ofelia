@@ -575,7 +575,9 @@ err := cmdValidator.ValidateCommandArgs(args)
 
 Ofelia has no configuration keys for memory limits, CPU limits, capabilities or
 devices, and it ignores keys it does not recognize without warning — so these
-cannot be set on the job. Constrain the container itself instead.
+cannot be set on the job. Constrain the container itself instead. This follows
+the boundary in [ADR-002](./adr/ADR-002-security-boundaries.md): the runtime
+enforces what a container may do, the scheduler decides when it runs.
 
 For `job-exec`, the container already exists and its limits are whatever created
 it, typically a Compose service:
