@@ -1,20 +1,37 @@
-# Findings accepted in history. Gitleaks scans every commit, so a value that
-# was committed once stays reportable even after the file is corrected — the
-# only way to remove it from history is a rewrite, which is not worth it for
-# documentation examples.
-#
-# Each entry below was reviewed individually. If any of these had been a live
-# credential the answer would be rotation, not an ignore entry.
+# Ignore test constants and non-sensitive values - these are not actual secrets
+# but rather test constants used in unit tests
 
-# Placeholder token in the ntfy webhook docs and preset example. Replaced in
-# the working tree with tk_REPLACE_WITH_YOUR_NTFY_TOKEN; the original shape was
-# indistinguishable from a real ntfy access token, which is why it tripped the
-# scanner once the ruleset was repaired.
+# File-level ignores (specific files that contain test secrets)
+web/missing_coverage_test.go
+web/jwt_auth_test.go  
+web/auth_test.go
+
+# Pattern-based ignores for test constants
+test-secret-for-testing
+test-secret-key
+test-secret-key-that-is-long-enough-for-jwt
+testSecretKey
+
+# --- Findings accepted in history -------------------------------------------
+# Gitleaks scans every commit, not just the working tree, so a value committed
+# once stays reportable after the file is corrected. Each entry below was
+# reviewed individually; had any been a live credential the answer would be
+# rotation, not an ignore entry.
+#
+# NOTE: the entries above this block are bare paths and substrings. That is not
+# the .gitleaksignore format — it matches finding fingerprints
+# (commit:file:rule:line) — so they match nothing. The equivalent suppression
+# that does work lives in .gitleaks.toml's [allowlist] paths/regexes. Left in
+# place rather than deleted, but they are decorative.
+
+# Placeholder token in the ntfy webhook docs and preset example, 2025-12.
+# Replaced in the working tree with tk_REPLACE_WITH_YOUR_NTFY_TOKEN; the
+# original shape was indistinguishable from a real ntfy access token.
 df6d07e2545e1cb6acbedb6d69a122d01d1237a6:docs/webhooks.md:generic-api-key:171
 df6d07e2545e1cb6acbedb6d69a122d01d1237a6:docs/webhooks.md:generic-api-key:180
 
-# Truncated JWT header (the standard {"alg":"HS256","typ":"JWT"} prefix
-# followed by "...") used as an Authorization-header example.
+# Truncated JWT header ({"alg":"HS256","typ":"JWT"} followed by "...") shown as
+# an Authorization-header example.
 06d254ff97a013c9d307ef55b911e05e85dc0a7a:docs/API.md:generic-api-key:25
 06d254ff97a013c9d307ef55b911e05e85dc0a7a:docs/API.md:generic-api-key:45
 
