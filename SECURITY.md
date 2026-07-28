@@ -64,29 +64,52 @@ This project implements several security measures:
 
 ## Verifying Releases
 
-### Verify Binary Provenance
+Releases are built by a reusable workflow in `netresearch/.github`, so the
+signing identity is that workflow rather than this repository. Verification
+fails without the `--certificate-identity-regexp` / `--signer-workflow` flags
+below.
 
-```bash
-slsa-verifier verify-artifact ofelia-linux-amd64 \
-  --provenance-path ofelia-linux-amd64.intoto.jsonl \
-  --source-uri github.com/netresearch/ofelia
-```
+### Verify a Binary
 
-### Verify Checksums Signature
+Every asset ships a bundled signature next to it (`<asset>.sigstore.json`):
 
 ```bash
 cosign verify-blob \
-  --certificate checksums.txt.pem \
-  --signature checksums.txt.sig \
-  --certificate-identity "https://github.com/netresearch/ofelia/.github/workflows/release-slsa.yml@refs/tags/<TAG>" \
+  --bundle ofelia-linux-amd64.sigstore.json \
+  --certificate-identity-regexp "^https://github\.com/netresearch/\.github/\.github/workflows/release-go-app\.yml@" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  ofelia-linux-amd64
+```
+
+### Verify Checksums
+
+```bash
+cosign verify-blob \
+  --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp "^https://github\.com/netresearch/\.github/\.github/workflows/release-go-app\.yml@" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   checksums.txt
+sha256sum -c checksums.txt --ignore-missing
+```
+
+### Verify Build Provenance
+
+```bash
+gh attestation verify <artifact> \
+  --repo netresearch/ofelia \
+  --signer-workflow netresearch/.github/.github/workflows/release-go-app.yml
 ```
 
 ### Verify Container Image
 
 ```bash
-cosign verify ghcr.io/netresearch/ofelia:<TAG>
+cosign verify ghcr.io/netresearch/ofelia:<TAG> \
+  --certificate-identity-regexp "^https://github\.com/netresearch/\.github/\.github/workflows/release-go-app\.yml@" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+gh attestation verify oci://ghcr.io/netresearch/ofelia:<TAG> \
+  --repo netresearch/ofelia \
+  --signer-workflow netresearch/.github/.github/workflows/release-go-app.yml
 ```
 
 ## OpenSSF Scorecard Notes

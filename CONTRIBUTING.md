@@ -357,19 +357,21 @@ All releases include:
 Users can verify releases:
 
 ```bash
-# Verify binary provenance
-slsa-verifier verify-artifact ofelia-linux-amd64 \
-  --provenance-path ofelia-linux-amd64.intoto.jsonl \
-  --source-uri github.com/netresearch/ofelia
-
-# Verify checksums signature
+# Verify a binary against its bundled signature
 cosign verify-blob \
-  --certificate checksums.txt.pem \
-  --signature checksums.txt.sig \
-  --certificate-identity "https://github.com/netresearch/ofelia/.github/workflows/release-slsa.yml@refs/tags/vX.Y.Z" \
+  --bundle ofelia-linux-amd64.sigstore.json \
+  --certificate-identity-regexp "^https://github\.com/netresearch/\.github/\.github/workflows/release-go-app\.yml@" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  checksums.txt
+  ofelia-linux-amd64
+
+# Verify build provenance
+gh attestation verify ofelia-linux-amd64 \
+  --repo netresearch/ofelia \
+  --signer-workflow netresearch/.github/.github/workflows/release-go-app.yml
 ```
+
+The signing identity is the reusable workflow in `netresearch/.github`, not
+this repository — see [SECURITY.md](SECURITY.md) for the full procedure.
 
 ## Questions or Issues?
 
