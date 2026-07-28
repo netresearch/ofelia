@@ -1,13 +1,22 @@
-# Ignore test constants and non-sensitive values - these are not actual secrets
-# but rather test constants used in unit tests
+# Findings accepted in history. Gitleaks scans every commit, so a value that
+# was committed once stays reportable even after the file is corrected — the
+# only way to remove it from history is a rewrite, which is not worth it for
+# documentation examples.
+#
+# Each entry below was reviewed individually. If any of these had been a live
+# credential the answer would be rotation, not an ignore entry.
 
-# File-level ignores (specific files that contain test secrets)
-web/missing_coverage_test.go
-web/jwt_auth_test.go  
-web/auth_test.go
+# Placeholder token in the ntfy webhook docs and preset example. Replaced in
+# the working tree with tk_REPLACE_WITH_YOUR_NTFY_TOKEN; the original shape was
+# indistinguishable from a real ntfy access token, which is why it tripped the
+# scanner once the ruleset was repaired.
+df6d07e2545e1cb6acbedb6d69a122d01d1237a6:docs/webhooks.md:generic-api-key:171
+df6d07e2545e1cb6acbedb6d69a122d01d1237a6:docs/webhooks.md:generic-api-key:180
 
-# Pattern-based ignores for test constants
-test-secret-for-testing
-test-secret-key
-test-secret-key-that-is-long-enough-for-jwt
-testSecretKey
+# Truncated JWT header (the standard {"alg":"HS256","typ":"JWT"} prefix
+# followed by "...") used as an Authorization-header example.
+06d254ff97a013c9d307ef55b911e05e85dc0a7a:docs/API.md:generic-api-key:25
+06d254ff97a013c9d307ef55b911e05e85dc0a7a:docs/API.md:generic-api-key:45
+
+# curl example in the security docs showing the shape of an auth header.
+053a2527b5004a61e1bae7a32e616e822eb444ba:docs/SECURITY.md:curl-auth-header:392
