@@ -199,39 +199,16 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 		}
 	}
 
-	mux := http.NewServeMux()
-
 	server.rl = newRateLimiter(100, time.Minute)
 	server.rl.trustedProxies = server.trustedProxies
 
-	if server.authConfig != nil && server.authConfig.Enabled {
-		loginHandler := NewSecureLoginHandler(server.authConfig, server.tokenManager, server.loginLimiter, server.trustedProxies...)
-		mux.Handle(pathAPILogin, loginHandler)
-		mux.HandleFunc("/api/logout", server.logoutHandler)
-		mux.HandleFunc(pathAPIAuthStatus, server.authStatusHandler)
-		mux.HandleFunc(pathAPICSRFToken, server.csrfTokenHandler)
-	}
-
-	mux.HandleFunc("/api/jobs/removed", server.removedJobsHandler)
-	mux.HandleFunc("/api/jobs/disabled", server.disabledJobsHandler)
-	mux.HandleFunc("/api/jobs/run", server.runJobHandler)
-	mux.HandleFunc("/api/jobs/disable", server.disableJobHandler)
-	mux.HandleFunc("/api/jobs/enable", server.enableJobHandler)
-	mux.HandleFunc("/api/jobs/create", server.createJobHandler)
-	mux.HandleFunc("/api/jobs/update", server.updateJobHandler)
-	mux.HandleFunc("/api/jobs/delete", server.deleteJobHandler)
-	mux.HandleFunc(pathAPIJobsPrefix, server.historyHandler)
-	mux.HandleFunc("/api/jobs", server.jobsHandler)
-	mux.HandleFunc("/api/config", server.configHandler)
-
-	uiFS, err := fs.Sub(static.UI, "ui")
+	ui, err := uiHandler()
 	if err != nil {
 		server.scheduler.Logger.Error(fmt.Sprintf("failed to load UI subdirectory: %v", err))
 		return nil
 	}
-	mux.Handle("/", http.FileServer(http.FS(uiFS)))
 
-	var handler http.Handler = mux
+	var handler http.Handler = server.newMux(nil, ui)
 	handler = securityHeaders(handler)
 	handler = server.rl.middleware(handler)
 
@@ -247,6 +224,88 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 		IdleTimeout:       120 * time.Second,
 	}
 	return server
+}
+
+// route is one entry of the HTTP route table: the ServeMux pattern, the
+// handler, and whether the endpoint stays reachable without a token while
+// authentication is enabled.
+//
+// The table is the single source of truth for both registration sites
+// (NewServerWithAuth and RegisterHealthEndpoints) and for
+// TestRouteAuthExpectations, which replays every entry against the real
+// middleware chain. Adding a route means declaring its auth expectation here.
+type route struct {
+	pattern string
+	handler http.Handler
+	public  bool
+}
+
+// routes returns the route table for the current auth configuration. hc is nil
+// until RegisterHealthEndpoints runs, in which case the probe routes are
+// omitted; ui is nil when the embedded assets could not be opened.
+//
+// public must match what authMiddleware actually exempts: the path is either in
+// its allowlist or outside the /api/ prefix.
+func (s *Server) routes(hc *HealthChecker, ui http.Handler) []route {
+	rs := make([]route, 0, 17)
+
+	if s.authConfig != nil && s.authConfig.Enabled {
+		loginHandler := NewSecureLoginHandler(s.authConfig, s.tokenManager, s.loginLimiter, s.trustedProxies...)
+		rs = append(rs,
+			route{pathAPILogin, loginHandler, true},
+			route{"/api/logout", http.HandlerFunc(s.logoutHandler), false},
+			route{pathAPIAuthStatus, http.HandlerFunc(s.authStatusHandler), true},
+			route{pathAPICSRFToken, http.HandlerFunc(s.csrfTokenHandler), true},
+		)
+	}
+
+	rs = append(rs,
+		route{"/api/jobs/removed", http.HandlerFunc(s.removedJobsHandler), false},
+		route{"/api/jobs/disabled", http.HandlerFunc(s.disabledJobsHandler), false},
+		route{"/api/jobs/run", http.HandlerFunc(s.runJobHandler), false},
+		route{"/api/jobs/disable", http.HandlerFunc(s.disableJobHandler), false},
+		route{"/api/jobs/enable", http.HandlerFunc(s.enableJobHandler), false},
+		route{"/api/jobs/create", http.HandlerFunc(s.createJobHandler), false},
+		route{"/api/jobs/update", http.HandlerFunc(s.updateJobHandler), false},
+		route{"/api/jobs/delete", http.HandlerFunc(s.deleteJobHandler), false},
+		route{pathAPIJobsPrefix, http.HandlerFunc(s.historyHandler), false},
+		route{"/api/jobs", http.HandlerFunc(s.jobsHandler), false},
+		route{"/api/config", http.HandlerFunc(s.configHandler), false},
+	)
+
+	if hc != nil {
+		rs = append(rs,
+			route{"/health", hc.HealthHandler(), true},
+			route{"/healthz", hc.HealthHandler(), true},
+			route{"/ready", hc.ReadinessHandler(), true},
+			route{"/live", hc.LivenessHandler(), true},
+		)
+	}
+
+	if ui != nil {
+		rs = append(rs, route{"/", ui, true})
+	}
+
+	return rs
+}
+
+// newMux registers the route table on a fresh ServeMux.
+func (s *Server) newMux(hc *HealthChecker, ui http.Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+	for _, rt := range s.routes(hc, ui) {
+		mux.Handle(rt.pattern, rt.handler)
+	}
+	return mux
+}
+
+// uiHandler serves the embedded single-page UI. Returns an error when the
+// embedded assets cannot be opened.
+func uiHandler() (http.Handler, error) {
+	uiFS, err := fs.Sub(static.UI, "ui")
+	if err != nil {
+		return nil, fmt.Errorf("load UI subdirectory: %w", err)
+	}
+	return http.FileServer(http.FS(uiFS)), nil
 }
 
 // Start serves in a background goroutine and returns immediately, always with
@@ -287,37 +346,13 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 		return
 	}
 
-	mux := http.NewServeMux()
-
-	if s.authConfig != nil && s.authConfig.Enabled {
-		loginHandler := NewSecureLoginHandler(s.authConfig, s.tokenManager, s.loginLimiter, s.trustedProxies...)
-		mux.Handle(pathAPILogin, loginHandler)
-		mux.HandleFunc("/api/logout", s.logoutHandler)
-		mux.HandleFunc(pathAPIAuthStatus, s.authStatusHandler)
-		mux.HandleFunc(pathAPICSRFToken, s.csrfTokenHandler)
+	// A broken embedded UI must not take the probes down with it: register
+	// everything else and drop only the "/" route.
+	ui, err := uiHandler()
+	if err != nil {
+		ui = nil
 	}
-
-	mux.HandleFunc("/api/jobs/removed", s.removedJobsHandler)
-	mux.HandleFunc("/api/jobs/disabled", s.disabledJobsHandler)
-	mux.HandleFunc("/api/jobs/run", s.runJobHandler)
-	mux.HandleFunc("/api/jobs/disable", s.disableJobHandler)
-	mux.HandleFunc("/api/jobs/enable", s.enableJobHandler)
-	mux.HandleFunc("/api/jobs/create", s.createJobHandler)
-	mux.HandleFunc("/api/jobs/update", s.updateJobHandler)
-	mux.HandleFunc("/api/jobs/delete", s.deleteJobHandler)
-	mux.HandleFunc(pathAPIJobsPrefix, s.historyHandler)
-	mux.HandleFunc("/api/jobs", s.jobsHandler)
-	mux.HandleFunc("/api/config", s.configHandler)
-
-	mux.HandleFunc("/health", hc.HealthHandler())
-	mux.HandleFunc("/healthz", hc.HealthHandler())
-	mux.HandleFunc("/ready", hc.ReadinessHandler())
-	mux.HandleFunc("/live", hc.LivenessHandler())
-
-	uiFS, err := fs.Sub(static.UI, "ui")
-	if err == nil {
-		mux.Handle("/", http.FileServer(http.FS(uiFS)))
-	}
+	mux := s.newMux(hc, ui)
 
 	if s.rl != nil {
 		s.rl.close()
