@@ -18,7 +18,7 @@ import (
 
 func newBenchClient(b *testing.B) *client.Client {
 	b.Helper()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		b.Skipf("Docker not available: %v", err)
 	}

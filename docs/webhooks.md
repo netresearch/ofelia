@@ -397,7 +397,7 @@ For private topics or self-hosted ntfy with access tokens:
 [webhook "ntfy-private"]
 preset = ntfy-token
 id = my-private-topic
-secret = tk_AgQdq7mVBoFD37zQVN29RhuMzNIz2
+secret = tk_REPLACE_WITH_YOUR_NTFY_TOKEN
 trigger = always
 ```
 
@@ -406,7 +406,7 @@ For self-hosted ntfy with custom URL and authentication:
 [webhook "ntfy-self-hosted"]
 preset = ntfy-token
 url = https://ntfy.example.com/my-topic
-secret = tk_AgQdq7mVBoFD37zQVN29RhuMzNIz2
+secret = tk_REPLACE_WITH_YOUR_NTFY_TOKEN
 trigger = always
 ```
 

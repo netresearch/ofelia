@@ -194,7 +194,7 @@ func (m *Mail) Run(ctx *core.Context) error {
 	err := ctx.Next()
 	ctx.Stop(err)
 
-	if !(ctx.Execution.Failed || !boolVal(m.MailOnlyOnError)) {
+	if !ctx.Execution.Failed && boolVal(m.MailOnlyOnError) {
 		return err
 	}
 	// Check deduplication - suppress duplicate error notifications
@@ -310,9 +310,9 @@ func init() {
 
 	template.Must(mailBodyTemplate.Parse(`
 		<p>
-			Job ​<b>{{.Job.GetName}}</b>,
-			Execution <b>{{status .Execution}}</b> in ​<b>{{.Execution.Duration}}</b>​,
-			command: ​<pre>{{.Job.GetCommand}}</pre>​
+			Job <b>{{.Job.GetName}}</b>,
+			Execution <b>{{status .Execution}}</b> in <b>{{.Execution.Duration}}</b>,
+			command: <pre>{{.Job.GetCommand}}</pre>
 		</p>
   `))
 

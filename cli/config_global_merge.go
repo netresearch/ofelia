@@ -82,10 +82,8 @@ func mergeSlackGlobals(dst, src *middlewares.SlackConfig) bool {
 // piece testable and below the linter's cyclomatic complexity threshold.
 // See file header for the precedence policy.
 func mergeMailGlobals(dst, src *middlewares.MailConfig) bool {
-	changed := false
-	if mergeMailSMTPGlobals(dst, src) {
-		changed = true
-	}
+	changed := mergeMailSMTPGlobals(dst, src)
+
 	if mergeMailEnvelopeGlobals(dst, src) {
 		changed = true
 	}
@@ -245,10 +243,8 @@ func (c *Config) applyAllowListedGlobals(parsed *Config) bool {
 	if parsed == nil {
 		return false
 	}
-	changed := false
-	if mergeSlackGlobals(&c.Global.SlackConfig, &parsed.Global.SlackConfig) {
-		changed = true
-	}
+	changed := mergeSlackGlobals(&c.Global.SlackConfig, &parsed.Global.SlackConfig)
+
 	if mergeMailGlobals(&c.Global.MailConfig, &parsed.Global.MailConfig) {
 		changed = true
 	}

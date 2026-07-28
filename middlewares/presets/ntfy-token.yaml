@@ -18,7 +18,7 @@ variables:
     description: "ntfy access token (required for private topics)"
     required: true
     sensitive: true
-    example: "tk_AgQdq7mVBoFD37zQVN29RhuMzNIz2"
+    example: "tk_REPLACE_WITH_YOUR_NTFY_TOKEN"
 
 body: |
   {

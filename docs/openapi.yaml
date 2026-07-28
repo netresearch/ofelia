@@ -59,7 +59,7 @@ paths:
                 properties:
                   token:
                     type: string
-                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    example: "<jwt-token>"
                   expires_in:
                     type: number
                     example: 3600

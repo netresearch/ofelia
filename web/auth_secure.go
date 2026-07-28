@@ -387,7 +387,11 @@ func (h *SecureLoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set secure cookie
+	// Secure is conditional rather than a constant true: the UI is commonly
+	// served over plain HTTP on a private network, where a hard true would
+	// make the cookie silently unusable. HttpOnly and SameSite=Strict are
+	// unconditional.
+	// #nosec G124 -- Secure is set from the request scheme; see comment above
 	http.SetCookie(w, &http.Cookie{
 		Name:     "auth_token",
 		Value:    token,

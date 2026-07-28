@@ -365,7 +365,7 @@ func (c *InitCommand) promptRunJob() (*runJobConfig, error) {
 		Label: "Docker image (e.g., alpine:latest, postgres:16)",
 		Validate: func(input string) error {
 			if input == "" {
-				return fmt.Errorf("Docker image cannot be empty")
+				return fmt.Errorf("docker image cannot be empty")
 			}
 			return nil
 		},
