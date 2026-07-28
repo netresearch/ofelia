@@ -2,6 +2,7 @@
 
 // Copyright (c) 2025-2026 Netresearch DTT GmbH
 // SPDX-License-Identifier: MIT
+
 package core
 
 import (

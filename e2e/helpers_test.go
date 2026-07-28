@@ -1,5 +1,5 @@
-//go:build e2e
-// +build e2e
+//go:build e2e && unix
+// +build e2e,unix
 
 // Copyright (c) 2025-2026 Netresearch DTT GmbH
 // SPDX-License-Identifier: MIT

@@ -1,6 +1,14 @@
 version: "2"
 run:
   tests: true
+  # Without these, every linter skips the files behind //go:build integration
+  # and //go:build e2e — the whole e2e suite and the Docker integration
+  # adapters were outside static analysis entirely. "unix" is not listed: it is
+  # a GOOS-derived release tag, already satisfied where those files compile,
+  # and forcing it would drag unix-only syscalls into the Windows build.
+  build-tags:
+    - integration
+    - e2e
 linters:
   default: none
   enable:
