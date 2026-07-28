@@ -26,6 +26,15 @@ const (
 	logPrefix     = "[Job %q (%s)] %s"
 )
 
+// Job is the contract the scheduler requires of anything it can run. Embedding
+// BareJob provides every method here except Run through promoted methods, so a
+// job type normally implements Run only.
+//
+// GetName, GetSchedule and ShouldRunOnStartup are read at registration time;
+// Middlewares and Use manage the per-job middleware chain; Running, NotifyStart
+// and NotifyStop track in-flight invocations; GetCronJobID and SetCronJobID
+// carry the go-cron entry ID; Hash reports a change-detection key over the
+// job's configuration.
 type Job interface {
 	GetName() string
 	GetSchedule() string
@@ -43,6 +52,16 @@ type Job interface {
 	Hash() (string, error)
 }
 
+// Context carries everything a single job invocation needs: the owning
+// scheduler, the logger, the job, its Execution record, and the per-run
+// context.Context used for outbound calls (reach for it via RunContext, which
+// supplies a fallback when Ctx is unset).
+//
+// It also holds the cursor into the middleware chain, which is snapshotted from
+// the job at construction. A Context is therefore single-use — one per
+// invocation, never reused or shared — and not safe for concurrent use.
+// Construct it with NewContextWithContext, or NewContext when no parent context
+// is available.
 type Context struct {
 	Scheduler *Scheduler
 	Logger    *slog.Logger
@@ -103,11 +122,23 @@ func (c *Context) RunContext() context.Context {
 	return c.Ctx
 }
 
+// Start marks the execution as running, stamps its start time and increments
+// the job's in-flight counter. Call it once, before entering the middleware
+// chain via Next.
 func (c *Context) Start() {
 	c.Execution.Start()
 	c.Job.NotifyStart()
 }
 
+// Next advances the middleware chain by one step, running the next middleware
+// or, once the chain is exhausted, the job itself. Middleware Run
+// implementations must call it, otherwise the chain stalls and the job never
+// executes. Once the execution has stopped, only middlewares whose
+// ContinueOnStop reports true are still run.
+//
+// Next always returns nil. An error from a middleware or from the job is
+// recorded on the Execution through Stop rather than propagated, so callers
+// read the outcome from Execution.Failed and Execution.Error.
 func (c *Context) Next() error {
 	if err := c.doNext(); err != nil || c.executed {
 		c.Stop(err)
@@ -153,6 +184,11 @@ func (c *Context) getNext() (Middleware, bool) {
 	return c.middlewares[c.current-1], false
 }
 
+// Stop finalizes the execution with err — nil for success, ErrSkippedExecution
+// to mark it skipped, any other error to mark it failed — records the duration
+// and decrements the job's in-flight counter. Calling it on an execution that
+// has already stopped is a no-op, so both the middleware chain and the caller
+// may invoke it.
 func (c *Context) Stop(err error) {
 	if !c.Execution.IsRunning {
 		return
@@ -162,6 +198,10 @@ func (c *Context) Stop(err error) {
 	c.Job.NotifyStop()
 }
 
+// Log writes msg to the logger, prefixed with the job name and execution ID.
+// The level follows the execution's outcome: Error when it failed, Warn when it
+// was skipped, Info otherwise — so the level is only meaningful after Stop has
+// classified the execution.
 func (c *Context) Log(msg string) {
 	formatted := fmt.Sprintf(logPrefix, c.Job.GetName(), c.Execution.ID, msg)
 
@@ -175,6 +215,8 @@ func (c *Context) Log(msg string) {
 	}
 }
 
+// Warn writes msg at Warn level with the same job-name and execution-ID prefix
+// as Log, regardless of how the execution turned out.
 func (c *Context) Warn(msg string) {
 	formatted := fmt.Sprintf(logPrefix, c.Job.GetName(), c.Execution.ID, msg)
 	c.Logger.Warn(formatted)
@@ -390,11 +432,23 @@ func randomID() (string, error) {
 	return fmt.Sprintf("%x", b), nil
 }
 
+// HashmeTagName is the struct tag key GetHash inspects. A field takes part in
+// the job hash only when its `hash` tag is set to "true".
 const HashmeTagName = "hash"
 
 // hashmeTagEnabled is the struct tag value that enables hashing for a field.
 const hashmeTagEnabled = "true"
 
+// GetHash walks the fields of struct type t, taking values from v, and appends
+// a stable string form of every field tagged `hash:"true"` to *hash. Nested
+// struct fields are recursed into and contribute their own tagged fields. The
+// result is a concatenation used to detect configuration changes, not a
+// cryptographic digest — do not treat it as one.
+//
+// v must be the struct value matching t and hash must be non-nil; GetHash
+// appends to whatever is already there. It returns ErrUnsupportedFieldType for
+// a tagged field whose kind it cannot represent — supported kinds are string,
+// the signed integer kinds, bool, string slices, and pointer to string.
 func GetHash(t reflect.Type, v reflect.Value, hash *string) error {
 	for field := range t.Fields() {
 		fieldv := v.FieldByIndex(field.Index)

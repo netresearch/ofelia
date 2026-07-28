@@ -90,9 +90,18 @@ func Retry(ctx context.Context, policy *RetryPolicy, fn func() error) error {
 // CircuitBreakerState represents the state of a circuit breaker
 type CircuitBreakerState int
 
+// The states a CircuitBreaker moves through: it starts closed, opens once
+// maxFailures consecutive failures have been recorded, and after resetTimeout
+// admits trial calls in half-open before closing or opening again.
 const (
+	// StateClosed passes every call through; a success clears the failure count.
 	StateClosed CircuitBreakerState = iota
+	// StateOpen rejects calls with ErrCircuitBreakerOpen until resetTimeout has
+	// elapsed since the last failure.
 	StateOpen
+	// StateHalfOpen admits up to halfOpenMaxCalls trial calls, rejecting the rest
+	// with ErrCircuitBreakerHalfOpen; a success closes the breaker, a failure
+	// reopens it.
 	StateHalfOpen
 )
 

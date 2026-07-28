@@ -17,8 +17,14 @@ import (
 const errFmtWrapQuoted = "%w: %q"
 
 var (
+	// ErrEmptyScheduler was returned by Start when it was called with no jobs
+	// registered. Start now accepts an empty scheduler, so nothing returns
+	// this error; it is retained for API compatibility.
 	ErrEmptyScheduler = errors.New("unable to start an empty scheduler")
-	ErrEmptySchedule  = errors.New("unable to add a job with an empty schedule")
+	// ErrEmptySchedule is returned by AddJob and AddJobWithTags when the job's
+	// schedule string is empty. Jobs meant to run only on demand must use
+	// @triggered, @manual or @none rather than an empty schedule.
+	ErrEmptySchedule = errors.New("unable to add a job with an empty schedule")
 )
 
 // IsTriggeredSchedule returns true if the schedule string indicates the job
@@ -29,6 +35,16 @@ func IsTriggeredSchedule(schedule string) bool {
 	return schedule == TriggeredSchedule || schedule == ManualSchedule || schedule == NoneSchedule
 }
 
+// Scheduler owns the set of registered jobs and drives them through go-cron.
+// It handles registration and removal, name-based lookup, enable/disable,
+// manual triggering, the global middleware chain propagated to every job,
+// retries, and a concurrency limit shared across all entries.
+//
+// Construct it with NewScheduler or one of its variants; a zero value has no
+// cron instance and cannot run jobs. Methods are safe for concurrent use, and
+// the exported Jobs and Removed slices are mutated under the scheduler's own
+// lock — copy them (GetActiveJobs, GetRemovedJobs) rather than ranging over
+// them from another goroutine.
 type Scheduler struct {
 	Jobs    []Job
 	Removed []Job
@@ -92,6 +108,11 @@ func (cs *concurrencySemaphore) getCap() int {
 	return cs.cap
 }
 
+// NewScheduler returns a Scheduler with default settings: no metrics recorder,
+// go-cron's default minimum @every interval (1s), the real clock, and a limit
+// of 10 concurrent jobs. It does not start the cron loop — call Start for that.
+// Use NewSchedulerWithMetrics, NewSchedulerWithOptions or NewSchedulerWithClock
+// to change those defaults.
 func NewScheduler(l *slog.Logger) *Scheduler {
 	return NewSchedulerWithOptions(l, nil, 0)
 }
@@ -266,6 +287,13 @@ func (s *Scheduler) SetMaxConcurrentJobs(maxJobs int) {
 	s.concurrencySem.resize(maxJobs)
 }
 
+// SetMetricsRecorder installs the recorder used for retry metrics and stores it
+// on the scheduler. It can be called at any time, including while running.
+//
+// It does not retrofit the go-cron observability hooks (job start, completion,
+// scheduling and workflow results): those are wired only when a recorder is
+// passed at construction time, so pass one to NewSchedulerWithMetrics or
+// NewSchedulerWithOptions if you want them.
 func (s *Scheduler) SetMetricsRecorder(recorder MetricsRecorder) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -275,18 +303,33 @@ func (s *Scheduler) SetMetricsRecorder(recorder MetricsRecorder) {
 	}
 }
 
+// SetClock replaces the clock stored on the scheduler. It exists for tests and
+// does not change the clock go-cron schedules with, which is fixed at
+// construction — use NewSchedulerWithClock to drive scheduling from a fake
+// clock.
 func (s *Scheduler) SetClock(c Clock) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clock = c
 }
 
+// SetOnJobComplete registers a callback invoked after every job run with the
+// job's name and whether it succeeded (no error and the execution not marked
+// failed). Passing nil clears it. Only one callback is held; a second call
+// replaces the first.
+//
+// The callback runs synchronously on the job's own goroutine at the end of the
+// run, so it must not block. It may be changed while the scheduler is running:
+// each run snapshots it under the lock.
 func (s *Scheduler) SetOnJobComplete(callback func(jobName string, success bool)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onJobComplete = callback
 }
 
+// AddJob registers j under its configured name, equivalent to AddJobWithTags
+// with no tags. See AddJobWithTags for the registration semantics and the
+// errors returned.
 func (s *Scheduler) AddJob(j Job) error {
 	return s.AddJobWithTags(j)
 }
@@ -344,6 +387,10 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	return nil
 }
 
+// RemoveJob deregisters j so it will not fire again, blocks until any in-flight
+// invocation has finished, then drops it from the active jobs and appends it to
+// Removed. Removal is by name, so a job that was never registered is silently
+// ignored. The error return is always nil and exists for API stability.
 func (s *Scheduler) RemoveJob(j Job) error {
 	s.Logger.Info(fmt.Sprintf(
 		"Job deregistered (will not fire again) %q - %q - %q - ID: %v",
@@ -423,6 +470,15 @@ func (s *Scheduler) GetJobsByTag(tag string) []Job {
 	return jobs
 }
 
+// Start wires the job dependency graph into go-cron and starts the cron loop.
+// It does not block — the loop runs on its own goroutine — and always returns
+// nil, including for a scheduler with no jobs registered. A failure to build
+// the dependency graph is logged rather than returned, so that one misconfigured
+// dependency cannot take down scheduling for every other job.
+//
+// Jobs configured to run on startup fire once here, dispatched by go-cron.
+// Starting an already-running scheduler is handled by go-cron and does not
+// double-start the loop.
 func (s *Scheduler) Start() error {
 	s.mu.Lock()
 
@@ -458,6 +514,11 @@ func (s *Scheduler) Start() error {
 // DefaultStopTimeout is the default timeout for graceful shutdown.
 const DefaultStopTimeout = 30 * time.Second
 
+// Stop stops the cron loop and blocks for up to DefaultStopTimeout (30s) while
+// running jobs finish. It returns an error wrapping ErrSchedulerTimeout if they
+// have not finished by then — the jobs are not killed and may still be running
+// when it returns. Use StopWithTimeout for a different bound, or StopAndWait to
+// wait indefinitely.
 func (s *Scheduler) Stop() error {
 	return s.StopWithTimeout(DefaultStopTimeout)
 }

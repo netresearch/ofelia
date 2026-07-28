@@ -158,11 +158,13 @@ type Mount struct {
 // MountType represents the type of mount.
 type MountType string
 
+// Mount types accepted by Mount.Type and ServiceMount.Type. The values are the
+// mount-type strings the Docker API expects.
 const (
-	MountTypeBind   MountType = "bind"
-	MountTypeVolume MountType = "volume"
-	MountTypeTmpfs  MountType = "tmpfs"
-	MountTypeNpipe  MountType = "npipe"
+	MountTypeBind   MountType = "bind"   // host path mounted into the container
+	MountTypeVolume MountType = "volume" // named or anonymous Docker volume
+	MountTypeTmpfs  MountType = "tmpfs"  // in-memory filesystem, discarded with the container
+	MountTypeNpipe  MountType = "npipe"  // Windows named pipe
 )
 
 // BindOptions represents options for bind mounts.

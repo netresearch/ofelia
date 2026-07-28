@@ -19,6 +19,12 @@ import (
 
 // Note: The ServiceJob is loosely inspired by https://github.com/alexellis/jaas/
 
+// RunServiceJob runs a command as a one-shot Docker Swarm service: it creates
+// a service whose task has restart condition "none", polls that task until it
+// reaches a terminal state, and removes the service again unless Delete is
+// "false". The provider must be connected to a daemon acting as a Swarm
+// manager. Only the task's exit code is observed — unlike RunJob, no
+// container output is captured into the execution streams.
 type RunServiceJob struct {
 	BareJob  `mapstructure:",squash"`
 	Provider DockerProvider `json:"-"` // SDK-based Docker provider
@@ -44,6 +50,9 @@ type RunServiceJob struct {
 	MaxRuntime  time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 }
 
+// NewRunServiceJob returns a RunServiceJob bound to provider, which is the
+// Docker connection the swarm service is created and polled on. The caller
+// sets the remaining fields; Image is mandatory (see Validate).
 func NewRunServiceJob(provider DockerProvider) *RunServiceJob {
 	return &RunServiceJob{Provider: provider}
 }
@@ -71,6 +80,18 @@ func (j *RunServiceJob) Validate() error {
 	return nil
 }
 
+// Run pulls the image, creates the swarm service and blocks while polling its
+// tasks every 500ms until one reaches a terminal state. It returns nil for
+// task exit code 0, ErrUnexpected for -1 and for ExitCodeSwarmError (no
+// terminal task observed), NonZeroExitError otherwise, and ErrMaxTimeRunning
+// when MaxRuntime elapses first.
+//
+// The service is removed before Run returns unless Delete is "false"; if the
+// run context has already expired, removal runs on a fresh context
+// (jobCleanupTimeout) so no orphan service is left scheduled — see issue
+// #655. A failed removal is returned as the error only when the run itself
+// succeeded; otherwise the run's own error wins and the removal failure is
+// logged.
 func (j *RunServiceJob) Run(ctx *Context) error {
 	// Use the (deadline-bounded) middleware-chain context for cancellation
 	// propagation. The fallback to context.Background() lives in
@@ -178,12 +199,20 @@ func (j *RunServiceJob) buildService(ctx context.Context) (string, error) {
 	return serviceID, nil
 }
 
+// Exit codes for swarm service execution states
+// These are Ofelia-specific codes, not from Docker Swarm API
+// They indicate failure modes that don't map to container exit codes
 const (
-	// Exit codes for swarm service execution states
-	// These are Ofelia-specific codes, not from Docker Swarm API
-	// They indicate failure modes that don't map to container exit codes
-	ExitCodeSwarmError = -999 // Swarm orchestration error (task not found, service unavailable)
-	ExitCodeTimeout    = -998 // Max runtime exceeded before task completion
+	// ExitCodeSwarmError marks a swarm orchestration error (task not found,
+	// service unavailable) rather than an exit code reported by a task. It is
+	// also the initial value the watcher holds, so it is what remains when the
+	// watcher stops before any task reached a terminal state; watchContainer
+	// maps it to ErrUnexpected.
+	ExitCodeSwarmError = -999
+	// ExitCodeTimeout marks max runtime exceeded before task completion. No
+	// code path assigns it today — the timeout path returns ErrMaxTimeRunning
+	// instead of an exit code.
+	ExitCodeTimeout = -998
 )
 
 func (j *RunServiceJob) watchContainer(ctx context.Context, jobCtx *Context, svcID string) error {

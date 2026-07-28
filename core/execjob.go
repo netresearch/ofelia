@@ -13,6 +13,10 @@ import (
 	"github.com/netresearch/ofelia/core/domain"
 )
 
+// ExecJob runs a command inside an already-running container via
+// `docker exec`. The container named by Container must exist and be running;
+// Ofelia neither creates nor removes it, so state left behind by the command
+// persists in that container. See Run for the cancellation limitation.
 type ExecJob struct {
 	BareJob   `mapstructure:",squash"`
 	Provider  DockerProvider `json:"-"` // SDK-based Docker provider
@@ -41,6 +45,9 @@ type ExecJob struct {
 	ConsoleWidth  uint `gcfg:"console-width" mapstructure:"console-width" hash:"true"`
 }
 
+// NewExecJob returns an ExecJob bound to provider, which is the Docker
+// connection the exec session is created on. Container, the embedded BareJob
+// and the remaining options are set by the caller.
 func NewExecJob(provider DockerProvider) *ExecJob {
 	return &ExecJob{
 		Provider: provider,

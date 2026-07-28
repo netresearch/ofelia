@@ -44,11 +44,14 @@ var ErrNullJobValue = errors.New("persist: job entry is null (expected object)")
 // naturally and so new types can be added without renumbering.
 type JobType string
 
+// The job kinds the API can create, and therefore the only values that
+// legitimately appear in a state file's `type` field. Each corresponds to an
+// INI section family (job-run, job-exec, job-local, job-compose).
 const (
-	JobTypeRun     JobType = "run"
-	JobTypeExec    JobType = "exec"
-	JobTypeLocal   JobType = "local"
-	JobTypeCompose JobType = "compose"
+	JobTypeRun     JobType = "run"     // start a fresh container from an image
+	JobTypeExec    JobType = "exec"    // exec a command inside an already-running container
+	JobTypeLocal   JobType = "local"   // run a command on the host ofelia itself runs on
+	JobTypeCompose JobType = "compose" // docker compose run/exec against a service in a compose file
 )
 
 // Job is the per-entry on-disk representation. Carries the union of

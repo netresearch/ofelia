@@ -81,12 +81,15 @@ type SwarmInfo struct {
 // LocalNodeState represents the state of the local Swarm node.
 type LocalNodeState string
 
+// Swarm membership states reported for the local node. The values are the
+// LocalNodeState strings the Docker API returns; an empty string means the
+// daemon did not report a state at all.
 const (
-	LocalNodeStateInactive LocalNodeState = "inactive"
-	LocalNodeStatePending  LocalNodeState = "pending"
-	LocalNodeStateActive   LocalNodeState = "active"
-	LocalNodeStateError    LocalNodeState = "error"
-	LocalNodeStateLocked   LocalNodeState = "locked"
+	LocalNodeStateInactive LocalNodeState = "inactive" // swarm mode is not enabled on this node
+	LocalNodeStatePending  LocalNodeState = "pending"  // joining a swarm, not yet a member
+	LocalNodeStateActive   LocalNodeState = "active"   // participating in a swarm
+	LocalNodeStateError    LocalNodeState = "error"    // swarm membership is broken; see SwarmInfo.Error
+	LocalNodeStateLocked   LocalNodeState = "locked"   // autolock is on; the manager needs unlocking first
 )
 
 // Peer represents a remote manager in the swarm.

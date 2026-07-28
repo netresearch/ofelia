@@ -16,6 +16,11 @@ import (
 	"github.com/netresearch/ofelia/core/domain"
 )
 
+// RunJob runs a command in a container of its own: it ensures Image is
+// present, creates a container per run, starts it, waits for it to exit and
+// then removes it unless Delete is "false". Setting Container instead of
+// Image reuses an existing container by name — that one is started but never
+// created or removed by Ofelia. Validate requires one of the two.
 type RunJob struct {
 	BareJob  `mapstructure:",squash"`
 	Provider DockerProvider `json:"-"` // SDK-based Docker provider
@@ -80,6 +85,10 @@ type RunJob struct {
 	mu          sync.RWMutex // Protect containerID access
 }
 
+// NewRunJob returns a RunJob bound to provider, which is the Docker
+// connection the container is created and watched on. The caller sets Image
+// or Container plus the remaining fields; Validate rejects a job with
+// neither.
 func NewRunJob(provider DockerProvider) *RunJob {
 	return &RunJob{
 		Provider: provider,
@@ -134,6 +143,17 @@ func entrypointSlice(ep *string) []string {
 // for a healthy daemon, short enough to fail loudly on a wedged one.
 const jobCleanupTimeout = 30 * time.Second
 
+// Run creates or looks up the container, starts it and blocks until it exits,
+// then copies the logs produced since the start of this run to the
+// execution's output stream. It returns nil for exit code 0, ErrUnexpected
+// for -1, NonZeroExitError otherwise, and ErrMaxTimeRunning when MaxRuntime
+// or the run context expires before the container finishes.
+//
+// A container created by this run is removed before Run returns, unless
+// Delete is "false". If the run context has already expired at that point,
+// teardown switches to a fresh context (jobCleanupTimeout) and stops the
+// container before removing it, so an expired deadline does not leave the
+// container behind — see issue #655.
 func (j *RunJob) Run(ctx *Context) error {
 	pull, _ := strconv.ParseBool(j.Pull)
 	// Use the (deadline-bounded) middleware-chain context for cancellation

@@ -10,6 +10,9 @@ import (
 	cron "github.com/netresearch/go-cron"
 )
 
+// Clock abstracts the parts of the time package that scheduling code depends
+// on, so tests can drive it with a FakeClock instead of waiting in real time.
+// Durations have the same meaning as in their time package counterparts.
 type Clock interface {
 	Now() time.Time
 	NewTicker(d time.Duration) Ticker
@@ -26,6 +29,8 @@ type Timer interface {
 	Reset(d time.Duration) bool
 }
 
+// Ticker delivers ticks on a channel at a fixed interval, mirroring
+// time.Ticker. Stop halts delivery but does not close the channel.
 type Ticker interface {
 	C() <-chan time.Time
 	Stop()
@@ -33,6 +38,7 @@ type Ticker interface {
 
 type realClock struct{}
 
+// NewRealClock returns a Clock backed directly by the time package.
 func NewRealClock() Clock {
 	return &realClock{}
 }
@@ -87,14 +93,22 @@ func (t *realTicker) Stop() {
 
 var defaultClock Clock = NewRealClock()
 
+// SetDefaultClock replaces the process-wide clock returned by GetDefaultClock.
+// It is not safe for concurrent use: call it from a test before any scheduler
+// is created and restore the previous clock afterwards.
 func SetDefaultClock(c Clock) {
 	defaultClock = c
 }
 
+// GetDefaultClock returns the clock used by schedulers that are created without
+// an explicit one. It is a real clock unless SetDefaultClock replaced it.
 func GetDefaultClock() Clock {
 	return defaultClock
 }
 
+// FakeClock is a Clock whose time only moves when Advance or Set is called.
+// Tickers, timers and After channels derived from it fire in chronological
+// order as time is moved forward. All methods are safe for concurrent use.
 type FakeClock struct {
 	mu       sync.RWMutex
 	now      time.Time
@@ -109,6 +123,7 @@ type waiter struct {
 	ch       chan time.Time
 }
 
+// NewFakeClock returns a FakeClock that reports start until it is advanced.
 func NewFakeClock(start time.Time) *FakeClock {
 	return &FakeClock{
 		now:      start,
@@ -116,12 +131,16 @@ func NewFakeClock(start time.Time) *FakeClock {
 	}
 }
 
+// Now returns the clock's current fake time.
 func (c *FakeClock) Now() time.Time {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.now
 }
 
+// NewTicker returns a Ticker that fires every d of fake time. Its channel holds
+// a single tick; ticks produced while that buffer is full are dropped, as with
+// time.Ticker. The ticker is tracked by the clock until it is stopped.
 func (c *FakeClock) NewTicker(d time.Duration) Ticker {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -136,6 +155,8 @@ func (c *FakeClock) NewTicker(d time.Duration) Ticker {
 	return ft
 }
 
+// NewTimer returns a Timer that fires once, d of fake time from now. Resetting
+// it schedules the next firing relative to the clock's time at that moment.
 func (c *FakeClock) NewTimer(d time.Duration) Timer {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -149,6 +170,8 @@ func (c *FakeClock) NewTimer(d time.Duration) Timer {
 	return ft
 }
 
+// After returns a channel that receives the fake time once d has elapsed on
+// this clock. A non-positive d delivers the current time immediately.
 func (c *FakeClock) After(d time.Duration) <-chan time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -166,6 +189,9 @@ func (c *FakeClock) After(d time.Duration) <-chan time.Time {
 	return ch
 }
 
+// Sleep blocks until the clock has moved d forward, returning at once for a
+// non-positive d. Only Advance or Set unblocks it, so the code advancing the
+// clock must run in another goroutine.
 func (c *FakeClock) Sleep(d time.Duration) {
 	if d <= 0 {
 		return
@@ -173,6 +199,8 @@ func (c *FakeClock) Sleep(d time.Duration) {
 	<-c.After(d)
 }
 
+// Advance moves the clock forward by d, stopping at each ticker, timer and
+// After deadline in the interval so events fire in chronological order.
 func (c *FakeClock) Advance(d time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -181,6 +209,8 @@ func (c *FakeClock) Advance(d time.Duration) {
 	c.advanceTo(target)
 }
 
+// Set moves the clock to t, firing the events in between as Advance does.
+// Setting a time in the past fires nothing and only changes what Now reports.
 func (c *FakeClock) Set(t time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -281,10 +311,14 @@ func (c *FakeClock) fireTimers() {
 	}
 }
 
+// WaitForAdvance blocks until an Advance or Set has completed. Completions are
+// buffered, so a call may return immediately for an earlier advance.
 func (c *FakeClock) WaitForAdvance() {
 	<-c.advanced
 }
 
+// TickerCount returns how many tickers created from this clock have not been
+// stopped, letting tests assert that scheduling code cleans up after itself.
 func (c *FakeClock) TickerCount() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -345,14 +379,21 @@ func (t *fakeTimer) Reset(d time.Duration) bool {
 	return wasActive
 }
 
+// CronClock is a FakeClock that also satisfies the clock interface of
+// github.com/netresearch/go-cron, which requires NewTimer to return a
+// cron.Timer. Pass it to cron.WithClock (see NewSchedulerWithClock) to step a
+// scheduler's cron engine through time from a test.
 type CronClock struct {
 	*FakeClock
 }
 
+// NewCronClock returns a CronClock over a fresh FakeClock starting at start.
 func NewCronClock(start time.Time) *CronClock {
 	return &CronClock{FakeClock: NewFakeClock(start)}
 }
 
+// NewTimer shadows FakeClock.NewTimer to return the embedded timer as a
+// cron.Timer. The timer itself is the same one FakeClock hands out.
 func (c *CronClock) NewTimer(d time.Duration) cron.Timer {
 	return c.FakeClock.NewTimer(d)
 }

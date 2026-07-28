@@ -12,6 +12,11 @@ import (
 // TriggerType defines when a webhook notification should be sent
 type TriggerType string
 
+// The accepted values of a webhook's `trigger` setting, matched by
+// (*WebhookConfig).ShouldNotify against the outcome of each execution. An
+// empty value is also accepted by Validate and is replaced with the default
+// (TriggerError) by ApplyDefaults; any value ShouldNotify does not recognize
+// falls back to error-only behavior.
 const (
 	TriggerAlways  TriggerType = "always"  // Send on every execution
 	TriggerError   TriggerType = "error"   // Send only on errors

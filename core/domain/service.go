@@ -92,10 +92,12 @@ type ServiceRestartPolicy struct {
 // RestartCondition represents when to restart a task.
 type RestartCondition string
 
+// Conditions under which Swarm restarts a task. The values are the
+// restart-condition strings the Docker API expects.
 const (
-	RestartConditionNone      RestartCondition = "none"
-	RestartConditionOnFailure RestartCondition = "on-failure"
-	RestartConditionAny       RestartCondition = "any"
+	RestartConditionNone      RestartCondition = "none"       // never restart
+	RestartConditionOnFailure RestartCondition = "on-failure" // restart only after a non-zero exit
+	RestartConditionAny       RestartCondition = "any"        // restart regardless of exit status
 )
 
 // Placement represents placement constraints.
@@ -149,9 +151,11 @@ type EndpointSpec struct {
 // ResolutionMode represents the endpoint resolution mode.
 type ResolutionMode string
 
+// How clients resolve a service name to its tasks. The values are the
+// resolution-mode strings the Docker API expects.
 const (
-	ResolutionModeVIP   ResolutionMode = "vip"
-	ResolutionModeDNSRR ResolutionMode = "dnsrr"
+	ResolutionModeVIP   ResolutionMode = "vip"   // one virtual IP, load-balanced across the tasks
+	ResolutionModeDNSRR ResolutionMode = "dnsrr" // DNS round-robin over the task IPs, no virtual IP
 )
 
 // PortConfig represents a port configuration for a service.
@@ -166,6 +170,8 @@ type PortConfig struct {
 // PortProtocol represents the protocol for a port.
 type PortProtocol string
 
+// Transport protocols a published port can use. The values are the protocol
+// strings the Docker API expects.
 const (
 	PortProtocolTCP  PortProtocol = "tcp"
 	PortProtocolUDP  PortProtocol = "udp"
@@ -175,9 +181,11 @@ const (
 // PortPublishMode represents how a port is published.
 type PortPublishMode string
 
+// Where a published service port is reachable. The values are the
+// publish-mode strings the Docker API expects.
 const (
-	PortPublishModeIngress PortPublishMode = "ingress"
-	PortPublishModeHost    PortPublishMode = "host"
+	PortPublishModeIngress PortPublishMode = "ingress" // reachable on every swarm node via the routing mesh
+	PortPublishModeHost    PortPublishMode = "host"    // reachable only on nodes actually running a task
 )
 
 // ServiceEndpoint represents the endpoint info for a service.
@@ -217,6 +225,11 @@ type ContainerStatus struct {
 // TaskState represents the state of a task.
 type TaskState string
 
+// The lifecycle states a Swarm task moves through, listed in the order the
+// orchestrator normally reaches them. The values are the task-state strings
+// the Docker API reports. Complete, Shutdown, Failed, Rejected and Orphaned
+// are final — use TaskState.IsTerminalState rather than comparing against
+// them by hand.
 const (
 	TaskStateNew       TaskState = "new"
 	TaskStatePending   TaskState = "pending"

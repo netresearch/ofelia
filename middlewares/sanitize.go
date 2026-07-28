@@ -130,7 +130,11 @@ func (ps *PathSanitizer) ValidateSaveFolder(folder string) error {
 	return nil
 }
 
-// Default sanitizer instance
+// DefaultSanitizer is the package-level PathSanitizer backing the
+// SanitizePath, SanitizeFilename and SanitizeJobName helpers. Its rules are
+// fixed at init and never mutated afterwards, so it is safe for concurrent
+// use; replacing it is not, and callers wanting different rules should build
+// their own with NewPathSanitizer instead.
 var DefaultSanitizer = NewPathSanitizer()
 
 // SanitizePath is a convenience function using the default sanitizer
