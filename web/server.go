@@ -1013,6 +1013,9 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		s.tokenManager.RevokeToken(token)
 	}
 
+	// Mirrors the attributes used when the cookie was issued so the browser
+	// actually replaces it; see the issuing site in auth_secure.go.
+	// #nosec G124 -- Secure is set from the request scheme, MaxAge -1 clears the cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "auth_token",
 		Value:    "",

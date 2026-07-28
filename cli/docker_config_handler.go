@@ -281,7 +281,7 @@ func pingWithRetry(ctx context.Context, provider core.DockerProvider, count int,
 		select {
 		case <-time.After(backoff):
 		case <-ctx.Done():
-			return fmt.Errorf("Docker startup retry canceled: %w", ctx.Err())
+			return fmt.Errorf("docker startup retry canceled: %w", ctx.Err())
 		}
 	}
 	return lastErr

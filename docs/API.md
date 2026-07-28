@@ -22,7 +22,7 @@ Content-Type: application/json
 **Response:**
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token": "<jwt-token>",
   "expires": "2024-01-01T00:00:00Z"
 }
 ```
@@ -30,7 +30,7 @@ Content-Type: application/json
 #### Using the Token
 Include the JWT token in the Authorization header:
 ```http
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Authorization: Bearer <jwt-token>
 ```
 
 #### Refresh Token
@@ -42,7 +42,7 @@ Authorization: Bearer <current-token>
 **Response:**
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token": "<jwt-token>",
   "expires": "2024-01-01T00:00:00Z"
 }
 ```

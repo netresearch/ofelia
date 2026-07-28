@@ -80,6 +80,15 @@ linters:
       ignore-sig-regexps:
         - errors\.New\(
         - \*github\.com/netresearch/ofelia/core\.Context\)\.Next\(
+    staticcheck:
+      # Explicit selection instead of the blanket `text: "QF"` exclusion this
+      # replaces: that regex matched every QF#### check by message text, and
+      # also silently swallowed an ST1018 finding about invisible Unicode in a
+      # mail template. QF1008 (redundant embedded-field selector) is the one
+      # check excluded on purpose — it is pure style and fires widely here.
+      checks:
+        - all
+        - -QF1008
   exclusions:
     generated: lax
     presets:
@@ -132,15 +141,6 @@ linters:
       - linters:
           - tagliatelle
         path: middlewares/slack\.go
-      - linters:
-          - staticcheck
-        text: "QF"
-      - linters:
-          - staticcheck
-        text: "ST1005:"
-      - linters:
-          - staticcheck
-        text: "ST1018:"
       # Docker SDK deprecated types - will update when SDK breaks
       - linters:
           - staticcheck
@@ -253,3 +253,4 @@ formatters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  uniq-by-line: false

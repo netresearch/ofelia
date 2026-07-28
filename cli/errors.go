@@ -19,7 +19,7 @@ var (
 	ErrUsernameTooShort    = errors.New("username must be at least 3 characters")
 	ErrJobNameEmpty        = errors.New("job name cannot be empty")
 	ErrJobNameInvalid      = errors.New("job name must be alphanumeric with hyphens or underscores only")
-	ErrDockerImageEmpty    = errors.New("Docker image cannot be empty")
+	ErrDockerImageEmpty    = errors.New("docker image cannot be empty")
 	ErrCommandEmpty        = errors.New("command cannot be empty")
 	ErrScheduleEmpty       = errors.New("schedule cannot be empty")
 )

@@ -241,22 +241,22 @@ func (mc *Collector) Export() string {
 
 	for _, metric := range mc.metrics {
 		// Add HELP and TYPE comments
-		output.WriteString(fmt.Sprintf("# HELP %s %s\n", metric.Name, metric.Help))
-		output.WriteString(fmt.Sprintf("# TYPE %s %s\n", metric.Name, metric.Type))
+		fmt.Fprintf(&output, "# HELP %s %s\n", metric.Name, metric.Help)
+		fmt.Fprintf(&output, "# TYPE %s %s\n", metric.Name, metric.Type)
 
 		switch metric.Type {
 		case "counter", MetricTypeGauge:
-			output.WriteString(fmt.Sprintf("%s %f\n", metric.Name, metric.Value))
+			fmt.Fprintf(&output, "%s %f\n", metric.Name, metric.Value)
 
 		case "histogram":
 			if metric.Histogram != nil {
 				// Export histogram buckets
 				for bucket, count := range metric.Histogram.Bucket {
-					output.WriteString(fmt.Sprintf("%s_bucket{le=\"%g\"} %d\n", metric.Name, bucket, count))
+					fmt.Fprintf(&output, "%s_bucket{le=\"%g\"} %d\n", metric.Name, bucket, count)
 				}
-				output.WriteString(fmt.Sprintf("%s_bucket{le=\"+Inf\"} %d\n", metric.Name, metric.Histogram.Count))
-				output.WriteString(fmt.Sprintf("%s_count %d\n", metric.Name, metric.Histogram.Count))
-				output.WriteString(fmt.Sprintf("%s_sum %f\n", metric.Name, metric.Histogram.Sum))
+				fmt.Fprintf(&output, "%s_bucket{le=\"+Inf\"} %d\n", metric.Name, metric.Histogram.Count)
+				fmt.Fprintf(&output, "%s_count %d\n", metric.Name, metric.Histogram.Count)
+				fmt.Fprintf(&output, "%s_sum %f\n", metric.Name, metric.Histogram.Sum)
 			}
 		}
 

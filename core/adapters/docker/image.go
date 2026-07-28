@@ -198,6 +198,9 @@ func EncodeAuthConfig(auth domain.AuthConfig) (string, error) {
 		RegistryToken: auth.RegistryToken,
 	}
 
+	// The Docker API expects the credentials as base64-encoded JSON in the
+	// X-Registry-Auth header, so the password field has to be marshaled here.
+	// #nosec G117 -- registry auth payload required by the Docker API
 	encoded, err := json.Marshal(authConfig)
 	if err != nil {
 		return "", fmt.Errorf("encoding auth config: %w", err)

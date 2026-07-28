@@ -200,12 +200,12 @@ func (s *Sanitizer) ValidateDockerImage(image string) error {
 
 	// Check for suspicious patterns
 	if strings.Contains(image, "..") || strings.Contains(image, "//") {
-		return fmt.Errorf("Docker image name contains suspicious patterns")
+		return fmt.Errorf("docker image name contains suspicious patterns")
 	}
 
 	// Validate length
 	if len(image) > 255 {
-		return fmt.Errorf("Docker image name exceeds maximum length")
+		return fmt.Errorf("docker image name exceeds maximum length")
 	}
 
 	return nil

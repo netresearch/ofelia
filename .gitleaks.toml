@@ -1,4 +1,11 @@
 # Gitleaks configuration file
+#
+# A config file REPLACES gitleaks' built-in ruleset unless it extends it. Without
+# the [extend] block below this file defined an allowlist and no rules at all, so
+# the scan matched nothing and reported "no leaks found" for every input.
+[extend]
+useDefault = true
+
 [allowlist]
 description = "Allowlist for test files and legitimate test constants"
 

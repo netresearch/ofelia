@@ -188,7 +188,7 @@ func newSchedulerInternal(
 
 	cronInstance = cron.New(cronOpts...)
 
-	var clock Clock = GetDefaultClock()
+	clock := GetDefaultClock()
 	if cronClock != nil {
 		clock = cronClock.FakeClock
 	}
