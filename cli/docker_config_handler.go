@@ -18,6 +18,10 @@ import (
 	"github.com/netresearch/ofelia/core/domain"
 )
 
+// ErrNoContainerWithOfeliaEnabled is returned by GetDockerContainers when the
+// label filter matched nothing. It is an expected steady state, not a failure:
+// callers report it at debug level and still push the (empty) container list on,
+// so label-defined jobs of a container that disappeared get unregistered.
 var ErrNoContainerWithOfeliaEnabled = errors.New("couldn't find containers with label 'ofelia.enabled=true'")
 
 // dockerStartupPingTimeout bounds the construction-time sanity Ping calls
@@ -33,6 +37,13 @@ const dockerStartupPingTimeout = 10 * time.Second
 // transports these as plain strings.
 const dockerEventTypeContainer = "container"
 
+// DockerHandler owns the daemon's Docker connection and watches for anything
+// that should change the job set: container start/stop events, optional
+// container polling, and the mod-time of the INI config files. Each watcher
+// runs in its own goroutine started by NewDockerHandler: the container watchers
+// hand the current ofelia-labeled containers to the notifier, the config
+// watcher triggers an INI reload when that notifier is a *Config. Callers must
+// call Shutdown to stop those goroutines and close the provider.
 type DockerHandler struct {
 	ctx            context.Context //nolint:containedctx // holds lifecycle for background goroutines
 	cancel         context.CancelFunc
@@ -106,6 +117,14 @@ func resolveConfig(cfg *DockerConfig, logger *slog.Logger) (configPoll, dockerPo
 	return configPoll, dockerPoll, fallback, useEvents
 }
 
+// NewDockerHandler connects to Docker and starts the watchers configured in
+// cfg. Pass a provider to use an existing connection; nil builds an SDK-backed
+// one. Either way the daemon is pinged before returning — bounded by
+// dockerStartupPingTimeout per attempt and retried per cfg.StartupRetryCount —
+// so an unreachable daemon fails here instead of silently later. A nil ctx is
+// treated as context.Background(); the handler derives a cancelable child from
+// it that Shutdown (or cancellation of ctx) uses to stop the watchers.
+// On error nothing is left running.
 func NewDockerHandler(
 	ctx context.Context, //nolint:contextcheck // external callers provide base context; we derive cancelable child
 	notifier dockerContainersUpdate,
@@ -363,6 +382,13 @@ func (c *DockerHandler) refreshContainerLabels() {
 	c.notifier.dockerContainersUpdate(labels)
 }
 
+// GetDockerContainers lists the containers labeled ofelia.enabled=true (plus
+// any configured filters), reduced to the name, creation time, state and the
+// ofelia.* labels of each (plus the Compose service label used for job naming).
+// Stopped containers are included only when include-stopped is set, containers
+// left with no relevant label are dropped, and a filter that matches nothing
+// yields ErrNoContainerWithOfeliaEnabled rather than an empty slice. Returns an
+// error for a malformed filter or a failing Docker call.
 func (c *DockerHandler) GetDockerContainers() ([]DockerContainerInfo, error) {
 	filters, err := c.buildContainerFilters()
 	if err != nil {
@@ -572,6 +598,11 @@ func (c *DockerHandler) processEventStream(
 // watchEventsInitialBackoff is the reset value for the watchEvents reconnect backoff.
 const watchEventsInitialBackoff = 1 * time.Second
 
+// Shutdown cancels the handler context, blocks until every watcher goroutine
+// has returned, then closes the Docker provider. The ctx argument exists for
+// the shutdown-hook signature and is not honored — the wait is unbounded.
+// Errors from closing the provider are logged, so the return is always nil.
+// Safe to call more than once.
 func (c *DockerHandler) Shutdown(ctx context.Context) error {
 	if c.cancel != nil {
 		c.cancel()

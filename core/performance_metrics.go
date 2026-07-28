@@ -642,5 +642,8 @@ func (pm *PerformanceMetrics) GetSummaryReport() string {
 	return report
 }
 
-// Global enhanced metrics instance
+// GlobalPerformanceMetrics is the process-wide PerformanceMetrics instance,
+// created at package initialization for callers that have no recorder
+// injected. Its counters are shared by every user of the package, so Reset
+// affects all of them.
 var GlobalPerformanceMetrics = NewPerformanceMetrics()

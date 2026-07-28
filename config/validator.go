@@ -173,7 +173,12 @@ func (v *Validator) ValidatePath(field, value string) {
 	}
 }
 
-// ConfigValidator validates complete configuration
+// Validator2 validates a whole configuration object by reflection, rather
+// than field by field. Validate walks the exported fields of the struct it
+// was given (recursing into nested structs), derives each field's config key
+// from its gcfg/mapstructure tag, and reports the collected problems through
+// a freshly built [Validator]. Only string, int/int64 and slice fields are
+// inspected; other kinds are skipped. Construct with NewConfigValidator.
 type Validator2 struct {
 	config    any
 	sanitizer *Sanitizer

@@ -26,6 +26,12 @@ const (
 	httpsProto = "https"
 )
 
+// TokenData is the server-side record behind an issued auth token: the user it
+// was minted for and the instant it stops being accepted. Tokens themselves are
+// opaque random strings carrying no claims, so this record — held only in a
+// SecureTokenManager's in-memory map — is the sole authority on who a token
+// belongs to. It is therefore lost on restart, and revoking a token takes
+// effect immediately rather than at expiry.
 type TokenData struct {
 	Username  string    `json:"username"`
 	ExpiresAt time.Time `json:"expiresAt"`
@@ -51,6 +57,15 @@ type RateLimiter struct {
 	burst      int // burst size
 }
 
+// NewRateLimiter returns a limiter that refills each key's bucket at
+// ratePerMinute tokens per minute and lets burst of them be spent at once.
+// Keys are opaque to the limiter; the login path uses the client IP.
+//
+// ratePerMinute must be greater than zero — GetLimiter divides by it, so a
+// zero rate panics on the first request rather than at construction. Buckets
+// are created on demand and never expire by themselves, so a caller that can
+// vary its key grows the map unboundedly unless CleanupOldLimiters is called
+// periodically.
 func NewRateLimiter(ratePerMinute, burst int) *RateLimiter {
 	return &RateLimiter{
 		limiters:   make(map[string]*rate.Limiter),
@@ -60,6 +75,10 @@ func NewRateLimiter(ratePerMinute, burst int) *RateLimiter {
 	}
 }
 
+// GetLimiter returns the bucket for key, creating it on first use, and stamps
+// the access time that CleanupOldLimiters later uses to evict idle keys. Safe
+// for concurrent use; it takes the write lock on every call because of that
+// bookkeeping, so it is not a cheap read path.
 func (rl *RateLimiter) GetLimiter(key string) *rate.Limiter {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
@@ -74,6 +93,9 @@ func (rl *RateLimiter) GetLimiter(key string) *rate.Limiter {
 	return limiter
 }
 
+// Allow consumes one token from key's bucket and reports whether the attempt
+// may proceed. It never blocks: a false result means "reject now" (the login
+// handler answers 429), not "wait and retry".
 func (rl *RateLimiter) Allow(key string) bool {
 	limiter := rl.GetLimiter(key)
 	return limiter.Allow()
@@ -105,6 +127,17 @@ type SecureTokenManager struct {
 	closeOnce   sync.Once
 }
 
+// NewSecureTokenManager returns a manager that issues and tracks auth tokens
+// (valid for expiryHours) and one-time CSRF tokens (valid for one hour). Both
+// kinds are random values kept in memory and validated by lookup: they do not
+// survive a restart and are not shared between instances. secretKey is stored
+// on the manager but is not currently used to sign or derive anything, so
+// supplying one does not make tokens portable; an empty secretKey is replaced
+// by 32 random bytes, and the only error returned is a failure to read that
+// randomness.
+//
+// It starts a goroutine that sweeps expired tokens hourly, so every manager
+// must eventually be closed with Close.
 func NewSecureTokenManager(secretKey string, expiryHours int) (*SecureTokenManager, error) {
 	if secretKey == "" {
 		// Generate a cryptographically secure random key
@@ -264,6 +297,21 @@ type SecureLoginHandler struct {
 	trustedProxies []*net.IPNet
 }
 
+// NewSecureLoginHandler returns the handler backing POST /api/login. Per
+// request it rate limits on the client IP through rl, requires a valid
+// one-time CSRF token in X-CSRF-Token, compares the submitted username against
+// config.Username in constant time and the password against
+// config.PasswordHash with bcrypt, and on success issues an auth token both in
+// the JSON body and as an HttpOnly, SameSite=Strict cookie.
+//
+// trustedProxies are the peers whose X-Forwarded-For and X-Real-IP headers are
+// believed when deriving that client IP; headers from any other peer are
+// ignored. Loopback is always trusted, so passing none still trusts a proxy on
+// the same host.
+//
+// It does not consult config.Enabled and does no authorization beyond the
+// credential check — deciding whether to mount it, and what an authenticated
+// user may then do, is the caller's job.
 func NewSecureLoginHandler(
 	config *SecureAuthConfig, tm *SecureTokenManager, rl *RateLimiter, trustedProxies ...*net.IPNet,
 ) *SecureLoginHandler {

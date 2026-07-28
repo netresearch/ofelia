@@ -9,6 +9,16 @@ import (
 	"sync/atomic"
 )
 
+// BareJob is the base type embedded by every job implementation (ExecJob,
+// RunJob, RunServiceJob, LocalJob, ComposeJob). It holds the fields the
+// scheduler reads — name, schedule, command, retry and dependency settings —
+// together with the middleware chain, the in-flight counter and a bounded
+// execution history, and supplies all of the Job interface except Run through
+// promoted methods. Embedders override Run to do the actual work.
+//
+// Field defaults come from the `default` struct tags applied during config
+// parsing. On a hand-built value HistoryLimit is 0, which keeps the history
+// unbounded.
 type BareJob struct {
 	Schedule string `hash:"true"`
 	Name     string `hash:"true"`
@@ -35,6 +45,9 @@ type BareJob struct {
 	cronID  uint64
 }
 
+// GetName returns the job's configured name. The name is the scheduler's
+// primary key: go-cron entry registration, lookup, removal, enable/disable and
+// manual triggering all address a job by it.
 func (j *BareJob) GetName() string {
 	return j.Name
 }
@@ -54,10 +67,17 @@ func (j *BareJob) GetOnFailure() []string {
 	return j.OnFailure
 }
 
+// GetSchedule returns the raw cron expression or keyword the job was configured
+// with, unparsed. Scheduler.AddJobWithTags rejects an empty schedule; the
+// @triggered, @manual and @none keywords register an entry that never fires on
+// its own (see IsTriggeredSchedule).
 func (j *BareJob) GetSchedule() string {
 	return j.Schedule
 }
 
+// GetCommand returns the configured command string. BareJob does not interpret
+// it — that is up to the embedding job type; the scheduler only uses it for log
+// messages and as part of the change-detection hash.
 func (j *BareJob) GetCommand() string {
 	return j.Command
 }
@@ -67,27 +87,44 @@ func (j *BareJob) ShouldRunOnStartup() bool {
 	return j.RunOnStartup
 }
 
+// Running returns the number of invocations currently in flight, as maintained
+// by NotifyStart and NotifyStop. Safe for concurrent use.
 func (j *BareJob) Running() int32 {
 	return atomic.LoadInt32(&j.running)
 }
 
+// NotifyStart increments the in-flight counter. Context.Start calls it when an
+// execution begins; every call must be paired with a NotifyStop or Running will
+// never return to zero. Safe for concurrent use.
 func (j *BareJob) NotifyStart() {
 	atomic.AddInt32(&j.running, 1)
 }
 
+// NotifyStop decrements the in-flight counter. Context.Stop calls it once the
+// execution has finished. Safe for concurrent use.
 func (j *BareJob) NotifyStop() {
 	atomic.AddInt32(&j.running, -1)
 }
 
+// GetCronJobID returns the go-cron entry ID assigned when the job was
+// registered, or 0 if it has not been added to a scheduler yet.
 func (j *BareJob) GetCronJobID() uint64 {
 	return j.cronID
 }
 
+// SetCronJobID records the go-cron entry ID for the job.
+// Scheduler.AddJobWithTags calls it right after registration. It is not
+// synchronized, so it must not be called while the job is scheduled.
 func (j *BareJob) SetCronJobID(id uint64) {
 	j.cronID = id
 }
 
-// Returns a hash of all the job attributes. Used to detect changes
+// Hash returns a change-detection key over the job's `hash:"true"` fields —
+// schedule, name, command and run-on-startup — so a reload can tell whether a
+// job definition actually changed. It is a plain concatenation produced by
+// GetHash, not a cryptographic digest, and returns an error if a tagged field
+// has a type GetHash cannot represent. Job types with extra significant fields
+// (RunJob) override this method.
 func (j *BareJob) Hash() (string, error) {
 	var hash string
 	if err := GetHash(reflect.TypeFor[BareJob](), reflect.ValueOf(j).Elem(), &hash); err != nil {

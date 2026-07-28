@@ -23,6 +23,11 @@ import (
 // bound for a disk read. See issues #638 / #655.
 const localJobEnvResolveTimeout = 10 * time.Second
 
+// LocalJob runs a command directly on the host Ofelia runs on, outside any
+// container. The child inherits Ofelia's own environment, extended by
+// EnvFile and Environment; EnvFrom is accepted but inert on this path
+// because no Docker provider is passed to the resolver (see
+// localJobEnvResolveTimeout).
 type LocalJob struct {
 	BareJob     `mapstructure:",squash"`
 	Dir         string   `hash:"true"`
@@ -31,10 +36,19 @@ type LocalJob struct {
 	EnvFrom     []string `gcfg:"env-from" mapstructure:"env-from," hash:"true"`
 }
 
+// NewLocalJob returns an empty LocalJob; the caller fills in the embedded
+// BareJob, Dir and the environment fields.
 func NewLocalJob() *LocalJob {
 	return &LocalJob{}
 }
 
+// Run looks up the binary on PATH, resolves the environment and executes the
+// command in Dir, blocking until the process exits. Returns ErrEmptyCommand
+// for an empty command, a lookup error when the binary is not on PATH, the
+// env-resolution error, or the process's exit error. Output is streamed to
+// the execution's stdout/stderr streams. The child process is not tied to the
+// run context: canceling the run, or a max-runtime deadline, does not kill
+// it.
 func (j *LocalJob) Run(ctx *Context) error {
 	cmd, err := j.buildCommand(ctx)
 	if err != nil {

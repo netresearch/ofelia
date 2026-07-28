@@ -26,6 +26,13 @@ import (
 	"github.com/netresearch/ofelia/static"
 )
 
+// Server is the HTTP front end of a running scheduler: the JSON API under
+// /api, the embedded single-page UI, and — once RegisterHealthEndpoints has
+// been called — the health and readiness probes. It owns the middleware chain
+// (rate limiting, security headers, optional token auth) and the bookkeeping
+// that decides which jobs the API is allowed to mutate.
+//
+// Build one with NewServer or NewServerWithAuth; the zero value is not usable.
 type Server struct {
 	addr           string
 	scheduler      *core.Scheduler
@@ -118,6 +125,14 @@ func (s *Server) HTTPServer() *http.Server { return s.srv }
 // GetHTTPServer returns the underlying http.Server for graceful shutdown support
 func (s *Server) GetHTTPServer() *http.Server { return s.srv }
 
+// NewServer builds an unauthenticated Server on addr for scheduler s. cfg is
+// the parsed configuration served by /api/config and reflected over to tell
+// config-owned jobs from API-created ones; provider is the Docker client the
+// handlers use.
+//
+// This is NewServerWithAuth with no auth config: every route, including the
+// job create/update/delete endpoints, is reachable without credentials, so
+// only bind it where that is acceptable. Returns nil if construction failed.
 func NewServer(addr string, s *core.Scheduler, cfg any, provider core.DockerProvider) *Server {
 	return NewServerWithAuth(addr, s, cfg, provider, nil)
 }
@@ -155,6 +170,18 @@ func setupAuth(server *Server, authCfg *SecureAuthConfig) error {
 	return nil
 }
 
+// NewServerWithAuth builds a Server on addr and assembles its handler chain:
+// the API routes and embedded UI, wrapped in a 100-request-per-minute per-IP
+// rate limiter and the security headers, and — only when authCfg is non-nil
+// and Enabled — token authentication plus the /api/login, /api/logout,
+// /api/auth/status and /api/csrf-token endpoints. Authentication covers the
+// /api/ routes only: the static UI, the login/CSRF/auth-status endpoints and
+// the health probes stay reachable without a token. A nil or disabled authCfg
+// leaves everything open; there is no partial mode.
+//
+// Returns nil, after logging the reason, when the token manager cannot be
+// created or the embedded UI assets cannot be opened — callers must check for
+// nil rather than assume a usable server. Nothing is listening until Start.
 func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.DockerProvider, authCfg *SecureAuthConfig) *Server {
 	server := &Server{
 		addr:       addr,
@@ -222,8 +249,16 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 	return server
 }
 
+// Start serves in a background goroutine and returns immediately, always with
+// a nil error. ListenAndServe's error is discarded, so a failure to bind addr
+// shows up as refused connections rather than as a return value here — check
+// reachability if you need to know the listener came up. Stop with Shutdown.
 func (s *Server) Start() error { go func() { _ = s.srv.ListenAndServe() }(); return nil }
 
+// Shutdown stops the background goroutines of the rate limiter and the token
+// manager, then gracefully shuts the HTTP server down, letting in-flight
+// requests finish until ctx expires. A Server that has been shut down cannot
+// be started again.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.rl != nil {
 		s.rl.close()
@@ -237,6 +272,16 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// RegisterHealthEndpoints rebuilds the whole route table so that hc's /health,
+// /healthz, /ready and /live endpoints sit next to the API and UI routes, and
+// installs the result on the running http.Server. The probes stay exempt from
+// authentication but still pass through the security headers and the rate
+// limiter, which is replaced by a fresh one here, discarding the request
+// counters accumulated so far.
+//
+// Call it before Start: it assigns http.Server.Handler, which is racy once the
+// server is serving. It does nothing if the Server was not constructed
+// successfully.
 func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 	if s.srv == nil || s.srv.Handler == nil {
 		return

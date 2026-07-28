@@ -34,8 +34,14 @@ const (
 // JobSource indicates where a job configuration originated from.
 type JobSource string
 
+// Every job carries one of these so a reload can reconcile the two sources:
+// INI wins over labels — an INI job replaces a label-defined job of the same
+// name, and a label-defined job is ignored when an INI job already owns that
+// name. See reconcileParsedJob.
 const (
-	JobSourceINI   JobSource = "ini"
+	// JobSourceINI marks a job parsed from a [job-*] section of an INI file.
+	JobSourceINI JobSource = "ini"
+	// JobSourceLabel marks a job built from a container's ofelia.* labels.
 	JobSourceLabel JobSource = "label"
 )
 
@@ -105,6 +111,12 @@ type Config struct {
 	WebhookConfigs    *WebhookConfigs
 }
 
+// NewConfig returns a Config with empty job maps and every `default:` tag
+// applied, ready to be populated from an INI file or from container labels. The
+// webhook globals are seeded with their defaults and aliased into
+// WebhookConfigs.Global, so keys omitted from the [global] section keep those
+// defaults and later mutations of Global stay visible to the webhook subsystem.
+// No scheduler and no Docker connection exist yet — InitializeApp creates those.
 func NewConfig(logger *slog.Logger) *Config {
 	c := &Config{
 		ExecJobs:       make(map[string]*ExecJobConfig),
@@ -370,11 +382,14 @@ func getKnownKeysForJobType(jobType string) []string {
 	}
 }
 
-// BuildFromString builds a scheduler using the config from a string
-
 // newDockerHandler allows overriding Docker handler creation (e.g., for testing)
 var newDockerHandler = NewDockerHandler
 
+// BuildFromString is the in-memory counterpart of BuildFromFile: it parses
+// configStr as INI, warns about unknown keys, applies deprecation migrations
+// and, when strict validation is enabled, rejects an invalid configuration.
+// Jobs parsed here are marked JobSourceINI. It neither talks to Docker nor
+// creates a scheduler — call InitializeApp on the result for that.
 func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 	c := NewConfig(logger)
 	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, []byte(configStr))
@@ -420,7 +435,12 @@ func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 	return c, nil
 }
 
-// Call this only once at app init
+// InitializeApp turns a parsed Config into a runnable daemon: it creates the
+// scheduler, sets up notification deduplication, connects to Docker and merges
+// the label-defined jobs, initializes the webhook manager once both sources are
+// known, then attaches the middlewares and registers every job. Returns an
+// error when the Docker connection or the webhook manager cannot be set up.
+// Call this only once at app init.
 func (c *Config) InitializeApp() error {
 	c.sh = core.NewScheduler(c.logger)
 
@@ -1200,7 +1220,10 @@ func (c *Config) iniConfigUpdate() error {
 	return nil
 }
 
-// ExecJobConfig contains all configuration params needed to build a ExecJob
+// ExecJobConfig contains all configuration params needed to build a ExecJob:
+// the core job fields plus the per-job notification and webhook middleware
+// settings, decoded as one flat key space from a [job-exec "name"] INI section
+// or from the ofelia.job-exec.<name>.* labels of a container.
 type ExecJobConfig struct {
 	core.ExecJob              `mapstructure:",squash"`
 	middlewares.OverlapConfig `mapstructure:",squash"`
@@ -1246,10 +1269,21 @@ func (c *ExecJobConfig) buildMiddlewares(logger *slog.Logger, wm *middlewares.We
 		wm, c.GetWebhookNames())
 }
 
-func (c *ExecJobConfig) GetJobSource() JobSource  { return c.JobSource }
+// GetJobSource reports where this job was defined, INI or container labels.
+// Reload reconciliation reads it to apply INI-over-label precedence; the zero
+// value means the origin was never recorded and no precedence rule applies.
+func (c *ExecJobConfig) GetJobSource() JobSource { return c.JobSource }
+
+// SetJobSource records where this job was defined. It is set by the parser
+// (INI) or by markJobSource (labels), never by the operator: the field is
+// excluded from mapstructure decoding, so no config key can spoof an origin.
 func (c *ExecJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
-// RunServiceConfig contains all configuration params needed to build a RunJob
+// RunServiceConfig contains all configuration params needed to build a
+// RunServiceJob — a one-off Swarm service created from Image for each run and
+// (unless delete=false) removed again afterwards. Populated from a
+// [job-service-run "name"] INI section or the ofelia.job-service-run.<name>.*
+// container labels, together with the per-job middleware settings.
 type RunServiceConfig struct {
 	core.RunServiceJob        `mapstructure:",squash"`
 	middlewares.OverlapConfig `mapstructure:",squash"`
@@ -1260,9 +1294,19 @@ type RunServiceConfig struct {
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
-func (c *RunServiceConfig) GetJobSource() JobSource  { return c.JobSource }
+// GetJobSource reports where this job was defined, INI or container labels.
+func (c *RunServiceConfig) GetJobSource() JobSource { return c.JobSource }
+
+// SetJobSource records where this job was defined; see
+// ExecJobConfig.SetJobSource for who calls it and why it is not operator-settable.
 func (c *RunServiceConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
+// RunJobConfig contains all configuration params needed to build a RunJob —
+// a container started for each run: created from Image and removed afterwards
+// (delete=true by default), or, when container is set, an existing container
+// that is started but neither created nor removed. Populated from a
+// [job-run "name"] INI section or the ofelia.job-run.<name>.* container labels,
+// together with the per-job middleware settings.
 type RunJobConfig struct {
 	core.RunJob               `mapstructure:",squash"`
 	middlewares.OverlapConfig `mapstructure:",squash"`
@@ -1279,7 +1323,11 @@ func (c *RunJobConfig) buildMiddlewares(logger *slog.Logger, wm *middlewares.Web
 		wm, c.GetWebhookNames())
 }
 
-func (c *RunJobConfig) GetJobSource() JobSource  { return c.JobSource }
+// GetJobSource reports where this job was defined, INI or container labels.
+func (c *RunJobConfig) GetJobSource() JobSource { return c.JobSource }
+
+// SetJobSource records where this job was defined; see
+// ExecJobConfig.SetJobSource for who calls it and why it is not operator-settable.
 func (c *RunJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
 // Hash overrides BareJob.Hash() to include RunJob-specific fields
@@ -1291,7 +1339,12 @@ func (c *RunJobConfig) Hash() (string, error) {
 	return hash, nil
 }
 
-// LocalJobConfig contains all configuration params needed to build a RunJob
+// LocalJobConfig contains all configuration params needed to build a LocalJob
+// — a command run directly on the host Ofelia runs on, outside any container.
+// Populated from a [job-local "name"] INI section, or from
+// ofelia.job-local.<name>.* container labels only when the daemon opts in via
+// [global] allow-host-jobs-from-labels, since a labeled container could
+// otherwise make Ofelia execute arbitrary commands on the host.
 type LocalJobConfig struct {
 	core.LocalJob             `mapstructure:",squash"`
 	middlewares.OverlapConfig `mapstructure:",squash"`
@@ -1302,9 +1355,19 @@ type LocalJobConfig struct {
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
-func (c *LocalJobConfig) GetJobSource() JobSource  { return c.JobSource }
+// GetJobSource reports where this job was defined, INI or container labels.
+func (c *LocalJobConfig) GetJobSource() JobSource { return c.JobSource }
+
+// SetJobSource records where this job was defined; see
+// ExecJobConfig.SetJobSource for who calls it and why it is not operator-settable.
 func (c *LocalJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
+// ComposeJobConfig contains all configuration params needed to build a
+// ComposeJob — a `docker compose -f <file> run --rm <service>` invocation, or
+// `exec <service>` when exec=true, shelled out on the host Ofelia runs on.
+// Populated from a [job-compose "name"] INI section, or from
+// ofelia.job-compose.<name>.* container labels only when the daemon opts in via
+// [global] allow-host-jobs-from-labels, for the same reason as LocalJobConfig.
 type ComposeJobConfig struct {
 	core.ComposeJob           `mapstructure:",squash"`
 	middlewares.OverlapConfig `mapstructure:",squash"`
@@ -1315,7 +1378,11 @@ type ComposeJobConfig struct {
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
 }
 
-func (c *ComposeJobConfig) GetJobSource() JobSource  { return c.JobSource }
+// GetJobSource reports where this job was defined, INI or container labels.
+func (c *ComposeJobConfig) GetJobSource() JobSource { return c.JobSource }
+
+// SetJobSource records where this job was defined; see
+// ExecJobConfig.SetJobSource for who calls it and why it is not operator-settable.
 func (c *ComposeJobConfig) SetJobSource(s JobSource) { c.JobSource = s }
 
 func (c *LocalJobConfig) buildMiddlewares(logger *slog.Logger, wm *middlewares.WebhookManager) {
@@ -1336,6 +1403,12 @@ func (c *RunServiceConfig) buildMiddlewares(logger *slog.Logger, wm *middlewares
 		wm, c.GetWebhookNames())
 }
 
+// DockerConfig holds the daemon's Docker-side settings: which containers are
+// scanned for ofelia.* labels, how changes to them are detected (events,
+// polling, or both), how often the INI files are re-read, and how hard startup
+// tries to reach the daemon. Decoded from the [docker] INI section; most fields
+// are also settable via the daemon flags and OFELIA_DOCKER_* environment
+// variables named in the per-field comments. Consumed by NewDockerHandler.
 type DockerConfig struct {
 	Filters []string `mapstructure:"filters"`
 

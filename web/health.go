@@ -19,6 +19,12 @@ import (
 // HealthStatus represents the overall health status
 type HealthStatus string
 
+// The statuses a single check, and the aggregate health report, can carry.
+// GetHealth folds the individual checks into the worst status present, so one
+// unhealthy check makes the whole report unhealthy. Only the readiness
+// endpoint acts on the value, and only for Unhealthy: /ready answers 503 for
+// it and 200 for the other two, so a degraded ofelia stays in rotation.
+// /health and /healthz always answer 200 and put the status in the body.
 const (
 	HealthStatusHealthy   HealthStatus = "healthy"
 	HealthStatusDegraded  HealthStatus = "degraded"

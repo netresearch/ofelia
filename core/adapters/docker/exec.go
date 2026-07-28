@@ -40,7 +40,6 @@ func (s *ExecServiceAdapter) checkClient() error {
 	return nil
 }
 
-// Create creates an exec instance.
 // consoleSize maps the domain's optional [height, width] pair onto the SDK's
 // ConsoleSize struct. A nil pointer yields the zero struct, which the daemon
 // reads as "use the default size" — the same meaning the nil pointer carried
@@ -60,6 +59,14 @@ func consoleSize(tty bool, size *[2]uint) client.ConsoleSize {
 	return client.ConsoleSize{Height: size[0], Width: size[1]}
 }
 
+// Create prepares an exec instance inside containerID and returns its exec ID.
+// It only creates the instance — nothing runs until Start is called with that
+// ID, and detaching is likewise decided there, not here.
+//
+// Returns ErrNilDockerClient when the adapter holds no SDK client,
+// ErrNilExecConfig when config is nil, and a domain-mapped error (convertError)
+// for Docker API failures. config.ConsoleSize is forwarded only when
+// config.Tty is set; see consoleSize.
 func (s *ExecServiceAdapter) Create(ctx context.Context, containerID string, config *domain.ExecConfig) (string, error) {
 	if err := s.checkClient(); err != nil {
 		return "", err

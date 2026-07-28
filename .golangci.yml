@@ -228,9 +228,6 @@ linters:
           - paralleltest
           - tparallel
         path: e2e/.*_test\.go
-      - linters:
-          - revive
-        text: '^exported: '
     paths:
       - third_party$
       - builtin$
@@ -253,3 +250,6 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

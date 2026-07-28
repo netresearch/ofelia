@@ -12,7 +12,12 @@ import (
 )
 
 const (
-	// Metric type constants
+	// MetricTypeGauge is the value stored in Metric.Type for gauges, the one
+	// metric type whose value may be set or lowered rather than only
+	// incremented. SetGauge, adjustGauge and getGaugeValue all compare
+	// Metric.Type against it and silently do nothing for a name registered as
+	// some other type. The remaining types ("counter", "histogram") appear as
+	// literals.
 	MetricTypeGauge = "gauge"
 )
 
@@ -270,7 +275,12 @@ func (mc *Collector) Handler() http.HandlerFunc {
 	}
 }
 
-// DefaultMetrics initializes common metrics
+// InitDefaultMetrics registers the metrics ofelia exports out of the box —
+// job execution, service state, HTTP, Docker API, container monitoring, retry,
+// cron and workflow — then seeds ofelia_up to 1 and ofelia_jobs_running to 0.
+// Call it once, directly after NewCollector: registration replaces any metric
+// already held under the same name, so a second call discards every counter,
+// gauge and histogram value collected so far.
 func (mc *Collector) InitDefaultMetrics() {
 	// Job metrics
 	mc.RegisterCounter("ofelia_jobs_total", "Total number of jobs executed")

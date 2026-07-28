@@ -13,6 +13,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// HashPasswordCommand backs the `ofelia hash-password` subcommand, which
+// produces the bcrypt hash for the web UI's web-password-hash setting.
 type HashPasswordCommand struct {
 	Cost     int    `long:"cost" default:"12" description:"bcrypt cost factor (10-14 recommended)"`
 	LogLevel string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level"`
@@ -20,6 +22,12 @@ type HashPasswordCommand struct {
 	LevelVar *slog.LevelVar
 }
 
+// Execute prompts twice for a password (masked, minimum 8 characters), hashes
+// it with the configured bcrypt cost and prints the hash to stdout together
+// with the config-file and environment-variable snippets that use it. The
+// password is never echoed, logged or persisted. Returns an error when the
+// cost is outside the range bcrypt accepts, when a prompt is aborted, when the
+// two entries differ, or when hashing fails.
 func (c *HashPasswordCommand) Execute(_ []string) error {
 	if err := ApplyLogLevel(c.LogLevel, c.LevelVar); err != nil {
 		c.Logger.Warn(fmt.Sprintf("Failed to apply log level (using default): %v", err))

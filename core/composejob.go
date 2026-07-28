@@ -12,6 +12,11 @@ import (
 	"github.com/netresearch/ofelia/config"
 )
 
+// ComposeJob runs a command through the `docker compose` CLI on the host
+// Ofelia itself runs on — `compose run --rm <service>` by default, or
+// `compose exec <service>` when Exec is set. Unlike the other job types it
+// shells out instead of talking to the Docker API, so the docker binary
+// must be on Ofelia's PATH.
 type ComposeJob struct {
 	BareJob `mapstructure:",squash"`
 	File    string `default:"compose.yml" gcfg:"file" mapstructure:"file" hash:"true"`
@@ -19,8 +24,17 @@ type ComposeJob struct {
 	Exec    bool   `default:"false" gcfg:"exec" mapstructure:"exec" hash:"true"`
 }
 
+// NewComposeJob returns an empty ComposeJob; the caller fills in File,
+// Service and the embedded BareJob.
 func NewComposeJob() *ComposeJob { return &ComposeJob{} }
 
+// Run executes the compose command and blocks until the child process exits.
+// File, Service and the parsed command arguments are checked for command
+// injection first, so a malformed job fails before any process is started.
+// Errors cover a rejected argument, a docker binary missing from PATH, and a
+// non-zero exit status. Output is streamed to the execution's stdout/stderr
+// streams. The child process is not tied to the run context: canceling the
+// run, or a max-runtime deadline, does not kill it.
 func (j *ComposeJob) Run(ctx *Context) error {
 	cmd, err := j.buildCommand(ctx)
 	if err != nil {
