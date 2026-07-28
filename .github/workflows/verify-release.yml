@@ -5,31 +5,46 @@
 # every signature, the checksum manifest, build provenance, and the container
 # image. Running the documented commands is the only thing that keeps them
 # true — every one of them was wrong until #755, and nothing caught it.
+#
+# TRIGGER: the completion of the Release workflow, NOT `release: published`.
+# The release is created by that workflow using GITHUB_TOKEN, and GitHub does
+# not raise events from that token — so a `release` trigger here never fires
+# for an automated release. It was wired that way in #761 and silently did
+# nothing; the first tag afterwards, v0.28.1, produced no verification run.
 
 name: Verify Release
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to verify (e.g. v0.28.0)."
+        description: "Release tag to verify (e.g. v0.28.1)."
         type: string
         required: true
 
 permissions: {}
 
 concurrency:
-  group: verify-release-${{ github.event.release.tag_name || inputs.tag }}
+  group: verify-release-${{ github.event.workflow_run.head_branch || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
   # The container tag drops the leading "v" while the release tag keeps it, so
-  # ghcr.io/netresearch/ofelia:v0.28.0 does not exist and :0.28.0 does. GitHub
+  # ghcr.io/netresearch/ofelia:v0.28.1 does not exist and :0.28.1 does. GitHub
   # expressions cannot strip a prefix, hence this job.
   refs:
     name: Resolve refs
+    # A Release run that failed has nothing to verify. On workflow_run the tag
+    # arrives as head_branch, which is only a tag ref when the run came from a
+    # tag push — a Release run started any other way is skipped rather than
+    # verified against a branch name.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -46,11 +61,11 @@ jobs:
       - name: Resolve tag and image reference
         id: resolve
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RUN_TAG: ${{ github.event.workflow_run.head_branch }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${RELEASE_TAG:-$INPUT_TAG}"
+          TAG="${INPUT_TAG:-$RUN_TAG}"
           if [ -z "$TAG" ]; then
             echo "::error::no release tag to verify"
             exit 1
