@@ -72,7 +72,9 @@ func BuildFromFile(path string) (*Config, error) {
 ```ini
 [global]
 slack-webhook = https://hooks.slack.com/...
-docker-events = true
+
+[docker]
+events = true
 
 [job-exec "database-backup"]
 schedule = @midnight

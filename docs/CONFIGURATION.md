@@ -319,7 +319,7 @@ command = pg_dump ${DB_NAME:-mydb}
 
 ### Basic Structure
 
-```ini
+```ini no-validate
 [global]
 # Global configuration options
 
@@ -334,9 +334,10 @@ command = pg_dump ${DB_NAME:-mydb}
 ```ini
 [global]
 # Docker Configuration
-docker-host = unix:///var/run/docker.sock
-docker-poll-interval = 30s
-docker-events = true
+# The Docker daemon address comes from the DOCKER_HOST environment variable
+# (default unix:///var/run/docker.sock) — there is no INI key for it.
+# Event/polling settings (events, docker-poll-interval, ...) belong in the
+# [docker] section — see "Docker label configurations" in the README.
 allow-host-jobs-from-labels = false
 default-user = nobody        # Default for exec/run/service; empty uses container default
 
@@ -437,7 +438,6 @@ environment = DB_NAME=mydb,BACKUP_RETENTION=7
 tty = false                 # Allocate TTY
 console-height = 24         # Initial pseudo-TTY rows (only honored when tty=true; #235)
 console-width  = 80         # Initial pseudo-TTY columns
-delay = 5s                  # Delay before execution
 
 # Middleware Configuration
 slack-webhook = https://hooks.slack.com/...
@@ -449,7 +449,7 @@ email-subject = Database Backup Report
 save-folder = /logs/backups
 save-only-on-error = false
 
-overlap = false             # Prevent overlapping runs
+no-overlap = true           # Prevent overlapping runs
 ```
 
 ### RunJob - Execute in New Container
@@ -471,27 +471,23 @@ hostname = processor-job
 
 # Container Configuration
 environment = ENV=production,LOG_LEVEL=info
-volumes = /data:/data:ro,/output:/output:rw
-devices = /dev/fuse:/dev/fuse
-capabilities-add = SYS_ADMIN
-capabilities-drop = NET_RAW
-dns = 8.8.8.8,8.8.4.4
-labels = job=processor,env=prod
+volume = /data:/data:ro
+volume = /output:/output:rw
 working-dir = /app
-memory = 512m
-memory-swap = 1g
-cpu-shares = 512
-cpu-quota = 50000
+max-runtime = 1h            # Abort the run after this long
 
 # Cleanup
 delete = true               # Delete container after execution
-delete-timeout = 30s        # Timeout for deletion
 stop-signal = SIGINT        # Signal sent at stop time (#234); empty = image's STOPSIGNAL or SIGTERM
 stop-timeout = 30s          # Grace period before SIGKILL in cleanupOnDeadline (#234); 0 = legacy 10s default
-
-# Restart Policy
-restart-on-failure = 3      # Max restart attempts
 ```
+
+Ofelia does not set resource limits, capabilities, devices, DNS servers or
+container labels on the containers it creates — there are no configuration keys
+for them, and a key it does not recognize is ignored without a warning. Apply
+those settings where the container is defined instead: in the image, in the
+Compose service that ofelia execs into, or as daemon-wide defaults. See
+[Security](SECURITY.md#resource-limits) for how to constrain a job's resources.
 
 ### LocalJob - Execute on Host
 
@@ -504,10 +500,12 @@ schedule = @daily
 command = /usr/local/bin/cleanup.sh
 
 # Optional
-user = maintenance          # System user
 dir = /var/maintenance      # Working directory
 environment = CLEANUP_DAYS=30,LOG_FILE=/var/log/cleanup.log
 
+# Local jobs run as the user the ofelia process runs as; there is no way to
+# switch user per job. Use a wrapper (su, sudo, setpriv) in the command if a
+# job must run as someone else.
 # Security Warning: LocalJobs run with host privileges
 # Not available from Docker labels unless explicitly allowed
 ```
@@ -539,15 +537,17 @@ Manages Docker Compose projects.
 [job-compose "stack-restart"]
 # Required
 schedule = 0 4 * * *        # 4 AM daily
-project = myapp             # Project name
 command = restart           # Compose command
 
 # Optional
-service = web               # Specific service
-timeout = 300s              # Operation timeout
-dir = /opt/compose/myapp    # Working directory with docker-compose.yml
-environment = COMPOSE_PROJECT_NAME=myapp
+file = /opt/compose/myapp/compose.yml   # Compose file; default compose.yml
+service = web               # Limit the command to one service
+exec = false                # true runs `compose exec` instead of `compose run`
 ```
+
+`file`, `service` and `exec` are the only compose-specific keys. The project
+name and the working directory follow from the compose file's location, as they
+do for the `docker compose` CLI.
 
 ## Docker Labels Configuration
 
@@ -684,7 +684,7 @@ services:
 | Log level | ❌ No | ✅ `OFELIA_LOG_LEVEL` | ✅ `log-level` |
 | Save folder | ❌ No | ❌ No | ✅ `save-folder` |
 | Save only on error | ❌ No | ❌ No | ✅ `save-only-on-error` |
-| Docker host | ❌ No | ❌ No | ✅ `docker-host` |
+| Docker host | ❌ No | ✅ `DOCKER_HOST` | ❌ No |
 | Web UI | ❌ No | ✅ `OFELIA_ENABLE_WEB` | ✅ `enable-web` |
 | Webhook definitions | ✅ `ofelia.webhook.NAME.*` | ❌ No | ✅ `[webhook "NAME"]` |
 | Webhook assignment | ✅ `ofelia.job-*.NAME.webhooks` | ❌ No | ✅ `webhooks` in job section |
@@ -711,7 +711,7 @@ Standard cron expressions with seconds (optional):
 
 ### Preset Schedules
 
-```ini
+```text
 @yearly     # Run once a year (0 0 1 1 *)
 @annually   # Same as @yearly
 @monthly    # Run once a month (0 0 1 * *)
@@ -766,7 +766,6 @@ OFELIA_JOB_RUN_CLEANUP_IMAGE=alpine:3.18
 ```bash
 ofelia daemon \
   --config=/etc/ofelia/config.ini \
-  --docker-host=unix:///var/run/docker.sock \
   --docker-poll-interval=30s \
   --docker-events \
   --enable-web \
@@ -925,7 +924,7 @@ container = worker
 command = long-task.sh
 
 # Prevent overlapping runs
-overlap = false
+no-overlap = true
 ```
 
 ## Job Dependencies
@@ -1169,29 +1168,28 @@ When enabled, strict validation provides:
 1. **Use environment variables for secrets**
    ```ini
    smtp-password = ${SMTP_PASSWORD}
-   jwt-secret = ${JWT_SECRET}
+   web-secret-key = ${WEB_SECRET_KEY}
    ```
 
 2. **Enable Docker events for real-time updates**
    ```ini
-   docker-events = true
+   [docker]
+   events = true
    ```
 
-3. **Set appropriate job timeouts**
+3. **Bound how long a job may run** (`job-run` and `job-service-run` only)
    ```ini
-   delete-timeout = 30s
+   max-runtime = 1h
    ```
 
 4. **Use overlap prevention for long-running jobs**
    ```ini
-   overlap = false
+   no-overlap = true
    ```
 
-5. **Configure appropriate resource limits**
-   ```ini
-   memory = 512m
-   cpu-shares = 512
-   ```
+5. **Constrain job resources where the container is defined** — ofelia has no
+   keys for memory or CPU limits; set them on the image, the Compose service or
+   the Docker daemon's defaults.
 
 6. **Use save-only-on-error for debugging**
    ```ini
