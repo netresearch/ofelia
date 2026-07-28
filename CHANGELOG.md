@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-07-28
+
+A documentation and tooling release. The one change that reaches a running
+deployment is the mail template; the rest corrects what the documentation
+promised and makes the checks that should have caught it able to fail.
+
+### Security
+
+- **Secret scanning matched nothing.** `.gitleaks.toml` declared an allowlist and no rules, and a gitleaks config file *replaces* the built-in ruleset unless it extends it — so every scan reported "no leaks found" regardless of input. The config now extends the defaults. Verified by planting a token: it is reported with the fix and not without it. Turning the scan on surfaced four documentation examples, now unmistakable placeholders. One of them, an ntfy token in `docs/webhooks.md` and `middlewares/presets/ntfy-token.yaml`, has been in public history since 2025-12; it is not a live credential.
+
+### Fixed
+
+- **Notification mails no longer contain invisible characters.** The HTML mail body carried five U+200B zero-width spaces around the job name, duration and command. They shipped in every notification and are a known spam-filter signal.
+- **The documentation described 37 configuration keys that do not exist.** Ofelia ignores an unrecognized key without warning, so an operator who pasted these snippets got none of the promised behavior. Git history shows none of them was ever implemented. The dangerous ones were in `SECURITY.md` under container hardening — `memory`, `memory-swap`, `cpu-shares`, `cpu-quota`, `capabilities-add`, `capabilities-drop`, `dns`, `tmpfs` — presented as the way to constrain a job, while every line was discarded. **If you set any of them, your jobs were never constrained.** That section now states ofelia has no such keys and shows where the limits belong: on the Compose service for exec jobs, on the daemon for run jobs, per [ADR-002](docs/adr/ADR-002-security-boundaries.md). Also corrected: `max-runtime` is not available on `job-exec` and a `[global] max-runtime` does not reach it; `timeout`, `delay` and `max-concurrent-jobs` exist nowhere; `user` is not a `job-local` key; `job-compose` takes only `file`, `service` and `exec`.
+- **The release-verification instructions could not work.** Every command in `SECURITY.md` was wrong: the wrong signature file extensions, a signer workflow that does not exist, and a verifier pointed at assets no release ships. They are corrected and were executed against the published v0.28.0. The container image tag also drops the `v` that the release tag keeps — `v0.28.0` publishes `ghcr.io/netresearch/ofelia:0.28.0` — which the previous `<TAG>` placeholder hid behind a manifest-not-found error.
+- Nine packages, including the module root, rendered "There is no documentation for this package" on pkg.go.dev. Every package and every exported symbol is now documented.
+
+### Changed
+
+- Error messages now start lowercase, matching Go convention and the rest of the codebase. Anything matching on the leading capital of a message such as `Docker image cannot be empty` needs adjusting.
+
+### CI
+
+- The linters could not fail on much. Blanket staticcheck exclusions hid the mail template's invisible characters; golangci-lint capped output at 50 issues per linter, so a regression could hide behind the cap; and findings on a line another linter had already flagged were dropped. All three are off, and the checks run against the integration and e2e build tags as well.
+- New gates, each verified by breaking it: documented INI snippets are parsed with the real parser, so a renamed key cannot leave the docs behind; every HTTP route is held to a declared authentication expectation, closing the gap where a route registered outside `/api/` shipped reachable without a token; and each published release is re-verified with the commands `SECURITY.md` hands to users.
+
 ## [0.28.0] - 2026-07-27
 
 ### Security
