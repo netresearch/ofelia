@@ -102,12 +102,16 @@ gh attestation verify <artifact> \
 
 ### Verify Container Image
 
+The image tag has no `v` prefix, while the release tag does — release `v0.28.0`
+publishes `ghcr.io/netresearch/ofelia:0.28.0`. Pasting the release tag here
+fails with a manifest-not-found error rather than a signature error.
+
 ```bash
-cosign verify ghcr.io/netresearch/ofelia:<TAG> \
+cosign verify ghcr.io/netresearch/ofelia:0.28.0 \
   --certificate-identity-regexp "^https://github\.com/netresearch/\.github/\.github/workflows/release-go-app\.yml@" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
 
-gh attestation verify oci://ghcr.io/netresearch/ofelia:<TAG> \
+gh attestation verify oci://ghcr.io/netresearch/ofelia:0.28.0 \
   --repo netresearch/ofelia \
   --signer-workflow netresearch/.github/.github/workflows/release-go-app.yml
 ```

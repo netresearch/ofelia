@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025-2026 Netresearch DTT GmbH
+#
+# Re-verifies a published release the way a user following SECURITY.md would:
+# every signature, the checksum manifest, build provenance, and the container
+# image. Running the documented commands is the only thing that keeps them
+# true — every one of them was wrong until #755, and nothing caught it.
+
+name: Verify Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to verify (e.g. v0.28.0)."
+        type: string
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: verify-release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  # The container tag drops the leading "v" while the release tag keeps it, so
+  # ghcr.io/netresearch/ofelia:v0.28.0 does not exist and :0.28.0 does. GitHub
+  # expressions cannot strip a prefix, hence this job.
+  refs:
+    name: Resolve refs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      image: ${{ steps.resolve.outputs.image }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Resolve tag and image reference
+        id: resolve
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="${RELEASE_TAG:-$INPUT_TAG}"
+          if [ -z "$TAG" ]; then
+            echo "::error::no release tag to verify"
+            exit 1
+          fi
+          # The tag reaches $GITHUB_OUTPUT and, downstream, an image reference.
+          # Constrain it to what a tag may contain so nothing else can ride
+          # along, however the release was created.
+          case "$TAG" in
+            *[!A-Za-z0-9._-]*)
+              echo "::error::tag '$TAG' contains characters a release tag should not"
+              exit 1
+              ;;
+          esac
+          {
+            echo "tag=$TAG"
+            echo "image=ghcr.io/netresearch/ofelia:${TAG#v}"
+          } >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify
+    needs: refs
+    uses: netresearch/.github/.github/workflows/verify-release.yml@main
+    with:
+      tag: ${{ needs.refs.outputs.tag }}
+      container-image: ${{ needs.refs.outputs.image }}
+    permissions:
+      contents: read
+      attestations: read
+      id-token: write
