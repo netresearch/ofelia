@@ -218,7 +218,7 @@ allow-host-jobs-from-labels = false
 delete = true
 
 # Overlap prevention for critical jobs
-overlap = false
+no-overlap = true
 ```
 
 ### A05:2021 - Security Misconfiguration
@@ -571,28 +571,36 @@ err := cmdValidator.ValidateCommandArgs(args)
 
 ### Container Isolation
 
-**Resource Limits**:
+#### Resource Limits
+
+Ofelia has no configuration keys for memory limits, CPU limits, capabilities or
+devices, and it ignores keys it does not recognize without warning — so these
+cannot be set on the job. Constrain the container itself instead.
+
+For `job-exec`, the container already exists and its limits are whatever created
+it, typically a Compose service:
+
+```yaml
+services:
+  processor:
+    image: myapp:latest
+    mem_limit: 512m
+    cpus: 0.5
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+```
+
+For `job-run`, ofelia creates the container from the image, so the limits have
+to come from the daemon: set `default-ulimits` and a default runtime in
+`/etc/docker/daemon.json`, or run those workloads on a daemon configured for
+them. What the job can express is how long it may run:
+
 ```ini
 [job-run "isolated-job"]
 image = myapp:latest
 command = process-data
-
-# Memory limits
-memory = 512m
-memory-swap = 1g
-
-# CPU limits
-cpu-shares = 512
-cpu-quota = 50000
-```
-
-**Capabilities**:
-```ini
-# Drop dangerous capabilities
-capabilities-drop = NET_RAW,SYS_ADMIN,SYS_MODULE
-
-# Add only required capabilities
-capabilities-add = NET_BIND_SERVICE
+max-runtime = 30m
 ```
 
 **User Restrictions**:
@@ -615,27 +623,29 @@ network = app_isolated
 network = none
 ```
 
-**DNS Restrictions**:
-```ini
-# Internal DNS only
-dns = 10.0.0.1,10.0.0.2
-```
+**DNS Restrictions**: there is no `dns` key. A container inherits its resolver
+from the network it joins, so restrict DNS by attaching the job to a network
+whose resolver you control, or set `dns` on the Docker daemon.
 
 ### Volume Security
 
 **Read-Only Mounts**:
 ```ini
 # Read-only data volume
-volumes = /data:/data:ro
+volume = /data:/data:ro
 
 # Writable output only
-volumes = /output:/output:rw
+volume = /output:/output:rw
 ```
 
-**Tmpfs for Sensitive Data**:
-```ini
-# Temporary in-memory storage
-tmpfs = /tmp:rw,noexec,nosuid,size=100m
+**Tmpfs for Sensitive Data**: there is no `tmpfs` key either. Declare the mount
+on the container definition:
+
+```yaml
+services:
+  processor:
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=100m
 ```
 
 ### Image Security

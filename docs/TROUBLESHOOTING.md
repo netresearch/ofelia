@@ -89,9 +89,8 @@ ls -la /var/run/docker.sock
    ```
 
 3. **Docker socket path incorrect**:
-   ```ini
-   [global]
-   docker-host = unix:///var/run/docker.sock
+   ```bash
+   export DOCKER_HOST=unix:///var/run/docker.sock
    ```
 
 4. **Docker Desktop not started** (macOS/Windows):
@@ -155,9 +154,8 @@ docker exec ofelia id
    > Any local process can gain full Docker control, enabling privilege escalation
    > to root. Only use in isolated development environments, never in production.
 
-   ```ini
-   [global]
-   docker-host = tcp://localhost:2375
+   ```bash
+   export DOCKER_HOST=tcp://localhost:2375
    ```
 
    Enable TCP in Docker daemon:
@@ -344,7 +342,7 @@ See [#609](https://github.com/netresearch/ofelia/issues/609).
 - Any other scheme (e.g. `gopher://`, `tcp+ssh://`).
 
 **Solution**:
-Set `DOCKER_HOST` (or the `--docker-host` flag / `docker-host` config key)
+Set the `DOCKER_HOST` environment variable (or the `--docker-host` flag)
 to a value using one of the supported schemes above.
 
 ### TLS Handshake / Cert Path Errors (v0.24.1+)
@@ -640,7 +638,7 @@ grep -i "schedual" /etc/ofelia/config.ini
 **Solutions**:
 
 1. **Typo in field name**:
-   ```ini
+   ```ini no-validate
    # Wrong
    schedual = @daily
 
@@ -840,8 +838,8 @@ Fatal: Cannot start server: invalid JWT configuration
 2. **Configuration**:
    ```ini
    [global]
-   jwt-secret = ${JWT_SECRET}  # Minimum 32 characters
-   jwt-expiry-hours = 24
+   web-secret-key = ${JWT_SECRET}  # Minimum 32 characters
+   web-token-expiry = 24
    ```
 
 ### Invalid or Expired Token
@@ -878,7 +876,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/jobs
 3. **Increase token expiry**:
    ```ini
    [global]
-   jwt-expiry-hours = 168  # 1 week instead of 24 hours
+   web-token-expiry = 168  # 1 week instead of 24 hours
    ```
 
 ### Too Many Login Attempts
@@ -958,7 +956,7 @@ docker logs ofelia | grep "backup-db"
 4. **Overlap prevention blocking execution**:
    ```ini
    # Previous job still running
-   overlap = false  # Remove or set to true
+   no-overlap = true  # Remove or set to false
    ```
 
 ### Jobs Being Skipped
@@ -970,7 +968,7 @@ docker logs ofelia | grep "backup-db"
 
 **Root Cause**:
 
-When `overlap = false` (or `no-overlap: 'true'` in Docker labels), Ofelia prevents concurrent executions of the same job. If a previous execution appears to still be running (e.g., a hung process that never terminated), subsequent scheduled runs will be skipped.
+When `no-overlap = true` (or `no-overlap: 'true'` in Docker labels), Ofelia prevents concurrent executions of the same job. If a previous execution appears to still be running (e.g., a hung process that never terminated), subsequent scheduled runs will be skipped.
 
 Common causes of "stuck" jobs:
 - **Node.js**: Unhandled promise rejections don't exit by default
@@ -1025,7 +1023,7 @@ docker exec <container> ps aux | grep defunct
 4. **Temporarily disable overlap protection**:
    ```ini
    # For debugging - allows concurrent runs
-   overlap = true
+   no-overlap = false
    ```
 
 5. **Use shell wrapper with timeout**:
@@ -1078,10 +1076,10 @@ docker logs ofelia | grep "backup-db"
    # chmod +x /usr/local/bin/backup.sh
    ```
 
-3. **Container not ready**:
+3. **Container not ready**: there is no `delay` key — a job runs when its
+   schedule fires. Wait inside the command instead:
    ```ini
-   # Add delay before execution
-   delay = 10s
+   command = sh -c 'until pg_isready -q; do sleep 1; done; /usr/local/bin/backup.sh'
    ```
 
 4. **Script errors**:
@@ -1103,10 +1101,13 @@ Error: Container failed to respond
 
 **Solutions**:
 
-1. **Increase timeout**:
+1. **Raise the limit where it is set**: exec jobs have no `timeout` key, and
+   `max-runtime` applies only to `job-run` and `job-service-run`. A timeout on
+   an exec job therefore comes from the command or from the Docker daemon, not
+   from ofelia. Cap it explicitly if you want a known limit:
    ```ini
    [job-exec "long-task"]
-   timeout = 600s  # 10 minutes
+   command = timeout 600 /usr/local/bin/long-task.sh
    ```
 
 2. **Optimize task**:
@@ -1151,10 +1152,11 @@ docker inspect ofelia | grep Memory
              memory: 1G  # Increase from 512M
    ```
 
-2. **Optimize memory usage**:
+2. **Optimize memory usage**: ofelia has no cap on how many jobs run at once,
+   so spread the schedules apart rather than looking for a concurrency setting.
+   What it does offer is per-job overlap prevention and container cleanup:
    ```ini
-   # Limit concurrent jobs
-   max-concurrent-jobs = 3
+   no-overlap = true
 
    # Clean up after execution
    delete = true
@@ -1628,9 +1630,8 @@ Error: Rate limit exceeded
    ```
 
 3. **Wrong Docker host**:
-   ```ini
-   [global]
-   docker-host = unix:///var/run/docker.sock
+   ```bash
+   export DOCKER_HOST=unix:///var/run/docker.sock
    ```
 
 ### Scheduler Check Unhealthy
@@ -1805,11 +1806,9 @@ OOMKilled errors
    go tool pprof heap.out
    ```
 
-2. **Limit concurrent execution**:
-   ```ini
-   # Reduce parallel jobs
-   max-concurrent-jobs = 5
-   ```
+2. **Limit concurrent execution**: there is no setting for this. Stagger the
+   schedules of the heaviest jobs so they do not fire together, and set
+   `no-overlap = true` so a slow run does not stack on its own next tick.
 
 3. **Monitor and alert**:
    ```bash
@@ -1869,12 +1868,15 @@ df -h
 
 ### Profiling
 
-```bash
-# Enable profiling
+Enable profiling:
+
+```ini
 [global]
 enable-pprof = true
 pprof-address = :6060
+```
 
+```bash
 # Capture profiles
 curl http://localhost:6060/debug/pprof/goroutine > goroutine.out
 curl http://localhost:6060/debug/pprof/heap > heap.out

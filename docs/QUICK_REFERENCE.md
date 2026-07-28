@@ -411,13 +411,16 @@ command = /scripts/task.sh
 no-overlap = true               # ← Add this
 ```
 
-`max-runtime` is not available on `job-exec`; it applies to `job-run`,
-`job-service-run` and `[global]`. To bound an exec job, set the global
-default:
+`max-runtime` is not available on `job-exec`. It applies to `job-run` and
+`job-service-run`, and a `[global] max-runtime` seeds only those two — an exec
+job is never bounded by it, because the command runs inside a container ofelia
+did not create. To cap an exec job, put the limit in the command itself:
 
 ```ini
-[global]
-max-runtime = 50m
+[job-exec "worker-task"]
+schedule = @hourly
+container = worker
+command = timeout 50m /scripts/task.sh
 ```
 
 ## Performance Tips
@@ -432,7 +435,7 @@ OFELIA_POLL_INTERVAL=30s
 # 3. Use no-overlap for long-running jobs
 no-overlap = true
 
-# 4. Set appropriate max-runtime
+# 4. Bound run and service jobs
 max-runtime = 1h
 
 # 5. Limit history to reduce memory
@@ -452,7 +455,6 @@ container = postgres
 command = pg_dumpall -U postgres | gzip > /backups/$(date +\%Y\%m\%d).sql.gz
 user = postgres
 no-overlap = true
-max-runtime = 2h
 ```
 
 ### Log Rotation
@@ -650,7 +652,7 @@ mail-only-on-error = false
 - [ ] Set appropriate user for exec/run jobs
 - [ ] Use read-only volume mounts where possible
 - [ ] Enable audit logging (`save-only-on-error = false`)
-- [ ] Set `max-runtime` to prevent runaway jobs
+- [ ] Set `max-runtime` on run and service jobs to prevent runaway jobs
 - [ ] Use `no-overlap` for resource-intensive tasks
 - [ ] Validate all input in custom scripts
 - [ ] Keep Ofelia image updated

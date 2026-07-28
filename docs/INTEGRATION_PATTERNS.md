@@ -76,7 +76,6 @@ schedule = 0 1 * * 0  # Sunday 1 AM
 container = postgres
 command = vacuumdb --all --analyze --verbose
 user = postgres
-max-runtime = 2h
 no-overlap = true
 
 [job-exec "postgres-reindex"]
@@ -84,13 +83,12 @@ schedule = 0 1 1 * *  # First of month, 1 AM
 container = postgres
 command = reindexdb --all --verbose
 user = postgres
-max-runtime = 4h
 no-overlap = true
 ```
 
 **Best Practices**:
 - Set `no-overlap = true` for long-running maintenance
-- Use `max-runtime` to prevent runaway jobs
+- Cap the command itself (e.g. `timeout 2h ...`); `max-runtime` does not apply to exec jobs
 - Schedule during low-traffic periods
 - Monitor execution time trends via metrics
 
@@ -421,14 +419,12 @@ schedule = * * * * *  # Every minute
 container = worker
 command = /scripts/process-batch.sh --limit 100
 no-overlap = true
-max-runtime = 55s
 
 [job-exec "large-batch-processing"]
 schedule = 0 2 * * *  # Daily at 2 AM
 container = worker
 command = /scripts/process-all.sh --batch-size 1000
 no-overlap = true
-max-runtime = 4h
 ```
 
 ### Pattern: Concurrent Job Execution
@@ -567,7 +563,6 @@ schedule = 0 * * * *
 container = worker
 command = /scripts/process.sh
 no-overlap = true  # Prevent concurrent execution
-max-runtime = 50m  # Kill after 50 minutes
 ```
 
 ### Pattern: Gradual Rollout
@@ -595,7 +590,7 @@ command = /scripts/new-feature.sh --dry-run
 
 ### Scheduling
 ✅ Use `no-overlap = true` for long-running or resource-intensive jobs
-✅ Set appropriate `max-runtime` to prevent runaway jobs
+✅ Set `max-runtime` on run and service jobs to prevent runaway jobs
 ✅ Schedule maintenance during low-traffic periods
 ✅ Use cron expressions that distribute load (avoid XX:00 pileups)
 
