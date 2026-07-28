@@ -402,14 +402,22 @@ go tool pprof cpu.prof
 ```
 
 ### Jobs Overlapping
-```bash
+```ini
 # Add no-overlap to job config
 [job-exec "long-task"]
 schedule = @hourly
 container = worker
 command = /scripts/task.sh
 no-overlap = true               # ← Add this
-max-runtime = 50m               # ← And timeout
+```
+
+`max-runtime` is not available on `job-exec`; it applies to `job-run`,
+`job-service-run` and `[global]`. To bound an exec job, set the global
+default:
+
+```ini
+[global]
+max-runtime = 50m
 ```
 
 ## Performance Tips
