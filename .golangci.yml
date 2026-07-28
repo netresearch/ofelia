@@ -66,7 +66,6 @@ linters:
         - name: blank-imports
           disabled: true
         - name: package-comments
-          disabled: true
         - name: var-naming
         - name: exported
         - name: if-return
@@ -84,7 +83,6 @@ linters:
   exclusions:
     generated: lax
     presets:
-      - comments
       - common-false-positives
       - legacy
       - std-error-handling
@@ -230,6 +228,9 @@ linters:
           - paralleltest
           - tparallel
         path: e2e/.*_test\.go
+      - linters:
+          - revive
+        text: '^exported: '
     paths:
       - third_party$
       - builtin$
