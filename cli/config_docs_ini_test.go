@@ -43,7 +43,7 @@ type docsINIBlock struct {
 func TestDocumentedINIParses(t *testing.T) {
 	t.Parallel()
 
-	blocks := collectDocsINIBlocks(t)
+	blocks, _ := collectDocsINIBlocks(t)
 	if len(blocks) == 0 {
 		t.Fatal("no ```ini blocks found in any *.md file - extraction is broken")
 	}
@@ -70,6 +70,45 @@ func TestDocumentedINIParses(t *testing.T) {
 			checkSections(t, b, cfg, webhookKeys)
 			checkUnknownKeys(t, b, res)
 		})
+	}
+}
+
+// TestSkipMarkerUsageIsExactlyDeclared pins which snippets are exempt from
+// TestDocumentedINIParses. The marker is the one way to bypass that gate, and
+// it bypasses silently, so an unwanted key could be hidden by tagging its
+// block instead of fixing the docs. Listing the exemptions here means adding
+// one is a deliberate edit to this test, reviewed on its own merits.
+//
+// Both entries below are snippets that cannot be valid config by design.
+func TestSkipMarkerUsageIsExactlyDeclared(t *testing.T) {
+	t.Parallel()
+
+	// file -> why that file's snippet may not be parsed.
+	want := map[string]string{
+		"docs/CONFIGURATION.md":   `[job-TYPE "NAME"] placeholder schema, not a real section name`,
+		"docs/TROUBLESHOOTING.md": "shows a misspelled key so readers recognize the typo",
+	}
+
+	_, skipped := collectDocsINIBlocks(t)
+
+	got := make(map[string]int, len(skipped))
+	for _, b := range skipped {
+		got[b.file]++
+		if _, ok := want[b.file]; !ok {
+			t.Errorf("%s:%d: new %q exemption; fix the snippet, or add it to want here with the reason it cannot be valid config",
+				b.file, b.line, docsINISkipMarker)
+		}
+	}
+	for file, reason := range want {
+		switch got[file] {
+		case 1:
+		case 0:
+			t.Errorf("%s no longer uses %q (%s) - drop the entry from want",
+				file, docsINISkipMarker, reason)
+		default:
+			t.Errorf("%s uses %q %d times, expected 1 - a second exemption needs its own justification",
+				file, docsINISkipMarker, got[file])
+		}
 	}
 }
 
@@ -160,12 +199,13 @@ func allKnownINIKeys(webhookKeys map[string]bool) map[string]bool {
 }
 
 // collectDocsINIBlocks extracts the ```ini fenced blocks from every Markdown
-// file in the repository, skipping blocks whose fence info string carries
-// docsINISkipMarker. The file list is derived by walking the tree from the
-// repo root (located via go.mod), so a newly added document is covered without
-// touching this test. Only vendored/generated trees are excluded — they are
-// not this repo's documentation.
-func collectDocsINIBlocks(t *testing.T) []docsINIBlock {
+// file in the repository, returning the blocks to validate and, separately,
+// those whose fence info string carries docsINISkipMarker. The file list is
+// derived by walking the tree from the repo root (located via go.mod), so a
+// newly added document is covered without touching this test. Only
+// vendored/generated trees are excluded — they are not this repo's
+// documentation.
+func collectDocsINIBlocks(t *testing.T) (blocks, skipped []docsINIBlock) {
 	t.Helper()
 	repoRoot := filepath.Dir(findRepoFile(t, "go.mod"))
 
@@ -201,7 +241,7 @@ func collectDocsINIBlocks(t *testing.T) []docsINIBlock {
 	}
 	sort.Strings(paths)
 
-	blocks := make([]docsINIBlock, 0, len(paths))
+	blocks = make([]docsINIBlock, 0, len(paths))
 	for _, path := range paths {
 		data, err := os.ReadFile(path) // #nosec G304 -- test reads repo file by computed path
 		if err != nil {
@@ -211,15 +251,18 @@ func collectDocsINIBlocks(t *testing.T) []docsINIBlock {
 		if err != nil {
 			t.Fatalf("rel %s: %v", path, err)
 		}
-		blocks = append(blocks, extractINIBlocks(filepath.ToSlash(rel), string(data))...)
+		b, sk := extractINIBlocks(filepath.ToSlash(rel), string(data))
+		blocks = append(blocks, b...)
+		skipped = append(skipped, sk...)
 	}
-	return blocks
+	return blocks, skipped
 }
 
 // extractINIBlocks scans Markdown for ```ini fences. Nested fences are not a
-// concern: INI has no fenced-code syntax of its own.
-func extractINIBlocks(rel, content string) []docsINIBlock {
-	var blocks []docsINIBlock
+// concern: INI has no fenced-code syntax of its own. Blocks carrying the skip
+// marker are returned separately rather than dropped, so the exemptions stay
+// countable — see TestSkipMarkerUsageIsExactlyDeclared.
+func extractINIBlocks(rel, content string) (blocks, skipped []docsINIBlock) {
 	lines := strings.Split(content, "\n")
 	for i := 0; i < len(lines); i++ {
 		info, ok := iniFenceInfo(lines[i])
@@ -231,12 +274,14 @@ func extractINIBlocks(rel, content string) []docsINIBlock {
 		for i++; i < len(lines) && !strings.HasPrefix(strings.TrimSpace(lines[i]), "```"); i++ {
 			body = append(body, lines[i])
 		}
+		b := docsINIBlock{file: rel, line: start, body: strings.Join(body, "\n")}
 		if strings.Contains(info, docsINISkipMarker) {
+			skipped = append(skipped, b)
 			continue
 		}
-		blocks = append(blocks, docsINIBlock{file: rel, line: start, body: strings.Join(body, "\n")})
+		blocks = append(blocks, b)
 	}
-	return blocks
+	return blocks, skipped
 }
 
 // iniFenceInfo reports whether line opens an INI code fence and returns the rest
