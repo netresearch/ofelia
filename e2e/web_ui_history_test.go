@@ -24,6 +24,12 @@ import (
 // buried as a magic number in the waits below.
 const uiRefreshInterval = 5 * time.Second
 
+// noKeyMarker is what the expand step reports when the expanded <details>
+// carries no data-key — i.e. a build without the fix. It has to be
+// distinguishable from "no element at all", because those two mean very
+// different things about why the test could not find its row afterwards.
+const noKeyMarker = "NO_KEY"
+
 // TestE2E_WebUI_ExpandedOutputSurvivesRefresh drives the real web UI in a real
 // browser and pins the fix for https://github.com/netresearch/ofelia/issues/764.
 //
@@ -89,12 +95,31 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 	)
 
 	// The history table renders oldest run first, so the LAST output is the
-	// newest one - and the newest is the furthest away from eviction. Clicking
-	// the first would expand the entry that is about to be dropped.
-	const (
-		newestDetails = `document.querySelector('#history tbody details:last-of-type')`
-		newestSummary = `#history tbody tr:last-child details summary`
-	)
+	// newest one - and the newest is the furthest from eviction. Expanding the
+	// first would pick the entry that is about to be dropped.
+	//
+	// "Last" is resolved in JS over the full node list rather than with a CSS
+	// positional selector: each <details> sits alone in its own <td>, so
+	// `details:last-of-type` matches every one of them and querySelector then
+	// returns the FIRST. That mismatch - click the newest row, inspect the
+	// oldest - is exactly what broke this test once already.
+	//
+	// Locating and clicking happen in one expression so no refresh can slip
+	// between them and re-render the node under us. The trade-off is a
+	// synthetic click instead of a CDP input event; on a <summary> that still
+	// runs the browser's native toggle, which is the behavior under test.
+	const expandNewest = `(() => {
+		const all = document.querySelectorAll('` + historyDetails + `');
+		const d = all[all.length - 1];
+		if (!d) return '';
+		d.querySelector('summary').click();
+		return d.dataset.key || '` + noKeyMarker + `';
+	})()`
+	const newestIsOpen = `(() => {
+		const all = document.querySelectorAll('` + historyDetails + `');
+		const d = all[all.length - 1];
+		return d ? d.open === true : false;
+	})()`
 
 	var openAfterClick, openAfterRefresh, stillPresent bool
 	var keyAfterClick, keyAfterRefresh string
@@ -105,18 +130,24 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 		// Selecting the job opens the history panel and loads its runs.
 		chromedp.WaitVisible(jobRow, chromedp.ByQuery),
 		chromedp.Click(jobRow, chromedp.ByQuery),
-
-		// Expand the newest run's output.
 		chromedp.WaitVisible(historySummary, chromedp.ByQuery),
-		chromedp.Click(newestSummary, chromedp.ByQuery),
 
-		// Establish the precondition: it really is open, and note which
-		// execution it belongs to so we can find the same one afterwards.
-		chromedp.Evaluate(newestDetails+`.open`, &openAfterClick),
-		chromedp.Evaluate(newestDetails+`.dataset.key || ''`, &keyAfterClick),
+		// Wait for several runs before interacting. A single-row history would
+		// make "oldest" and "newest" the same element and hide selector bugs
+		// locally that only surface on a slower runner.
+		chromedp.Poll(`document.querySelectorAll('`+historyDetails+`').length >= 3`,
+			nil, chromedp.WithPollingTimeout(30*time.Second)),
+
+		// Expand the newest run's output and note which execution it is, so we
+		// can find the same one after the refresh.
+		chromedp.Evaluate(expandNewest, &keyAfterClick),
+		chromedp.Evaluate(newestIsOpen, &openAfterClick),
 	)
 	if err != nil {
 		t.Fatalf("driving the web UI failed: %v", err)
+	}
+	if keyAfterClick == "" {
+		t.Fatalf("no run with output found in the history table; nothing to expand")
 	}
 	if !openAfterClick {
 		t.Fatalf("output did not expand on click; the test cannot observe the refresh behavior")
@@ -134,7 +165,11 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 		chromedp.Sleep(uiRefreshInterval+2*time.Second),
 		chromedp.Evaluate(selectorForKey(keyAfterClick, historyDetails)+` !== null`, &stillPresent),
 		chromedp.Evaluate(selectorForKey(keyAfterClick, historyDetails)+`?.open === true`, &openAfterRefresh),
-		chromedp.Evaluate(`document.querySelector('#history tbody details:last-of-type')?.dataset.key || ''`, &keyAfterRefresh),
+		chromedp.Evaluate(`(() => {
+			const all = document.querySelectorAll('`+historyDetails+`');
+			const d = all[all.length - 1];
+			return d ? (d.dataset.key || '') : '';
+		})()`, &keyAfterRefresh),
 	)
 	if err != nil {
 		t.Fatalf("re-reading the expanded output after a refresh failed: %v", err)
@@ -162,12 +197,18 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 }
 
 // selectorForKey builds a JS expression that finds the <details> belonging to
-// one specific execution. Falls back to the first output when the build under
-// test does not key its rows, so the test reports "collapsed" rather than
-// dying on a JS error.
+// one specific execution.
+//
+// A build without the fix emits no data-key at all (noKeyMarker), so there is
+// nothing to look the row up by. It falls back to the last output — the same
+// one that was expanded — so the failure is reported as "collapsed" rather
+// than as a row that vanished from the history.
 func selectorForKey(key, fallbackSelector string) string {
-	if key == "" {
-		return `document.querySelector('` + fallbackSelector + `')`
+	if key == noKeyMarker {
+		return `(() => {
+			const all = document.querySelectorAll('` + fallbackSelector + `');
+			return all[all.length - 1] || null;
+		})()`
 	}
 	return fmt.Sprintf(`document.querySelector('#history tbody details[data-key="%s"]')`, key)
 }
