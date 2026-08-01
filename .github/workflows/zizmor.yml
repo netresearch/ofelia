@@ -1,0 +1,21 @@
+name: Zizmor
+
+# Static analysis of the repo's GitHub Actions workflows (https://zizmor.sh).
+# Report-only: the reusable runs in SARIF mode (exit 0 regardless of findings)
+# and uploads results to the Security / code-scanning tab, like CodeQL and
+# Scorecard. Findings surface as alerts; they never fail CI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  zizmor:
+    uses: netresearch/.github/.github/workflows/zizmor.yml@main
+    permissions:
+      contents: read
+      security-events: write
