@@ -581,9 +581,15 @@
       const tbody = document.querySelector('#history tbody');
       // Preserve which outputs the user has expanded so the periodic refresh
       // does not collapse them (keyed by run timestamp, unique per execution).
+      // Scoped to the job the table currently shows: on a job switch these rows
+      // still belong to the previously selected job, and its keys must not
+      // decide what is expanded in another job's history.
       const openOutputs = new Set(
-        Array.from(tbody.querySelectorAll('details[open]')).map(d => d.dataset.key)
+        tbody.dataset.job === name
+          ? Array.from(tbody.querySelectorAll('details[open]')).map(d => d.dataset.key)
+          : []
       );
+      tbody.dataset.job = name;
       tbody.innerHTML = '';
       if (hist.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="empty">No history yet.</td></tr>';
