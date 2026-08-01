@@ -45,13 +45,18 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 
 	addr := reserveLoopbackAddr(t)
 
-	// A local job on a short cadence so the history panel has a run with
-	// output to expand by the time the browser gets there.
+	// Cadence is a deliberate trade-off against history eviction. A job keeps
+	// the last `HistoryLimit` runs (default 10) and drops the OLDEST first, so
+	// at @every 1s an entry is evicted 10s after it appears - faster than this
+	// test's wait on a loaded runner, which would make a legitimately dropped
+	// row look like the collapse bug. At 2s the entry we expand needs ~20s to
+	// reach the cut, while new runs still arrive during the wait so the
+	// re-render is genuinely exercised.
 	configBody := `[global]
   log-level = info
 
 [job-local "e2e-web-output"]
-  schedule = @every 1s
+  schedule = @every 2s
   command = sh -c "echo OFELIA_E2E_WEB_OUTPUT"
 `
 	configPath := writeConfig(t, configBody)
@@ -83,7 +88,15 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 		historySummary = `#history tbody details summary`
 	)
 
-	var openAfterClick, openAfterRefresh bool
+	// The history table renders oldest run first, so the LAST output is the
+	// newest one - and the newest is the furthest away from eviction. Clicking
+	// the first would expand the entry that is about to be dropped.
+	const (
+		newestDetails = `document.querySelector('#history tbody details:last-of-type')`
+		newestSummary = `#history tbody tr:last-child details summary`
+	)
+
+	var openAfterClick, openAfterRefresh, stillPresent bool
 	var keyAfterClick, keyAfterRefresh string
 
 	err := chromedp.Run(ctx,
@@ -95,12 +108,12 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 
 		// Expand the newest run's output.
 		chromedp.WaitVisible(historySummary, chromedp.ByQuery),
-		chromedp.Click(historySummary, chromedp.ByQuery),
+		chromedp.Click(newestSummary, chromedp.ByQuery),
 
 		// Establish the precondition: it really is open, and note which
 		// execution it belongs to so we can find the same one afterwards.
-		chromedp.Evaluate(`document.querySelector('`+historyDetails+`').open`, &openAfterClick),
-		chromedp.Evaluate(`document.querySelector('`+historyDetails+`').dataset.key || ''`, &keyAfterClick),
+		chromedp.Evaluate(newestDetails+`.open`, &openAfterClick),
+		chromedp.Evaluate(newestDetails+`.dataset.key || ''`, &keyAfterClick),
 	)
 	if err != nil {
 		t.Fatalf("driving the web UI failed: %v", err)
@@ -109,25 +122,38 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 		t.Fatalf("output did not expand on click; the test cannot observe the refresh behavior")
 	}
 
-	// Outlast a full refresh cycle. The daemon keeps firing the job every
-	// second, so this also covers the harder case: new runs arrive and the
-	// expanded row is no longer the newest one.
+	// Outlast a full refresh cycle. The daemon keeps firing the job, so this
+	// also covers the harder case: new runs arrive and the expanded row is no
+	// longer the newest one.
+	//
+	// Presence is read separately from openness. Without that split, a row that
+	// legitimately aged out of the capped history is indistinguishable from one
+	// the refresh collapsed - the two need different fixes, and conflating them
+	// once already sent this test chasing the wrong bug.
 	err = chromedp.Run(ctx,
 		chromedp.Sleep(uiRefreshInterval+2*time.Second),
+		chromedp.Evaluate(selectorForKey(keyAfterClick, historyDetails)+` !== null`, &stillPresent),
 		chromedp.Evaluate(selectorForKey(keyAfterClick, historyDetails)+`?.open === true`, &openAfterRefresh),
-		chromedp.Evaluate(`document.querySelector('`+historyDetails+`')?.dataset.key || ''`, &keyAfterRefresh),
+		chromedp.Evaluate(`document.querySelector('#history tbody details:last-of-type')?.dataset.key || ''`, &keyAfterRefresh),
 	)
 	if err != nil {
 		t.Fatalf("re-reading the expanded output after a refresh failed: %v", err)
 	}
 
-	if !openAfterRefresh {
-		t.Fatalf("expanded job output collapsed on its own across the %s refresh cycle "+
-			"(execution %q); regression of issue #764", uiRefreshInterval, keyAfterClick)
+	if !stillPresent {
+		t.Fatalf("execution %q dropped out of the history table within %s, so the test could not "+
+			"observe the refresh behavior — the job cadence is outrunning the history limit, "+
+			"not a regression of issue #764", keyAfterClick, uiRefreshInterval+2*time.Second)
 	}
 
-	// Not an assertion, just context if this ever fails: whether the row we
-	// kept open was still the newest one tells us which variant was exercised.
+	if !openAfterRefresh {
+		t.Fatalf("expanded job output collapsed on its own across the %s refresh cycle "+
+			"(execution %q is still listed, just no longer open); regression of issue #764",
+			uiRefreshInterval, keyAfterClick)
+	}
+
+	// Not an assertion, just context: whether the row we kept open was still
+	// the newest one tells us which variant was exercised.
 	if keyAfterRefresh != keyAfterClick {
 		t.Logf("history advanced during the test (newest run is now %q, kept %q open) — "+
 			"the expanded output survived a re-render that also reordered rows",
