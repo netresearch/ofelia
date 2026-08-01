@@ -579,6 +579,11 @@
       const resp = await fetch(`/api/jobs/${name}/history`);
       const hist = await resp.json();
       const tbody = document.querySelector('#history tbody');
+      // Preserve which outputs the user has expanded so the periodic refresh
+      // does not collapse them (keyed by run timestamp, unique per execution).
+      const openOutputs = new Set(
+        Array.from(tbody.querySelectorAll('details[open]')).map(d => d.dataset.key)
+      );
       tbody.innerHTML = '';
       if (hist.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="empty">No history yet.</td></tr>';
@@ -593,8 +598,10 @@
         const hasOut = stdout || stderr;
         const stdoutBlock = stdout ? `<pre>${stdout}</pre>` : '';
         const stderrBlock = stderr ? `<pre style="color:var(--pico-del-color)">${stderr}</pre>` : '';
+        const key = String(e.date);
+        const openAttr = openOutputs.has(key) ? ' open' : '';
         const output = hasOut ?
-          `<details><summary>view</summary>` + stdoutBlock + stderrBlock + `</details>` : '';
+          `<details data-key="${escapeHtml(key)}"${openAttr}><summary>view</summary>` + stdoutBlock + stderrBlock + `</details>` : '';
         row.innerHTML = `<td>${dot}</td><td>${formatTime(e.date)}</td><td>${formatDuration(e.duration)}</td>` +
           `<td class="wrap">${err}</td><td>${output}</td>`;
         tbody.appendChild(row);

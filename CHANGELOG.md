@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An expanded job output no longer collapses on its own.** The web UI refreshes every five seconds, and with a job's history panel open that refresh rebuilt the whole table from scratch. Every `<details>` element was re-created without its `open` attribute, so any output a user had expanded snapped shut within five seconds of opening it — long enough to start reading, not long enough to finish. The history table now records which outputs are expanded before it re-renders and restores them afterwards, keyed by the execution's timestamp rather than its row position, so an expanded output also stays open when a new run appears above it. Only the user collapses an output now ([#764](https://github.com/netresearch/ofelia/issues/764)).
+
 ## [0.28.1] - 2026-07-28
 
 A documentation and tooling release. The one change that reaches a running
