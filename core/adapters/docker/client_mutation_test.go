@@ -378,14 +378,13 @@ func TestValidateAndNormalizeHost(t *testing.T) {
 //
 // Cannot use t.Parallel() — t.Setenv is incompatible with parallel subtests.
 func TestNewClientWithConfig_NormalizesDockerHostEnv(t *testing.T) {
-	// 127.0.0.1:0 is unreachable (port 0); construction succeeds but no real
-	// connection is attempted (API negotiation is best-effort and tolerates
-	// failure at this layer for unit-test purposes).
+	// 127.0.0.1:0 is unreachable (port 0); API negotiation is best-effort and
+	// tolerates failure at this layer for unit-test purposes.
 	t.Setenv("DOCKER_HOST", "TCP://127.0.0.1:0")
 
 	// We don't care if the actual connection fails — we care that construction
 	// validates the scheme and doesn't reject a valid (if uppercase) TCP host.
-	_, err := NewClientWithConfig(&ClientConfig{})
+	_, err := NewClientWithConfig(&ClientConfig{NegotiateTimeout: unreachableNegotiateTimeout})
 	if err != nil && errors.Is(err, ErrUnsupportedDockerHostScheme) {
 		t.Fatalf("uppercase TCP:// scheme should be normalized, not rejected: %v", err)
 	}
@@ -437,6 +436,7 @@ func TestNewClientWithConfig_DoesNotMutateConfigHost(t *testing.T) {
 	const original = "TCP://127.0.0.1:0"
 	cfg := DefaultConfig()
 	cfg.Host = original
+	cfg.NegotiateTimeout = unreachableNegotiateTimeout
 
 	// We don't care whether the dial succeeds (it won't on port 0) - only
 	// that the config struct is unchanged when control returns.

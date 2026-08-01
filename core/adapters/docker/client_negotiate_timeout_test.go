@@ -12,6 +12,21 @@ import (
 	"time"
 )
 
+// unreachableNegotiateTimeout bounds the eager API version negotiation in tests
+// that construct a client against a deliberately unreachable address and assert
+// something other than connectivity (scheme normalization, the TLS-material
+// gate, config immutability).
+//
+// Those tests used to leave NegotiateTimeout at its 30s default and rely on the
+// dial failing immediately, which holds only where the kernel answers a closed
+// port with RST. On a host whose firewall DROPs instead of rejecting - the
+// packets are silently discarded, so the connect runs to its own timeout -
+// each such construction blocked for the full 30s and the package blew the
+// 60s budget of the lefthook pre-push smoke hook. Bounding negotiation here
+// keeps the assertions intact and makes their runtime independent of how the
+// network answers an unreachable port.
+const unreachableNegotiateTimeout = 50 * time.Millisecond
+
 // TestNewClientWithConfig_NegotiateAPIVersionTimeout verifies that NewClientWithConfig
 // returns within a bounded time when the Docker daemon is reachable but does not
 // respond to API version negotiation (e.g. a wedged socket proxy whose upstream is hung).

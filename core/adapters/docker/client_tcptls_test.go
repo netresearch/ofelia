@@ -64,8 +64,9 @@ func TestNewClientWithConfig_TCPPlusTLSAcceptsCertMaterial(t *testing.T) {
 	certPath := writeFakeTLSMaterial(t)
 
 	_, err := NewClientWithConfig(&ClientConfig{
-		Host:        "tcp+tls://127.0.0.1:0",
-		TLSCertPath: certPath,
+		Host:             "tcp+tls://127.0.0.1:0",
+		TLSCertPath:      certPath,
+		NegotiateTimeout: unreachableNegotiateTimeout,
 	})
 	if errors.Is(err, ErrTCPTLSRequiresCertMaterial) {
 		t.Fatalf("cert material was provided via ClientConfig.TLSCertPath, must not return ErrTCPTLSRequiresCertMaterial: %v", err)
@@ -84,7 +85,10 @@ func TestNewClientWithConfig_TCPPlusTLSAcceptsEnvCertPath(t *testing.T) {
 	certPath := writeFakeTLSMaterial(t)
 	t.Setenv("DOCKER_CERT_PATH", certPath)
 
-	_, err := NewClientWithConfig(&ClientConfig{Host: "tcp+tls://127.0.0.1:0"})
+	_, err := NewClientWithConfig(&ClientConfig{
+		Host:             "tcp+tls://127.0.0.1:0",
+		NegotiateTimeout: unreachableNegotiateTimeout,
+	})
 	if errors.Is(err, ErrTCPTLSRequiresCertMaterial) {
 		t.Fatalf("DOCKER_CERT_PATH was set, must not return ErrTCPTLSRequiresCertMaterial: %v", err)
 	}
