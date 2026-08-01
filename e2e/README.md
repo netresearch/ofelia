@@ -32,6 +32,10 @@ go test -tags=e2e -race -v -timeout=10m ./e2e/...
 - Go toolchain matching `go.mod`
 - Docker daemon (Docker tests skip automatically when unavailable)
 - `alpine:3.20` image is pulled on demand by the Docker tests
+- Chrome or Chromium for the web-UI test (skips automatically when absent).
+  Any of `google-chrome`, `google-chrome-stable`, `chromium` or
+  `chromium-browser` on `PATH` is used; set `OFELIA_E2E_CHROME=/path/to/chrome`
+  to point at a browser that is not on `PATH`.
 
 ## What is covered
 
@@ -48,6 +52,13 @@ go test -tags=e2e -race -v -timeout=10m ./e2e/...
   container, verifies the marker via `docker logs`.
 - `TestE2E_DockerRunJob_FailingContainerMarkedFailed` — non-zero container
   exit is surfaced as `failed: true` in Ofelia's log.
+
+### Web UI (real browser)
+- `TestE2E_WebUI_ExpandedOutputSurvivesRefresh` — drives the served UI in
+  headless Chrome: expand a run's output, outlast the 5s auto-refresh, assert
+  it is still open. Regression guard for
+  [#764](https://github.com/netresearch/ofelia/issues/764), where the refresh
+  re-rendered the history table and collapsed it.
 
 ### Configuration surface
 - `TestE2E_Validate_MalformedINI` — malformed INI produces a useful error.
