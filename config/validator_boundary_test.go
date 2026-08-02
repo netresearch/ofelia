@@ -432,7 +432,7 @@ func TestValidator2ValidateStringFieldDefaults(t *testing.T) {
 			v := NewValidator()
 
 			field := reflect.ValueOf(tt.value)
-			cv.validateStringField(v, reflect.Value{}, field, tt.path, tt.defaultTag)
+			cv.validateStringField(v, field, fieldCtx{path: tt.path, defaultTag: tt.defaultTag})
 
 			if v.HasErrors() != tt.wantError {
 				t.Errorf("validateStringField(%q, %q, %q) hasError = %v, want %v",
