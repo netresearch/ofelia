@@ -66,9 +66,9 @@ func runMain(t *testing.T, argv ...string) (string, int) {
 // TestMain_VersionFlag covers the short-circuit before the parser is built:
 // --version must print and return without constructing any command.
 //
-//nolint:paralleltest // mutates os.Args and os.Stdout, which are process-global
+//nolint:paralleltest // replaces os.Stdout, which is process-global
 func TestMain_VersionFlag(t *testing.T) {
-	// No t.Parallel(): os.Args and os.Stdout are process-global.
+	// No t.Parallel(): os.Stdout is process-global.
 	out, code := runMain(t, "--version")
 	if strings.TrimSpace(out) == "" {
 		t.Error("--version printed nothing")
@@ -82,7 +82,7 @@ func TestMain_VersionFlag(t *testing.T) {
 // flags.WroteHelp branch: every AddCommand call runs before the parser reports
 // that it wrote help.
 //
-//nolint:paralleltest // mutates os.Args and os.Stdout, which are process-global
+//nolint:paralleltest // replaces os.Stdout, which is process-global
 func TestMain_Help(t *testing.T) {
 	out, code := runMain(t, "--help")
 
@@ -104,7 +104,7 @@ func TestMain_Help(t *testing.T) {
 // TestMain_UnknownCommand covers the flags.Error branch, which prints help plus
 // the version string and returns rather than exiting the process.
 //
-//nolint:paralleltest // mutates os.Args and os.Stdout, which are process-global
+//nolint:paralleltest // replaces os.Stdout, which is process-global
 func TestMain_UnknownCommand(t *testing.T) {
 	out, code := runMain(t, "definitely-not-a-command")
 	if !strings.Contains(out, "daemon") {
@@ -119,7 +119,7 @@ func TestMain_UnknownCommand(t *testing.T) {
 // TestMain_NoArguments covers the same error branch reached with no command at
 // all, which is what a bare `ofelia` invocation does.
 //
-//nolint:paralleltest // mutates os.Args and os.Stdout, which are process-global
+//nolint:paralleltest // replaces os.Stdout, which is process-global
 func TestMain_NoArguments(t *testing.T) {
 	out, code := runMain(t)
 	if strings.TrimSpace(out) == "" {
@@ -140,7 +140,7 @@ func TestMain_NoArguments(t *testing.T) {
 // while `ofelia validate --config=x` works. That placement asymmetry is a
 // separate defect, not something this test should bake in.
 //
-//nolint:paralleltest // mutates os.Args and os.Stdout, which are process-global
+//nolint:paralleltest // replaces os.Stdout, which is process-global
 func TestMain_LogLevelFromConfigFile(t *testing.T) {
 	iniPath := filepath.Join(t.TempDir(), "ofelia.ini")
 	body := "[global]\n  log-level = debug\n\n[job-local \"noop\"]\n  schedule = @every 1h\n  command = true\n"
@@ -158,7 +158,7 @@ func TestMain_LogLevelFromConfigFile(t *testing.T) {
 // a config file that is not there is a failure, and `ofelia validate … || …`
 // has to be able to see it.
 //
-//nolint:paralleltest // mutates os.Args and os.Stdout, which are process-global
+//nolint:paralleltest // replaces os.Stdout, which is process-global
 func TestMain_ValidateMissingConfigFails(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "no-such-config.ini")
 
