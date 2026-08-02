@@ -35,7 +35,7 @@ const (
 
 // DaemonCommand daemon process
 type DaemonCommand struct {
-	ConfigFile           string         `long:"config" env:"OFELIA_CONFIG" description:"Config file path" default:"/etc/ofelia/config.ini"`
+	ConfigFile           string         `long:"config" env:"OFELIA_CONFIG" description:"Config file path"`
 	DockerFilters        []string       `short:"f" long:"docker-filter" env:"OFELIA_DOCKER_FILTER" description:"Docker container filter"`
 	DockerPollInterval   *time.Duration `long:"docker-poll-interval" env:"OFELIA_POLL_INTERVAL" description:"Docker label poll interval"`
 	DockerUseEvents      *bool          `long:"docker-events" env:"OFELIA_DOCKER_EVENTS" description:"Use Docker events for changes"`
