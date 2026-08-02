@@ -6,3 +6,54 @@ coverage:
     patch:
       default:
         target: 80%
+
+# Components split the coverage report along the architecture boundaries in
+# ARCHITECTURE.md, so a drop is attributable to a layer rather than to the
+# repository as a whole. Statuses stay informational: the gate that can fail a
+# PR is the patch target above, not per-component drift.
+#
+# `core` excludes the adapter and persistence subtrees because those are
+# reported as components of their own; without the negations their files would
+# be counted in two components at once.
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        informational: true
+  individual_components:
+    - component_id: core
+      name: core (scheduler, jobs, domain)
+      paths:
+        - core/**
+        - "!core/adapters/**"
+        - "!core/persist/**"
+    - component_id: adapters
+      name: adapters (docker, mock)
+      paths:
+        - core/adapters/**
+    - component_id: persist
+      name: persistence
+      paths:
+        - core/persist/**
+    - component_id: web
+      name: web UI and HTTP API
+      paths:
+        - web/**
+        - static/**
+    - component_id: cli
+      name: CLI and daemon
+      paths:
+        - cli/**
+        - "*.go"
+    - component_id: config
+      name: config parsing and validation
+      paths:
+        - config/**
+    - component_id: middlewares
+      name: middlewares (notifications)
+      paths:
+        - middlewares/**
+    - component_id: metrics
+      name: metrics
+      paths:
+        - metrics/**
