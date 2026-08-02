@@ -4,6 +4,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -75,5 +76,53 @@ func TestConditionalRequired_UnknownGateStaysRequired(t *testing.T) {
 
 	if err := NewConfigValidator(&noGate{}).Validate(); err == nil {
 		t.Error("with no gate to consult the field should stay required, got no error")
+	}
+}
+
+// TestGateIsOpen_InvalidParentKeepsFieldRequired covers the guard for a caller
+// that has no enclosing struct to offer — the internal helpers are called that
+// way in tests. With nothing to consult, the field stays required, which is
+// the same safe direction as an unresolvable gate.
+func TestGateIsOpen_InvalidParentKeepsFieldRequired(t *testing.T) {
+	t.Parallel()
+
+	cv := NewConfigValidator(nil)
+	if !cv.gateIsOpen(reflect.Value{}, "web-secret-key") {
+		t.Error("with no parent to inspect the field should stay required")
+	}
+}
+
+// TestGateIsOpen_IgnoresMismatchedFields covers the skip inside the search: a
+// field is only the gate if it is a bool AND carries the expected key. A
+// string field named like the gate, or a bool with a different key, must not
+// be mistaken for it.
+func TestGateIsOpen_IgnoresMismatchedFields(t *testing.T) {
+	t.Parallel()
+
+	type decoys struct {
+		// Right key, wrong type.
+		WebAuthEnabled string `gcfg:"web-auth-enabled"`
+		// Right type, wrong key.
+		SomethingElse bool `gcfg:"some-other-flag"`
+	}
+
+	cv := NewConfigValidator(nil)
+	parent := reflect.ValueOf(decoys{WebAuthEnabled: "true", SomethingElse: true})
+
+	// Neither decoy qualifies, so the search finds no gate and the field stays
+	// required rather than being switched on by the wrong field.
+	if !cv.gateIsOpen(parent, "web-secret-key") {
+		t.Error("a string field and an unrelated bool were treated as the gate")
+	}
+}
+
+// TestGateIsOpen_UnconditionalFieldsAlwaysRequired pins the common case: a
+// field with no entry in requiredWhen is not gated at all.
+func TestGateIsOpen_UnconditionalFieldsAlwaysRequired(t *testing.T) {
+	t.Parallel()
+
+	cv := NewConfigValidator(nil)
+	if !cv.gateIsOpen(reflect.ValueOf(gatedConfig{}), "web-address") {
+		t.Error("an ungated field reported as not required")
 	}
 }
