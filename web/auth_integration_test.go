@@ -106,7 +106,7 @@ func TestServerWithAuthEnabled(t *testing.T) {
 
 	t.Run("health_endpoints_bypass_auth", func(t *testing.T) {
 		endpoints := []string{"/health", "/healthz", "/ready", "/live"}
-		hc := webpkg.NewHealthChecker(nil, "test")
+		hc := webpkg.NewHealthChecker(nil, nil, "test")
 		srv.RegisterHealthEndpoints(hc)
 
 		for _, ep := range endpoints {

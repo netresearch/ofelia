@@ -10,6 +10,8 @@ import (
 	"maps"
 	"net/http"
 	"runtime"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,17 +66,22 @@ type SystemInfo struct {
 type HealthChecker struct {
 	startTime      time.Time
 	dockerProvider core.DockerProvider
+	scheduler      *core.Scheduler
 	version        string
 	checks         map[string]HealthCheck
 	mu             sync.RWMutex
 	checkInterval  time.Duration
 }
 
-// NewHealthChecker creates a new health checker
-func NewHealthChecker(dockerProvider core.DockerProvider, version string) *HealthChecker {
+// NewHealthChecker creates a new health checker.
+//
+// The scheduler may be nil, in which case the scheduler check reports what it
+// can see rather than claiming health it has not established.
+func NewHealthChecker(dockerProvider core.DockerProvider, scheduler *core.Scheduler, version string) *HealthChecker {
 	hc := &HealthChecker{
 		startTime:      time.Now(),
 		dockerProvider: dockerProvider,
+		scheduler:      scheduler,
 		version:        version,
 		checks:         make(map[string]HealthCheck),
 		checkInterval:  30 * time.Second,
@@ -164,7 +171,20 @@ func (hc *HealthChecker) checkDocker() {
 	hc.mu.Unlock()
 }
 
-// checkScheduler verifies scheduler is operational
+// checkScheduler reports whether every configured job is actually registered.
+//
+// This used to answer "healthy" unconditionally, with a note that a real
+// implementation would check the scheduler. So a daemon with a mistyped
+// schedule — a job that never fires — still served a green /health, which is
+// the probe the integration docs tell operators to point their container
+// healthcheck at. The failure it was most worth reporting was the one it could
+// not see.
+//
+// A refused job makes this degraded rather than unhealthy on purpose: /ready
+// answers 503 only for unhealthy, and taking a daemon out of rotation because
+// one job of twenty has a typo would trade a silent failure for a louder one.
+// Degraded shows up in the body of /health and /healthz, where an operator or
+// an alert rule can act on it, without stopping the jobs that do work.
 func (hc *HealthChecker) checkScheduler() {
 	start := time.Now()
 	check := HealthCheck{
@@ -174,14 +194,33 @@ func (hc *HealthChecker) checkScheduler() {
 		Message:     "Scheduler is operational",
 	}
 
-	// In a real implementation, this would check the actual scheduler
-	// For now, we'll assume it's healthy if the service is running
+	if hc.scheduler == nil {
+		check.Status = HealthStatusDegraded
+		check.Message = "No scheduler wired to the health checker"
+	} else if refused := hc.scheduler.GetUnschedulableJobs(); len(refused) > 0 {
+		check.Status = HealthStatusDegraded
+		check.Message = fmt.Sprintf(
+			"%d configured job(s) are not scheduled and will not run: %s",
+			len(refused), strings.Join(sortedNames(refused), ", "),
+		)
+	}
 
 	check.Duration = time.Since(start)
 
 	hc.mu.Lock()
 	hc.checks["scheduler"] = check
 	hc.mu.Unlock()
+}
+
+// sortedNames returns the keys in a stable order, so the message does not
+// change between checks purely because Go randomizes map iteration.
+func sortedNames(m map[string]string) []string {
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // checkSystemResources checks system resource usage

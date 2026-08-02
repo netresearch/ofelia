@@ -58,9 +58,15 @@ type Scheduler struct {
 	retryExecutor     *RetryExecutor
 	jobsByName        map[string]Job
 	disabledNames     map[string]struct{}
-	metricsRecorder   MetricsRecorder
-	clock             Clock
-	onJobComplete     func(jobName string, success bool)
+	// unschedulable records jobs the scheduler refused, keyed by name with the
+	// reason as the value. A refused job never runs, and the only earlier trace
+	// was a log line; keeping it here lets the health report say so, and covers
+	// jobs added long after startup from Docker labels as well as those from
+	// the config.
+	unschedulable   map[string]string
+	metricsRecorder MetricsRecorder
+	clock           Clock
+	onJobComplete   func(jobName string, success bool)
 }
 
 // concurrencySemaphore holds a swappable semaphore channel used by the
@@ -342,6 +348,7 @@ func (s *Scheduler) AddJob(j Job) error {
 // on demand via RunJob() which delegates to go-cron's TriggerEntryByName().
 func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	if j.GetSchedule() == "" {
+		s.recordUnschedulable(j.GetName(), ErrEmptySchedule)
 		return ErrEmptySchedule
 	}
 
@@ -365,12 +372,17 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 			"Failed to register job %q - %q - %q",
 			j.GetName(), j.GetCommand(), j.GetSchedule(),
 		))
+		s.recordUnschedulable(j.GetName(), err)
 		return fmt.Errorf("add cron job: %w", err)
 	}
 	j.SetCronJobID(uint64(id))
 	s.mu.Lock()
 	s.Jobs = append(s.Jobs, j)
 	s.jobsByName[j.GetName()] = j
+	// A name that registers now is no longer unschedulable: a corrected config
+	// reloaded at runtime has to clear the old complaint, or the health report
+	// would stay degraded until a restart.
+	delete(s.unschedulable, j.GetName())
 	s.mu.Unlock()
 
 	if IsTriggeredSchedule(j.GetSchedule()) {
@@ -408,6 +420,9 @@ func (s *Scheduler) RemoveJob(j Job) error {
 		}
 	}
 	delete(s.jobsByName, j.GetName())
+	// A job removed from the config is no longer expected to run, so a past
+	// refusal stops being a complaint about the current state.
+	delete(s.unschedulable, j.GetName())
 	delete(s.disabledNames, j.GetName())
 	s.Removed = append(s.Removed, j)
 	s.mu.Unlock()
@@ -633,6 +648,34 @@ func (s *Scheduler) GetActiveJobs() []Job {
 		}
 	}
 	return jobs
+}
+
+// recordUnschedulable notes that a job was refused, so the health report can
+// say a configured job is not running rather than leaving it to whoever reads
+// the startup log.
+func (s *Scheduler) recordUnschedulable(name string, reason error) {
+	if name == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.unschedulable == nil {
+		s.unschedulable = make(map[string]string)
+	}
+	s.unschedulable[name] = reason.Error()
+}
+
+// GetUnschedulableJobs returns a copy of the jobs the scheduler refused,
+// keyed by job name with the reason as the value. Empty means every job that
+// was offered is registered.
+func (s *Scheduler) GetUnschedulableJobs() map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]string, len(s.unschedulable))
+	for name, reason := range s.unschedulable {
+		out[name] = reason
+	}
+	return out
 }
 
 // getJob finds a job in the provided slice by name.

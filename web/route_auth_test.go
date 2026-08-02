@@ -51,7 +51,7 @@ func newAuthTestServer(t *testing.T) (*Server, *HealthChecker) {
 	srv := NewServerWithAuth("", core.NewScheduler(newDiscardLogger()), nil, nil, authCfg)
 	require.NotNil(t, srv, "NewServerWithAuth returned nil")
 
-	hc := NewHealthChecker(nil, "test")
+	hc := NewHealthChecker(nil, nil, "test")
 	srv.RegisterHealthEndpoints(hc)
 
 	t.Cleanup(func() {

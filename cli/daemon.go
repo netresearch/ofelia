@@ -163,7 +163,7 @@ func (c *DaemonCommand) boot() (err error) {
 	if c.dockerHandler != nil {
 		dockerProvider = c.dockerHandler.GetDockerProvider()
 	}
-	c.healthChecker = web.NewHealthChecker(dockerProvider, "1.0.0")
+	c.healthChecker = web.NewHealthChecker(dockerProvider, c.scheduler, "1.0.0")
 
 	// Create graceful scheduler with shutdown support
 	gracefulScheduler := core.NewGracefulScheduler(c.scheduler, c.shutdownManager)
