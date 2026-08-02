@@ -402,3 +402,26 @@ func TestConvertToMount_ValidInput(t *testing.T) {
 		t.Errorf("ReadOnly = false, want true")
 	}
 }
+
+// TestConvertFromContainerJSON_NilConfig pins the guard on the container side
+// of the same defect: Config is a pointer in the SDK inspect response, and
+// reading Labels from it unconditionally panicked when a daemon left it out.
+func TestConvertFromContainerJSON_NilConfig(t *testing.T) {
+	t.Parallel()
+
+	defer failOnPanic(t, "convertFromContainerJSON without Config")()
+
+	got := convertFromContainerJSON(&containertypes.InspectResponse{
+		ID:   "abc123",
+		Name: "/no-config",
+	})
+	if got == nil {
+		t.Fatal("convertFromContainerJSON returned nil for a valid response")
+	}
+	if got.ID != "abc123" {
+		t.Errorf("ID = %q, want abc123", got.ID)
+	}
+	if got.Labels != nil {
+		t.Errorf("Labels = %v, want nil when the response carries no Config", got.Labels)
+	}
+}
