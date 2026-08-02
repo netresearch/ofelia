@@ -66,24 +66,24 @@ func TestE2E_ExitCode_SuccessPaths(t *testing.T) {
 	}
 }
 
-// TestE2E_ExitCode_StrictValidationFails complements the INI-syntax case in
-// config_validation_test.go with a file that parses but does not satisfy
-// strict validation. Both have to fail, and for a deploy gate the distinction
-// does not matter — what matters is that neither is silently accepted.
+// TestE2E_ExitCode_SemanticFailureExits1 complements the INI-syntax case in
+// config_validation_test.go with a file that parses but is semantically wrong.
+// Both have to fail, and for a deploy gate the distinction does not matter —
+// what matters is that neither is silently accepted.
 //
-// Strict validation is opt-in (`enable-strict-validation`, default false), so
-// the config turns it on. Without it ofelia accepts semantically broken jobs
-// here — including an unparsable schedule, which the daemon then logs as a
-// warning while starting anyway, leaving a job that never fires. That is a
-// separate question from exit codes and is not pinned here.
-func TestE2E_ExitCode_StrictValidationFails(t *testing.T) {
+// The first version of this test used an unparsable schedule and only passed
+// because validation demanded web-UI credentials from a config that had no web
+// UI. That false positive is gone, and jobs are not reachable by the validator
+// at all, so the config here fails on a global field that genuinely is checked.
+// The schedule gap is tracked separately in #773.
+func TestE2E_ExitCode_SemanticFailureExits1(t *testing.T) {
 	t.Parallel()
 
 	configPath := writeConfig(t, `[global]
-  enable-strict-validation = true
+  web-address = definitely-not-an-address
 
-[job-local "broken"]
-  schedule = not-a-schedule
+[job-local "hello"]
+  schedule = @every 30s
   command = echo hi
 `)
 
