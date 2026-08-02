@@ -103,7 +103,15 @@ func convertFromContainerJSON(c *containertypes.InspectResponse) *domain.Contain
 		Name:    c.Name,
 		Image:   c.Image,
 		Created: parseTime(c.Created),
-		Labels:  c.Config.Labels,
+	}
+
+	// Config is a pointer in the SDK response, so a daemon that omits it — a
+	// socket proxy, or a Docker-compatible API that fills in less than Docker
+	// does — made this a nil dereference that took the whole scheduler down.
+	// The State and Health fields below were already guarded this way; Config
+	// was the one that was not. Same class as ErrNilContainerConfig (#632).
+	if c.Config != nil {
+		container.Labels = c.Config.Labels
 	}
 
 	// Convert state

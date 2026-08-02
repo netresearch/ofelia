@@ -136,15 +136,22 @@ func (s *ImageServiceAdapter) Inspect(ctx context.Context, imageID string) (*dom
 		return nil, convertError(err)
 	}
 
-	return &domain.Image{
+	image := &domain.Image{
 		ID:          img.ID,
 		RepoTags:    img.RepoTags,
 		RepoDigests: img.RepoDigests,
 		Comment:     img.Comment,
 		Created:     parseTime(img.Created),
 		Size:        img.Size,
-		Labels:      img.Config.Labels,
-	}, nil
+	}
+
+	// Config is a pointer in the SDK response; an image inspect without it
+	// panicked here. See the matching guard in convertFromContainerJSON.
+	if img.Config != nil {
+		image.Labels = img.Config.Labels
+	}
+
+	return image, nil
 }
 
 // Remove removes an image.
