@@ -504,6 +504,7 @@ func (cv *Validator2) isOptionalField(path string) bool {
 // validation — including the ones with no web UI at all. That made strict
 // validation impractical to adopt, and an operator who cannot adopt it does
 // not get the checks it exists to provide.
+// #nosec G101 -- these are INI key names the validator matches on, not values
 var requiredWhen = map[string]string{
 	"web-password-hash": "web-auth-enabled",
 	"web-secret-key":    "web-auth-enabled",

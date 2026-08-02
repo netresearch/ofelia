@@ -18,9 +18,9 @@ import (
 // gatedConfig mirrors the shape of the real global section: a boolean that
 // turns a feature on, and the fields that feature needs.
 type gatedConfig struct {
-	WebAuthEnabled bool   `gcfg:"web-auth-enabled"   mapstructure:"web-auth-enabled"   default:"false"`
-	WebPasswordarg string `gcfg:"web-password-hash"  mapstructure:"web-password-hash"`
-	WebSecretKey   string `gcfg:"web-secret-key"     mapstructure:"web-secret-key"`
+	WebAuthEnabled  bool   `gcfg:"web-auth-enabled"   mapstructure:"web-auth-enabled"   default:"false"`
+	WebPasswordHash string `gcfg:"web-password-hash"  mapstructure:"web-password-hash"`
+	WebSecretKey    string `gcfg:"web-secret-key"     mapstructure:"web-secret-key"`
 }
 
 func TestConditionalRequired_NotDemandedWhenFeatureIsOff(t *testing.T) {
@@ -53,9 +53,9 @@ func TestConditionalRequired_SatisfiedWhenProvided(t *testing.T) {
 	t.Parallel()
 
 	err := NewConfigValidator(&gatedConfig{
-		WebAuthEnabled: true,
-		WebPasswordarg: "$2a$12$abcdefghijklmnopqrstuv",
-		WebSecretKey:   "a-secret",
+		WebAuthEnabled:  true,
+		WebPasswordHash: "$2a$12$abcdefghijklmnopqrstuv",
+		WebSecretKey:    "a-secret",
 	}).Validate()
 	if err != nil {
 		t.Errorf("a complete web-auth config was rejected: %v", err)
