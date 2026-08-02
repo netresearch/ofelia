@@ -155,3 +155,58 @@ func TestE2E_Validate_WebCredentialsOnlyWhenAuthEnabled(t *testing.T) {
 		}
 	}
 }
+
+// TestE2E_Validate_RejectsUnparsableSchedule is the case #773 was opened for.
+//
+// The config parses as INI and is only wrong semantically: the schedule cannot
+// be parsed, so the scheduler refuses the job and it never runs. validate used
+// to accept it, because the validator walked structs and skipped maps — and
+// every job lives in one, so no job was reachable by it at all.
+func TestE2E_Validate_RejectsUnparsableSchedule(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeConfig(t, `[job-local "broken"]
+  schedule = not-a-schedule
+  command = echo hi
+`)
+
+	stdout, stderr, err := runCommand(t, "validate", "--config="+configPath)
+	assertExitCode(t, err, 1, stdout, stderr)
+
+	combined := stdout + stderr
+	for _, needle := range []string{"broken", "cron"} {
+		if !strings.Contains(combined, needle) {
+			t.Errorf("expected the error to mention %q, got:\nstdout=%s\nstderr=%s", needle, stdout, stderr)
+		}
+	}
+}
+
+// TestE2E_Validate_RejectsJobMissingWhatItNeeds covers the requirement side:
+// a job-exec with no container fails on every single run with
+// `run_exec container "": invalid container name or ID`. Catching it here
+// turns a job that fails forever into a config error caught before deployment.
+func TestE2E_Validate_RejectsJobMissingWhatItNeeds(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeConfig(t, `[job-exec "no-container"]
+  schedule = @every 30s
+  command = echo hi
+`)
+
+	stdout, stderr, err := runCommand(t, "validate", "--config="+configPath)
+	assertExitCode(t, err, 1, stdout, stderr)
+
+	if !strings.Contains(stdout+stderr, "container") {
+		t.Errorf("expected the missing container to be named, got:\nstdout=%s\nstderr=%s", stdout, stderr)
+	}
+}
+
+// TestE2E_Validate_AcceptsTheShippedExample guards the other direction with
+// the configuration the project hands to new users: adding job checks must not
+// start rejecting it.
+func TestE2E_Validate_AcceptsTheShippedExample(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr, err := runCommand(t, "validate", "--config=../example/ofelia.ini")
+	assertExitCode(t, err, 0, stdout, stderr)
+}

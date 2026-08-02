@@ -20,9 +20,14 @@ func TestValidateExecuteValidFile(t *testing.T) {
 	// Not parallel: modifies global os.Stdout which races with other tests.
 
 	configFile := filepath.Join(t.TempDir(), "config.ini")
+	// container is part of a runnable job-exec: without it every run fails
+	// with `run_exec container "": invalid container name or ID`. The fixture
+	// omitted it and this test asserted the config was valid, which is what
+	// job validation now catches.
 	content := `
 [job-exec "foo"]
 schedule = @every 10s
+container = some-container
 command = echo "foo"
 `
 	err := os.WriteFile(configFile, []byte(content), 0o644)

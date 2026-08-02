@@ -208,6 +208,13 @@ func (cv *Validator2) Validate() error {
 
 // validateStruct recursively validates struct fields based on tags
 func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
+	cv.validateStructIn(v, obj, path, false)
+}
+
+// validateStructIn is validateStruct with the job flag, which travels down
+// through nested and squashed structs so an embedded job field is still
+// recognized as being inside a job.
+func (cv *Validator2) validateStructIn(v *Validator, obj any, path string, inJob bool) {
 	val, ok := derefToStruct(obj)
 	if !ok {
 		return
@@ -226,14 +233,35 @@ func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
 		fieldPath := resolveFieldPath(path, fieldType.Name, fieldType.Tag.Get("gcfg"), mapstructureTag)
 
 		// Handle nested structs
-		if field.Kind() == reflect.Struct && mapstructureTag != ",squash" {
-			cv.validateStruct(v, field.Interface(), fieldPath)
+		if field.Kind() == reflect.Struct {
+			squashed := mapstructureTag == ",squash"
+			if !squashed {
+				cv.validateStructIn(v, field.Interface(), fieldPath, inJob)
+				continue
+			}
+			// A squashed struct contributes its fields at the parent's level,
+			// so it is walked with the parent's path. Only inside a job:
+			// every job type embeds core.<Kind>Job and, through it, BareJob,
+			// which is where schedule and command live — skipping squashed
+			// structs is why a job's schedule was never checked. Outside a job
+			// the old behavior stands, so the global section is untouched by
+			// this change.
+			if inJob {
+				cv.validateStructIn(v, field.Interface(), path, inJob)
+			}
 			continue
 		}
 
-		// Validate based on field type and value. The enclosing struct travels
-		// with it so a field can be required conditionally on a sibling.
-		cv.validateField(v, val, field, fieldPath, defaultTag)
+		// Job sections are maps keyed by the name the user wrote; walk them so
+		// a job's fields are validated at all. Skipping maps meant no job was
+		// ever reachable by the validator.
+		if field.Kind() == reflect.Map {
+			cv.validateJobMap(v, field, fieldPath)
+			continue
+		}
+
+		// Validate based on field type and value
+		cv.validateField(v, field, fieldCtx{parent: val, path: fieldPath, defaultTag: defaultTag, inJob: inJob})
 	}
 }
 
@@ -274,17 +302,29 @@ func resolveFieldPath(parentPath, fieldName, gcfgTag, mapstructureTag string) st
 	return fieldPath
 }
 
+// fieldCtx carries what a field needs beyond its own value: the struct it
+// belongs to (so a requirement can be conditional on a sibling), its config
+// key, its default tag, and whether it sits inside a job section.
+type fieldCtx struct {
+	parent     reflect.Value
+	path       string
+	defaultTag string
+	// inJob suppresses the "a field with no default is required" rule. That
+	// rule is a heuristic tuned to the global section; applied to a job it
+	// would demand nearly every key a job can carry. What a job genuinely
+	// needs is stated in jobRequirements and checked separately.
+	inJob bool
+}
+
 // validateField validates individual fields based on their type and tags
-func (cv *Validator2) validateField(
-	v *Validator, parent, field reflect.Value, path string, defaultTag string,
-) {
+func (cv *Validator2) validateField(v *Validator, field reflect.Value, ctx fieldCtx) {
 	switch field.Kind() {
 	case reflect.String:
-		cv.validateStringField(v, parent, field, path, defaultTag)
+		cv.validateStringField(v, field, ctx)
 	case reflect.Int, reflect.Int64:
-		cv.validateIntField(v, field, path)
+		cv.validateIntField(v, field, ctx.path)
 	case reflect.Slice:
-		cv.validateSliceField(v, field, path)
+		cv.validateSliceField(v, field, ctx.path)
 	case reflect.Invalid, reflect.Bool, reflect.Int8, reflect.Int16, reflect.Int32,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128,
@@ -299,25 +339,33 @@ func (cv *Validator2) validateField(
 }
 
 // validateStringField validates string type fields
-func (cv *Validator2) validateStringField(
-	v *Validator, parent, field reflect.Value, path string, defaultTag string,
-) {
+func (cv *Validator2) validateStringField(v *Validator, field reflect.Value, ctx fieldCtx) {
 	str := field.String()
 
 	// Skip validation for fields with defaults when they're empty
-	if defaultTag != "" && str == "" {
+	if ctx.defaultTag != "" && str == "" {
 		return
 	}
 
 	// Check for required fields
-	if defaultTag == "" && str == "" && !cv.isOptionalField(path) && cv.gateIsOpen(parent, path) {
-		v.ValidateRequired(path, str)
+	if ctx.defaultTag == "" && str == "" && !ctx.inJob &&
+		!cv.isOptionalField(ctx.path) && cv.gateIsOpen(ctx.parent, ctx.path) {
+		v.ValidateRequired(ctx.path, str)
 	}
 
 	// Validate specific string fields
 	if str != "" {
-		cv.validateSpecificStringField(v, path, str)
+		cv.validateSpecificStringField(v, ctx.path, str)
 	}
+}
+
+// fieldKey returns the config key a path ends in, dropping any section
+// qualifier the path carries for reporting.
+func fieldKey(path string) string {
+	if i := strings.LastIndex(path, "."); i >= 0 {
+		return strings.ToLower(path[i+1:])
+	}
+	return strings.ToLower(path)
 }
 
 // validateSpecificStringField validates specific string field formats
@@ -327,12 +375,17 @@ func (cv *Validator2) validateSpecificStringField(v *Validator, path string, str
 		return // Stop validation if security check fails
 	}
 
-	// Validate based on field type. The case strings are user-facing INI key
-	// names; Go struct tags (gcfg:"…" / mapstructure:"…") on Config require
-	// them as literals there too, so extracting constants only relocates the
-	// duplication. Suppressing keeps the switch readable.
-	switch path {
-	case "schedule", "cron": //nolint:goconst // see comment above switch
+	// Match on the last segment of the path. Inside a job the path is
+	// qualified with its section ("job-local \"backup\".schedule") so the error
+	// says which job is at fault, while the key that selects the check is the
+	// bare field name. Without this the schedule of a job was never checked:
+	// the qualified path matched no case and fell through silently.
+	//
+	// The case strings are user-facing INI key names; Go struct tags
+	// (gcfg:"…" / mapstructure:"…") on Config require them as literals there
+	// too, so extracting constants only relocates the duplication.
+	switch fieldKey(path) {
+	case keySchedule, "cron":
 		cv.validateCronField(v, path, str)
 	case "email-to", "email-from": //nolint:goconst // see comment above switch
 		cv.validateEmailField(v, path, str)
@@ -340,9 +393,9 @@ func (cv *Validator2) validateSpecificStringField(v *Validator, path string, str
 		cv.validateAddressField(v, path, str)
 	case "log-level": //nolint:goconst // see comment above switch
 		cv.validateLogLevelField(v, path, str)
-	case "command", "cmd":
+	case keyCommand, "cmd":
 		cv.validateCommandField(v, path, str)
-	case "image":
+	case keyImage:
 		cv.validateImageField(v, path, str)
 	case "save-folder", "working_dir":
 		cv.validatePathField(v, path, str)
@@ -571,4 +624,142 @@ func (cv *Validator2) isValidLogLevel(level string) bool {
 	}
 	level = strings.ToLower(level)
 	return slices.Contains(validLevels, level)
+}
+
+// INI keys named in more than one place here: the switch that picks a format
+// check, and the table of what each job kind needs. They were literals in both
+// until the table arrived, at which point the same key existed twice with
+// nothing tying the two together.
+const (
+	keySchedule  = "schedule"
+	keyCommand   = "command"
+	keyImage     = "image"
+	keyContainer = "container"
+)
+
+// jobRequirement is one thing a job of a given kind must carry. Several field
+// names mean "at least one of these", which is how job-run accepts either an
+// image to start or an existing container to reuse.
+type jobRequirement struct {
+	fields []string
+	// why is appended to the error so the message says what the field is for
+	// rather than only that it is missing.
+	why string
+}
+
+// jobRequirements states what each job section needs in order to run.
+//
+// The entries are taken from what the runtime already demands, not invented
+// here: core.RunJob.Validate returns ErrImageOrContainer, core.RunServiceJob
+// .Validate returns ErrImageRequired, ExecJob execs by container id and
+// command, LocalJob runs a command, and ComposeJob shells out with a file and
+// a service. Checking them here moves those failures from "the job silently
+// never runs" to "validate says so".
+var jobRequirements = map[string][]jobRequirement{
+	"job-exec": {
+		{fields: []string{keyContainer}, why: "the container to exec in"},
+		{fields: []string{keyCommand}, why: "the command to run"},
+	},
+	"job-run": {
+		{fields: []string{keyImage, keyContainer}, why: "an image to start or an existing container to reuse"},
+	},
+	"job-local": {
+		{fields: []string{keyCommand}, why: "the command to run"},
+	},
+	"job-service-run": {
+		{fields: []string{keyImage}, why: "the image to create the swarm service from"},
+	},
+	"job-compose": {
+		{fields: []string{"file"}, why: "the compose file"},
+		{fields: []string{"service"}, why: "the service to run"},
+	},
+}
+
+// scheduleRequirement applies to every job kind: without a schedule there is
+// nothing to register the job under.
+var scheduleRequirement = jobRequirement{fields: []string{keySchedule}, why: "when to run"}
+
+// validateJobMap walks the jobs of one section. Each entry is validated like
+// any other struct — so formats are checked — and then against the
+// requirements for its kind.
+func (cv *Validator2) validateJobMap(v *Validator, m reflect.Value, section string) {
+	if m.Kind() != reflect.Map || m.IsNil() {
+		return
+	}
+
+	reqs, known := jobRequirements[section]
+	for _, key := range m.MapKeys() {
+		entry := m.MapIndex(key)
+		val, ok := derefToStruct(entry.Interface())
+		if !ok {
+			continue
+		}
+
+		// Field-level checks (formats, ranges) for everything the job carries.
+		// The path carries the section and the job name so an error names the
+		// job the user wrote rather than a bare key.
+		cv.validateStructIn(v, entry.Interface(), fmt.Sprintf("%s %q", section, key.String()), true)
+
+		if !known {
+			continue
+		}
+		jobName := key.String()
+		for _, req := range append([]jobRequirement{scheduleRequirement}, reqs...) {
+			cv.checkJobRequirement(v, val, section, jobName, req)
+		}
+	}
+}
+
+// checkJobRequirement reports a requirement that no field satisfies.
+func (cv *Validator2) checkJobRequirement(
+	v *Validator, job reflect.Value, section, jobName string, req jobRequirement,
+) {
+	for _, name := range req.fields {
+		if strings.TrimSpace(fieldValueByKey(job, name)) != "" {
+			return
+		}
+	}
+
+	v.AddError(
+		fmt.Sprintf("%s %q: %s", section, jobName, strings.Join(req.fields, " or ")),
+		"",
+		fmt.Sprintf("is required (%s)", req.why),
+	)
+}
+
+// fieldValueByKey returns the string value of the field carrying the given
+// config key, searching embedded structs because a job's schedule and command
+// live on the BareJob it embeds rather than on the job type itself.
+func fieldValueByKey(val reflect.Value, key string) string {
+	if val.Kind() != reflect.Struct {
+		return ""
+	}
+
+	typ := val.Type()
+	for fieldType := range typ.Fields() {
+		field := val.FieldByIndex(fieldType.Index)
+
+		// Embedded structs are descended into even when the embedded type is
+		// unexported: the job types embed exported ones today, but the values
+		// are only read here, never handed out, so there is no reason for the
+		// lookup to depend on that staying true.
+		if fieldType.Anonymous && field.Kind() == reflect.Struct {
+			if found := fieldValueByKey(field, key); found != "" {
+				return found
+			}
+			continue
+		}
+
+		if !fieldType.IsExported() {
+			continue
+		}
+		if resolveFieldPath("", fieldType.Name, fieldType.Tag.Get("gcfg"), fieldType.Tag.Get("mapstructure")) != key &&
+			!strings.EqualFold(fieldType.Name, key) {
+			continue
+		}
+		if field.Kind() == reflect.String {
+			return field.String()
+		}
+	}
+	return ""
 }

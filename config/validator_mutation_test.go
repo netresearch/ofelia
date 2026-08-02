@@ -454,7 +454,7 @@ func TestValidateStringField_DefaultTagConditions(t *testing.T) {
 			t.Parallel()
 			v := NewValidator()
 			field := reflect.ValueOf(tt.value)
-			cv.validateStringField(v, reflect.Value{}, field, tt.path, tt.defaultTag)
+			cv.validateStringField(v, field, fieldCtx{path: tt.path, defaultTag: tt.defaultTag})
 			if v.HasErrors() != tt.wantError {
 				t.Errorf("validateStringField(%q, %q, %q) hasErrors=%v, want %v",
 					tt.value, tt.path, tt.defaultTag, v.HasErrors(), tt.wantError)
@@ -826,7 +826,7 @@ func TestMut_Line280_DefaultTagEmptyString(t *testing.T) {
 		cv := &Validator2{sanitizer: NewSanitizer()}
 		v := NewValidator()
 		field := reflect.ValueOf("")
-		cv.validateStringField(v, reflect.Value{}, field, "schedule", "some-default")
+		cv.validateStringField(v, field, fieldCtx{path: "schedule", defaultTag: "some-default"})
 
 		if v.HasErrors() {
 			t.Error("empty value with default tag must skip validation (no error expected)")
@@ -838,7 +838,7 @@ func TestMut_Line280_DefaultTagEmptyString(t *testing.T) {
 		cv := &Validator2{sanitizer: NewSanitizer()}
 		v := NewValidator()
 		field := reflect.ValueOf("GARBAGE_CRON!!!")
-		cv.validateStringField(v, reflect.Value{}, field, "schedule", "some-default")
+		cv.validateStringField(v, field, fieldCtx{path: "schedule", defaultTag: "some-default"})
 
 		if !v.HasErrors() {
 			t.Error("non-empty value with default tag must still be validated (invalid cron → error)")
@@ -850,7 +850,7 @@ func TestMut_Line280_DefaultTagEmptyString(t *testing.T) {
 		cv := &Validator2{sanitizer: NewSanitizer()}
 		v := NewValidator()
 		field := reflect.ValueOf("")
-		cv.validateStringField(v, reflect.Value{}, field, "schedule", "") // no default, required
+		cv.validateStringField(v, field, fieldCtx{path: "schedule", defaultTag: ""}) // no default, required
 
 		if !v.HasErrors() {
 			t.Error("empty value without default on required field must produce error")
@@ -862,7 +862,7 @@ func TestMut_Line280_DefaultTagEmptyString(t *testing.T) {
 		cv := &Validator2{sanitizer: NewSanitizer()}
 		v := NewValidator()
 		field := reflect.ValueOf("")
-		cv.validateStringField(v, reflect.Value{}, field, "image", "") // no default, optional
+		cv.validateStringField(v, field, fieldCtx{path: "image", defaultTag: ""}) // no default, optional
 
 		if v.HasErrors() {
 			t.Error("empty value without default on optional field should not error")
