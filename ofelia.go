@@ -43,14 +43,28 @@ func buildLogger(level string) (*slog.Logger, *slog.LevelVar) {
 	return slog.New(handler), levelVar
 }
 
+// Exit codes. A command that failed has to say so in the only channel a shell
+// reads, otherwise `ofelia validate … || exit 1` in a pipeline never fires and
+// a broken config sails through the gate that exists to stop it.
+const (
+	exitOK      = 0
+	exitFailure = 1
+)
+
 func main() {
+	os.Exit(run(os.Args[1:]))
+}
+
+// run holds what main used to do and returns the process exit code instead of
+// ending the process, so the exit status is a value tests can assert on.
+func run(args []string) int {
 	cli.Version = version
 	cli.Build = build
 
 	// Handle --version flag before parser setup
-	if slices.Contains(os.Args[1:], "--version") {
+	if slices.Contains(args, "--version") {
 		_, _ = fmt.Fprintln(os.Stdout, cli.VersionString())
-		return
+		return exitOK
 	}
 
 	// Pre-parse log-level flag to configure logger early
@@ -58,7 +72,6 @@ func main() {
 		LogLevel   string `long:"log-level"`
 		ConfigFile string `long:"config" default:"/etc/ofelia/config.ini"`
 	}
-	args := os.Args[1:]
 	preParser := flags.NewParser(&pre, flags.IgnoreUnknown)
 	_, _ = preParser.ParseArgs(args)
 
@@ -118,8 +131,10 @@ func main() {
 	)
 
 	if _, err := parser.ParseArgs(args); err != nil {
+		// Help was asked for and printed. That is the command doing its job,
+		// not a failure.
 		if flags.WroteHelp(err) {
-			return
+			return exitOK
 		}
 
 		var flagErr *flags.Error
@@ -128,7 +143,14 @@ func main() {
 			_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", cli.VersionString())
 		}
 
-		logger.Error("Command failed to execute")
-		return // Exit gracefully instead of os.Exit(1)
+		// Every other error — an unusable config, a subcommand that returned
+		// an error, an unknown command — is a failure and has to leave a
+		// non-zero status behind. This used to return 0 with a logged message,
+		// which meant `ofelia validate … || exit 1` could not fire and a
+		// broken config passed the gate meant to catch it.
+		logger.Error("Command failed to execute", "error", err)
+		return exitFailure
 	}
+
+	return exitOK
 }

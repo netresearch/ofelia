@@ -24,11 +24,11 @@ func TestE2E_Validate_MalformedINI(t *testing.T) {
 
 	stdout, stderr, err := runCommand(t, "validate", "--config="+configPath)
 
-	// Note on exit code: ofelia.go intentionally calls `return` instead of
-	// os.Exit(1) after go-flags reports the error (see ofelia.go ~L132),
-	// so the process exits 0. We therefore assert on the human-readable
-	// error text — that's what the user actually sees in CI logs.
-	_ = err
+	// The exit status is what a pipeline reads. This used to be discarded here
+	// with a note calling the exit-0 behavior intentional, which meant the
+	// test documented the defect instead of catching it: `ofelia validate …
+	// || exit 1` could never fire on a broken config.
+	assertExitCode(t, err, 1, stdout, stderr)
 
 	combined := stdout + stderr
 	for _, needle := range []string{
@@ -49,7 +49,9 @@ func TestE2E_Validate_MissingConfigFile(t *testing.T) {
 	t.Parallel()
 
 	missingPath := filepath.Join(t.TempDir(), "does-not-exist.ini")
-	stdout, stderr, _ := runCommand(t, "validate", "--config="+missingPath)
+	stdout, stderr, err := runCommand(t, "validate", "--config="+missingPath)
+
+	assertExitCode(t, err, 1, stdout, stderr)
 
 	combined := stdout + stderr
 	for _, needle := range []string{
@@ -84,7 +86,11 @@ func TestE2E_Validate_AcceptsValidConfig(t *testing.T) {
 `
 
 	configPath := writeConfig(t, configBody)
-	stdout, stderr, _ := runCommand(t, "validate", "--config="+configPath)
+	stdout, stderr, err := runCommand(t, "validate", "--config="+configPath)
+
+	// The counterpart to the failure cases: a good config must exit 0, or a
+	// pipeline that gates on validate would reject every deployment.
+	assertExitCode(t, err, 0, stdout, stderr)
 
 	// JSON dump should mention both jobs we defined.
 	for _, needle := range []string{`"hello"`, `"world"`, `"Image": "alpine:3.20"`} {

@@ -345,3 +345,26 @@ func dockerRemove(t *testing.T, name string) {
 	cmd.Stderr = io.Discard
 	_ = cmd.Run()
 }
+
+// assertExitCode fails the test unless the command exited with want.
+//
+// The exit status is the only thing a shell, a Makefile or a CI step can act
+// on, so it is asserted separately from the human-readable output: a command
+// that prints a clear error and still exits 0 is indistinguishable from
+// success to everything except a person reading the log.
+func assertExitCode(t *testing.T, runErr error, want int, stdout, stderr string) {
+	t.Helper()
+
+	got := 0
+	if runErr != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(runErr, &exitErr) {
+			t.Fatalf("command failed to run at all: %v", runErr)
+		}
+		got = exitErr.ExitCode()
+	}
+
+	if got != want {
+		t.Errorf("exit code = %d, want %d\nstdout=%s\nstderr=%s", got, want, stdout, stderr)
+	}
+}
