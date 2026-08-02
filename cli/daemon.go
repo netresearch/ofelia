@@ -163,7 +163,25 @@ func (c *DaemonCommand) boot() (err error) {
 	if c.dockerHandler != nil {
 		dockerProvider = c.dockerHandler.GetDockerProvider()
 	}
-	c.healthChecker = web.NewHealthChecker(dockerProvider, c.scheduler, "1.0.0")
+	// The version was hardcoded to "1.0.0", so /health reported the same
+	// number for every build ever shipped and could not be used to tell which
+	// ofelia was answering. Dev builds have no ldflags and say so.
+	reportedVersion := Version
+	if reportedVersion == "" {
+		reportedVersion = "dev"
+	}
+	c.healthChecker = web.NewHealthChecker(dockerProvider, c.scheduler, reportedVersion)
+
+	// Stop the checker's periodic loop on shutdown, after the server that
+	// serves its result has gone (priority 20).
+	c.shutdownManager.RegisterHook(core.ShutdownHook{
+		Name:     "health-checker",
+		Priority: 30,
+		Hook: func(context.Context) error {
+			c.healthChecker.Stop()
+			return nil
+		},
+	})
 
 	// Create graceful scheduler with shutdown support
 	gracefulScheduler := core.NewGracefulScheduler(c.scheduler, c.shutdownManager)
@@ -264,11 +282,14 @@ func (c *DaemonCommand) start() error {
 	// Start listening for shutdown signals
 	c.shutdownManager.ListenForShutdown()
 
-	// Set up a goroutine to close done channel when shutdown completes
+	// Set up a goroutine to close done channel when shutdown completes.
+	//
+	// This waited on ShutdownChan, which is closed when shutdown *starts*, so
+	// the process exited while the hooks were still running: only the first
+	// priority group (the scheduler) ever ran, and the web server was never
+	// stopped gracefully despite the hook registered for it.
 	go func() {
-		<-c.shutdownManager.ShutdownChan()
-		// Give some time for graceful shutdown to complete
-		// The shutdown manager handles the actual shutdown process
+		<-c.shutdownManager.Done()
 		c.closeDone()
 	}()
 

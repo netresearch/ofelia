@@ -29,7 +29,16 @@ func TestE2E_GracefulShutdown_SIGTERM(t *testing.T) {
 `
 
 	configPath := writeConfig(t, configBody)
-	daemon := startDaemon(t, configPath)
+	// The web server is enabled so the shutdown exercises more than one hook
+	// priority group, which is what the completion assertion below is about.
+	//
+	// It is worth knowing what this test can and cannot catch: exiting without
+	// waiting for the hooks is a race, and a release build loses it every time
+	// (measured 0/5 completions), but this harness builds with -race, whose
+	// instrumentation reliably flips the outcome (5/5). So the assertion below
+	// would not have failed on the broken code here. The deterministic guard
+	// for that is TestShutdownDoneClosesOnlyAfterEveryHookRan in core.
+	daemon := startDaemon(t, configPath, "--enable-web", "--web-address="+reserveLoopbackAddr(t))
 	defer daemon.shutdown(t, 10*time.Second) // safety net in case signal is lost
 
 	// Let the scheduler tick at least once so there is actual work to
@@ -64,10 +73,16 @@ func TestE2E_GracefulShutdown_SIGTERM(t *testing.T) {
 
 	// Verify the shutdown banner is emitted — proves the signal reached
 	// ShutdownManager rather than the process being killed by a harness.
+	//
+	// The second needle used to be "graceful shutdown", which also matches
+	// "Starting graceful shutdown" — logged *before* the first hook runs. So
+	// this passed while the daemon exited mid-shutdown and every hook group
+	// after the first was killed in flight. Only the completion line requires
+	// that all of them actually finished.
 	out := daemon.stdout.String()
 	for _, needle := range []string{
 		"Received shutdown signal",
-		"graceful shutdown",
+		"Graceful shutdown completed successfully",
 	} {
 		if !strings.Contains(out, needle) {
 			t.Errorf("expected shutdown log to mention %q, got:\nstdout=%s",
