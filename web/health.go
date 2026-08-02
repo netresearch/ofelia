@@ -71,6 +71,8 @@ type HealthChecker struct {
 	checks         map[string]HealthCheck
 	mu             sync.RWMutex
 	checkInterval  time.Duration
+	stop           chan struct{}
+	stopOnce       sync.Once
 }
 
 // NewHealthChecker creates a new health checker.
@@ -85,12 +87,23 @@ func NewHealthChecker(dockerProvider core.DockerProvider, scheduler *core.Schedu
 		version:        version,
 		checks:         make(map[string]HealthCheck),
 		checkInterval:  30 * time.Second,
+		stop:           make(chan struct{}),
 	}
 
 	// Start background health checks
 	go hc.runPeriodicChecks()
 
 	return hc
+}
+
+// Stop ends the periodic check loop.
+//
+// Without it the loop ran until the process exited, so every checker ever
+// constructed kept a goroutine alive — harmless for the daemon's single
+// long-lived instance, but tests that build one per case leaked one each.
+// Safe to call more than once and from several goroutines.
+func (hc *HealthChecker) Stop() {
+	hc.stopOnce.Do(func() { close(hc.stop) })
 }
 
 // runPeriodicChecks runs health checks periodically
@@ -101,8 +114,13 @@ func (hc *HealthChecker) runPeriodicChecks() {
 	// Run initial checks
 	hc.performAllChecks()
 
-	for range ticker.C {
-		hc.performAllChecks()
+	for {
+		select {
+		case <-hc.stop:
+			return
+		case <-ticker.C:
+			hc.performAllChecks()
+		}
 	}
 }
 

@@ -34,14 +34,17 @@ func localJob(name, schedule string) core.Job {
 
 // checkSchedulerNow runs the check once and returns what it recorded, without
 // waiting for the periodic loop.
+//
+// The result is read back through GetHealth rather than off the checker's map,
+// so these keep passing when the storage behind the report changes; Stop ends
+// the loop the constructor starts, which otherwise outlives every case.
 func checkSchedulerNow(t *testing.T, s *core.Scheduler) HealthCheck {
 	t.Helper()
 	hc := NewHealthChecker(nil, s, "test")
+	t.Cleanup(hc.Stop)
 	hc.checkScheduler()
 
-	hc.mu.RLock()
-	defer hc.mu.RUnlock()
-	return hc.checks["scheduler"]
+	return hc.GetHealth().Checks["scheduler"]
 }
 
 func TestCheckScheduler_HealthyWhenEveryJobIsRegistered(t *testing.T) {
