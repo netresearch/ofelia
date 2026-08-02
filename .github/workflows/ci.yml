@@ -22,6 +22,7 @@ jobs:
       enable-fuzz: true
       enable-license-check: true
       enable-codecov: true
+      enable-test-results: true
       enable-integration-tests: true
       enable-e2e-tests: true
       e2e-test-packages: ./e2e/...
