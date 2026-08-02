@@ -67,3 +67,40 @@ func TestValidateExecuteMissingFile(t *testing.T) {
 	err := cmd.Execute(nil)
 	assert.Error(t, err)
 }
+
+// TestValidateExecuteRunsValidatorWithoutStrictFlag pins that running validate
+// is itself the request to have the config checked. The checks used to sit
+// behind enable-strict-validation, which defaults to false, so the one command
+// whose purpose is validation reported success on a config it had not
+// inspected.
+//
+// The config below parses cleanly as INI and is only wrong semantically, so it
+// exercises the validator rather than the loader.
+func TestValidateExecuteRunsValidatorWithoutStrictFlag(t *testing.T) {
+	// Not parallel: modifies global os.Stdout which races with other tests.
+
+	configFile := filepath.Join(t.TempDir(), "config.ini")
+	content := `
+[global]
+web-address = definitely-not-an-address
+
+[job-exec "foo"]
+schedule = @every 10s
+command = echo "foo"
+`
+	require.NoError(t, os.WriteFile(configFile, []byte(content), 0o644))
+
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = oldStdout }()
+
+	cmd := ValidateCommand{ConfigFile: configFile, Logger: test.NewTestLogger()}
+	err := cmd.Execute(nil)
+
+	w.Close()
+	_, _ = io.ReadAll(r)
+
+	require.Error(t, err, "an invalid web-address was accepted without the strict flag")
+	assert.Contains(t, err.Error(), "web-address")
+}

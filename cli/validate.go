@@ -10,6 +10,8 @@ import (
 	"os"
 
 	defaults "github.com/creasty/defaults"
+
+	"github.com/netresearch/ofelia/config"
 )
 
 // ValidateCommand validates the config file
@@ -36,6 +38,21 @@ func (c *ValidateCommand) Execute(_ []string) error {
 	if c.LogLevel == "" {
 		if err := ApplyLogLevel(conf.Global.LogLevel, c.LevelVar); err != nil {
 			c.Logger.Warn(fmt.Sprintf("Failed to apply config log level (using default): %v", err))
+		}
+	}
+
+	// Validate regardless of enable-strict-validation. That flag decides
+	// whether the *daemon* refuses to start on a questionable config; running
+	// this command is itself the request to have the config checked, so
+	// answering "looks fine" because a runtime toggle is off would make the
+	// one command whose purpose is validation the one that does not validate.
+	//
+	// BuildFromFile has already run the same validator when the flag is on, so
+	// this only adds work in the default case.
+	if !conf.Global.EnableStrictValidation {
+		if err := config.NewConfigValidator(conf).Validate(); err != nil {
+			c.Logger.Error("ERROR")
+			return fmt.Errorf("configuration validation failed: %w", err)
 		}
 	}
 

@@ -100,3 +100,58 @@ func TestE2E_Validate_AcceptsValidConfig(t *testing.T) {
 		}
 	}
 }
+
+// TestE2E_Validate_ChecksWithoutStrictFlag pins that running validate is
+// itself the request to have the config checked. The checks used to sit behind
+// `enable-strict-validation`, so the one command whose purpose is validation
+// answered "looks fine" for a config it had not inspected whenever that
+// runtime toggle was off — which is the default.
+//
+// The toggle still governs whether the daemon refuses to start; it no longer
+// governs whether the checker checks.
+func TestE2E_Validate_ChecksWithoutStrictFlag(t *testing.T) {
+	t.Parallel()
+
+	// A malformed listen address, with no enable-strict-validation in sight.
+	configPath := writeConfig(t, `[global]
+  web-address = definitely-not-an-address
+
+[job-local "hello"]
+  schedule = @every 30s
+  command = echo hello
+`)
+
+	stdout, stderr, err := runCommand(t, "validate", "--config="+configPath)
+	if err == nil {
+		t.Errorf("an invalid web-address was accepted without the strict flag:\nstdout=%s\nstderr=%s",
+			stdout, stderr)
+	}
+	if !strings.Contains(stdout+stderr, "web-address") {
+		t.Errorf("expected the offending field to be named, got:\nstdout=%s\nstderr=%s", stdout, stderr)
+	}
+}
+
+// TestE2E_Validate_WebCredentialsOnlyWhenAuthEnabled pins the conditional
+// requirement from the other side: a config with no web UI must not be asked
+// for web-UI credentials, or enabling validation at all becomes impractical.
+func TestE2E_Validate_WebCredentialsOnlyWhenAuthEnabled(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeConfig(t, `[global]
+  enable-strict-validation = true
+
+[job-local "hello"]
+  schedule = @every 30s
+  command = echo hello
+`)
+
+	stdout, stderr, err := runCommand(t, "validate", "--config="+configPath)
+	if err != nil {
+		t.Errorf("a config without a web UI was rejected: %v\nstdout=%s\nstderr=%s", err, stdout, stderr)
+	}
+	for _, unwanted := range []string{"web-password-hash", "web-secret-key"} {
+		if strings.Contains(stdout+stderr, unwanted+"': is required") {
+			t.Errorf("%s was demanded although web auth is off", unwanted)
+		}
+	}
+}

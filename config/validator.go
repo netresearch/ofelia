@@ -231,8 +231,9 @@ func (cv *Validator2) validateStruct(v *Validator, obj any, path string) {
 			continue
 		}
 
-		// Validate based on field type and value
-		cv.validateField(v, field, fieldPath, defaultTag)
+		// Validate based on field type and value. The enclosing struct travels
+		// with it so a field can be required conditionally on a sibling.
+		cv.validateField(v, val, field, fieldPath, defaultTag)
 	}
 }
 
@@ -274,10 +275,12 @@ func resolveFieldPath(parentPath, fieldName, gcfgTag, mapstructureTag string) st
 }
 
 // validateField validates individual fields based on their type and tags
-func (cv *Validator2) validateField(v *Validator, field reflect.Value, path string, defaultTag string) {
+func (cv *Validator2) validateField(
+	v *Validator, parent, field reflect.Value, path string, defaultTag string,
+) {
 	switch field.Kind() {
 	case reflect.String:
-		cv.validateStringField(v, field, path, defaultTag)
+		cv.validateStringField(v, parent, field, path, defaultTag)
 	case reflect.Int, reflect.Int64:
 		cv.validateIntField(v, field, path)
 	case reflect.Slice:
@@ -296,7 +299,9 @@ func (cv *Validator2) validateField(v *Validator, field reflect.Value, path stri
 }
 
 // validateStringField validates string type fields
-func (cv *Validator2) validateStringField(v *Validator, field reflect.Value, path string, defaultTag string) {
+func (cv *Validator2) validateStringField(
+	v *Validator, parent, field reflect.Value, path string, defaultTag string,
+) {
 	str := field.String()
 
 	// Skip validation for fields with defaults when they're empty
@@ -305,7 +310,7 @@ func (cv *Validator2) validateStringField(v *Validator, field reflect.Value, pat
 	}
 
 	// Check for required fields
-	if defaultTag == "" && str == "" && !cv.isOptionalField(path) {
+	if defaultTag == "" && str == "" && !cv.isOptionalField(path) && cv.gateIsOpen(parent, path) {
 		v.ValidateRequired(path, str)
 	}
 
@@ -489,6 +494,50 @@ func (cv *Validator2) isOptionalField(path string) bool {
 		}
 	}
 	return false
+}
+
+// requiredWhen names, for a field that only means anything alongside a
+// feature, the sibling boolean that switches that feature on.
+//
+// Without this, a field carrying no `default` tag is required unconditionally,
+// which demanded web-UI credentials from every config that enabled strict
+// validation — including the ones with no web UI at all. That made strict
+// validation impractical to adopt, and an operator who cannot adopt it does
+// not get the checks it exists to provide.
+// #nosec G101 -- these are INI key names the validator matches on, not values
+var requiredWhen = map[string]string{
+	"web-password-hash": "web-auth-enabled",
+	"web-secret-key":    "web-auth-enabled",
+}
+
+// gateIsOpen reports whether a conditionally-required field is currently
+// required, i.e. whether the sibling flag that governs it is set. Fields with
+// no entry in requiredWhen are always required and answer true.
+//
+// A gate that cannot be found answers true as well: an unresolvable gate means
+// the mapping and the config have drifted apart, and demanding the field is
+// the safe direction — it surfaces, where silently dropping the check would
+// not.
+func (cv *Validator2) gateIsOpen(parent reflect.Value, path string) bool {
+	gate, conditional := requiredWhen[path]
+	if !conditional {
+		return true
+	}
+	if !parent.IsValid() || parent.Kind() != reflect.Struct {
+		return true
+	}
+
+	typ := parent.Type()
+	for fieldType := range typ.Fields() {
+		if !fieldType.IsExported() || fieldType.Type.Kind() != reflect.Bool {
+			continue
+		}
+		if fieldType.Tag.Get("gcfg") != gate && fieldType.Tag.Get("mapstructure") != gate {
+			continue
+		}
+		return parent.FieldByIndex(fieldType.Index).Bool()
+	}
+	return true
 }
 
 // isValidAddress checks if an address string is valid
