@@ -186,3 +186,43 @@ func TestE2E_GlobalConfigFlagIsHonoured(t *testing.T) {
 			missing, stdout, stderr)
 	}
 }
+
+// TestE2E_GlobalConfigFlagReachesDoctor covers the subcommand that made the
+// first version of this fix incomplete.
+//
+// doctor searches well-known locations when it is given no path, so it is the
+// one command that must NOT receive a pre-filled default — and it was
+// therefore also the one constructed without the pre-parsed value at all, so
+// `ofelia --config=x doctor` was accepted and then ignored, reporting on
+// /etc/ofelia/config.ini instead. Accepting a flag and disregarding it is
+// worse than rejecting it: nothing tells the user their path was dropped.
+func TestE2E_GlobalConfigFlagReachesDoctor(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeConfig(t, `[global]
+  log-level = info
+
+[job-local "hello"]
+  schedule = @every 1h
+  command = echo hi
+`)
+
+	for _, args := range [][]string{
+		{"--config=" + configPath, "doctor"},
+		{"doctor", "--config=" + configPath},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr, _ := runCommand(t, args...)
+			out := stdout + stderr
+
+			if !strings.Contains(out, configPath) {
+				t.Errorf("doctor did not report on the config it was given (%s):\n%s", configPath, out)
+			}
+			if strings.Contains(out, "Config file not found: /etc/ofelia/config.ini") {
+				t.Errorf("doctor fell back to the default despite an explicit --config:\n%s", out)
+			}
+		})
+	}
+}
