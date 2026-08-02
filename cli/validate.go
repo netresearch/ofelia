@@ -14,7 +14,7 @@ import (
 
 // ValidateCommand validates the config file
 type ValidateCommand struct {
-	ConfigFile string `long:"config" env:"OFELIA_CONFIG" description:"configuration file" default:"/etc/ofelia/config.ini"`
+	ConfigFile string `long:"config" env:"OFELIA_CONFIG" description:"configuration file"`
 	LogLevel   string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (overrides config)"`
 	Logger     *slog.Logger
 	LevelVar   *slog.LevelVar

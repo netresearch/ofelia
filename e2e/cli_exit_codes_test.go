@@ -121,3 +121,68 @@ func TestE2E_ExitCode_ValidateIsUsableAsAGate(t *testing.T) {
 		t.Error("a missing config was accepted; validate cannot be used as a gate")
 	}
 }
+
+// TestE2E_GlobalFlagsBeforeSubcommand pins that the flags ofelia pre-parses
+// out of argv are accepted in the position a user would naturally write them.
+//
+// `--log-level` and `--config` are read before the logger exists, so they look
+// global — but the top-level parser did not declare them, and putting them
+// ahead of the subcommand was rejected with `unknown flag`. Both positions now
+// have to behave the same, since nothing about the flag suggests otherwise.
+func TestE2E_GlobalFlagsBeforeSubcommand(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeConfig(t, `[global]
+  log-level = info
+
+[job-local "hello"]
+  schedule = @every 30s
+  command = echo hi
+`)
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{name: "config before", args: []string{"--config=" + configPath, "validate"}},
+		{name: "config after", args: []string{"validate", "--config=" + configPath}},
+		{name: "log-level before", args: []string{"--log-level=debug", "--config=" + configPath, "validate"}},
+		{name: "log-level after", args: []string{"validate", "--log-level=debug", "--config=" + configPath}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout, stderr, err := runCommand(t, tc.args...)
+			assertExitCode(t, err, 0, stdout, stderr)
+
+			if strings.Contains(stdout+stderr, "unknown flag") {
+				t.Errorf("%v was rejected as an unknown flag:\nstdout=%s\nstderr=%s", tc.args, stdout, stderr)
+			}
+		})
+	}
+}
+
+// TestE2E_GlobalConfigFlagIsHonoured guards the half that a "does it parse"
+// test would miss: the path has to actually reach the command. Declaring the
+// flag on the parser is not enough on its own — the subcommands carried their
+// own `--config` default, which overwrote the pre-parsed value and sent
+// validate to /etc/ofelia/config.ini regardless of what was asked for.
+func TestE2E_GlobalConfigFlagIsHonoured(t *testing.T) {
+	t.Parallel()
+
+	missing := filepath.Join(t.TempDir(), "not-here.ini")
+
+	stdout, stderr, err := runCommand(t, "--config="+missing, "validate")
+	if err == nil {
+		t.Fatalf("validating a missing config succeeded:\nstdout=%s\nstderr=%s", stdout, stderr)
+	}
+
+	// The named path proves the flag was used rather than silently replaced
+	// by the compiled-in default.
+	if !strings.Contains(stdout+stderr, missing) {
+		t.Errorf("the error names a different config than the one requested (%s):\nstdout=%s\nstderr=%s",
+			missing, stdout, stderr)
+	}
+}

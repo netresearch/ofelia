@@ -55,6 +55,19 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
+// globalOptions are the flags that apply to ofelia as a whole rather than to
+// one subcommand: they are read out of argv before the logger exists, so the
+// logger can be built at the requested level and the config can be located.
+//
+// They are declared on the top-level parser as well, so that `ofelia
+// --config=x daemon` works and not only `ofelia daemon --config=x`. Being
+// pre-parsed made them look global while the parser rejected them in the
+// position a user would naturally write them.
+type globalOptions struct {
+	LogLevel   string `long:"log-level" description:"Set log level (overrides config)"`
+	ConfigFile string `long:"config" description:"Configuration file path" default:"/etc/ofelia/config.ini"`
+}
+
 // run holds what main used to do and returns the process exit code instead of
 // ending the process, so the exit status is a value tests can assert on.
 func run(args []string) int {
@@ -68,10 +81,7 @@ func run(args []string) int {
 	}
 
 	// Pre-parse log-level flag to configure logger early
-	var pre struct {
-		LogLevel   string `long:"log-level"`
-		ConfigFile string `long:"config" default:"/etc/ofelia/config.ini"`
-	}
+	var pre globalOptions
 	preParser := flags.NewParser(&pre, flags.IgnoreUnknown)
 	_, _ = preParser.ParseArgs(args)
 
@@ -87,6 +97,14 @@ func run(args []string) int {
 	logger, levelVar := buildLogger(pre.LogLevel)
 
 	parser := flags.NewNamedParser("ofelia", flags.Default|flags.AllowBoolValues)
+
+	// Accept the global flags before the subcommand too. The values are
+	// already in `pre`; re-declaring them here is what stops the parser
+	// rejecting `ofelia --config=x daemon` as an unknown flag.
+	if _, err := parser.AddGroup("Global Options", "Flags that apply to every subcommand", &pre); err != nil {
+		logger.Error("registering global options failed", "error", err)
+		return exitFailure
+	}
 	_, _ = parser.AddCommand(
 		"daemon",
 		"daemon process",

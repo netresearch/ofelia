@@ -12,7 +12,7 @@ import (
 
 // ConfigShowCommand displays the effective runtime configuration
 type ConfigShowCommand struct {
-	ConfigFile string `long:"config" env:"OFELIA_CONFIG" description:"configuration file" default:"/etc/ofelia/config.ini"`
+	ConfigFile string `long:"config" env:"OFELIA_CONFIG" description:"configuration file"`
 	LogLevel   string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (overrides config)"`
 	Logger     *slog.Logger
 	LevelVar   *slog.LevelVar
