@@ -792,7 +792,7 @@ func TestRegisterHealthEndpoints(t *testing.T) {
 	sched := core.NewScheduler(stubDiscardLogger())
 	srv := webpkg.NewServer("", sched, nil, nil)
 
-	hc := webpkg.NewHealthChecker(nil, "test-version")
+	hc := webpkg.NewHealthChecker(nil, nil, "test-version")
 	// Give the health checker time to run initial checks
 	time.Sleep(50 * time.Millisecond)
 

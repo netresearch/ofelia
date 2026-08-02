@@ -118,7 +118,7 @@ func TestRegisterHealthEndpoints_UIFSSubSuccess(t *testing.T) {
 	srv := NewServer("", sched, nil, nil)
 	require.NotNil(t, srv)
 
-	hc := NewHealthChecker(nil, "test-version")
+	hc := NewHealthChecker(nil, nil, "test-version")
 	// Give the health checker time to run initial checks.
 	time.Sleep(100 * time.Millisecond)
 	srv.RegisterHealthEndpoints(hc)

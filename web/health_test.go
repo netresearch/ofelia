@@ -14,7 +14,7 @@ import (
 )
 
 func TestHealthChecker(t *testing.T) {
-	hc := NewHealthChecker(nil, "1.0.0")
+	hc := NewHealthChecker(nil, nil, "1.0.0")
 
 	var health HealthResponse
 	testutil.Eventually(t, func() bool {
@@ -53,7 +53,7 @@ func TestHealthChecker(t *testing.T) {
 }
 
 func TestLivenessHandler(t *testing.T) {
-	hc := NewHealthChecker(nil, "1.0.0")
+	hc := NewHealthChecker(nil, nil, "1.0.0")
 	handler := hc.LivenessHandler()
 
 	req := httptest.NewRequest(http.MethodGet, "/live", nil)
@@ -73,7 +73,7 @@ func TestLivenessHandler(t *testing.T) {
 }
 
 func TestReadinessHandler(t *testing.T) {
-	hc := NewHealthChecker(nil, "1.0.0")
+	hc := NewHealthChecker(nil, nil, "1.0.0")
 
 	testutil.Eventually(t, func() bool {
 		return len(hc.GetHealth().Checks) > 0
@@ -110,7 +110,7 @@ func TestReadinessHandler(t *testing.T) {
 }
 
 func TestHealthHandler(t *testing.T) {
-	hc := NewHealthChecker(nil, "1.0.0")
+	hc := NewHealthChecker(nil, nil, "1.0.0")
 
 	testutil.Eventually(t, func() bool {
 		return len(hc.GetHealth().Checks) > 0
@@ -205,7 +205,7 @@ func TestHealthStatus(t *testing.T) {
 }
 
 func TestSystemResourceCheck(t *testing.T) {
-	hc := NewHealthChecker(nil, "1.0.0")
+	hc := NewHealthChecker(nil, nil, "1.0.0")
 
 	// Trigger system resource check
 	hc.checkSystemResources()
