@@ -22,6 +22,7 @@ type ShutdownManager struct {
 	hooks          []ShutdownHook
 	mu             sync.Mutex
 	shutdownChan   chan struct{}
+	doneChan       chan struct{}
 	isShuttingDown bool
 	logger         *slog.Logger
 }
@@ -43,6 +44,7 @@ func NewShutdownManager(logger *slog.Logger, timeout time.Duration) *ShutdownMan
 		timeout:      timeout,
 		hooks:        make([]ShutdownHook, 0),
 		shutdownChan: make(chan struct{}),
+		doneChan:     make(chan struct{}),
 		logger:       logger,
 	}
 }
@@ -88,6 +90,10 @@ func (sm *ShutdownManager) Shutdown() error {
 	}
 	sm.isShuttingDown = true
 	sm.mu.Unlock()
+
+	// Only one caller ever gets past the guard above, so this closes once and
+	// covers every return path below, including the timeout.
+	defer close(sm.doneChan)
 
 	sm.logger.Info(fmt.Sprintf("Starting graceful shutdown (timeout: %v)", sm.timeout))
 
@@ -179,6 +185,15 @@ func (sm *ShutdownManager) runHookGroup(ctx context.Context, hooks []ShutdownHoo
 // ShutdownChan returns a channel that's closed when shutdown starts
 func (sm *ShutdownManager) ShutdownChan() <-chan struct{} {
 	return sm.shutdownChan
+}
+
+// Done returns a channel that's closed once every hook has run.
+//
+// ShutdownChan only says shutdown *began* — it is closed before the first hook
+// executes. Anything that ends the process must wait on this instead, or the
+// later priority groups are killed mid-flight and never run at all.
+func (sm *ShutdownManager) Done() <-chan struct{} {
+	return sm.doneChan
 }
 
 // IsShuttingDown returns true if shutdown is in progress
