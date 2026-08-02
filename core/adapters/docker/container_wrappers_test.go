@@ -10,8 +10,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/moby/moby/client"
@@ -39,8 +41,8 @@ import (
 // map would pick between them in Go's randomized order, so the same test would
 // hit different handlers on different runs.
 //
-// An unmatched request fails the test instead of returning 404, so a changed
-// request path surfaces as a clear failure rather than a generic SDK error.
+// An unmatched request fails the test and answers 404, so a changed request
+// path surfaces as a named failure rather than only as a generic SDK error.
 func stubSDK(t *testing.T, routes map[string]http.HandlerFunc) *client.Client {
 	t.Helper()
 
@@ -62,6 +64,51 @@ func stubSDK(t *testing.T, routes map[string]http.HandlerFunc) *client.Client {
 	}))
 	t.Cleanup(srv.Close)
 	return newSDKClientForStubServer(t, srv)
+}
+
+// requestRecorder carries observations from a stub route back to the test.
+//
+// The handler runs on the server's goroutine and the assertions run on the
+// test's, so the two need synchronization that does not depend on net/http's
+// internals happening to order them: the handlers here assign before writing
+// the response, which today gives the client's return a happens-before edge,
+// but nothing in the memory model guarantees that and a later edit that moves
+// an assignment after the write would make it a genuine race.
+type requestRecorder struct {
+	mu     sync.Mutex
+	path   string
+	query  url.Values
+	visits int
+}
+
+// record captures the request under the lock. Call it from a stub route.
+func (rr *requestRecorder) record(r *http.Request) {
+	rr.mu.Lock()
+	defer rr.mu.Unlock()
+	rr.path = r.URL.Path
+	rr.query = r.URL.Query()
+	rr.visits++
+}
+
+// param returns a captured query parameter.
+func (rr *requestRecorder) param(name string) string {
+	rr.mu.Lock()
+	defer rr.mu.Unlock()
+	return rr.query.Get(name)
+}
+
+// requestPath returns the captured request path.
+func (rr *requestRecorder) requestPath() string {
+	rr.mu.Lock()
+	defer rr.mu.Unlock()
+	return rr.path
+}
+
+// count returns how many requests the route has served.
+func (rr *requestRecorder) count() int {
+	rr.mu.Lock()
+	defer rr.mu.Unlock()
+	return rr.visits
 }
 
 // stubDaemon wires a container adapter to a stub daemon.
@@ -107,10 +154,10 @@ func TestContainerServiceAdapter_Create_ReturnsID(t *testing.T) {
 func TestContainerServiceAdapter_Create_SendsName(t *testing.T) {
 	t.Parallel()
 
-	var gotName string
+	var rec requestRecorder
 	adapter := stubDaemon(t, map[string]http.HandlerFunc{
 		"/containers/create": func(w http.ResponseWriter, r *http.Request) {
-			gotName = r.URL.Query().Get("name")
+			rec.record(r)
 			writeJSON(t, w, map[string]any{"Id": "id", "Warnings": []string{}})
 		},
 	})
@@ -121,8 +168,8 @@ func TestContainerServiceAdapter_Create_SendsName(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if gotName != "named-container" {
-		t.Errorf("daemon `name` query param = %q, want named-container", gotName)
+	if got := rec.param("name"); got != "named-container" {
+		t.Errorf("daemon `name` query param = %q, want named-container", got)
 	}
 }
 
@@ -359,10 +406,10 @@ func TestContainerServiceAdapter_SignalWrappers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var gotPath string
+			var rec requestRecorder
 			adapter := stubDaemon(t, map[string]http.HandlerFunc{
 				tc.route: func(w http.ResponseWriter, r *http.Request) {
-					gotPath = r.URL.Path
+					rec.record(r)
 					w.WriteHeader(http.StatusNoContent)
 				},
 			})
@@ -370,8 +417,8 @@ func TestContainerServiceAdapter_SignalWrappers(t *testing.T) {
 			if err := tc.invoke(adapter); err != nil {
 				t.Fatalf("%s: %v", tc.name, err)
 			}
-			if !strings.Contains(gotPath, tc.wantPath) {
-				t.Errorf("%s hit %q, want a path containing %q", tc.name, gotPath, tc.wantPath)
+			if got := rec.requestPath(); !strings.Contains(got, tc.wantPath) {
+				t.Errorf("%s hit %q, want a path containing %q", tc.name, got, tc.wantPath)
 			}
 		})
 	}
@@ -383,10 +430,10 @@ func TestContainerServiceAdapter_SignalWrappers(t *testing.T) {
 func TestContainerServiceAdapter_Kill_SendsSignal(t *testing.T) {
 	t.Parallel()
 
-	var gotSignal string
+	var rec requestRecorder
 	adapter := stubDaemon(t, map[string]http.HandlerFunc{
 		"/kill": func(w http.ResponseWriter, r *http.Request) {
-			gotSignal = r.URL.Query().Get("signal")
+			rec.record(r)
 			w.WriteHeader(http.StatusNoContent)
 		},
 	})
@@ -394,8 +441,8 @@ func TestContainerServiceAdapter_Kill_SendsSignal(t *testing.T) {
 	if err := adapter.Kill(context.Background(), "abc", "SIGUSR1"); err != nil {
 		t.Fatalf("Kill: %v", err)
 	}
-	if gotSignal != "SIGUSR1" {
-		t.Errorf("daemon `signal` query param = %q, want SIGUSR1", gotSignal)
+	if got := rec.param("signal"); got != "SIGUSR1" {
+		t.Errorf("daemon `signal` query param = %q, want SIGUSR1", got)
 	}
 }
 
@@ -404,10 +451,10 @@ func TestContainerServiceAdapter_Kill_SendsSignal(t *testing.T) {
 func TestContainerServiceAdapter_Rename_SendsName(t *testing.T) {
 	t.Parallel()
 
-	var gotName string
+	var rec requestRecorder
 	adapter := stubDaemon(t, map[string]http.HandlerFunc{
 		"/rename": func(w http.ResponseWriter, r *http.Request) {
-			gotName = r.URL.Query().Get("name")
+			rec.record(r)
 			w.WriteHeader(http.StatusNoContent)
 		},
 	})
@@ -415,7 +462,7 @@ func TestContainerServiceAdapter_Rename_SendsName(t *testing.T) {
 	if err := adapter.Rename(context.Background(), "abc", "renamed"); err != nil {
 		t.Fatalf("Rename: %v", err)
 	}
-	if gotName != "renamed" {
-		t.Errorf("daemon `name` query param = %q, want renamed", gotName)
+	if got := rec.param("name"); got != "renamed" {
+		t.Errorf("daemon `name` query param = %q, want renamed", got)
 	}
 }

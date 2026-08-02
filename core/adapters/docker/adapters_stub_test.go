@@ -6,7 +6,6 @@ package docker
 import (
 	"context"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/netresearch/ofelia/core/domain"
@@ -212,11 +211,10 @@ func TestImageServiceAdapter_Exists(t *testing.T) {
 func TestImageServiceAdapter_Tag_SendsRepoAndTag(t *testing.T) {
 	t.Parallel()
 
-	var gotQuery, gotPath string
+	var rec requestRecorder
 	adapter := &ImageServiceAdapter{client: stubSDK(t, map[string]http.HandlerFunc{
 		"/tag": func(w http.ResponseWriter, r *http.Request) {
-			gotPath = r.URL.Path
-			gotQuery = r.URL.RawQuery
+			rec.record(r)
 			w.WriteHeader(http.StatusCreated)
 		},
 	})}
@@ -224,13 +222,13 @@ func TestImageServiceAdapter_Tag_SendsRepoAndTag(t *testing.T) {
 	if err := adapter.Tag(context.Background(), "alpine:3.20", "myrepo/alpine:pinned"); err != nil {
 		t.Fatalf("Tag: %v", err)
 	}
-	if gotPath == "" {
+	if rec.count() == 0 {
 		t.Fatal("Tag never reached the daemon")
 	}
 	// The SDK splits the target into repo and tag query parameters; assert the
 	// tag survived rather than the exact encoding of the repo path.
-	if want := "tag=pinned"; !strings.Contains(gotQuery, want) {
-		t.Errorf("tag request query = %q, want it to contain %q", gotQuery, want)
+	if got := rec.param("tag"); got != "pinned" {
+		t.Errorf("tag request `tag` query param = %q, want pinned", got)
 	}
 }
 
@@ -311,10 +309,10 @@ func TestNetworkServiceAdapter_ConnectDisconnectRemove(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			reached := false
+			var rec requestRecorder
 			adapter := &NetworkServiceAdapter{client: stubSDK(t, map[string]http.HandlerFunc{
-				tc.route: func(w http.ResponseWriter, _ *http.Request) {
-					reached = true
+				tc.route: func(w http.ResponseWriter, r *http.Request) {
+					rec.record(r)
 					w.WriteHeader(http.StatusOK)
 				},
 			})}
@@ -322,7 +320,7 @@ func TestNetworkServiceAdapter_ConnectDisconnectRemove(t *testing.T) {
 			if err := tc.invoke(adapter); err != nil {
 				t.Fatalf("%s: %v", tc.name, err)
 			}
-			if !reached {
+			if rec.count() == 0 {
 				t.Errorf("%s never reached the daemon", tc.name)
 			}
 		})

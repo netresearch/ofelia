@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -134,12 +135,11 @@ func TestSwarmServiceAdapter_Remove_Succeeds(t *testing.T) {
 func TestSwarmServiceAdapter_WaitForTask_ReturnsOnTerminalState(t *testing.T) {
 	t.Parallel()
 
-	poll := 0
+	var polls atomic.Int32
 	adapter := &SwarmServiceAdapter{client: stubSDK(t, map[string]http.HandlerFunc{
 		"/tasks": func(w http.ResponseWriter, _ *http.Request) {
-			poll++
 			state := string(domain.TaskStateRunning)
-			if poll > 1 {
+			if polls.Add(1) > 1 {
 				state = string(domain.TaskStateComplete)
 			}
 			writeJSON(t, w, []map[string]any{swarmTask("task-1", state)})
@@ -153,8 +153,8 @@ func TestSwarmServiceAdapter_WaitForTask_ReturnsOnTerminalState(t *testing.T) {
 	if got.ID != "task-1" {
 		t.Errorf("WaitForTask returned task %q, want task-1", got.ID)
 	}
-	if poll < 2 {
-		t.Errorf("WaitForTask returned after %d polls; it should keep polling while the task runs", poll)
+	if n := polls.Load(); n < 2 {
+		t.Errorf("WaitForTask returned after %d polls; it should keep polling while the task runs", n)
 	}
 }
 
@@ -182,12 +182,11 @@ func TestSwarmServiceAdapter_WaitForTask_TimesOut(t *testing.T) {
 func TestSwarmServiceAdapter_WaitForServiceTasks_WaitsForAll(t *testing.T) {
 	t.Parallel()
 
-	poll := 0
+	var polls atomic.Int32
 	adapter := &SwarmServiceAdapter{client: stubSDK(t, map[string]http.HandlerFunc{
 		"/tasks": func(w http.ResponseWriter, _ *http.Request) {
-			poll++
 			second := string(domain.TaskStateRunning)
-			if poll > 1 {
+			if polls.Add(1) > 1 {
 				second = string(domain.TaskStateFailed)
 			}
 			writeJSON(t, w, []map[string]any{
@@ -204,7 +203,7 @@ func TestSwarmServiceAdapter_WaitForServiceTasks_WaitsForAll(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("WaitForServiceTasks returned %d tasks, want 2", len(got))
 	}
-	if poll < 2 {
+	if polls.Load() < 2 {
 		t.Error("WaitForServiceTasks returned while one task was still running")
 	}
 }
