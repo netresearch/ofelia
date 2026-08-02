@@ -271,12 +271,21 @@ func (c *DaemonCommand) start() error {
 		return fmt.Errorf("failed to start scheduler: %w\n  → Check all job schedules are valid cron expressions\n  → Verify no duplicate job names exist\n  → Use 'ofelia validate --config=%q' to check configuration\n  → Check Docker daemon is running if using Docker jobs\n  → Review logs above for specific job errors", err, c.ConfigFile)
 	}
 
-	jobCount := 0
+	// Count what the scheduler actually holds, not what the config declared.
+	// Those differ whenever a job was rejected — an unparsable schedule, a
+	// duplicate name — and reporting the config's total then told an operator
+	// that a job was running when nothing had been scheduled.
+	scheduled := len(c.scheduler.GetActiveJobs())
+	declared := 0
 	if c.config != nil {
-		jobCount = len(c.config.RunJobs) + len(c.config.LocalJobs) +
+		declared = len(c.config.RunJobs) + len(c.config.LocalJobs) +
 			len(c.config.ExecJobs) + len(c.config.ServiceJobs) + len(c.config.ComposeJobs)
 	}
-	c.Logger.Info("Scheduler started", "jobCount", jobCount)
+	if scheduled != declared {
+		c.Logger.Error("not every configured job was scheduled",
+			"scheduled", scheduled, "configured", declared)
+	}
+	c.Logger.Info("Scheduler started", "jobCount", scheduled)
 
 	if err := c.startPprofServer(); err != nil {
 		return err

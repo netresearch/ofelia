@@ -588,8 +588,25 @@ func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind 
 	}
 }
 
+// registerJob hands a job to the scheduler and reports whether it was
+// accepted.
+//
+// A rejection means the job will never run — an unparsable schedule, a
+// duplicate name — so it is logged at error level and named. It used to be
+// discarded with `_ =`, leaving only the scheduler's own warning behind while
+// startup continued and the job count still included it.
+func (c *Config) registerJob(name string, j core.Job) bool {
+	if err := c.sh.AddJob(j); err != nil {
+		c.logger.Error("job will not run: the scheduler rejected it",
+			"job", name, "error", err)
+		return false
+	}
+	return true
+}
+
 func (c *Config) registerAllJobs() {
 	provider := c.dockerHandler.GetDockerProvider()
+	rejected := 0
 
 	wm := c.getWebhookManager()
 
@@ -602,7 +619,9 @@ func (c *Config) registerAllJobs() {
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(c.logger, wm)
-		_ = c.sh.AddJob(j)
+		if !c.registerJob(name, j) {
+			rejected++
+		}
 	}
 	for name, j := range c.RunJobs {
 		_ = defaults.Set(j)
@@ -616,7 +635,9 @@ func (c *Config) registerAllJobs() {
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(c.logger, wm)
-		_ = c.sh.AddJob(j)
+		if !c.registerJob(name, j) {
+			rejected++
+		}
 	}
 	for name, j := range c.LocalJobs {
 		_ = defaults.Set(j)
@@ -624,7 +645,9 @@ func (c *Config) registerAllJobs() {
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(c.logger, wm)
-		_ = c.sh.AddJob(j)
+		if !c.registerJob(name, j) {
+			rejected++
+		}
 	}
 	for name, j := range c.ServiceJobs {
 		_ = defaults.Set(j)
@@ -638,7 +661,9 @@ func (c *Config) registerAllJobs() {
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(c.logger, wm)
-		_ = c.sh.AddJob(j)
+		if !c.registerJob(name, j) {
+			rejected++
+		}
 	}
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
@@ -646,11 +671,20 @@ func (c *Config) registerAllJobs() {
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
 		j.buildMiddlewares(c.logger, wm)
-		_ = c.sh.AddJob(j)
+		if !c.registerJob(name, j) {
+			rejected++
+		}
+	}
+
+	// One line an operator can act on. Without it the only trace of a rejected
+	// job is a message among the startup noise, while the daemon reports
+	// itself healthy.
+	if rejected > 0 {
+		c.logger.Error("some jobs were not scheduled and will never run",
+			"rejected", rejected, "scheduled", len(c.sh.GetActiveJobs()))
 	}
 }
 
-// injectDedup sets the notification deduplicator on job-level middleware configs
 func (c *Config) injectDedup(slack *middlewares.SlackConfig, mail *middlewares.MailConfig) {
 	if c.notificationDedup == nil {
 		return
