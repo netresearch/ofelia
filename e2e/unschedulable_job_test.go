@@ -22,12 +22,39 @@ import (
 // These drive the real binary because the value that misled people was a log
 // line the daemon prints at startup.
 
+// bootAndCapture starts the daemon on the given config, waits until it reports
+// a started scheduler, and returns everything it logged.
+//
+// The tests below differ only in the config they feed and the lines they
+// expect, so the boot sequence lives here rather than once per test.
+func bootAndCapture(t *testing.T, configBody string) string {
+	t.Helper()
+
+	daemon := startDaemon(t, writeConfig(t, configBody))
+	t.Cleanup(func() { daemon.shutdown(t, 15*time.Second) })
+
+	if err := daemon.waitForLog("Scheduler started", 15*time.Second); err != nil {
+		t.Fatalf("daemon never reported a started scheduler: %v\nstdout=%s", err, daemon.stdout.String())
+	}
+	return daemon.stdout.String() + daemon.stderr.String()
+}
+
+// requireLogged fails with the captured output when an expected line is absent.
+func requireLogged(t *testing.T, out string, wants ...string) {
+	t.Helper()
+	for _, want := range wants {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected the daemon to log %q, got:\n%s", want, out)
+		}
+	}
+}
+
 // TestE2E_UnschedulableJob_IsReported pins that the rejection is named at
 // error level and that the reported count reflects what is actually scheduled.
 func TestE2E_UnschedulableJob_IsReported(t *testing.T) {
 	t.Parallel()
 
-	configPath := writeConfig(t, `[global]
+	out := bootAndCapture(t, `[global]
   log-level = info
 
 [job-local "broken"]
@@ -35,29 +62,10 @@ func TestE2E_UnschedulableJob_IsReported(t *testing.T) {
   command = echo hi
 `)
 
-	daemon := startDaemon(t, configPath)
-	t.Cleanup(func() { daemon.shutdown(t, 15*time.Second) })
-
-	if err := daemon.waitForLog("Scheduler started", 15*time.Second); err != nil {
-		t.Fatalf("daemon never reported a started scheduler: %v\nstdout=%s", err, daemon.stdout.String())
-	}
-
-	out := daemon.stdout.String() + daemon.stderr.String()
-
-	// The count has to describe reality. Reporting the configured total here
-	// is what made a job that never runs look like a job that does.
-	if !strings.Contains(out, "jobCount=0") {
-		t.Errorf("expected jobCount=0 for a config whose only job was rejected, got:\n%s", out)
-	}
-
-	// And the job has to be named, at a level that is not filtered out of
-	// production logging.
-	if !strings.Contains(out, "job will not run") {
-		t.Errorf("the rejected job was not reported as unrunnable:\n%s", out)
-	}
-	if !strings.Contains(out, "broken") {
-		t.Errorf("the report does not name the offending job:\n%s", out)
-	}
+	// The count has to describe reality — reporting the configured total is
+	// what made a job that never runs look like a job that does — and the job
+	// has to be named, at a level that is not filtered out in production.
+	requireLogged(t, out, "jobCount=0", "job will not run", "broken")
 }
 
 // TestE2E_SchedulableJob_ReportsHonestCount is the counterpart: a config whose
@@ -66,7 +74,7 @@ func TestE2E_UnschedulableJob_IsReported(t *testing.T) {
 func TestE2E_SchedulableJob_ReportsHonestCount(t *testing.T) {
 	t.Parallel()
 
-	configPath := writeConfig(t, `[global]
+	out := bootAndCapture(t, `[global]
   log-level = info
 
 [job-local "fine"]
@@ -74,18 +82,7 @@ func TestE2E_SchedulableJob_ReportsHonestCount(t *testing.T) {
   command = echo hi
 `)
 
-	daemon := startDaemon(t, configPath)
-	t.Cleanup(func() { daemon.shutdown(t, 15*time.Second) })
-
-	if err := daemon.waitForLog("Scheduler started", 15*time.Second); err != nil {
-		t.Fatalf("daemon never reported a started scheduler: %v\nstdout=%s", err, daemon.stdout.String())
-	}
-
-	out := daemon.stdout.String() + daemon.stderr.String()
-
-	if !strings.Contains(out, "jobCount=1") {
-		t.Errorf("expected jobCount=1 for one valid job, got:\n%s", out)
-	}
+	requireLogged(t, out, "jobCount=1")
 	for _, unwanted := range []string{"job will not run", "some jobs were not scheduled"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("a healthy config produced %q:\n%s", unwanted, out)
@@ -100,7 +97,7 @@ func TestE2E_SchedulableJob_ReportsHonestCount(t *testing.T) {
 func TestE2E_PartiallyUnschedulable_KeepsTheGoodJobs(t *testing.T) {
 	t.Parallel()
 
-	configPath := writeConfig(t, `[global]
+	out := bootAndCapture(t, `[global]
   log-level = info
 
 [job-local "good"]
@@ -112,22 +109,5 @@ func TestE2E_PartiallyUnschedulable_KeepsTheGoodJobs(t *testing.T) {
   command = echo nope
 `)
 
-	daemon := startDaemon(t, configPath)
-	t.Cleanup(func() { daemon.shutdown(t, 15*time.Second) })
-
-	if err := daemon.waitForLog("Scheduler started", 15*time.Second); err != nil {
-		t.Fatalf("daemon never reported a started scheduler: %v\nstdout=%s", err, daemon.stdout.String())
-	}
-
-	out := daemon.stdout.String() + daemon.stderr.String()
-
-	if !strings.Contains(out, "jobCount=1") {
-		t.Errorf("expected jobCount=1 (one of two jobs scheduled), got:\n%s", out)
-	}
-	if !strings.Contains(out, "bad") {
-		t.Errorf("the rejected job was not named:\n%s", out)
-	}
-	if !strings.Contains(out, "some jobs were not scheduled") {
-		t.Errorf("the summary of rejected jobs was not reported:\n%s", out)
-	}
+	requireLogged(t, out, "jobCount=1", "bad", "some jobs were not scheduled")
 }
