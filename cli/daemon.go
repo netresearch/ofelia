@@ -80,6 +80,16 @@ type DaemonCommand struct {
 	persistStore    *persist.Store // #593; nil when --state-file is empty
 }
 
+// registeredJobCount returns how many jobs the scheduler holds, enabled or
+// not. GetActiveJobs alone excludes disabled ones, which would make an
+// intentional disable look like a job that went missing.
+func registeredJobCount(s *core.Scheduler) int {
+	if s == nil {
+		return 0
+	}
+	return len(s.GetActiveJobs()) + len(s.GetDisabledJobs())
+}
+
 // closeDone safely closes the done channel at most once, preventing
 // double-close panics when multiple goroutines detect errors concurrently.
 func (c *DaemonCommand) closeDone() {
@@ -273,19 +283,15 @@ func (c *DaemonCommand) start() error {
 
 	// Count what the scheduler actually holds, not what the config declared.
 	// Those differ whenever a job was rejected — an unparsable schedule, a
-	// duplicate name — and reporting the config's total then told an operator
-	// that a job was running when nothing had been scheduled.
-	scheduled := len(c.scheduler.GetActiveJobs())
-	declared := 0
-	if c.config != nil {
-		declared = len(c.config.RunJobs) + len(c.config.LocalJobs) +
-			len(c.config.ExecJobs) + len(c.config.ServiceJobs) + len(c.config.ComposeJobs)
-	}
-	if scheduled != declared {
-		c.Logger.Error("not every configured job was scheduled",
-			"scheduled", scheduled, "configured", declared)
-	}
-	c.Logger.Info("Scheduler started", "jobCount", scheduled)
+	// duplicate name — and reporting the config's total told an operator that
+	// a job was running when nothing had been scheduled.
+	//
+	// Disabled jobs are counted: they are registered and will run again once
+	// re-enabled, so leaving them out would report a drop every time someone
+	// disables one. Rejections are reported by registerAllJobs, which knows
+	// how many there were; repeating the comparison here would only add a
+	// second, less precise voice.
+	c.Logger.Info("Scheduler started", "jobCount", registeredJobCount(c.scheduler))
 
 	if err := c.startPprofServer(); err != nil {
 		return err

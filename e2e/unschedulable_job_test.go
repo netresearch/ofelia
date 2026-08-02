@@ -86,7 +86,7 @@ func TestE2E_SchedulableJob_ReportsHonestCount(t *testing.T) {
 	if !strings.Contains(out, "jobCount=1") {
 		t.Errorf("expected jobCount=1 for one valid job, got:\n%s", out)
 	}
-	for _, unwanted := range []string{"job will not run", "not every configured job was scheduled"} {
+	for _, unwanted := range []string{"job will not run", "some jobs were not scheduled"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("a healthy config produced %q:\n%s", unwanted, out)
 		}
@@ -127,7 +127,7 @@ func TestE2E_PartiallyUnschedulable_KeepsTheGoodJobs(t *testing.T) {
 	if !strings.Contains(out, "bad") {
 		t.Errorf("the rejected job was not named:\n%s", out)
 	}
-	if !strings.Contains(out, "not every configured job was scheduled") {
-		t.Errorf("the discrepancy between configured and scheduled was not reported:\n%s", out)
+	if !strings.Contains(out, "some jobs were not scheduled") {
+		t.Errorf("the summary of rejected jobs was not reported:\n%s", out)
 	}
 }

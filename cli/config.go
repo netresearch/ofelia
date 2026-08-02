@@ -985,7 +985,9 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 	}
 	_ = c.sh.RemoveJob(oldJob)
 	newJob.buildMiddlewares(c.logger, c.getWebhookManager())
-	_ = c.sh.AddJob(newJob)
+	// A rejection here is worse than at boot: the old job has already been
+	// removed, so a job that was running stops and nothing takes its place.
+	c.registerJob(name, newJob)
 	// caller updates current map entry
 	return true
 }
@@ -1010,7 +1012,7 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 	}
 
 	j.buildMiddlewares(c.logger, c.getWebhookManager())
-	_ = c.sh.AddJob(j)
+	c.registerJob(name, j)
 	current[name] = j
 }
 

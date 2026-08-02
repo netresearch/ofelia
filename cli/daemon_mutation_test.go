@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/test"
 )
 
@@ -699,36 +700,39 @@ func TestWaitForServerWithErrChan_ErrChanPropagation(t *testing.T) {
 // jobCount arithmetic mutation test (lines 186-187)
 // =============================================================================
 
-// TestJobCount_Arithmetic verifies that jobCount correctly sums all job types.
-// Targets ARITHMETIC_BASE mutations that change + to - or *.
-func TestJobCount_Arithmetic(t *testing.T) {
+// TestRegisteredJobCount_CountsWhatTheSchedulerHolds replaces an earlier
+// TestJobCount_Arithmetic, which summed the config maps inside the test and
+// asserted its own sum — it never called production code, and the formula it
+// described is gone: the daemon now reports what the scheduler holds, because
+// the config total counted jobs that had been rejected and would never run.
+//
+// Disabled jobs are included on purpose. GetActiveJobs alone excludes them,
+// which would report a drop every time an operator disables a job.
+func TestRegisteredJobCount_CountsWhatTheSchedulerHolds(t *testing.T) {
 	t.Parallel()
-	logger := test.NewTestLogger()
-	config := NewConfig(logger)
 
-	// Add exactly 1 job to each job map
-	config.RunJobs["run1"] = &RunJobConfig{}
-	config.LocalJobs["local1"] = &LocalJobConfig{}
-	config.ExecJobs["exec1"] = &ExecJobConfig{}
-	config.ServiceJobs["service1"] = &RunServiceConfig{}
-	config.ComposeJobs["compose1"] = &ComposeJobConfig{}
+	sched := core.NewScheduler(test.NewTestLogger())
 
-	// The jobCount formula from daemon.go:186-187
-	jobCount := len(config.RunJobs) + len(config.LocalJobs) +
-		len(config.ExecJobs) + len(config.ServiceJobs) + len(config.ComposeJobs)
+	good := &core.LocalJob{BareJob: core.BareJob{Name: "good", Schedule: "@every 1h", Command: "true"}}
+	require.NoError(t, sched.AddJob(good))
 
-	assert.Equal(t, 5, jobCount,
-		"Each job type should contribute 1 to the total (1+1+1+1+1=5)")
+	disabled := &core.LocalJob{BareJob: core.BareJob{Name: "disabled", Schedule: "@every 1h", Command: "true"}}
+	require.NoError(t, sched.AddJob(disabled))
+	require.NoError(t, sched.DisableJob("disabled"))
 
-	// Add more to one type to verify arithmetic
-	config.RunJobs["run2"] = &RunJobConfig{}
-	config.ExecJobs["exec2"] = &ExecJobConfig{}
+	// A job the scheduler refuses is not held at all, so it must not be
+	// counted — that mismatch is what made a job that never runs look present.
+	rejected := &core.LocalJob{BareJob: core.BareJob{Name: "rejected", Schedule: "not-a-schedule", Command: "true"}}
+	require.Error(t, sched.AddJob(rejected))
 
-	jobCount = len(config.RunJobs) + len(config.LocalJobs) +
-		len(config.ExecJobs) + len(config.ServiceJobs) + len(config.ComposeJobs)
+	assert.Equal(t, 2, registeredJobCount(sched),
+		"one enabled and one disabled job are registered; the rejected one is not")
+}
 
-	assert.Equal(t, 7, jobCount,
-		"Should be 2+1+2+1+1=7")
+func TestRegisteredJobCount_NilScheduler(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, 0, registeredJobCount(nil))
 }
 
 // =============================================================================
