@@ -7,9 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`ofelia validate` now validates the jobs, not just the `[global]` section.** It checked global keys and stopped there, so a `[job-run]` without an `image` or a `[job-exec]` without a `container` passed the gate and then failed on every tick at runtime. Each job type is now checked for the fields its runtime actually requires, and the schedule and command are required everywhere ([#778](https://github.com/netresearch/ofelia/pull/778)).
+
 ### Fixed
 
+- **`/health` reports `degraded` while a configured job is not scheduled.** The scheduler check was a stub that returned `healthy` unconditionally, with a comment saying a real implementation would check the scheduler. So a daemon whose job had a mistyped schedule — a job that never fires — served a green `/health`, which is the probe the integration docs tell operators to point a container healthcheck at. The check now names every job the scheduler refused. `/ready` still answers 200 for `degraded`: one job with a typo should not take a daemon out of rotation while its other jobs keep running. A corrected config reloaded at runtime clears the complaint without a restart ([#780](https://github.com/netresearch/ofelia/issues/780)).
+- **Shutdown no longer ends the process before its hooks have run.** The daemon watched the channel that closes when shutdown *starts*, not when it finishes, so everything after the first priority group was killed mid-flight — the web server was never stopped gracefully despite having a hook registered to do it, cutting any request in progress. Measured on a release build, `SIGTERM` reached the end of shutdown in 0 of 5 runs before the fix and 5 of 5 after ([#781](https://github.com/netresearch/ofelia/pull/781)).
+- **`/health` reported a version of `1.0.0` for every build ever shipped.** It was hardcoded at the call site, so the endpoint could not be used to tell which ofelia was answering. It now reports the running build, or `dev` when built without ldflags ([#781](https://github.com/netresearch/ofelia/pull/781)).
+- **A job the scheduler rejects is now reported as such instead of being counted as running.** Five registration errors were discarded, and the startup line reported the number of jobs in the *config* rather than the number actually scheduled — so an operator saw a healthy daemon and a job that silently did nothing. The rejection is now logged at error level, naming the job, and the count describes what is really scheduled ([#777](https://github.com/netresearch/ofelia/pull/777)).
+- **A failing command now leaves a non-zero exit status.** `ofelia validate` and every other subcommand returned 0 after logging the error, so `ofelia validate … || exit 1` in a pipeline never fired and a broken config passed the gate that exists to stop it ([#771](https://github.com/netresearch/ofelia/pull/771)).
+- **`ofelia --config=x daemon` is accepted, not only `ofelia daemon --config=x`.** `--config` and `--log-level` were pre-parsed out of argv, which made them look global while the parser rejected them in the position a user would naturally write them ([#776](https://github.com/netresearch/ofelia/pull/776)).
+- **Web credentials are only required when web authentication is enabled.** Validation demanded them unconditionally, so a config with the web UI open and unauthenticated — the default — failed a check it should have passed ([#775](https://github.com/netresearch/ofelia/pull/775)).
+- **A container without a `Config` no longer crashes the daemon.** Two places dereferenced that pointer unguarded while converting Docker's response, which panics for any container the daemon reports without one ([#768](https://github.com/netresearch/ofelia/pull/768)).
 - **An expanded job output no longer collapses on its own.** The web UI refreshes every five seconds, and with a job's history panel open that refresh rebuilt the whole table from scratch. Every `<details>` element was re-created without its `open` attribute, so any output a user had expanded snapped shut within five seconds of opening it — long enough to start reading, not long enough to finish. The history table now records which outputs are expanded before it re-renders and restores them afterwards, keyed by the execution's timestamp rather than its row position, so an expanded output also stays open when a new run appears above it. Only the user collapses an output now ([#764](https://github.com/netresearch/ofelia/issues/764)).
+
+### Documentation
+
+- **The documented health endpoints did not exist.** `docs/API.md` and `docs/PROJECT_INDEX.md` described `GET /health/liveness` and `GET /health/readiness`; the daemon serves `/health`, `/healthz`, `/ready` and `/live`. Both response shapes were wrong too. The OpenAPI description of `/health` did not match the served body either — it named `uptime` instead of `uptimeSeconds`, described `checks` as booleans where each is an object, omitted `timestamp` and `system`, and documented a 503 that `/health` never returns. All four endpoints are now specified, with shared `HealthResponse`, `HealthCheck` and `SystemInfo` schemas.
+- **`durationMs` in the health report carries nanoseconds.** It serialises a Go `time.Duration`, which marshals as nanoseconds, so a local Docker ping reads `8332586` rather than `8`. The unit is now stated wherever the field is documented. The field name remains as-is; renaming it would break every existing consumer.
+
+### CI
+
+- The e2e shutdown test asserted on the substring `"graceful shutdown"`, which also matches `"Starting graceful shutdown"` — the line logged *before* the first hook. It stayed green while shutdown was broken, and now requires the completion line ([#781](https://github.com/netresearch/ofelia/pull/781)).
+- Test results are reported to Codecov Test Analytics ([#769](https://github.com/netresearch/ofelia/pull/769)).
+- The zizmor policy that exempts first-party reusable workflows from the pin rule now comes from the organisation-level reusable rather than a copy in this repository. It was added here in [#766](https://github.com/netresearch/ofelia/pull/766) and removed again in [#783](https://github.com/netresearch/ofelia/pull/783) once the reusable supplied it — a local file takes precedence over the fetched one, so leaving the copy behind would have pinned this repository to an ageing policy.
 
 ## [0.28.1] - 2026-07-28
 
