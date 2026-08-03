@@ -14,7 +14,7 @@
 [![Container Image](https://img.shields.io/badge/ghcr.io-netresearch%2Fofelia-blue)](https://github.com/netresearch/ofelia/pkgs/container/ofelia)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11513/badge)](https://www.bestpractices.dev/projects/11513)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/netresearch/ofelia/badge)](https://securityscorecards.dev/viewer/?uri=github.com/netresearch/ofelia)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-3.0-4baaaa.svg)](CODE_OF_CONDUCT.md)
 [![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev)
 
 <img src="https://weirdspace.dk/FranciscoIbanez/Graphics/Ofelia.gif" align="right" width="180px" height="300px" vspace="20" />
