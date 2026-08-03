@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-08-03
+
+A release about ofelia telling the truth about itself. A job the scheduler
+refused was reported as scheduled, `/health` claimed health it had never
+established, `validate` returned success on a config it had not checked, and
+shutdown ended the process before the hooks that stop the web server had run.
+Each of those looked fine from the outside, which is what made them worth
+fixing.
+
+Three changes alter behaviour you may be relying on. `ofelia validate` now
+exits non-zero when validation fails, so a pipeline step that silently passed
+will start failing — that is the point, but check yours before upgrading. That
+same command now also validates the jobs, so a config that passed before may
+not. And `/health` can now answer `degraded`; `/ready` is unchanged and still
+answers 200 for it.
+
 ### Added
 
 - **`ofelia validate` now validates the jobs, not just the `[global]` section.** It checked global keys and stopped there, so a `[job-run]` without an `image` or a `[job-exec]` without a `container` passed the gate and then failed on every tick at runtime. Each job type is now checked for the fields its runtime actually requires, and the schedule and command are required everywhere ([#778](https://github.com/netresearch/ofelia/pull/778)).
