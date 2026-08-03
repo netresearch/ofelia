@@ -319,7 +319,10 @@ GET    /api/jobs/removed       # Removed jobs
 
 # Config & Health
 GET    /api/config             # Current configuration
-GET    /health                 # Health check
+GET    /health                 # Full report, always 200 - verdict is in the body
+GET    /healthz                # Alias of /health
+GET    /ready                  # Same report, 503 when unhealthy
+GET    /live                   # Plain-text OK, runs no checks
 GET    /metrics                # Prometheus metrics
 ```
 

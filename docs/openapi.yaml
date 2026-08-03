@@ -116,53 +116,79 @@ paths:
 
   /health:
     get:
-      summary: Health check endpoint
+      summary: Detailed health report
+      description: >-
+        Always answers 200, including while the report says `degraded` or
+        `unhealthy` — the status is in the body, not the status code, so a
+        monitoring system can read *why* rather than only that something is
+        wrong. Use /ready for a probe that fails the request.
       tags:
         - Monitoring
       security: []
       responses:
         '200':
-          description: Service is healthy
+          description: The current report, whatever its status
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [healthy, degraded, unhealthy]
-                    example: healthy
-                  uptime:
-                    type: number
-                    description: Uptime in seconds
-                    example: 3600
-                  version:
-                    type: string
-                    example: "1.1.0"
-                  checks:
-                    type: object
-                    properties:
-                      docker:
-                        type: boolean
-                        example: true
-                      scheduler:
-                        type: boolean
-                        example: true
+                $ref: '#/components/schemas/HealthResponse'
+
+  /healthz:
+    get:
+      summary: Detailed health report (alias of /health)
+      tags:
+        - Monitoring
+      security: []
+      responses:
+        '200':
+          description: The current report, whatever its status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /ready:
+    get:
+      summary: Readiness probe
+      description: >-
+        Same body as /health, but the status code carries the verdict: 503 when
+        the overall status is `unhealthy`, 200 otherwise. `degraded` stays 200
+        on purpose — one job with an unparsable schedule should not take the
+        whole daemon out of rotation while its other jobs keep running.
+      tags:
+        - Monitoring
+      security: []
+      responses:
+        '200':
+          description: Ready — overall status is `healthy` or `degraded`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
         '503':
-          description: Service unhealthy
+          description: Not ready — overall status is `unhealthy`
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: unhealthy
-                  errors:
-                    type: array
-                    items:
-                      type: string
-                    example: ["Docker connection failed"]
+                $ref: '#/components/schemas/HealthResponse'
+
+  /live:
+    get:
+      summary: Liveness probe
+      description: >-
+        Answers as long as the process serves HTTP at all. It runs no checks,
+        so it never reports on Docker or the scheduler.
+      tags:
+        - Monitoring
+      security: []
+      responses:
+        '200':
+          description: The process is running
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
 
   /jobs:
     get:
@@ -327,6 +353,86 @@ components:
       description: Session cookie authentication
 
   schemas:
+    HealthCheck:
+      type: object
+      description: One individual check within the health report.
+      properties:
+        name:
+          type: string
+          example: scheduler
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          example: degraded
+        message:
+          type: string
+          description: Omitted when empty.
+          example: "1 configured job(s) are not scheduled and will not run: broken"
+        lastChecked:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+          format: int64
+          description: >-
+            How long the check took, in **nanoseconds** despite the field name —
+            it serialises a Go time.Duration, which marshals as nanoseconds. A
+            local Docker ping reports roughly 8000000 here, i.e. 8 ms.
+          example: 8332586
+      required: [name, status, lastChecked, durationMs]
+
+    HealthResponse:
+      type: object
+      description: >-
+        The body served by /health, /healthz and /ready. `status` is the worst
+        status among `checks`: any unhealthy check makes the whole report
+        unhealthy, otherwise any degraded check makes it degraded.
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          example: degraded
+        timestamp:
+          type: string
+          format: date-time
+        uptimeSeconds:
+          type: number
+          example: 3600
+        version:
+          type: string
+          description: >-
+            The running build's version, or `dev` when built without ldflags.
+          example: v0.28.1
+        checks:
+          type: object
+          description: Keyed by check name — `docker`, `scheduler` and `system`.
+          additionalProperties:
+            $ref: '#/components/schemas/HealthCheck'
+        system:
+          $ref: '#/components/schemas/SystemInfo'
+      required: [status, timestamp, uptimeSeconds, version, checks, system]
+
+    SystemInfo:
+      type: object
+      properties:
+        goVersion:
+          type: string
+          example: go1.26.0
+        goroutines:
+          type: integer
+          example: 24
+        cpus:
+          type: integer
+          example: 8
+        memoryAllocBytes:
+          type: integer
+          format: int64
+        memoryTotalBytes:
+          type: integer
+          format: int64
+        gcRuns:
+          type: integer
+
     Job:
       type: object
       properties:

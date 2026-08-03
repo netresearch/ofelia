@@ -131,8 +131,9 @@ ofelia_circuit_breaker_*       # Circuit breaker states
 ```
 
 ### Health Endpoints
-- `/health/liveness`: Service availability
-- `/health/readiness`: Service readiness
+- `/health`, `/healthz`: Full health report, always 200 — the verdict is in the body
+- `/ready`: Same report, 503 when the overall status is `unhealthy`
+- `/live`: Plain-text `OK` as long as the process serves HTTP, runs no checks
 - `/metrics`: Prometheus metrics endpoint
 
 ## 🔌 API Reference

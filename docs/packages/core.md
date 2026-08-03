@@ -130,6 +130,23 @@ type Scheduler struct {
 - `Start()`: Begin scheduling
 - `Stop()`: Graceful shutdown
 - `RunJob()`: Manual job trigger
+- `GetUnschedulableJobs()`: Jobs the scheduler refused, keyed by name with the
+  reason. A job whose schedule will not parse is configured but never runs, so
+  the health check reports it instead of leaving it in a startup log line. A
+  name that later registers clears its own entry, as does removing the job, so
+  a corrected config reloaded at runtime recovers without a restart. The
+  returned map is a copy.
+
+**Shutdown:** `ShutdownManager` runs hooks in priority groups, lowest first,
+each group completing before the next starts.
+
+- `ShutdownChan()` closes when shutdown **starts** — before the first hook runs.
+- `Done()` closes when every group has finished, including the path where a
+  hook overruns the timeout.
+
+Anything that ends the process must wait on `Done()`. Waiting on
+`ShutdownChan()` ends it while the hooks are still running, which leaves every
+group after the first killed in flight.
 
 ### Context
 

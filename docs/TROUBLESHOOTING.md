@@ -438,7 +438,9 @@ SDK provider failed to connect to Docker: pinging docker: context deadline excee
 Docker API version negotiation timed out; continuing with default API version
 ```
 
-`/health` returns non-2xx within ~5 seconds; `/ready` reports `unhealthy` for the `docker` check.
+Within ~5 seconds the `docker` check turns `unhealthy`, which makes the overall
+status `unhealthy` and `/ready` answer **503**. `/health` still answers 200 —
+it always does — so read its body rather than its status code.
 
 `ofelia doctor` reports each Docker call individually (Ping ~5s, `HasImageLocally` ~5s per image).
 

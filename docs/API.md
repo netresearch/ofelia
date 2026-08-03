@@ -315,33 +315,90 @@ POST /api/scheduler/reload
 
 ## Monitoring
 
+Four endpoints, all unauthenticated:
+
+| Endpoint | Body | Status code |
+|---|---|---|
+| `GET /health` | full report | always `200` |
+| `GET /healthz` | full report (alias) | always `200` |
+| `GET /ready` | full report | `503` when `unhealthy`, else `200` |
+| `GET /live` | `OK` as plain text | always `200` |
+
 ### Health Check
 ```http
-GET /health/liveness
+GET /health
 ```
+
+`/health` answers `200` even while reporting a problem — the verdict is in the
+body, so a monitoring system can read *why*. Point a probe that must fail at
+`/ready` instead.
 
 **Response:**
 ```json
 {
-  "status": "healthy",
-  "timestamp": "2024-01-01T12:00:00Z"
+  "status": "degraded",
+  "timestamp": "2026-08-02T16:55:52Z",
+  "uptimeSeconds": 41.2,
+  "version": "v0.28.1",
+  "checks": {
+    "docker": {
+      "name": "docker",
+      "status": "healthy",
+      "message": "Docker 29.6.2 running with 25 containers",
+      "lastChecked": "2026-08-02T16:55:52Z",
+      "durationMs": 8332586
+    },
+    "scheduler": {
+      "name": "scheduler",
+      "status": "degraded",
+      "message": "1 configured job(s) are not scheduled and will not run: broken",
+      "lastChecked": "2026-08-02T16:55:52Z",
+      "durationMs": 3180
+    },
+    "system": {
+      "name": "system",
+      "status": "healthy",
+      "message": "System resources normal",
+      "lastChecked": "2026-08-02T16:55:52Z",
+      "durationMs": 553638
+    }
+  },
+  "system": {
+    "goVersion": "go1.26.0",
+    "goroutines": 24,
+    "cpus": 8,
+    "memoryAllocBytes": 3512976,
+    "memoryTotalBytes": 12730376,
+    "gcRuns": 1
+  }
 }
 ```
+
+`status` is the worst status among the checks. `version` is the running build,
+or `dev` when built without ldflags. Note that `durationMs` carries
+**nanoseconds** despite its name — it serialises a Go `time.Duration`.
+
+The `scheduler` check reports `degraded` and names every configured job the
+scheduler refused, so a job that never fires — an unparsable schedule, a
+duplicate name — is visible to monitoring rather than only in the startup log.
 
 ### Readiness Check
 ```http
-GET /health/readiness
+GET /ready
 ```
 
-**Response:**
-```json
-{
-  "ready": true,
-  "scheduler": "running",
-  "docker": "connected",
-  "database": "n/a"
-}
+Same body as `/health`. The status code carries the verdict: `503` when the
+overall status is `unhealthy`, `200` otherwise. `degraded` deliberately stays
+`200` — one job with a typo should not take a daemon out of rotation while its
+other jobs keep running.
+
+### Liveness Check
+```http
+GET /live
 ```
+
+Answers `200` with the plain-text body `OK` as long as the process serves HTTP.
+It runs no checks, so it never reports on Docker or the scheduler.
 
 ### Prometheus Metrics
 ```http

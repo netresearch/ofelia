@@ -166,16 +166,26 @@ const (
 
 **Checks Performed**:
 1. **Docker Connectivity**: Ping Docker daemon, get container count
-2. **Scheduler Status**: Verify scheduler is operational
+2. **Scheduler Status**: `healthy` while every configured job is scheduled.
+   `degraded` — naming each one — as soon as the scheduler refuses a job, since
+   an unparsable schedule or a duplicate name means that job never fires. A
+   checker constructed without a scheduler is also `degraded`, rather than
+   claiming health it cannot establish.
 3. **System Resources**: Monitor memory usage (healthy <75%, degraded <90%, unhealthy ≥90%)
 
 **Usage**:
 ```go
-// Create health checker
-healthChecker := web.NewHealthChecker(dockerClient, "1.0.0")
+// Create health checker. The scheduler may be nil, at the cost of the check
+// above; the version is what /health reports.
+healthChecker := web.NewHealthChecker(dockerClient, scheduler, cli.Version)
 
 // Register health endpoints
 server.RegisterHealthEndpoints(healthChecker)
+
+// The constructor starts a background loop that re-runs every check every 30s.
+// Stop ends it; the daemon calls this from a shutdown hook. Safe to call more
+// than once.
+defer healthChecker.Stop()
 
 // Health endpoints available:
 // GET /health     - Detailed health information (always 200 OK)
@@ -190,21 +200,21 @@ server.RegisterHealthEndpoints(healthChecker)
   "status": "healthy",
   "timestamp": "2025-01-15T10:30:00Z",
   "uptimeSeconds": 3600.5,
-  "version": "1.0.0",
+  "version": "v0.28.1",
   "checks": {
     "docker": {
       "name": "docker",
       "status": "healthy",
       "message": "Docker 24.0.7 running with 5 containers",
       "lastChecked": "2025-01-15T10:30:00Z",
-      "durationMs": 12
+      "durationMs": 8332586
     },
     "scheduler": {
       "name": "scheduler",
       "status": "healthy",
       "message": "Scheduler is operational",
       "lastChecked": "2025-01-15T10:30:00Z",
-      "durationMs": 1
+      "durationMs": 3180
     },
     "system": {
       "name": "system",
@@ -468,7 +478,8 @@ func main() {
     server := web.NewServer(":8080", scheduler, config, dockerClient)
 
     // Create health checker
-    healthChecker := web.NewHealthChecker(dockerClient, "1.0.0")
+    healthChecker := web.NewHealthChecker(dockerClient, scheduler, cli.Version)
+    defer healthChecker.Stop()
     server.RegisterHealthEndpoints(healthChecker)
 
     // Start server
