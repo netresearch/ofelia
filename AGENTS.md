@@ -38,6 +38,13 @@ This file explains repo‑wide conventions and where to find scoped rules.
 - Repo uses **GitHub merge queue** — `gh pr merge --delete-branch` is NOT supported
 - Automated reviewers: github-actions (auto-approve), gemini-code-assist, Copilot (both COMMENTED — check all)
 
+## SonarCloud
+- Project `netresearch_ofelia` uses **Automatic Analysis** — no `sonar-project.properties`, no sonar CI step. Config lives in project settings via API/UI; committing scanner config files risks disrupting Automatic Analysis.
+- Exclude a rule on a path: `POST api/settings/set` with `key=sonar.issue.ignore.multicriteria` — a multi-key setting: pass `fieldValues` with both companion fields, e.g. `--data-urlencode 'fieldValues={"ruleKey":"go:S3776","resourceKey":"**/*_test.go"}'` (verify via `api/settings/values`). Issue dispositions: `api/issues/do_transition` — on SonarCloud `accept` supersedes the retired `wontfix`; the allowed transitions per issue are listed in the issue's own `transitions` array from `api/issues/search`. Hotspots: `api/hotspots/change_status` — SonarCloud only accepts `REVIEWED` + `SAFE`/`FIXED`, no ACKNOWLEDGED.
+- `gocognit` reproduces SonarCloud `go:S3776` cognitive-complexity numbers exactly; golangci-lint here runs `gocyclo` (cyclomatic), which does NOT catch S3776.
+- Extracting a route constant named `*Token` (e.g. `pathAPICSRFToken`) trips gosec G101 (hardcoded credentials) in the GHAS code-scanning gate — suppress with `// #nosec G101 -- reason`. The standalone `go-check / gosec` and the GHAS `gosec` check are separate.
+- Reusable workflows pinned `@main` are intentional (own org, post-trivy-action-incident policy) — the related hotspots are accepted, not third-party actions.
+
 ## Release process
 - Releases trigger on `release: published` event via `release-slsa.yml`
 - Create signed tags locally, then create a GitHub release: `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file notes.md --verify-tag`
