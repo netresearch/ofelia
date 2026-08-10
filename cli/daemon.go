@@ -675,6 +675,11 @@ func (c *DaemonCommand) buildPersistedRunJob(name string, j *persist.Job, provid
 	rj.Command = j.Command
 	rj.Image = j.Image
 	rj.Container = j.Container
+	maxRuntime, err := core.ParseMaxRuntime(j.MaxRuntime)
+	if err != nil {
+		return nil, fmt.Errorf("job %q: %w", name, err)
+	}
+	rj.MaxRuntime = maxRuntime
 	return rj, nil
 }
 

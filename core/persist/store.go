@@ -66,7 +66,8 @@ type Job struct {
 	// Run + Exec
 	Container string `json:"container,omitempty"`
 	// Run-only
-	Image string `json:"image,omitempty"`
+	Image      string `json:"image,omitempty"`
+	MaxRuntime string `json:"maxRuntime,omitempty"`
 	// Compose-only
 	File    string `json:"file,omitempty"`
 	Service string `json:"service,omitempty"`

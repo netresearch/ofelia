@@ -103,6 +103,28 @@ func (j *RunJob) GetMaxRuntime() time.Duration {
 	return j.MaxRuntime
 }
 
+// ParseMaxRuntime parses the `max-runtime` duration string used by the
+// `[job-run]` config section, Docker labels, and the `maxRuntime` field of
+// the API's jobRequest — a single parser for all three input paths keeps
+// their validation from drifting apart (see issue #745, where the API and
+// state-file reconstruction paths silently disagreed on RunJob.Delete).
+// An empty string returns a zero Duration, meaning "no per-job override";
+// callers wire that straight into RunJob.MaxRuntime, whose own zero value
+// already carries that same meaning (see GetMaxRuntime).
+func ParseMaxRuntime(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid max-runtime duration %q: %w", s, err)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("%w: %q", ErrMaxRuntimeNegative, s)
+	}
+	return d, nil
+}
+
 // InitializeRuntimeFields initializes fields that depend on the Docker provider.
 // This should be called after the Provider field is set.
 func (j *RunJob) InitializeRuntimeFields() {

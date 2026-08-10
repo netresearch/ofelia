@@ -650,6 +650,10 @@ type jobRequest struct {
 	File      string `json:"file,omitempty"`
 	Service   string `json:"service,omitempty"`
 	ExecFlag  bool   `json:"exec,omitempty"`
+	// MaxRuntime is a Go duration string (e.g. "30m"), run-jobs only —
+	// see core.ParseMaxRuntime. Empty means "no per-job override",
+	// same as omitting `max-runtime` from a config.ini [job-run] section.
+	MaxRuntime string `json:"maxRuntime,omitempty"`
 }
 
 // validateJobName checks that a job name is non-empty, not too long, and does
@@ -783,6 +787,7 @@ func (s *Server) persistJob(name string, req *jobRequest) error {
 		j.Type = persist.JobTypeRun
 		j.Image = req.Image
 		j.Container = req.Container
+		j.MaxRuntime = req.MaxRuntime
 	case "exec":
 		j.Type = persist.JobTypeExec
 		j.Container = req.Container
@@ -915,6 +920,11 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 	j.Command = req.Command
 	j.Image = req.Image
 	j.Container = req.Container
+	maxRuntime, err := core.ParseMaxRuntime(req.MaxRuntime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
+	}
+	j.MaxRuntime = maxRuntime
 	return j, nil
 }
 
