@@ -10,7 +10,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/creasty/defaults v1.8.0
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.6.2+incompatible
+	github.com/docker/cli v29.7.1+incompatible
 	github.com/docker/go-connections v0.8.1
 	github.com/emersion/go-smtp v0.24.0
 	github.com/go-mail/mail/v2 v2.3.0
@@ -20,8 +20,8 @@ require (
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/manifoldco/promptui v0.9.0
 	github.com/moby/moby/api v1.55.0
-	github.com/moby/moby/client v0.5.0
-	github.com/netresearch/go-cron v0.15.0
+	github.com/moby/moby/client v0.5.1
+	github.com/netresearch/go-cron v0.15.1
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.54.0
