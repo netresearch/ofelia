@@ -684,7 +684,7 @@ DOCKER_CERT_PATH=/certs
 **Host-Job Restrictions**:
 ```ini
 [global]
-# Prevent host-touching jobs from Docker labels.
+# Prevent host-touching / privilege-escalating jobs from Docker labels.
 # Blocks:
 #   - job-local (entirely)
 #   - job-compose (entirely)
@@ -693,6 +693,9 @@ DOCKER_CERT_PATH=/certs
 #   - job-run / job-service-run entries that inherit donor mounts via
 #     volumes-from=... (e.g. volumes-from=ofelia would inherit
 #     /var/run/docker.sock)
+#   - privileged (job-exec), env-file and env-from on ANY label job:
+#     stripped from the job, which then still runs without them
+#     (GHSA-h7m7-v83x-vfp3)
 # Named volumes and anonymous volumes pass through unchanged.
 allow-host-jobs-from-labels = false
 ```
@@ -702,8 +705,11 @@ The `job-run` and `job-service-run` filter is **per-job**, not per-batch: a job 
 - **Volume filter**: per-spec — named volumes (`my-vol:/data`) and anonymous volumes (`/data` with no source) pass through; only host bind mounts trigger.
 - **Volumes-from filter**: any non-empty value is a violation. We cannot inspect the donor container at filter time, so a donor with `/`, `/var/run/docker.sock`, or any other host bind would silently inherit those mounts into the spawned container — bypassing the `volume=` filter entirely. Conservative drop is the only safe call.
 - **Fail closed**: an unexpected internal type for `volume` or `volumes-from` (which would indicate a code change broke the label-parsing contract) drops the job rather than silently bypass the security check.
+- **Privilege-bearing keys** (`privileged`, `env-file`, `env-from`): stripped from every label-sourced job — `privileged` on a `job-exec` reaches `docker exec --privileged`, `env-file` reads a file from ofelia's own filesystem view into the job environment, and `env-from` copies another container's whole environment. Matched by normalized key so casing/separator variants are caught. Unlike the volume filter, the key is stripped in place and the job still runs (unprivileged, without host/cross-container environment); each strip logs a `SECURITY POLICY VIOLATION`.
 
-See [#462](https://github.com/netresearch/ofelia/issues/462).
+See [#462](https://github.com/netresearch/ofelia/issues/462) (`volume` / `volumes-from`) and [GHSA-h7m7-v83x-vfp3](https://github.com/netresearch/ofelia/security/advisories/GHSA-h7m7-v83x-vfp3) (`privileged` / `env-file` / `env-from`).
+
+**Scope of this filter — defense-in-depth, not multi-tenant isolation.** Per [ADR-002](./adr/ADR-002-security-boundaries.md), the trust boundary is *who can set ofelia's config and container labels*, not *what a job may do*: anyone who can define a job already has `docker run` / `docker exec` equivalence. This filter narrows one specific path — a self-labeling container escalating to the **host** or to another container's mounts/environment via labels — and only when `allow-host-jobs-from-labels=false` (the default). It does **not** make ofelia safe to run against untrusted, mutually-distrusting containers. Network attachment (`network=`, delegated to network infrastructure), the command a job runs, and privileges granted through the Docker daemon itself remain the infrastructure's responsibility and are deliberately not filtered. For untrusted multi-tenant hosts, run a separate ofelia instance per tenant — see [ADR-002 → For Multi-Tenant Environments](./adr/ADR-002-security-boundaries.md#for-multi-tenant-environments).
 
 ## Network Security
 

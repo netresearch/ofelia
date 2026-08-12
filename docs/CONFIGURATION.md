@@ -1079,7 +1079,10 @@ This is a **daemon-wide** setting configured in the Ofelia `[global]` section (I
 
 ```ini
 [global]
-# Prevent LocalJobs from Docker labels
+# Restrict host-touching / privilege-escalating jobs defined via Docker labels:
+# drops job-local, job-compose, and job-run/job-service-run with host mounts or
+# volumes-from; strips privileged/env-file/env-from from any label job.
+# Defense-in-depth for the label vector, not multi-tenant isolation — see docs/SECURITY.md.
 allow-host-jobs-from-labels = false
 ```
 
