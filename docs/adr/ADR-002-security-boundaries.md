@@ -114,7 +114,7 @@ This validation catches **mistakes**, not **malice**. A malicious authorized use
 ### Neutral
 
 1. Input validation remains for **format correctness**, not security
-2. LocalJob restrictions from Docker labels remain (defense-in-depth for that specific vector)
+2. Label-sourced job restrictions remain as deliberate defense-in-depth for the container-label vector only. With `allow-host-jobs-from-labels=false` (default), `job-local`/`job-compose` are dropped, host bind mounts and `volumes-from` on `job-run`/`job-service-run` are dropped, and `privileged`/`env-file`/`env-from` are stripped from any label job (GHSA-h7m7-v83x-vfp3). This narrows label→host and label→cross-container escalation; it is **not** multi-tenant isolation and does not move the boundaries above — `network=` attachment, the job's command, and daemon-granted privileges stay infrastructure's responsibility
 3. Future RBAC could add per-user command restrictions if needed
 
 ## Deployment Implications
