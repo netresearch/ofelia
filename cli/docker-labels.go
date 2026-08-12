@@ -145,6 +145,22 @@ func (c *Config) buildFromDockerContainers(containers []DockerContainerInfo) err
 		// https://github.com/netresearch/ofelia/issues/462.
 		runJobs = filterJobsWithHostEscalation(runJobs, "job-run", c.logger)
 		serviceJobs = filterJobsWithHostEscalation(serviceJobs, "job-service-run", c.logger)
+
+		// GHSA-h7m7-v83x-vfp3: privilege-bearing keys the volume /
+		// volumes-from filter above does not cover. `privileged` on a
+		// job-exec reaches `docker exec --privileged` (a container-escape
+		// primitive); `env-file` reads a file from ofelia's filesystem
+		// view into the job env; `env-from` copies a sibling container's
+		// whole environment. All three are honored on every job type
+		// regardless of source. Crucially, job-exec is not routed through
+		// filterJobsWithHostEscalation at all (it has no volume semantics),
+		// so without this strip it bypasses the policy entirely. Strip the
+		// keys in place (rather than dropping the job) so the job still
+		// runs — unprivileged and without host / cross-container env — and
+		// log one SECURITY POLICY VIOLATION per stripped key.
+		stripLabelHostEscalationKeys(execJobs, "job-exec", c.logger)
+		stripLabelHostEscalationKeys(runJobs, "job-run", c.logger)
+		stripLabelHostEscalationKeys(serviceJobs, "job-service-run", c.logger)
 	}
 
 	decodeInto := func(src map[string]map[string]any, dst any) error {
@@ -743,6 +759,65 @@ func filterJobsWithHostEscalation(jobs map[string]map[string]any, jobType string
 			jobType, name, vectors))
 	}
 	return filtered
+}
+
+// labelHostEscalationStripKeys maps the normalized form (see normalizeKey)
+// of each privilege-bearing job key to its canonical label spelling, used
+// only in the violation log. Keyed by normalized form because the label
+// decoder matches map keys to struct fields case- and separator-
+// insensitively (Privileged, ENV_FILE and env-from all decode into the
+// same fields), so the strip must catch every variant, not just the
+// canonical lowercase-kebab spelling. See GHSA-h7m7-v83x-vfp3.
+var labelHostEscalationStripKeys = map[string]string{
+	normalizeKey("privileged"): "privileged",
+	normalizeKey("env-file"):   "env-file",
+	normalizeKey("env-from"):   "env-from",
+}
+
+// stripLabelHostEscalationKeys removes the privilege-bearing keys
+// (privileged, env-file, env-from) from each label-sourced job map,
+// emitting one SECURITY POLICY VIOLATION log per stripped key. It is the
+// companion to filterJobsWithHostEscalation for the vectors that filter
+// does not cover:
+//
+//   - privileged — a job-exec with privileged=true reaches
+//     `docker exec --privileged`, granting all capabilities and unconfining
+//     seccomp/AppArmor, which enables the standard privileged-container
+//     escape techniques. RunJob / RunServiceJob have no Privileged field,
+//     so this is a job-exec-specific escalation.
+//   - env-file — opens a path in ofelia's own filesystem view and injects
+//     each KEY=VALUE line as job env, disclosing files an attacker
+//     container otherwise cannot read (ofelia's mounts, injected config,
+//     credential files).
+//   - env-from — copies the entire environment of any named container into
+//     the job, stealing a sibling container's secrets.
+//
+// Unlike filterJobsWithHostEscalation (which drops the whole job for a
+// volume / volumes-from violation), these keys are stripped in place: the
+// job keeps running, just unprivileged and without host / cross-container
+// environment injection. The keys are deleted from the map before decode,
+// so the corresponding struct fields are never populated. Callers invoke
+// this only when AllowHostJobsFromLabels is off; with the flag on the
+// operator has opted into honoring these keys from labels.
+//
+// Deleting map keys during a range over the same map is well-defined in Go.
+func stripLabelHostEscalationKeys(jobs map[string]map[string]any, jobType string, logger *slog.Logger) {
+	for name, job := range jobs {
+		for key := range job {
+			canonical, ok := labelHostEscalationStripKeys[normalizeKey(key)]
+			if !ok {
+				continue
+			}
+			delete(job, key)
+			logger.Error(fmt.Sprintf("SECURITY POLICY VIOLATION: stripping %s %q key %q (%s) from container labels. "+
+				"privileged exec, env-file host-file disclosure and env-from cross-container environment theft "+
+				"enable container-to-host / cross-container privilege escalation from an untrusted self-labeling container. "+
+				"The job still runs, but without this key. "+
+				"Set [global] allow-host-jobs-from-labels=true in INI to permit (NOT recommended for multi-tenant hosts). "+
+				"See https://github.com/netresearch/ofelia/security/advisories/GHSA-h7m7-v83x-vfp3.",
+				jobType, name, key, canonical))
+		}
+	}
 }
 
 // extractHostVolumeMounts walks the "volume" param value and returns the
