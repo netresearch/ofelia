@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-08-12
+
+A security release. Jobs defined through Docker container labels could carry privilege-bearing keys the label-security policy did not cover, letting an untrusted self-labeling container escalate against the host or read another container's secrets — in the default configuration. See [GHSA-h7m7-v83x-vfp3](https://github.com/netresearch/ofelia/security/advisories/GHSA-h7m7-v83x-vfp3).
+
+### Security
+
+- **Label-sourced jobs can no longer smuggle `privileged`, `env-file` or `env-from` past the host-escalation policy.** `allow-host-jobs-from-labels` stripped host bind mounts from `job-run` / `job-service-run` ([#462](https://github.com/netresearch/ofelia/issues/462)) but never covered these three keys, and `job-exec` was not routed through the policy at all. So a container labelling itself could run a `privileged` `docker exec` (a container-escape primitive), read a file from ofelia's own filesystem view into the job environment (`env-file`), or copy another container's entire environment (`env-from`) — all with the policy in its default, off state. These keys are now stripped from every label-sourced job, matched by normalized key so casing and separator variants are caught, unless `allow-host-jobs-from-labels=true`; the strip runs on both the initial-load and the live container-reconcile paths and logs a `SECURITY POLICY VIOLATION` per stripped key. INI configuration is trusted and unaffected ([GHSA-h7m7-v83x-vfp3](https://github.com/netresearch/ofelia/security/advisories/GHSA-h7m7-v83x-vfp3), [#791](https://github.com/netresearch/ofelia/pull/791)).
+
 ## [0.29.0] - 2026-08-03
 
 A release about ofelia telling the truth about itself. A job the scheduler
