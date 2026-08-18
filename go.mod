@@ -2,7 +2,7 @@ module github.com/netresearch/ofelia
 
 go 1.26
 
-toolchain go1.26.5
+toolchain go1.26.6
 
 require (
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2
