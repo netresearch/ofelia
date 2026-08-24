@@ -206,17 +206,9 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 		return nil
 	}
 
-	var handler http.Handler = server.newMux(nil, ui)
-	handler = securityHeaders(handler)
-	handler = server.rl.middleware(handler)
-
-	if server.authConfig != nil && server.authConfig.Enabled {
-		handler = server.authMiddleware(handler)
-	}
-
 	server.srv = &http.Server{
 		Addr:              addr,
-		Handler:           handler,
+		Handler:           server.wrapMiddleware(server.newMux(nil, ui)),
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -348,15 +340,22 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 	}
 	s.rl = newRateLimiter(100, time.Minute)
 	s.rl.trustedProxies = s.trustedProxies
-	var handler http.Handler = mux
+	s.srv.Handler = s.wrapMiddleware(mux)
+}
+
+// wrapMiddleware layers the shared middleware chain around mux —
+// compression innermost, then security headers, then the rate limiter,
+// with auth outermost when enabled. Single source for both construction sites
+// (NewServerWithAuth and RegisterHealthEndpoints) so the chain cannot
+// drift between them.
+func (s *Server) wrapMiddleware(mux http.Handler) http.Handler {
+	handler := compressMiddleware(mux)
 	handler = securityHeaders(handler)
 	handler = s.rl.middleware(handler)
-
 	if s.authConfig != nil && s.authConfig.Enabled {
 		handler = s.authMiddleware(handler)
 	}
-
-	s.srv.Handler = handler
+	return handler
 }
 
 type apiExecution struct {
@@ -1130,6 +1129,13 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 	})
 
+	// Explicit Content-Type before WriteHeader: the compression wrapper
+	// can only sniff a missing type on the first body write, which the
+	// explicit WriteHeader here skips — without this the sniff runs on
+	// the compressed bytes and answers with the codec's own type
+	// (application/x-gzip, application/zstd) instead of JSON. See
+	// health.go's LivenessHandler for the same trap.
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
 }

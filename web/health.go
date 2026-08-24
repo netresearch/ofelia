@@ -316,7 +316,11 @@ func (hc *HealthChecker) GetHealth() HealthResponse {
 // LivenessHandler returns a simple liveness check
 func (hc *HealthChecker) LivenessHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Liveness just checks if the service is running
+		// Liveness just checks if the service is running. Explicit
+		// Content-Type: without it, a compressed response would be
+		// content-sniffed on the compressed bytes and answer with the
+		// codec's own type (application/x-gzip, application/zstd).
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	}
