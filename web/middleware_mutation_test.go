@@ -184,7 +184,7 @@ func TestMiddleware_BoundaryExactlyAtWindow(t *testing.T) {
 
 	// Send one new request. With correct `<`, the old request (age == window)
 	// should be filtered out, so our new request fits within the limit.
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	req.RemoteAddr = hostIP + ":9999"
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -218,7 +218,7 @@ func TestMiddleware_RecentRequestCountedForLimit(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	req.RemoteAddr = hostIP + ":9999"
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -243,7 +243,7 @@ func TestMiddleware_XForwardedFor(t *testing.T) {
 	}))
 
 	// First request with X-Forwarded-For from loopback (trusted proxy)
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	req.RemoteAddr = "127.0.0.1:9999"
 	req.Header.Set("X-Forwarded-For", "192.168.1.100")
 	w := httptest.NewRecorder()
@@ -251,7 +251,7 @@ func TestMiddleware_XForwardedFor(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Second request from same X-Forwarded-For via loopback should be rate limited
-	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	req2.RemoteAddr = "127.0.0.1:9998" // same loopback, different port
 	req2.Header.Set("X-Forwarded-For", "192.168.1.100")
 	w2 := httptest.NewRecorder()
@@ -310,7 +310,7 @@ func TestRateLimiterMiddleware_IgnoresXFFFromNonLoopback(t *testing.T) {
 	}))
 
 	// First request from an external IP spoofing X-Forwarded-For
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	req.RemoteAddr = "203.0.113.50:9999"
 	req.Header.Set("X-Forwarded-For", "10.0.0.1")
 	w := httptest.NewRecorder()
@@ -320,7 +320,7 @@ func TestRateLimiterMiddleware_IgnoresXFFFromNonLoopback(t *testing.T) {
 	// Second request from the SAME external IP with a DIFFERENT spoofed XFF.
 	// If XFF is ignored (correct), both requests hit the same key (203.0.113.50)
 	// and the second should be rate-limited.
-	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	req2.RemoteAddr = "203.0.113.50:9999"
 	req2.Header.Set("X-Forwarded-For", "10.0.0.2") // different spoofed IP
 	w2 := httptest.NewRecorder()
