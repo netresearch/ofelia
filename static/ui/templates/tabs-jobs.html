@@ -1,38 +1,59 @@
-    <div id="tab-jobs" class="tab-panel active" role="tabpanel" aria-labelledby="btn-jobs">
+<!-- JOBS TAB -->
+<div id="tab-jobs" class="tab-panel active" role="tabpanel" aria-labelledby="btn-jobs">
+  <div class="stats" aria-label="Job statistics">
+    <div class="stat-card" id="statActive">
+      <strong class="stat-value">–</strong>
+      <small class="stat-label">Active</small>
+    </div>
+    <button type="button" class="stat-card" id="statFailing" aria-pressed="false"
+      data-custom-tooltip="Show only failing jobs">
+      <strong class="stat-value">–</strong>
+      <small class="stat-label">Failing</small>
+    </button>
+    <div class="stat-card" id="statNext">
+      <strong class="stat-value">–</strong>
+      <small class="stat-label">Next run</small>
+    </div>
+  </div>
+  <input type="search" id="jobSearch" class="table-search" placeholder="Search jobs…"
+    aria-label="Search jobs by name, command, or schedule">
+  <div class="overflow-auto">
+    <table id="jobs" class="striped">
+      <thead>
+        <tr>
+          <th scope="col"></th>
+          <th scope="col" data-sort="name">Name</th>
+          <th scope="col" data-sort="schedule">Schedule</th>
+          <th scope="col" data-sort="command">Command</th>
+          <th scope="col" data-sort="lastRun">Last Run</th>
+          <th scope="col" data-sort="duration">Duration</th>
+          <th scope="col">Last runs</th>
+          <th scope="col">Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <dialog id="historyModal">
+    <article>
+      <header>
+        <button class="close-btn" id="closeHistoryBtn" aria-label="Close history" data-custom-tooltip="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg></button>
+        <h2>History: <span id="historyJob"></span></h2>
+      </header>
       <div class="overflow-auto">
-        <table id="jobs">
+        <table id="history" class="striped">
           <thead>
             <tr>
               <th scope="col"></th>
-              <th scope="col">Name</th>
-              <th scope="col">Schedule</th>
-              <th scope="col">Command</th>
-              <th scope="col">Last Run</th>
-              <th scope="col">Duration</th>
-              <th scope="col">Actions</th>
+              <th scope="col" data-sort="date">Date</th>
+              <th scope="col" data-sort="duration">Duration</th>
+              <th scope="col" data-sort="error">Error</th>
+              <th scope="col">Output</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
-      <div id="historyPanel">
-        <div class="panel-head">
-          <h2>History: <span id="historyJob"></span></h2>
-          <button class="close-btn" id="closeHistoryBtn" aria-label="Close history" title="Close">&times;</button>
-        </div>
-        <div class="overflow-auto">
-          <table id="history">
-            <thead>
-              <tr>
-                <th scope="col"></th>
-                <th scope="col">Date</th>
-                <th scope="col">Duration</th>
-                <th scope="col">Error</th>
-                <th scope="col">Output</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    </article>
+  </dialog>
+</div>

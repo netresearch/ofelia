@@ -19,12 +19,12 @@ import (
 )
 
 // uiRefreshInterval mirrors the `setInterval(refresh, 5000)` in
-// static/ui/index.html. The test has to outlast one full cycle to prove the
+// static/ui/app.js. The test has to outlast one full cycle to prove the
 // refresh does not clobber user state, so it is stated once here rather than
 // buried as a magic number in the waits below.
 const uiRefreshInterval = 5 * time.Second
 
-// noKeyMarker is what the expand step reports when the expanded <details>
+// noKeyMarker is what the expand step reports when the clicked toggle button
 // carries no data-key — i.e. a build without the fix. It has to be
 // distinguishable from "no element at all", because those two mean very
 // different things about why the test could not find its row afterwards.
@@ -34,8 +34,9 @@ const noKeyMarker = "NO_KEY"
 // browser and pins the fix for https://github.com/netresearch/ofelia/issues/764.
 //
 // The UI polls the history endpoint every 5s and re-renders the table by
-// replacing the tbody's innerHTML. Before the fix the `<details>` element that
-// wraps a run's output was re-created without its `open` attribute, so an
+// replacing the tbody's innerHTML. Before the fix the expanded state of a
+// run's output (today a `tr.output-row` subrow opened by its view/hide toggle
+// button; originally a `<details>` element) was re-created collapsed, so an
 // output the user had expanded collapsed on its own within five seconds.
 //
 // This is deliberately a browser test and not an assertion on the served HTML:
@@ -89,9 +90,8 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 	t.Cleanup(cancelTimeout)
 
 	const (
-		jobRow         = `#jobs tbody tr`
-		historyDetails = `#history tbody details`
-		historySummary = `#history tbody details summary`
+		jobRow        = `#jobs tbody tr`
+		historyToggle = `#history tbody button[data-action="toggle-output"]`
 	)
 
 	// The history table renders oldest run first, so the LAST output is the
@@ -99,26 +99,27 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 	// first would pick the entry that is about to be dropped.
 	//
 	// "Last" is resolved in JS over the full node list rather than with a CSS
-	// positional selector: each <details> sits alone in its own <td>, so
-	// `details:last-of-type` matches every one of them and querySelector then
-	// returns the FIRST. That mismatch - click the newest row, inspect the
-	// oldest - is exactly what broke this test once already.
+	// positional selector: each toggle button sits alone in its own <td>, so
+	// a `:last-of-type` positional selector matches every one of them and
+	// querySelector then returns the FIRST. That mismatch - click the newest
+	// row, inspect the oldest - is exactly what broke this test once already.
 	//
 	// Locating and clicking happen in one expression so no refresh can slip
 	// between them and re-render the node under us. The trade-off is a
-	// synthetic click instead of a CDP input event; on a <summary> that still
-	// runs the browser's native toggle, which is the behavior under test.
+	// synthetic click instead of a CDP input event; the click still reaches
+	// the tbody's delegated toggle handler, which is the behavior under test.
 	const expandNewest = `(() => {
-		const all = document.querySelectorAll('` + historyDetails + `');
-		const d = all[all.length - 1];
-		if (!d) return '';
-		d.querySelector('summary').click();
-		return d.dataset.key || '` + noKeyMarker + `';
+		const all = document.querySelectorAll('` + historyToggle + `');
+		const btn = all[all.length - 1];
+		if (!btn) return '';
+		btn.click();
+		return btn.dataset.key || '` + noKeyMarker + `';
 	})()`
 	const newestIsOpen = `(() => {
-		const all = document.querySelectorAll('` + historyDetails + `');
-		const d = all[all.length - 1];
-		return d ? d.open === true : false;
+		const all = document.querySelectorAll('` + historyToggle + `');
+		const btn = all[all.length - 1];
+		const sub = btn ? btn.closest('tr').nextElementSibling : null;
+		return sub ? sub.classList.contains('open') : false;
 	})()`
 
 	var openAfterClick, openAfterRefresh, stillPresent bool
@@ -130,12 +131,12 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 		// Selecting the job opens the history panel and loads its runs.
 		chromedp.WaitVisible(jobRow, chromedp.ByQuery),
 		chromedp.Click(jobRow, chromedp.ByQuery),
-		chromedp.WaitVisible(historySummary, chromedp.ByQuery),
+		chromedp.WaitVisible(historyToggle, chromedp.ByQuery),
 
 		// Wait for several runs before interacting. A single-row history would
 		// make "oldest" and "newest" the same element and hide selector bugs
 		// locally that only surface on a slower runner.
-		chromedp.Poll(`document.querySelectorAll('`+historyDetails+`').length >= 3`,
+		chromedp.Poll(`document.querySelectorAll('`+historyToggle+`').length >= 3`,
 			nil, chromedp.WithPollingTimeout(30*time.Second)),
 
 		// Expand the newest run's output and note which execution it is, so we
@@ -163,12 +164,12 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 	// once already sent this test chasing the wrong bug.
 	err = chromedp.Run(ctx,
 		chromedp.Sleep(uiRefreshInterval+2*time.Second),
-		chromedp.Evaluate(selectorForKey(keyAfterClick, historyDetails)+` !== null`, &stillPresent),
-		chromedp.Evaluate(selectorForKey(keyAfterClick, historyDetails)+`?.open === true`, &openAfterRefresh),
+		chromedp.Evaluate(selectorForKey(keyAfterClick, historyToggle)+` !== null`, &stillPresent),
+		chromedp.Evaluate(selectorForKey(keyAfterClick, historyToggle)+`?.classList.contains('open') === true`, &openAfterRefresh),
 		chromedp.Evaluate(`(() => {
-			const all = document.querySelectorAll('`+historyDetails+`');
-			const d = all[all.length - 1];
-			return d ? (d.dataset.key || '') : '';
+			const all = document.querySelectorAll('`+historyToggle+`');
+			const btn = all[all.length - 1];
+			return btn ? (btn.dataset.key || '') : '';
 		})()`, &keyAfterRefresh),
 	)
 	if err != nil {
@@ -196,21 +197,22 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 	}
 }
 
-// selectorForKey builds a JS expression that finds the <details> belonging to
-// one specific execution.
+// selectorForKey builds a JS expression that finds the tr.output-row subrow
+// belonging to one specific execution.
 //
 // A build without the fix emits no data-key at all (noKeyMarker), so there is
 // nothing to look the row up by. It falls back to the last output — the same
 // one that was expanded — so the failure is reported as "collapsed" rather
 // than as a row that vanished from the history.
-func selectorForKey(key, fallbackSelector string) string {
+func selectorForKey(key, fallbackToggleSelector string) string {
 	if key == noKeyMarker {
 		return `(() => {
-			const all = document.querySelectorAll('` + fallbackSelector + `');
-			return all[all.length - 1] || null;
+			const all = document.querySelectorAll('` + fallbackToggleSelector + `');
+			const btn = all[all.length - 1];
+			return btn ? btn.closest('tr').nextElementSibling : null;
 		})()`
 	}
-	return fmt.Sprintf(`document.querySelector('#history tbody details[data-key="%s"]')`, key)
+	return fmt.Sprintf(`document.querySelector('#history tbody tr.output-row[data-key="%s"]')`, key)
 }
 
 // reserveLoopbackAddr asks the kernel for a free loopback port and returns it

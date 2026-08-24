@@ -1,148 +1,513 @@
-    html.compact-early body { --pico-spacing: .5rem; --pico-typography-spacing-vertical: .5rem; --pico-font-size: 87.5%; }
-    /* ── Base (shared) ── */
-    body { padding: 0; }
-    body > nav { position: sticky; top: 0; z-index: 10; background: var(--pico-background-color);
-      border-bottom: 1px solid var(--pico-muted-border-color); padding: .4rem 1rem; margin: 0; }
-    body > nav ul { margin: 0; }
-    td.wrap { white-space: normal; word-break: break-all; }
-    .mono { font-family: monospace; }
+/* Compact tokens, stated once for both the pre-paint state
+   (html.compact-early, set by the head script before body exists) and
+   the real one (body.compact) — a second copy could drift and make the
+   page visibly reflow when app.js swaps one class for the other. The
+   control-size tokens (chips, icons, dots) are latent during pre-paint
+   (their only consumers are rendered later by app.js) but live in the
+   shared rule for the same no-drift reason. */
+html.compact-early body,
+body.compact { --pico-spacing: .5rem; --pico-typography-spacing-vertical: .5rem; --pico-font-size: 87.5%;
+  --chip-size: 1.7rem; --icon-size: 14px; --dot-size: 8px; }
 
-    /* Tabs */
-    .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--pico-muted-border-color); margin-bottom: .75rem; }
-    .tabs button { background: none; border: none; padding: .4rem .9rem; cursor: pointer;
-      color: var(--pico-muted-color); border-bottom: 2px solid transparent; margin-bottom: -2px; }
-    .tabs button.active { color: var(--pico-primary); border-bottom-color: var(--pico-primary); font-weight: 600; }
-    .tabs button:hover { color: var(--pico-primary); }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-    .tab-badge { background: var(--pico-primary); color: #fff; border-radius: 9px;
-      padding: 0 .45rem; margin-left: .3rem; vertical-align: middle; }
-    .tab-badge.muted { background: var(--pico-muted-color); }
+/* ── Shared layout tokens ── */
+:root {
+  /* Horizontal page-edge padding shared by the nav bar and the footer,
+     so both full-width bars stay aligned. */
+  --layout-pad-x: 1rem;
+  /* The one thin separator line used everywhere. */
+  --border-thin: 1px solid var(--pico-muted-border-color);
+  /* Semi-transparent outline: mixes with whatever sits underneath, so it
+     reads the same on striped and plain rows (an opaque gray melts into
+     one of the two backgrounds). */
+  --border-faint: 1px solid color-mix(in srgb, var(--pico-contrast) 15%, transparent);
 
-    /* Action buttons */
-    .actions { display: flex; gap: 2px; }
-    .actions button { margin: 0; line-height: 1; }
+  /* Type scale for secondary text. Values below the body size collapse
+     to three steps; anything smaller than --fs-2xs is not used. */
+  --fs-sm: .85rem;
+  --fs-xs: .8rem;
+  --fs-2xs: .72rem;
 
-    /* Status dot */
-    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
-    .dot-ok { background: var(--pico-ins-color); }
-    .dot-fail { background: var(--pico-del-color); }
-    .dot-skip { background: var(--pico-mark-background-color); }
-    .dot-none { background: var(--pico-muted-color); }
-    .dot-disabled { background: var(--pico-muted-color); opacity: .5; }
-    .disabled-text { opacity: .5; }
+  /* Control sizes. Compact density overrides these variables instead of
+     repeating the component rules. */
+  --chip-size: 1.9rem;
+  --icon-size: 16px;
+  --dot-size: 10px;
+  /* Fixed width of the status-dot column, shared by every table that
+     has one — keeps rows aligned without wasting horizontal space. */
+  --dot-col: 1.5rem;
 
-    /* Form */
-    .form-card { max-width: 42rem; }
-    .form-card h2 { display: flex; align-items: center; gap: .5rem; }
-    .form-card .edit-badge { font-size: .75rem; background: var(--pico-primary); color: #fff;
-      border-radius: 4px; padding: .1rem .5rem; font-weight: 400; }
-    .form-section { margin-bottom: .8rem; }
-    .form-section-title { font-weight: 600; color: var(--pico-muted-color);
-      text-transform: uppercase; letter-spacing: .04em; margin: 0 0 .4rem; padding-bottom: .2rem;
-      border-bottom: 1px solid var(--pico-muted-border-color); }
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem .8rem; }
-    .form-field { margin-bottom: .3rem; }
-    .form-field label { margin-bottom: .15rem; display: block; font-weight: 500; }
-    .form-field input, .form-field select { margin-bottom: 0; }
-    .form-field .hint { font-size: .78rem; color: var(--pico-muted-color); margin: .15rem 0 0; line-height: 1.3; }
-    .form-actions { display: flex; align-items: center; gap: .5rem; margin-top: .6rem; padding-top: .5rem;
-      border-top: 1px solid var(--pico-muted-border-color); }
-    .type-fields { display: none; }
-    .type-fields.visible { display: block; }
-    .type-desc { color: var(--pico-muted-color); margin: .15rem 0 .5rem;
-      padding: .4rem .6rem; background: color-mix(in srgb, var(--pico-primary) 6%, transparent);
-      border-radius: var(--pico-border-radius); line-height: 1.4; }
+  /* Gap between controls that belong to one group. */
+  --gap-sm: .5rem;
 
-    /* History panel */
-    #historyPanel { margin-top: .75rem; padding: .6rem; border: 1px solid var(--pico-muted-border-color);
-      border-radius: var(--pico-border-radius); display: none; }
-    #historyPanel.visible { display: block; }
-    #historyPanel .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; }
-    #historyPanel .panel-head h2 { margin: 0; }
-    #historyPanel .close-btn { background: none; border: none; cursor: pointer; font-size: 1.1rem;
-      color: var(--pico-muted-color); padding: .1rem .4rem; }
+  /* Stacking order: sticky nav < toast; the history dialog uses the
+     browser top layer and needs no z-index. */
+  --z-nav: 10;
+  --z-toast: 50;
+  --z-tooltip: 60;
 
-    /* Collapsible */
-    details pre { max-height: 14rem; overflow: auto; margin: .3rem 0; }
+  /* Elevation shadows for floating surfaces. */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, .25);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, .25);
 
-    /* Selected row */
-    tr.selected { background: color-mix(in srgb, var(--pico-primary) 12%, transparent); }
+  /* Sort-indicator chevrons (SVG masks), defined once and reused by the
+     prefixed and unprefixed mask-image alike. */
+  --chevron-both: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 9l5-5 5 5'/%3E%3Cpath d='M7 15l5 5 5-5'/%3E%3C/svg%3E");
+  --chevron-up: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 15l6-6 6 6'/%3E%3C/svg%3E");
+  --chevron-down: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
-    /* Empty state */
-    .empty { color: var(--pico-muted-color); font-style: italic; padding: .5rem 0; }
+  /* Primary-tinted surfaces, one scale: hover < chip < chip hover.
+     Deletion chips reuse the same steps on the red channel. */
+  --tint-hover: color-mix(in srgb, var(--pico-primary) 6%, transparent);
+  /* Row hover is a TRANSPARENT teal tint: it replaces the stripe's
+     background-color on the hovered cells (strong enough to read on
+     both striped and plain rows) and adapts to whatever surface the
+     table sits on — an opaque page-background mix looked like a dark
+     blue band inside the modal, whose card surface is lighter. */
+  --row-stripe: var(--pico-table-row-stripped-background-color);
+  --row-hover: color-mix(in srgb, var(--pico-primary) 14%, transparent);
+  --chip-bg: color-mix(in srgb, var(--pico-primary) 14%, transparent);
+  --chip-bg-hover: color-mix(in srgb, var(--pico-primary) 28%, transparent);
+  --chip-del-bg: color-mix(in srgb, var(--pico-del-color) 12%, transparent);
+  --chip-del-bg-hover: color-mix(in srgb, var(--pico-del-color) 28%, transparent);
 
-    /* Nav branding */
-    .brand { display: flex; align-items: baseline; gap: .3rem; }
-    .brand strong { font-size: 1.1rem; }
-    .brand small { font-size: .75rem; color: var(--pico-muted-color); }
+  /* Action-chip icon colors (soft teal chips): dark enough on the light
+     theme; the dark-theme blocks below swap in lighter shades. */
+  --action-fg: #1f6d76;
+  --action-del-fg: #b3424d;
 
-    /* Nav controls — comfortable (base) */
-    .nav-controls { display: flex; align-items: center; gap: .5rem; }
-    .nav-controls select { margin: 0; width: auto; }
-    .nav-btn { background: none; border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius);
-      cursor: pointer; padding: .4rem .7rem; font-size: .82rem; font-weight: 600; line-height: 1.3;
-      color: var(--pico-contrast); margin: 0;
-      min-width: 3.6rem; text-align: center; text-transform: uppercase; letter-spacing: .02em; }
-    .nav-btn:hover { border-color: var(--pico-primary); color: var(--pico-primary); }
-    .nav-btn.active { background: var(--pico-primary); color: #fff; border-color: var(--pico-primary); }
+  /* Graphite dark palette — every hex exists exactly once here. The two
+     dark blocks below (explicit and auto+system-dark) must both exist
+     to mirror Pico's selector structure, but they only assign these
+     tokens, never repeat the values. */
+  --graphite-bg: #1a1b1c;
+  --graphite-card: #242526;
+  --graphite-recessed: #1f2021;
+  --graphite-border: #3a3c3e;
+  --graphite-border-muted: #303234;
+  --graphite-action-fg: #4fb6c0;
+  --graphite-action-del-fg: #e08790;
+}
 
-    /* Footer */
-    footer.container { margin-top: 1.5rem; padding: .6rem 1rem; border-top: 1px solid var(--pico-muted-border-color);
-      font-size: .78rem; color: var(--pico-muted-color); }
-    footer .footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .3rem .8rem; }
-    footer a { color: var(--pico-muted-color); text-decoration: underline; text-underline-offset: 2px; }
-    footer a:hover { color: var(--pico-primary); }
-    footer .footer-links { display: flex; flex-wrap: wrap; gap: .2rem .6rem; }
-    footer .sep { opacity: .4; }
+/* Brand primary: teal #2f99a4 replaces Pico's blue in both themes. The
+   color is defined ONCE as --brand; every Pico token and derived shade
+   references it, so a rebrand is a two-line change.
+   Selector note: Pico sets its theme tokens on :root:not([data-theme=dark])
+   (light/auto) and [data-theme=dark]; a bare :root loses to the first on
+   specificity. This pair matches or beats both in every theme mode
+   (light, dark, auto) because styles.css loads after pico. */
+:root:not([data-theme="dark"]),
+:root[data-theme="dark"] {
+  --brand: #2f99a4;
+  --brand-hover: #27828c;
+  --pico-primary: var(--brand);
+  --pico-primary-background: var(--brand);
+  --pico-primary-border: var(--brand);
+  --pico-primary-hover: var(--brand-hover);
+  --pico-primary-hover-background: var(--brand-hover);
+  --pico-primary-hover-border: var(--brand-hover);
+  --pico-primary-underline: color-mix(in srgb, var(--brand) 50%, transparent);
+  --pico-primary-focus: color-mix(in srgb, var(--brand) 35%, transparent);
+  --pico-primary-inverse: #fff;
+  /* Pico's own stripe color is ~4% alpha — invisible on the graphite
+     dark background. 6% of the contrast color reads in both themes and
+     feeds Pico's odd-row rule and our history pair rule alike. */
+  --pico-table-row-stripped-background-color: color-mix(in srgb, var(--pico-contrast) 6%, transparent);
+}
 
-    /* ── Comfortable base heading ── */
-    h2 { font-size: 1.3rem; margin: 0 0 .5rem; }
+/* Dark background: neutral graphite (no color cast), chosen so the teal
+   primary is the only cool hue on screen and stands out. Teal on this
+   bg ≈ 5:1. Applied for explicit dark and auto+system-dark, mirroring
+   Pico's selector structure. */
+:root[data-theme="dark"] {
+  --pico-background-color: var(--graphite-bg);
+  --pico-card-background-color: var(--graphite-card);
+  --pico-card-sectioning-background-color: var(--graphite-recessed);
+  --pico-border-color: var(--graphite-border);
+  --pico-muted-border-color: var(--graphite-border-muted);
+  /* Form elements and dropdowns follow the card/section shades — Pico's
+     own dark values kept the old blue cast. Aliased to Pico tokens (not
+     graphite ones) so the graphite mapping above stays the only place
+     that names the palette. Table borders need no line here: Pico
+     derives --pico-table-border-color from --pico-muted-border-color. */
+  --pico-form-element-background-color: var(--pico-card-sectioning-background-color);
+  --pico-form-element-border-color: var(--pico-border-color);
+  --pico-dropdown-background-color: var(--pico-card-background-color);
+  --action-fg: var(--graphite-action-fg);
+  --action-del-fg: var(--graphite-action-del-fg);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --pico-background-color: var(--graphite-bg);
+    --pico-card-background-color: var(--graphite-card);
+    --pico-card-sectioning-background-color: var(--graphite-recessed);
+    --pico-border-color: var(--graphite-border);
+    --pico-muted-border-color: var(--graphite-border-muted);
+    --pico-form-element-background-color: var(--pico-card-sectioning-background-color);
+    --pico-form-element-border-color: var(--pico-border-color);
+    --pico-dropdown-background-color: var(--pico-card-background-color);
+    --action-fg: var(--graphite-action-fg);
+    --action-del-fg: var(--graphite-action-del-fg);
+  }
+}
 
-    /* ── Compact density overrides ── */
-    body.compact { --pico-spacing: .5rem; --pico-typography-spacing-vertical: .5rem; --pico-font-size: 87.5%; }
-    body.compact > nav { padding: .3rem 1rem; }
-    body.compact main.container { padding-top: .5rem; }
-    body.compact h2 { font-size: 1.1rem; margin: 0 0 .3rem; }
-    body.compact table { font-size: .8rem; }
-    body.compact table th, body.compact table td { padding: .25rem .4rem; white-space: nowrap; }
-    body.compact td.wrap { white-space: normal; }
-    body.compact .mono { font-size: .78rem; }
-    body.compact .tabs { margin-bottom: .5rem; }
-    body.compact .tabs button { padding: .35rem .8rem; font-size: .85rem; }
-    body.compact .tab-badge { font-size: .7rem; }
-    body.compact .actions button { padding: .15rem .35rem; font-size: .8rem; }
-    body.compact .dot { width: 8px; height: 8px; margin-right: 4px; }
-    body.compact .form-card { max-width: 38rem; }
-    body.compact .form-section { margin-bottom: .6rem; }
-    body.compact .form-section-title { font-size: .8rem; margin-bottom: .3rem; padding-bottom: .15rem; }
-    body.compact .form-grid { gap: .2rem .6rem; }
-    body.compact .form-field { margin-bottom: .25rem; }
-    body.compact .form-field label { font-size: .8rem; margin-bottom: .1rem; }
-    body.compact .form-field input, body.compact .form-field select { padding: .25rem .4rem; font-size: .8rem; height: 2rem; }
-    body.compact .form-field .hint { font-size: .7rem; margin-top: .1rem; }
-    body.compact .form-actions { margin-top: .5rem; padding-top: .4rem; }
-    body.compact .form-actions button { padding: .3rem 1rem; font-size: .8rem; }
-    body.compact .type-desc { font-size: .78rem; margin: .1rem 0 .4rem; padding: .3rem .5rem; }
-    body.compact #historyPanel { margin-top: .5rem; padding: .5rem; }
-    body.compact #historyPanel .panel-head { margin-bottom: .3rem; }
-    body.compact details > summary { font-size: .8rem; }
-    body.compact details pre { font-size: .75rem; max-height: 12rem; }
-    body.compact .empty { font-size: .85rem; }
-    body.compact .brand strong { font-size: 1rem; }
-    body.compact .brand small { font-size: .7rem; }
-    body.compact .nav-controls { gap: .4rem; }
-    body.compact .nav-controls select { padding: .2rem 1.8rem .2rem .4rem; font-size: .8rem; height: auto; }
-    body.compact .nav-btn { padding: .2rem .5rem; font-size: .72rem; min-width: 3.2rem; }
-    body.compact footer.container { font-size: .72rem; }
+/* ── Base (shared) ── */
+/* Sticky footer: the page is a column at least one viewport tall and
+   main soaks up the slack, so a short page still ends with the footer
+   at the bottom edge. dvh tracks mobile browser chrome; vh is the
+   fallback for engines without it. */
+body { padding: 0; display: flex; flex-direction: column;
+  min-height: 100vh; min-height: 100dvh; }
+main.container { flex: 1 0 auto; width: 100%; }
+/* Brand + tabs sit left together; the controls group is pushed right.
+   No ul/li: single-item "lists" carried no semantics, and Pico's nav li
+   padding (--pico-nav-element-spacing-*) ignored the density setting. */
+.app-nav { position: sticky; top: 0; z-index: var(--z-nav); background: var(--pico-background-color);
+  border-bottom: var(--border-thin); padding: .4rem var(--layout-pad-x); margin: 0;
+  display: flex; align-items: center; justify-content: flex-start; gap: 1.25rem; }
+.nav-right { display: flex; align-items: center; gap: .75rem; margin-left: auto; }
+td.wrap { white-space: normal; word-break: break-all; }
+.mono { font-family: monospace; }
 
-    /* Responsive */
-    @media (max-width: 768px) {
-      .form-grid { grid-template-columns: 1fr 1fr; }
-    }
-    @media (max-width: 480px) {
-      .form-grid { grid-template-columns: 1fr; }
-      .tabs button { padding: .3rem .5rem; font-size: .78rem; }
-      footer .footer-inner { flex-direction: column; align-items: flex-start; }
-      .nav-controls { gap: .2rem; }
-    }
+/* Ghost buttons — the shared reset for buttons that render as plain
+   interactive text/icons (tab, job name, modal close). */
+.tabs button,
+.job-name,
+#historyModal .close-btn { background: none; border: none; margin: 0;
+  cursor: pointer; box-shadow: none; width: auto; }
+/* box-shadow: none above (and on the other ghost buttons) also kills
+   Pico's focus ring, which is box-shadow-based — replace it with an
+   outline so keyboard focus stays visible. */
+.tabs button:focus-visible,
+.job-name:focus-visible,
+#historyModal .close-btn:focus-visible,
+#history .toggle-output:focus-visible { outline: 2px solid var(--pico-primary); outline-offset: 2px; }
+
+/* Tabs — live inside the nav bar, between brand and controls */
+.tabs { display: flex; gap: 0; align-self: stretch; align-items: stretch; }
+.tabs button { display: inline-flex; align-items: center;
+  padding: .4rem .9rem; border-radius: 0;
+  white-space: nowrap; color: var(--pico-muted-color); border-bottom: 2px solid transparent; }
+.tabs button.active { color: var(--pico-primary); border-bottom-color: var(--pico-primary); font-weight: 600; }
+.tabs button:hover { color: var(--pico-primary); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.tab-badge { background: var(--pico-primary); color: var(--pico-primary-inverse); border-radius: 999px;
+  padding: 0 .45rem; margin-left: .3rem; vertical-align: middle; }
+.tab-badge.muted { background: var(--pico-muted-color); }
+
+/* Action buttons — soft chips: faint teal fill, teal SVG icon; delete is
+   red-tinted at rest. Icon colors come from --action-fg/--action-del-fg. */
+.actions { display: flex; gap: .25rem; }
+.actions button { margin: 0; border: none; box-shadow: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--chip-size); height: var(--chip-size); padding: 0;
+  border-radius: var(--pico-border-radius);
+  background: var(--chip-bg); color: var(--action-fg); }
+.actions button:hover { background: var(--chip-bg-hover); }
+.actions button[data-action="delete"] { background: var(--chip-del-bg); color: var(--action-del-fg); }
+.actions button[data-action="delete"]:hover { background: var(--chip-del-bg-hover); }
+.actions svg { width: var(--icon-size); height: var(--icon-size); }
+.actions button[aria-disabled="true"] { opacity: .35; cursor: not-allowed;
+  background: color-mix(in srgb, var(--pico-muted-color) 12%, transparent);
+  color: var(--pico-muted-color); }
+
+/* Status dot */
+#jobs tr > :first-child,
+#history tr > :first-child,
+#removedJobs tr > :first-child { width: var(--dot-col); min-width: var(--dot-col); }
+.dot { display: inline-block; width: var(--dot-size); height: var(--dot-size);
+  border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.dot-ok { background: var(--pico-ins-color); }
+.dot-fail { background: var(--pico-del-color); }
+.dot-skip { background: var(--pico-mark-background-color); }
+.dot-none { background: var(--pico-muted-color); }
+.dot-disabled { background: var(--pico-muted-color); opacity: .5; }
+.dot-running { background: var(--pico-primary); animation: dot-pulse 1.2s ease-in-out infinite; }
+@keyframes dot-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .dot-running { animation: none; } }
+.disabled-text { opacity: .5; }
+
+/* Form */
+.form-card { max-width: 42rem; }
+.form-card h2 { display: flex; align-items: center; gap: var(--gap-sm); }
+.form-card .edit-badge { font-size: var(--fs-2xs); background: var(--pico-primary);
+  color: var(--pico-primary-inverse); border-radius: var(--pico-border-radius); padding: .1rem .5rem; font-weight: 400; }
+.form-section { margin-bottom: .8rem; }
+.form-section-title { font-weight: 600; margin: 0 0 .4rem; padding-bottom: .2rem;
+  border-bottom: var(--border-thin); text-transform: uppercase; letter-spacing: .04em;
+  color: var(--pico-muted-color); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem .8rem; }
+.form-field { margin-bottom: .3rem; }
+.form-field label { margin-bottom: .15rem; display: block; font-weight: 500; }
+.form-field input, .form-field select { margin-bottom: 0; }
+.form-field .hint { font-size: var(--fs-xs); color: var(--pico-muted-color); margin: .15rem 0 0; line-height: 1.3; }
+.form-actions { display: flex; align-items: center; gap: var(--gap-sm); margin-top: .6rem; padding-top: .5rem;
+  border-top: var(--border-thin); }
+.type-fields { display: none; }
+.type-fields.visible { display: block; }
+.type-desc { color: var(--pico-muted-color); margin: .15rem 0 .5rem;
+  padding: .4rem .6rem; background: var(--tint-hover);
+  border-radius: var(--pico-border-radius); line-height: 1.4; }
+
+/* History modal. Anchored to the top instead of vertically centered:
+   the 5s refresh changes the content height, and a centered dialog
+   re-centers on every change, making it jump. */
+#historyModal { align-items: flex-start; }
+#historyModal article { max-width: min(70rem, 95vw); width: 100%; max-height: 85vh;
+  overflow: auto; margin-top: 6vh; margin-bottom: auto;
+  /* Driven by --pico-spacing so the compact/comfortable density setting
+     (which rescales that token on body.compact) applies here too. */
+  padding: var(--pico-spacing) calc(var(--pico-spacing) * 1.25); }
+#historyModal header { display: flex; flex-direction: row-reverse; justify-content: space-between;
+  align-items: center; background: none; border-bottom: var(--border-thin);
+  /* Density-driven: scales down with --pico-spacing in compact mode. */
+  margin: 0 0 calc(var(--pico-spacing) * .6); padding: 0 0 calc(var(--pico-spacing) * .4); }
+#historyModal header h2 { margin: 0; }
+#historyModal .close-btn { color: var(--pico-muted-color); padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.6rem; height: 1.6rem; }
+#historyModal .close-btn svg { width: var(--icon-size); height: var(--icon-size); }
+#historyModal .close-btn:hover { color: var(--pico-contrast); }
+
+/* History output subrow: full-width row under a run, so expanding output
+   never changes the column widths of the table above it. */
+#history .toggle-output { margin: 0; padding: .15rem .5rem; font-size: var(--fs-xs); line-height: 1.2; width: auto;
+  background: none; color: var(--pico-muted-color); box-shadow: none;
+  border: var(--border-faint); }
+#history .toggle-output:hover { border-color: var(--pico-primary); color: var(--pico-primary); }
+tr.output-row { display: none; }
+tr.output-row.open { display: table-row; }
+/* A run row with its output open reads as ONE unit with the subrow
+   below: no cell border between them (the border under the subrow keeps
+   separating the pair from the next run). */
+table#history tbody tr.selected td { border-bottom: none; }
+tr.output-row td { white-space: normal; }
+/* Density-scaled breathing room around the expanded output; the double
+   class outguns the compact table-cell padding override. */
+tr.output-row.open td { padding: calc(var(--pico-spacing) * .8) calc(var(--pico-spacing) * 1.2); }
+tr.output-row pre { white-space: pre-wrap; word-break: break-word; max-height: 20rem; overflow: auto;
+  margin: .3rem 0; background: none; }
+tr.output-row pre.stderr { color: var(--pico-del-color); }
+table#history.striped tbody tr:not(.output-row):hover td { background-color: var(--row-hover); }
+
+/* Floating surfaces — the toast and the tooltip share the elevated-card
+   look: fixed, card background, thin border, radius, fade via .visible. */
+#custom-tooltip,
+#notice { position: fixed; background: var(--pico-card-background-color);
+  border: var(--border-thin); border-radius: var(--pico-border-radius);
+  pointer-events: none; opacity: 0; }
+#custom-tooltip.visible,
+#notice.visible { opacity: 1; }
+
+/* Tooltip bubble — one element driven by the [data-custom-tooltip]
+   delegation in app.js. Fixed positioning (viewport coordinates) keeps
+   it clear of overflow-clipping containers; the module re-parents it
+   into an open dialog so it is not buried under the browser's top
+   layer. */
+#custom-tooltip { z-index: var(--z-tooltip); max-width: 18rem;
+  padding: .15rem .5rem; color: var(--pico-color);
+  font-size: var(--fs-2xs); line-height: 1.35;
+  /* pre-line: multi-line tooltips (the Next stat card joins job names
+     with \n) keep their line breaks instead of collapsing to one line. */
+  white-space: pre-line;
+  box-shadow: var(--shadow-sm); transition: opacity .1s; }
+
+/* Notice toast (bottom-right, created by toast in app.js) */
+#notice { right: 1rem; bottom: 1rem; z-index: var(--z-toast); max-width: 26rem;
+  padding: .6rem .9rem; border-left: 4px solid var(--pico-primary);
+  font-size: var(--fs-sm); box-shadow: var(--shadow-md);
+  transform: translateY(.5rem); transition: opacity .2s, transform .2s; }
+#notice.visible { transform: none; }
+#notice.success { border-left-color: var(--pico-ins-color); }
+#notice.error { border-left-color: var(--pico-del-color); }
+
+/* Striping — Pico's .striped paints the CELLS (td/th) of odd rows, so
+   every row-state rule below targets td as well; a tr background would
+   sit underneath the cell paint and never show.
+   The history table is strict run/subrow pairs (loadHistory always
+   renders the subrow), so its stripes come from a 4-row cycle: pair one
+   (rows 1+2) plain, pair two (rows 3+4) striped. */
+/* Every history cell is transparent first (Pico gives td the PAGE
+   background by default, which shows darker than the modal card);
+   the pair rule below then paints the striped pairs. */
+table#history.striped tbody tr td { background-color: transparent; }
+table#history.striped tbody tr:nth-child(4n+3) td,
+table#history.striped tbody tr:nth-child(4n+4) td { background-color: var(--row-stripe); }
+
+/* Stat cards — quiet number+label tiles; the left stripe and colored
+   value appear only on the alert (failing) state, icon+label included,
+   so state is never color-alone. */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: .6rem;
+  /* Density-scaled with a base floor: 1.25rem comfortable, .75rem
+     compact — bare --pico-spacing left compact glued to the table. */
+  margin-bottom: calc(var(--pico-spacing) + .25rem); }
+/* Element-agnostic component: the rule owns every visual property that
+   an element default or Pico's element/attribute selectors (button,
+   [role=button]) could otherwise leak in, so a <div> card and a
+   <button> card render identically. */
+.stat-card { background: var(--pico-card-background-color); border: var(--border-thin);
+  border-left: 3px solid transparent; border-radius: var(--pico-border-radius);
+  padding: .5rem .8rem; display: flex; flex-direction: column; gap: .1rem; min-width: 0;
+  text-align: left; font: inherit; color: inherit; width: 100%; margin: 0;
+  box-shadow: none; appearance: none; }
+.stat-card .stat-value,
+.stat-card .stat-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-card .stat-value { font-size: 1.4rem; line-height: 1.2; font-weight: 600; }
+.stat-card.alert { border-left-color: var(--pico-del-color); }
+.stat-card.alert .stat-value { color: var(--pico-del-color); }
+/* The Failing card doubles as a filter toggle. */
+#statFailing { cursor: pointer; }
+#statFailing:hover { border-color: var(--pico-primary); }
+#statFailing.pressed { border-color: var(--pico-primary);
+  background: color-mix(in srgb, var(--pico-primary) 8%, var(--pico-card-background-color)); }
+
+/* Last Run — date and time stacked */
+.lr-date, .lr-time { display: block; white-space: nowrap; }
+.lr-time { font-size: var(--fs-sm); }
+
+/* Micro labels — the shared muted-uppercase treatment for stat-card
+   labels and the duration cell's last/avg/max prefixes. (Form section
+   titles use the same uppercase treatment, declared in their own rule.) */
+.stat-card .stat-label,
+.dur-cell .dur-line small { font-size: var(--fs-2xs); text-transform: uppercase;
+  letter-spacing: .04em; color: var(--pico-muted-color); }
+
+/* Duration cell — stacked last / avg / max lines */
+.dur-cell .dur-line { display: flex; align-items: baseline; gap: .35rem; white-space: nowrap; }
+.dur-cell .dur-line small { width: 2rem; }
+
+/* Result sparkline — one square per recent run, oldest first */
+.spark { display: inline-flex; gap: 2px; align-items: center; }
+.spark i { width: 5px; height: 16px; border-radius: 2px; display: inline-block; }
+.spark i.ok { background: var(--pico-ins-color); opacity: .55; }
+.spark i.skip { background: var(--pico-mark-background-color); }
+.spark i.fail { background: var(--pico-del-color); }
+
+/* Table search — right-aligned above the table. Pico pills search
+   inputs by redefining --pico-border-radius:5rem on [type=search],
+   so the variable itself must be reset — a plain border-radius
+   override just resolves back to the pill value.
+   Magnifier icon kept, but pulled toward the edge so the inline
+   padding shrinks from Pico's spacing+1.75rem to just enough for it.
+   The input[...][type=search] selector matches the specificity (0,2,1)
+   of Pico's icon rule; a bare .table-search loses to it. */
+.table-search { display: block; max-width: 20rem; margin-left: auto; margin-bottom: .5rem;
+  --pico-border-radius: 0.25rem; }
+input.table-search[type=search] {
+  background-position: center left .6rem;
+  padding-inline-start: 2rem; }
+body.compact .table-search { padding-block: .2rem; font-size: var(--fs-xs); height: 2rem; margin-bottom: .35rem; }
+
+/* Sortable columns — opt in with data-sort on th. The indicator is an
+   SVG chevron via mask (font glyphs center inconsistently); painted
+   with background-color so it follows currentColor/primary. */
+th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+th[data-sort]::after { content: ""; display: inline-block; width: 1em; height: 1em;
+  margin-left: .25rem; vertical-align: -.15em; background-color: currentColor; opacity: .35;
+  -webkit-mask-image: var(--chevron-both);
+  -webkit-mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat;
+  mask-image: var(--chevron-both);
+  mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
+th[data-sort].sort-asc::after { opacity: 1; background-color: var(--pico-primary);
+  -webkit-mask-image: var(--chevron-up); mask-image: var(--chevron-up); }
+th[data-sort].sort-desc::after { opacity: 1; background-color: var(--pico-primary);
+  -webkit-mask-image: var(--chevron-down); mask-image: var(--chevron-down); }
+
+/* Clickable job rows: pointer + hover on the whole row, and the job
+   name doubles as a focusable link-button for keyboard access. */
+#jobs tbody tr { cursor: pointer; }
+/* Hovered row, and the row whose history modal is open (app.js toggles
+   .selected on it), share the same highlight — one rule so they never drift. */
+#jobs tbody tr:hover td,
+#jobs tbody tr.selected td { background-color: var(--row-hover); }
+.job-name { padding: 0; color: var(--pico-primary); font-size: inherit; line-height: inherit;
+  text-align: left; }
+.job-name:hover { text-decoration: underline; color: var(--pico-primary-hover); }
+.job-name s { color: inherit; }
+
+/* Empty state */
+.empty { color: var(--pico-muted-color); font-style: italic; padding: .5rem 0; }
+
+/* Nav branding */
+.brand { display: flex; align-items: baseline; gap: .3rem; }
+.brand strong { font-size: 1.1rem; }
+.brand small { font-size: var(--fs-2xs); color: var(--pico-muted-color); }
+
+/* Nav controls — comfortable (base) */
+.nav-controls { display: flex; align-items: center; gap: var(--gap-sm); }
+.nav-controls select { margin: 0; width: auto; }
+.nav-btn { background: none; border: var(--border-thin); border-radius: var(--pico-border-radius);
+  cursor: pointer; padding: .4rem .7rem; font-size: var(--fs-xs); font-weight: 600; line-height: 1.3;
+  color: var(--pico-contrast); margin: 0;
+  min-width: 3.6rem; text-align: center; text-transform: uppercase; letter-spacing: .02em; }
+.nav-btn:hover { border-color: var(--pico-primary); color: var(--pico-primary); }
+
+/* Footer */
+.app-footer { margin: 0; padding: .6rem var(--layout-pad-x); border-top: var(--border-thin);
+  font-size: var(--fs-xs); color: var(--pico-muted-color); }
+.app-footer .footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .3rem .8rem; }
+.app-footer a { color: var(--pico-muted-color); text-decoration: underline; text-underline-offset: 2px; }
+.app-footer a:hover { color: var(--pico-primary); }
+.app-footer .footer-links { display: flex; flex-wrap: wrap; gap: .2rem .6rem; }
+.app-footer .sep { opacity: .4; }
+
+/* ── Comfortable base heading ── */
+h2 { font-size: 1.3rem; margin: 0 0 .5rem; }
+
+/* ── Compact density overrides ── */
+/* All compact tokens (type, spacing, control sizes) live in the shared
+   rule at the top of this file (with html.compact-early); sizes shrink
+   by overriding the variables, not the rules. */
+body.compact .app-nav { padding: .3rem var(--layout-pad-x); }
+body.compact .stat-card { padding: .35rem .6rem; }
+body.compact .stat-card .stat-value { font-size: 1.15rem; }
+body.compact main.container { padding-top: .5rem; }
+body.compact h2 { font-size: 1.1rem; margin: 0 0 .3rem; }
+body.compact table { font-size: var(--fs-xs); }
+body.compact table th, body.compact table td { padding: .25rem .4rem; white-space: nowrap; }
+body.compact td.wrap { white-space: normal; }
+body.compact .mono { font-size: var(--fs-xs); }
+body.compact .tabs button { padding: .35rem .8rem; font-size: var(--fs-sm); }
+body.compact .tab-badge { font-size: var(--fs-2xs); }
+body.compact .dot { margin-right: 4px; }
+body.compact .form-card { max-width: 38rem; }
+body.compact .form-section { margin-bottom: .6rem; }
+body.compact .form-section-title { font-size: var(--fs-xs); margin-bottom: .3rem; padding-bottom: .15rem; }
+body.compact .form-grid { gap: .2rem .6rem; }
+body.compact .form-field { margin-bottom: .25rem; }
+body.compact .form-field label { font-size: var(--fs-xs); margin-bottom: .1rem; }
+body.compact .form-field input, body.compact .form-field select { padding: .25rem .4rem; font-size: var(--fs-xs); height: 2rem; }
+body.compact .form-field .hint { font-size: var(--fs-2xs); margin-top: .1rem; }
+body.compact .form-actions { margin-top: .5rem; padding-top: .4rem; }
+body.compact .form-actions button { padding: .3rem 1rem; font-size: var(--fs-xs); }
+body.compact .type-desc { font-size: var(--fs-xs); margin: .1rem 0 .4rem; padding: .3rem .5rem; }
+body.compact #history .toggle-output { font-size: var(--fs-2xs); padding: .1rem .4rem; }
+body.compact tr.output-row td { white-space: normal; }
+body.compact tr.output-row pre { font-size: var(--fs-2xs); max-height: 12rem; }
+body.compact .empty { font-size: var(--fs-sm); }
+body.compact .brand strong { font-size: 1rem; }
+body.compact .brand small { font-size: var(--fs-2xs); }
+body.compact .nav-controls { gap: .4rem; }
+body.compact .nav-controls select { padding: .2rem 1.8rem .2rem .4rem; font-size: var(--fs-xs); height: auto; }
+body.compact .nav-btn { padding: .2rem .5rem; font-size: var(--fs-2xs); min-width: 3.2rem; }
+body.compact .app-footer { font-size: var(--fs-2xs); }
+
+/* Responsive */
+/* The nav needs ~1150px in one row (labels never wrap); below that the
+   tab bar drops to its own full-width row and scrolls horizontally when
+   still too tight. */
+@media (max-width: 1150px) {
+  .app-nav { flex-wrap: wrap; }
+  .tabs { order: 3; width: 100%; overflow-x: auto; }
+}
+@media (max-width: 480px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .tabs button { padding: .3rem .5rem; font-size: var(--fs-xs); }
+  .app-footer .footer-inner { flex-direction: column; align-items: flex-start; }
+  .nav-controls { gap: .2rem; }
+  /* Reclaim nav width on phones: the job count and the byline are
+     secondary — without them brand + controls fit 360px. */
+  #jobCount { display: none; }
+  .brand small { display: none; }
+}

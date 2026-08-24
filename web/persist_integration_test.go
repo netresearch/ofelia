@@ -199,7 +199,7 @@ func TestPersist_CreateJob_IgnoresMaliciousXOriginIni(t *testing.T) {
 }
 
 // TestPersist_CreateJob_PersistsWhenOriginWeb pins that UI requests
-// (which send `X-Origin: web`, see static/ui/index.html) get
+// (which send `X-Origin: web`, see static/ui/app.js) get
 // persisted too — pre-fix the check `if origin == "api"` only ever
 // fired for header-less requests, so the entire web UI path silently
 // dropped persistence.
@@ -212,7 +212,7 @@ func TestPersist_CreateJob_PersistsWhenOriginWeb(t *testing.T) {
 	body := `{"name":"from-ui","type":"local","schedule":"@hourly"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Origin", "web") // exactly what static/ui/index.html sends
+	req.Header.Set("X-Origin", "web") // exactly what static/ui/app.js sends
 	w := httptest.NewRecorder()
 	srv.HTTPServer().Handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
