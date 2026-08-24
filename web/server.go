@@ -271,6 +271,7 @@ func (s *Server) routes(hc *HealthChecker, ui http.Handler) []route {
 		route{pathAPIJobsPrefix, http.HandlerFunc(s.historyHandler), false},
 		route{"/api/jobs", http.HandlerFunc(s.jobsHandler), false},
 		route{"/api/config", http.HandlerFunc(s.configHandler), false},
+		route{"/api/dashboard", http.HandlerFunc(s.dashboardHandler), false},
 	)
 
 	if hc != nil {
@@ -1070,42 +1071,48 @@ func stripJobs(cfg any) any {
 	return out.Interface()
 }
 
-func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
-	if !strings.HasSuffix(r.URL.Path, "/history") {
-		http.NotFound(w, r)
-		return
-	}
-	name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, pathAPIJobsPrefix), "/history")
+// buildAPIHistory converts the named job's execution history into API
+// payloads. ok is false when the job does not exist or keeps no history.
+// Shared by the per-job history endpoint and the dashboard aggregate.
+func (s *Server) buildAPIHistory(name string) (out []apiExecution, ok bool) {
 	target := s.scheduler.GetAnyJob(name)
 	if target == nil {
-		http.NotFound(w, r)
-		return
+		return nil, false
 	}
 	hJob, ok := target.(interface{ GetHistory() []*core.Execution })
 	if !ok {
-		http.NotFound(w, r)
-		return
+		return nil, false
 	}
 	hist := hJob.GetHistory()
-	out := make([]apiExecution, 0, len(hist))
+	out = make([]apiExecution, 0, len(hist))
 	for _, e := range hist {
 		errStr := ""
 		if e.Error != nil {
 			errStr = e.Error.Error()
 		}
-		// Get output streams using execution methods
-		stdout := e.GetStdout()
-		stderr := e.GetStderr()
-
 		out = append(out, apiExecution{
 			Date:     e.Date,
 			Duration: e.Duration,
 			Failed:   e.Failed,
 			Skipped:  e.Skipped,
 			Error:    errStr,
-			Stdout:   stdout,
-			Stderr:   stderr,
+			Stdout:   e.GetStdout(),
+			Stderr:   e.GetStderr(),
 		})
+	}
+	return out, true
+}
+
+func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasSuffix(r.URL.Path, "/history") {
+		http.NotFound(w, r)
+		return
+	}
+	name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, pathAPIJobsPrefix), "/history")
+	out, ok := s.buildAPIHistory(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
 	}
 	w.Header().Set(headerContentType, contentTypeJSON)
 	_ = json.NewEncoder(w).Encode(out)
