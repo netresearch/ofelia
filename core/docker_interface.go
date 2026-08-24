@@ -23,6 +23,13 @@ type DockerProvider interface {
 	ListContainers(ctx context.Context, opts domain.ListOptions) ([]domain.Container, error)
 	WaitContainer(ctx context.Context, containerID string) (int64, error)
 	GetContainerLogs(ctx context.Context, containerID string, opts ContainerLogsOptions) (io.ReadCloser, error)
+	// CopyContainerLogs streams container logs into stdout/stderr,
+	// demultiplexing Docker's 8-byte-framed stream for non-TTY
+	// containers (TTY containers emit a raw stream and are copied
+	// verbatim). Use this instead of GetContainerLogs whenever the
+	// output is stored or displayed — the raw reader leaks frame
+	// headers into the log text.
+	CopyContainerLogs(ctx context.Context, containerID string, stdout, stderr io.Writer, opts ContainerLogsOptions) error
 
 	// Exec operations
 	CreateExec(ctx context.Context, containerID string, config *domain.ExecConfig) (string, error)

@@ -82,6 +82,10 @@ func (m *mockDockerProviderForE2E) GetContainerLogs(ctx context.Context, contain
 	return nil, nil
 }
 
+func (m *mockDockerProviderForE2E) CopyContainerLogs(ctx context.Context, containerID string, stdout, stderr io.Writer, opts core.ContainerLogsOptions) error {
+	return nil
+}
+
 func (m *mockDockerProviderForE2E) CreateExec(ctx context.Context, containerID string, config *domain.ExecConfig) (string, error) {
 	return "exec-id", nil
 }

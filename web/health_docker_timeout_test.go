@@ -93,6 +93,10 @@ func (h *hangingDockerProvider) GetContainerLogs(_ context.Context, _ string, _ 
 	return nil, nil
 }
 
+func (h *hangingDockerProvider) CopyContainerLogs(_ context.Context, _ string, _, _ io.Writer, _ core.ContainerLogsOptions) error {
+	return nil
+}
+
 func (h *hangingDockerProvider) CreateExec(_ context.Context, _ string, _ *domain.ExecConfig) (string, error) {
 	return "", nil
 }

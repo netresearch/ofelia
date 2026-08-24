@@ -66,6 +66,10 @@ func (h *hangingHandlerProvider) GetContainerLogs(_ context.Context, _ string, _
 	return nil, nil
 }
 
+func (h *hangingHandlerProvider) CopyContainerLogs(_ context.Context, _ string, _, _ io.Writer, _ core.ContainerLogsOptions) error {
+	return nil
+}
+
 func (h *hangingHandlerProvider) CreateExec(_ context.Context, _ string, _ *domain.ExecConfig) (string, error) {
 	return "", nil
 }

@@ -271,29 +271,19 @@ func (j *RunJob) startAndWait(ctx context.Context, jobCtx *Context) error {
 		return err
 	}
 
-	// Get logs since start time
+	// Copy logs since start time into the execution's streams.
+	// CopyContainerLogs demultiplexes stdout/stderr for non-TTY
+	// containers — copying the raw log reader would leak Docker's
+	// 8-byte frame headers into the stored output.
 	logsOpts := ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Since:      startTime,
 		Follow:     false,
 	}
-	reader, logsErr := j.Provider.GetContainerLogs(ctx, j.getContainerID(), logsOpts)
-	if logsErr != nil {
+	if logsErr := j.Provider.CopyContainerLogs(ctx, j.getContainerID(),
+		jobCtx.Execution.OutputStream, jobCtx.Execution.ErrorStream, logsOpts); logsErr != nil {
 		jobCtx.Warn("failed to fetch container logs: " + logsErr.Error())
-	} else if reader != nil {
-		defer reader.Close()
-		// Stream logs to execution output
-		buf := make([]byte, 32*1024)
-		for {
-			n, readErr := reader.Read(buf)
-			if n > 0 {
-				_, _ = jobCtx.Execution.OutputStream.Write(buf[:n])
-			}
-			if readErr != nil {
-				break
-			}
-		}
 	}
 	return err
 }

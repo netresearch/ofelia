@@ -67,6 +67,10 @@ func (h *hangingDoctorProvider) WaitContainer(_ context.Context, _ string) (int6
 	return 0, nil
 }
 
+func (h *hangingDoctorProvider) CopyContainerLogs(_ context.Context, _ string, _, _ io.Writer, _ core.ContainerLogsOptions) error {
+	return nil
+}
+
 func (h *hangingDoctorProvider) GetContainerLogs(_ context.Context, _ string, _ core.ContainerLogsOptions) (io.ReadCloser, error) {
 	return nil, nil
 }
