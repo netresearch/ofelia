@@ -799,6 +799,17 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Same policy as delete (#593): config-owned jobs are changed at
+	// their source. Without this gate an update silently overrode the
+	// job in memory until the next config sync — and rewrote the job's
+	// origin to api/web, after which the delete gate no longer saw the
+	// job as config-owned: editing a label job unlocked deleting it.
+	if origin := s.jobOrigin(req.Name); isConfigOwned(origin) {
+		http.Error(w,
+			"job came from "+origin+" config; edit the source to change it (or use /api/jobs/disable to suppress it)",
+			http.StatusForbidden)
+		return
+	}
 	job, err := s.jobFromRequest(&req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
