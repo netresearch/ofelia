@@ -15,6 +15,7 @@ import (
 // templates. Markers cover every partial so a template accidentally
 // dropped from the layout fails here.
 func TestUIPage_RendersFullStructure(t *testing.T) {
+	t.Setenv("OFELIA_UI_DEV_DIR", "")
 
 	h, err := uiHandler()
 	if err != nil {
@@ -36,11 +37,13 @@ func TestUIPage_RendersFullStructure(t *testing.T) {
 		`href="styles.css"`,             // layout: css link
 		`src="app.js"`,                  // layout: js include
 		`id="tab-jobs"`,                 // tabs-jobs partial
-		`id="historyPanel"`,             // tabs-jobs partial (history panel)
+		`id="jobSearch"`,                // tabs-jobs partial (search input)
+		`id="historyModal"`,             // tabs-jobs partial (history dialog)
 		`id="jobForm"`,                  // tabs-form partial
 		`id="fields-compose"`,           // tabs-form partial
 		`id="tab-removed"`,              // tabs-removed partial
 		`id="configTable"`,              // tabs-config partial
+		`id="footer-version"`,           // layout footer
 		`localStorage.getItem('theme')`, // inline pre-paint script survives
 	}
 	for _, m := range markers {
@@ -53,6 +56,7 @@ func TestUIPage_RendersFullStructure(t *testing.T) {
 // TestUIPage_AssetPathsStillServed pins that non-root paths fall through
 // to the file server after the render split.
 func TestUIPage_AssetPathsStillServed(t *testing.T) {
+	t.Setenv("OFELIA_UI_DEV_DIR", "")
 
 	h, err := uiHandler()
 	if err != nil {
@@ -71,6 +75,7 @@ func TestUIPage_AssetPathsStillServed(t *testing.T) {
 // render inputs, not assets: the file server must neither list the
 // templates/ directory nor serve the raw {{template}} source.
 func TestUIPage_TemplateSourcesNotServed(t *testing.T) {
+	t.Setenv("OFELIA_UI_DEV_DIR", "")
 
 	h, err := uiHandler()
 	if err != nil {

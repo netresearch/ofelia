@@ -8,13 +8,14 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/netresearch/ofelia/static"
 )
 
 // parseUITemplates parses the page templates from fsys, whose root must
-// contain a templates/ directory (the embedded ui/ tree).
+// contain a templates/ directory (the embedded ui/ tree or a dev dir).
 func parseUITemplates(fsys fs.FS) (*template.Template, error) {
 	tpl, err := template.ParseFS(fsys, "templates/*.html")
 	if err != nil {
@@ -26,10 +27,34 @@ func parseUITemplates(fsys fs.FS) (*template.Template, error) {
 // uiHandler serves the web UI: GET / renders the page from the
 // html/template partials in templates/, every other path is served as a
 // static asset. Returns an error when the embedded assets cannot be
-// opened or the embedded templates do not parse — the templates are
-// parsed once here, at startup, so a broken template fails the daemon
-// rather than every request.
+// opened or the embedded templates do not parse (fail fast at startup).
+//
+// Development mode: when OFELIA_UI_DEV_DIR names a directory, assets are
+// read and templates re-parsed from it on every request, so an edit is
+// visible on the next reload without rebuilding the binary. A template
+// parse error is returned as a 500 with the error text so the developer
+// sees what broke. Unset in production; embedded assets are the default.
 func uiHandler() (http.Handler, error) {
+	if dir := os.Getenv("OFELIA_UI_DEV_DIR"); dir != "" {
+		files := http.FileServer(http.Dir(dir))
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isTemplateSourcePath(r.URL.Path) {
+				http.NotFound(w, r)
+				return
+			}
+			if !isUIPagePath(r.URL.Path) {
+				files.ServeHTTP(w, r)
+				return
+			}
+			tpl, err := parseUITemplates(os.DirFS(dir))
+			if err != nil {
+				http.Error(w, "ui template parse error: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			renderUIPage(w, tpl)
+		}), nil
+	}
+
 	uiFS, err := fs.Sub(static.UI, "ui")
 	if err != nil {
 		return nil, fmt.Errorf("load UI subdirectory: %w", err)
