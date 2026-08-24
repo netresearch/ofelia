@@ -990,6 +990,29 @@ func (s *Server) configHandler(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(cfg)
 }
 
+// isJobCollection reports whether t has the shape of a job collection: a map
+// keyed by job name whose values are job-config structs. Every collection in
+// cli.Config is map[string]*XxxJobConfig and no other field shares that shape.
+//
+// Matching on shape rather than on a list of field names is what keeps a newly
+// added collection stripped: the name list this replaced had already drifted
+// (it carried a field that no longer existed and missed ComposeJobs), and a
+// drifted list ships every job's full definition to any /api/config reader.
+func isJobCollection(t reflect.Type) bool {
+	if t.Kind() != reflect.Map || t.Key().Kind() != reflect.String {
+		return false
+	}
+	elem := t.Elem()
+	if elem.Kind() == reflect.Pointer {
+		elem = elem.Elem()
+	}
+	return elem.Kind() == reflect.Struct
+}
+
+// stripJobs returns a copy of cfg with every job collection zeroed. Job
+// definitions carry commands and credential-bearing fields, and the jobs API
+// already exposes what the UI needs, so they must not ride along in the config
+// payload of /api/config and /api/dashboard.
 func stripJobs(cfg any) any {
 	if cfg == nil {
 		return nil
@@ -1005,9 +1028,8 @@ func stripJobs(cfg any) any {
 	}
 	out := reflect.New(v.Type()).Elem()
 	out.Set(v)
-	fields := []string{"RunJobs", "ExecJobs", "ServiceJobs", "LocalJobs", "ComposeJobs"}
-	for _, f := range fields {
-		if fv := out.FieldByName(f); fv.IsValid() && fv.CanSet() {
+	for i := range out.NumField() {
+		if fv := out.Field(i); fv.CanSet() && isJobCollection(fv.Type()) {
 			fv.Set(reflect.Zero(fv.Type()))
 		}
 	}
