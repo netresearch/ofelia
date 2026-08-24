@@ -724,16 +724,18 @@ func (s *Scheduler) lookupJob(name string) Job {
 // in-flight invocations complete before the new schedule takes effect (because
 // go-cron serializes entry mutations through the scheduler goroutine).
 //
-// Returns ErrJobNotFound if no active job with the given name exists.
+// Disabled jobs are updated in place and stay disabled: refusing them would
+// force callers into remove+add, which resumes the job and files the old copy
+// under Removed.
+//
+// Returns ErrJobNotFound if no job with the given name exists.
 func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error {
 	s.mu.RLock()
 	oldJob, _ := getJob(s.Jobs, name)
-	_, disabled := s.disabledNames[name]
-	if oldJob == nil || disabled {
-		s.mu.RUnlock()
+	s.mu.RUnlock()
+	if oldJob == nil {
 		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
 	}
-	s.mu.RUnlock()
 
 	newJob.Use(s.Middlewares()...)
 
@@ -743,6 +745,7 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 
 	// Update internal state
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, j := range s.Jobs {
 		if j.GetName() == name {
 			s.Jobs[i] = newJob
@@ -750,7 +753,16 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 		}
 	}
 	s.jobsByName[name] = newJob
-	s.mu.Unlock()
+	// go-cron replaces the entry, so a pause is re-asserted rather than assumed
+	// to carry over. Pausing an already-paused entry is a no-op, so this is
+	// correct either way.
+	//
+	// Lock safety while calling PauseEntryByName: see DisableJob's doc comment.
+	if _, disabled := s.disabledNames[name]; disabled {
+		if err := s.cron.PauseEntryByName(name); err != nil {
+			return fmt.Errorf("re-pause updated job: %w", err)
+		}
+	}
 
 	s.Logger.Info(fmt.Sprintf("Job updated %q - %q", name, newSchedule))
 	return nil

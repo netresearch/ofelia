@@ -756,6 +756,56 @@ func TestUpdateJob_NonExistent(t *testing.T) {
 	}
 }
 
+// --- Test UpdateJob keeps a paused job paused ---
+// UpdateJob used to refuse disabled entries outright, which pushed the web
+// updateJobHandler into a RemoveJob+AddJob fallback. RemoveJob drops the
+// disabledNames entry and appends the old job to Removed, so editing a paused
+// job silently resumed it and left a phantom row in the Removed tab forever.
+func TestUpdateJob_KeepsPausedJobPaused(t *testing.T) {
+	t.Parallel()
+
+	sc := NewScheduler(newDiscardLogger())
+
+	job := &TestJob{}
+	job.Name = "paused-update"
+	job.Schedule = "@daily"
+	job.Command = "original"
+	if err := sc.AddJob(job); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	if err := sc.DisableJob("paused-update"); err != nil {
+		t.Fatalf("DisableJob: %v", err)
+	}
+
+	newJob := &TestJob{}
+	newJob.Name = "paused-update"
+	newJob.Schedule = "@hourly"
+	newJob.Command = "updated"
+
+	if err := sc.UpdateJob("paused-update", "@hourly", newJob); err != nil {
+		t.Fatalf("UpdateJob must accept a disabled job: %v", err)
+	}
+
+	found := sc.GetAnyJob("paused-update")
+	if found == nil {
+		t.Fatal("updated job should still be found")
+	}
+	if found.GetCommand() != "updated" {
+		t.Errorf("job command should be updated, got %q", found.GetCommand())
+	}
+
+	disabled := sc.GetDisabledJobs()
+	if len(disabled) != 1 || disabled[0].GetName() != "paused-update" {
+		t.Errorf("job must stay paused across an update, GetDisabledJobs() returned %d entries", len(disabled))
+	}
+	if active := sc.GetActiveJobs(); len(active) != 0 {
+		t.Errorf("a paused job must not become active by being updated, GetActiveJobs() returned %d entries", len(active))
+	}
+	if removed := sc.GetRemovedJobs(); len(removed) != 0 {
+		t.Errorf("updating a job must not append it to Removed, got %d entries", len(removed))
+	}
+}
+
 // --- Test DisableJob then verify in GetDisabledJobs ---
 func TestGetDisabledJobs_ReturnsCopy(t *testing.T) {
 	t.Parallel()
