@@ -268,7 +268,25 @@ rl := newRateLimiter(100, time.Minute)
 - Per-IP rate limiting
 - Sliding window algorithm
 - Automatic cleanup of old entries
-- X-Forwarded-For support
+- X-Forwarded-For support (honored only from trusted proxies)
+- Counts every request, static assets included. Only the orchestrator probes
+  (`/ready`, `/live`) are exempt, so a probe is never answered with 429.
+  `/health` and `/healthz` are token-free but counted: `GetHealth` calls
+  `runtime.ReadMemStats` on every request (stop-the-world) and reports the
+  version and goroutine count
+
+**Response Compression**:
+
+Responses are compressed for clients that advertise a supported codec, via
+`klauspost/compress/gzhttp` as the innermost middleware. The wrapper enables
+**zstd** alongside gzip and prefers zstd at equal q-values, so Chrome, Edge and
+Firefox — which send `Accept-Encoding: gzip, deflate, br, zstd` — receive
+`Content-Encoding: zstd`, while clients without zstd (Safari below 26, curl
+defaults, monitoring scripts) receive gzip. Clients advertising neither get
+identity responses. A handler that calls `WriteHeader` before its first body
+write must set `Content-Type` explicitly: the wrapper can only sniff a missing
+type on the first write, and that sniff would otherwise run on the compressed
+bytes.
 
 ### 5. API Endpoints
 
@@ -283,10 +301,11 @@ rl := newRateLimiter(100, time.Minute)
 | `/api/jobs/disable` | POST | Disable a job |
 | `/api/jobs/enable` | POST | Enable a job |
 | `/api/jobs/create` | POST | Create new job |
-| `/api/jobs/update` | POST | Update job configuration |
-| `/api/jobs/delete` | POST | Delete a job |
+| `/api/jobs/update` | POST | Update job configuration (403 for INI/label-owned jobs) |
+| `/api/jobs/delete` | POST | Delete a job (403 for INI/label-owned jobs) |
 | `/api/jobs/{name}/history` | GET | Get job execution history |
 | `/api/config` | GET | Get server configuration (jobs stripped) |
+| `/api/dashboard` | GET | Aggregate of jobs, disabled, removed and config in one response; `?history=<job>` adds the runs of that job |
 
 #### Job API Types
 

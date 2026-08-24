@@ -100,13 +100,26 @@ Each returns a JSON **array** of job objects:
     "nextRuns": ["2026-08-27T00:00:00Z"],
     "prevRuns": ["2026-08-26T00:00:00Z"],
     "origin": "ini",
-    "config": {"…": "full job configuration as JSON"}
+    "config": {"…": "full job configuration as JSON"},
+    "recentRuns": [
+      {
+        "date": "2026-08-26T00:00:00Z",
+        "duration": 300000000000,
+        "failed": false,
+        "skipped": false
+      }
+    ]
   }
 ]
 ```
 
 `lastRun` is omitted when the job has never run. `duration` values are Go
 `time.Duration` nanoseconds. `origin` is one of `ini`, `label`, `api`, `web`.
+
+`recentRuns` summarises up to the ten newest executions, oldest first, so a list
+view can show outcome history without a history request per job. It is omitted
+for job types that keep no history. Use `/api/jobs/{name}/history` for the full
+records including output.
 
 ### Job history
 
@@ -186,6 +199,10 @@ Same body as create. Full replace: omitted optional fields reset to their
 defaults. Returns `200 OK` when an existing job was updated, `201 Created` when
 the job did not exist and was created.
 
+Jobs owned by the INI file or Docker labels return `403 Forbidden`, mirroring
+the delete gate — change them at their source, or use `/api/jobs/disable` to
+suppress them.
+
 ### Delete a job
 
 ```http
@@ -200,6 +217,37 @@ Returns `204 No Content`. Jobs owned by the INI file or Docker labels return
 `/api/jobs/disable` to suppress them); only API/web-created jobs can be deleted
 here.
 
+## Dashboard
+
+```http
+GET /api/dashboard
+GET /api/dashboard?history=<job name>
+```
+
+One aggregate snapshot for polling clients: the three job lists, the stripped
+configuration, and — with `?history=` — that job's executions, all from a single
+moment in time.
+
+```json
+{
+  "jobs": [],
+  "disabled": [],
+  "removed": [],
+  "config": {"…": "same payload as GET /api/config"},
+  "history": null
+}
+```
+
+`jobs`, `disabled` and `removed` hold the job objects described under
+[List jobs](#list-jobs). `history` is `null` when the query parameter is absent
+or names no job, and `[]` for an existing job with no executions — a vanished
+job does not fail the request.
+
+The endpoint is additive and exists for clients that would otherwise issue four
+or five requests per tick (the bundled web UI polls it every five seconds); the
+per-resource endpoints above are unchanged. It is authenticated like every other
+`/api/` route.
+
 ## Configuration
 
 ```http
@@ -207,7 +255,8 @@ GET /api/config
 ```
 
 Returns the running daemon configuration as JSON, with the job collections
-stripped (use the job endpoints for those).
+stripped (use the job endpoints for those). The same stripped payload is the
+`config` section of `GET /api/dashboard`.
 
 ## Health
 
@@ -224,5 +273,10 @@ GET /live      # liveness probe
 
 Errors are plain-text messages with the appropriate status code:
 `400` invalid body or validation failure, `401` unauthenticated (auth enabled),
-`403` config-owned job on delete, `404` unknown job, `405` wrong method,
-`500` internal failure. Login attempts are rate limited per client IP.
+`403` config-owned job on update or delete, `404` unknown job, `405` wrong
+method, `500` internal failure. Login attempts are rate limited per client IP.
+
+Every response is compressed when the client advertises a codec the server
+supports: zstd is preferred, gzip is the fallback, and a client advertising
+neither receives the identity encoding. Responses carry
+`Vary: Accept-Encoding`.
