@@ -23,9 +23,9 @@ import (
 func TestUI_HistoryOutputKeepsExpandedStateAcrossRefresh(t *testing.T) {
 	t.Parallel()
 
-	index, err := static.UI.ReadFile("ui/index.html")
-	require.NoError(t, err, "embedded web UI must contain ui/index.html")
-	ui := string(index)
+	appJS, err := static.UI.ReadFile("ui/app.js")
+	require.NoError(t, err, "embedded web UI must contain ui/app.js")
+	ui := string(appJS)
 
 	require.Contains(t, ui, "details[open]",
 		"loadHistory() must read back which outputs are currently expanded before it "+

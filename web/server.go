@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"reflect"
@@ -23,7 +22,6 @@ import (
 	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/persist"
-	"github.com/netresearch/ofelia/static"
 )
 
 // Server is the HTTP front end of a running scheduler: the JSON API under
@@ -72,7 +70,7 @@ func (s *Server) SetPersistStore(store *persist.Store) {
 // makes the "what does this string mean" question one-grep-away.
 const (
 	originAPI   = "api"   // POST /api/jobs/{create,update} without an X-Origin header
-	originWeb   = "web"   // X-Origin: web (sent by static/ui/index.html)
+	originWeb   = "web"   // X-Origin: web (sent by static/ui/app.js)
 	originINI   = "ini"   // job-run "name" / job-exec "name" / etc. in the INI file
 	originLabel = "label" // ofelia.job-run.<name>.* Docker labels
 )
@@ -297,16 +295,6 @@ func (s *Server) newMux(hc *HealthChecker, ui http.Handler) *http.ServeMux {
 		mux.Handle(rt.pattern, rt.handler)
 	}
 	return mux
-}
-
-// uiHandler serves the embedded single-page UI. Returns an error when the
-// embedded assets cannot be opened.
-func uiHandler() (http.Handler, error) {
-	uiFS, err := fs.Sub(static.UI, "ui")
-	if err != nil {
-		return nil, fmt.Errorf("load UI subdirectory: %w", err)
-	}
-	return http.FileServer(http.FS(uiFS)), nil
 }
 
 // Start serves in a background goroutine and returns immediately, always with

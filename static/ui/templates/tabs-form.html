@@ -1,0 +1,103 @@
+    <div id="tab-form" class="tab-panel" role="tabpanel" aria-labelledby="btn-form">
+      <div class="form-card">
+        <h2><span id="formTitle">Create Job</span> <span id="editBadge" class="edit-badge" style="display:none"></span></h2>
+        <form id="jobForm">
+
+          <!-- Section: basics -->
+          <div class="form-section">
+            <div class="form-section-title">Basics</div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="jobName">Name</label>
+                <input id="jobName" required placeholder="my-backup-job">
+                <p class="hint">Unique identifier. Use lowercase with hyphens.</p>
+              </div>
+              <div class="form-field">
+                <label for="jobType">Type</label>
+                <select id="jobType">
+                  <option value="local">local</option>
+                  <option value="run">run</option>
+                  <option value="exec">exec</option>
+                  <option value="compose">compose</option>
+                </select>
+                <p class="hint">How the job executes. Determines which fields appear below.</p>
+              </div>
+            </div>
+            <div id="typeDesc" class="type-desc">Runs a command on the Ofelia host machine.</div>
+          </div>
+
+          <!-- Section: schedule & command -->
+          <div class="form-section">
+            <div class="form-section-title">Schedule &amp; Command</div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="jobSchedule">Schedule</label>
+                <input id="jobSchedule" required placeholder="@every 5m" class="mono">
+                <p class="hint">Cron expression or shorthand: <code>@every 30s</code>, <code>@hourly</code>, <code>0 */2 * * *</code></p>
+              </div>
+              <div class="form-field">
+                <label for="jobCommand">Command</label>
+                <input id="jobCommand" placeholder="echo hello" class="mono">
+                <p class="hint">Shell command or arguments to execute.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: type-specific — run -->
+          <div id="fields-run" class="type-fields">
+            <div class="form-section">
+              <div class="form-section-title">Docker Run Settings</div>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="jobImage">Image</label>
+                  <input id="jobImage" placeholder="alpine:latest">
+                  <p class="hint">Docker image to create a new container from.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: type-specific — exec -->
+          <div id="fields-exec" class="type-fields">
+            <div class="form-section">
+              <div class="form-section-title">Docker Exec Settings</div>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="jobContainer">Container</label>
+                  <input id="jobContainer" placeholder="my-nginx-1">
+                  <p class="hint">Name or ID of an existing running container.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: type-specific — compose -->
+          <div id="fields-compose" class="type-fields">
+            <div class="form-section">
+              <div class="form-section-title">Docker Compose Settings</div>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="jobFile">Compose File</label>
+                  <input id="jobFile" placeholder="/path/to/compose.yml">
+                  <p class="hint">Path to the docker compose YAML file.</p>
+                </div>
+                <div class="form-field">
+                  <label for="jobService">Service</label>
+                  <input id="jobService" placeholder="db">
+                  <p class="hint">Service name defined in the compose file.</p>
+                </div>
+              </div>
+              <div class="form-field" style="margin-top:.3rem">
+                <label><input type="checkbox" id="jobExec" role="switch"> Exec mode</label>
+                <p class="hint">Use <code>docker compose exec</code> instead of <code>run</code> (attaches to running service).</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="formSubmitBtn">Create Job</button>
+            <button type="button" id="formClearBtn" class="secondary outline">Clear</button>
+          </div>
+        </form>
+      </div>
+    </div>

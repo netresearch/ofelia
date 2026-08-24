@@ -1,0 +1,148 @@
+    html.compact-early body { --pico-spacing: .5rem; --pico-typography-spacing-vertical: .5rem; --pico-font-size: 87.5%; }
+    /* ── Base (shared) ── */
+    body { padding: 0; }
+    body > nav { position: sticky; top: 0; z-index: 10; background: var(--pico-background-color);
+      border-bottom: 1px solid var(--pico-muted-border-color); padding: .4rem 1rem; margin: 0; }
+    body > nav ul { margin: 0; }
+    td.wrap { white-space: normal; word-break: break-all; }
+    .mono { font-family: monospace; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--pico-muted-border-color); margin-bottom: .75rem; }
+    .tabs button { background: none; border: none; padding: .4rem .9rem; cursor: pointer;
+      color: var(--pico-muted-color); border-bottom: 2px solid transparent; margin-bottom: -2px; }
+    .tabs button.active { color: var(--pico-primary); border-bottom-color: var(--pico-primary); font-weight: 600; }
+    .tabs button:hover { color: var(--pico-primary); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .tab-badge { background: var(--pico-primary); color: #fff; border-radius: 9px;
+      padding: 0 .45rem; margin-left: .3rem; vertical-align: middle; }
+    .tab-badge.muted { background: var(--pico-muted-color); }
+
+    /* Action buttons */
+    .actions { display: flex; gap: 2px; }
+    .actions button { margin: 0; line-height: 1; }
+
+    /* Status dot */
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    .dot-ok { background: var(--pico-ins-color); }
+    .dot-fail { background: var(--pico-del-color); }
+    .dot-skip { background: var(--pico-mark-background-color); }
+    .dot-none { background: var(--pico-muted-color); }
+    .dot-disabled { background: var(--pico-muted-color); opacity: .5; }
+    .disabled-text { opacity: .5; }
+
+    /* Form */
+    .form-card { max-width: 42rem; }
+    .form-card h2 { display: flex; align-items: center; gap: .5rem; }
+    .form-card .edit-badge { font-size: .75rem; background: var(--pico-primary); color: #fff;
+      border-radius: 4px; padding: .1rem .5rem; font-weight: 400; }
+    .form-section { margin-bottom: .8rem; }
+    .form-section-title { font-weight: 600; color: var(--pico-muted-color);
+      text-transform: uppercase; letter-spacing: .04em; margin: 0 0 .4rem; padding-bottom: .2rem;
+      border-bottom: 1px solid var(--pico-muted-border-color); }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem .8rem; }
+    .form-field { margin-bottom: .3rem; }
+    .form-field label { margin-bottom: .15rem; display: block; font-weight: 500; }
+    .form-field input, .form-field select { margin-bottom: 0; }
+    .form-field .hint { font-size: .78rem; color: var(--pico-muted-color); margin: .15rem 0 0; line-height: 1.3; }
+    .form-actions { display: flex; align-items: center; gap: .5rem; margin-top: .6rem; padding-top: .5rem;
+      border-top: 1px solid var(--pico-muted-border-color); }
+    .type-fields { display: none; }
+    .type-fields.visible { display: block; }
+    .type-desc { color: var(--pico-muted-color); margin: .15rem 0 .5rem;
+      padding: .4rem .6rem; background: color-mix(in srgb, var(--pico-primary) 6%, transparent);
+      border-radius: var(--pico-border-radius); line-height: 1.4; }
+
+    /* History panel */
+    #historyPanel { margin-top: .75rem; padding: .6rem; border: 1px solid var(--pico-muted-border-color);
+      border-radius: var(--pico-border-radius); display: none; }
+    #historyPanel.visible { display: block; }
+    #historyPanel .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; }
+    #historyPanel .panel-head h2 { margin: 0; }
+    #historyPanel .close-btn { background: none; border: none; cursor: pointer; font-size: 1.1rem;
+      color: var(--pico-muted-color); padding: .1rem .4rem; }
+
+    /* Collapsible */
+    details pre { max-height: 14rem; overflow: auto; margin: .3rem 0; }
+
+    /* Selected row */
+    tr.selected { background: color-mix(in srgb, var(--pico-primary) 12%, transparent); }
+
+    /* Empty state */
+    .empty { color: var(--pico-muted-color); font-style: italic; padding: .5rem 0; }
+
+    /* Nav branding */
+    .brand { display: flex; align-items: baseline; gap: .3rem; }
+    .brand strong { font-size: 1.1rem; }
+    .brand small { font-size: .75rem; color: var(--pico-muted-color); }
+
+    /* Nav controls — comfortable (base) */
+    .nav-controls { display: flex; align-items: center; gap: .5rem; }
+    .nav-controls select { margin: 0; width: auto; }
+    .nav-btn { background: none; border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius);
+      cursor: pointer; padding: .4rem .7rem; font-size: .82rem; font-weight: 600; line-height: 1.3;
+      color: var(--pico-contrast); margin: 0;
+      min-width: 3.6rem; text-align: center; text-transform: uppercase; letter-spacing: .02em; }
+    .nav-btn:hover { border-color: var(--pico-primary); color: var(--pico-primary); }
+    .nav-btn.active { background: var(--pico-primary); color: #fff; border-color: var(--pico-primary); }
+
+    /* Footer */
+    footer.container { margin-top: 1.5rem; padding: .6rem 1rem; border-top: 1px solid var(--pico-muted-border-color);
+      font-size: .78rem; color: var(--pico-muted-color); }
+    footer .footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .3rem .8rem; }
+    footer a { color: var(--pico-muted-color); text-decoration: underline; text-underline-offset: 2px; }
+    footer a:hover { color: var(--pico-primary); }
+    footer .footer-links { display: flex; flex-wrap: wrap; gap: .2rem .6rem; }
+    footer .sep { opacity: .4; }
+
+    /* ── Comfortable base heading ── */
+    h2 { font-size: 1.3rem; margin: 0 0 .5rem; }
+
+    /* ── Compact density overrides ── */
+    body.compact { --pico-spacing: .5rem; --pico-typography-spacing-vertical: .5rem; --pico-font-size: 87.5%; }
+    body.compact > nav { padding: .3rem 1rem; }
+    body.compact main.container { padding-top: .5rem; }
+    body.compact h2 { font-size: 1.1rem; margin: 0 0 .3rem; }
+    body.compact table { font-size: .8rem; }
+    body.compact table th, body.compact table td { padding: .25rem .4rem; white-space: nowrap; }
+    body.compact td.wrap { white-space: normal; }
+    body.compact .mono { font-size: .78rem; }
+    body.compact .tabs { margin-bottom: .5rem; }
+    body.compact .tabs button { padding: .35rem .8rem; font-size: .85rem; }
+    body.compact .tab-badge { font-size: .7rem; }
+    body.compact .actions button { padding: .15rem .35rem; font-size: .8rem; }
+    body.compact .dot { width: 8px; height: 8px; margin-right: 4px; }
+    body.compact .form-card { max-width: 38rem; }
+    body.compact .form-section { margin-bottom: .6rem; }
+    body.compact .form-section-title { font-size: .8rem; margin-bottom: .3rem; padding-bottom: .15rem; }
+    body.compact .form-grid { gap: .2rem .6rem; }
+    body.compact .form-field { margin-bottom: .25rem; }
+    body.compact .form-field label { font-size: .8rem; margin-bottom: .1rem; }
+    body.compact .form-field input, body.compact .form-field select { padding: .25rem .4rem; font-size: .8rem; height: 2rem; }
+    body.compact .form-field .hint { font-size: .7rem; margin-top: .1rem; }
+    body.compact .form-actions { margin-top: .5rem; padding-top: .4rem; }
+    body.compact .form-actions button { padding: .3rem 1rem; font-size: .8rem; }
+    body.compact .type-desc { font-size: .78rem; margin: .1rem 0 .4rem; padding: .3rem .5rem; }
+    body.compact #historyPanel { margin-top: .5rem; padding: .5rem; }
+    body.compact #historyPanel .panel-head { margin-bottom: .3rem; }
+    body.compact details > summary { font-size: .8rem; }
+    body.compact details pre { font-size: .75rem; max-height: 12rem; }
+    body.compact .empty { font-size: .85rem; }
+    body.compact .brand strong { font-size: 1rem; }
+    body.compact .brand small { font-size: .7rem; }
+    body.compact .nav-controls { gap: .4rem; }
+    body.compact .nav-controls select { padding: .2rem 1.8rem .2rem .4rem; font-size: .8rem; height: auto; }
+    body.compact .nav-btn { padding: .2rem .5rem; font-size: .72rem; min-width: 3.2rem; }
+    body.compact footer.container { font-size: .72rem; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .form-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 480px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .tabs button { padding: .3rem .5rem; font-size: .78rem; }
+      footer .footer-inner { flex-direction: column; align-items: flex-start; }
+      .nav-controls { gap: .2rem; }
+    }

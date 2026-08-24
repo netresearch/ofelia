@@ -1,0 +1,38 @@
+    <div id="tab-jobs" class="tab-panel active" role="tabpanel" aria-labelledby="btn-jobs">
+      <div class="overflow-auto">
+        <table id="jobs">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">Name</th>
+              <th scope="col">Schedule</th>
+              <th scope="col">Command</th>
+              <th scope="col">Last Run</th>
+              <th scope="col">Duration</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="historyPanel">
+        <div class="panel-head">
+          <h2>History: <span id="historyJob"></span></h2>
+          <button class="close-btn" id="closeHistoryBtn" aria-label="Close history" title="Close">&times;</button>
+        </div>
+        <div class="overflow-auto">
+          <table id="history">
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col">Date</th>
+                <th scope="col">Duration</th>
+                <th scope="col">Error</th>
+                <th scope="col">Output</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
