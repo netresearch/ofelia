@@ -391,7 +391,23 @@ type apiJob struct {
 	PrevRuns []time.Time     `json:"prevRuns"`
 	Origin   string          `json:"origin"`
 	Config   json.RawMessage `json:"config"`
+	// RecentRuns is a light outcome summary of the job's newest
+	// executions (oldest first, at most recentRunCount entries) so list
+	// views can show a result sparkline without fetching each job's full
+	// history. Additive field; omitted when the job keeps no history.
+	RecentRuns []apiRecentRun `json:"recentRuns,omitempty"`
 }
+
+// apiRecentRun is one entry of apiJob.RecentRuns.
+type apiRecentRun struct {
+	Date     time.Time     `json:"date"`
+	Duration time.Duration `json:"duration"`
+	Failed   bool          `json:"failed"`
+	Skipped  bool          `json:"skipped"`
+}
+
+// recentRunCount caps apiJob.RecentRuns.
+const recentRunCount = 10
 
 // mapJobSource looks up name in the map field m and returns the
 // JobSource string for that entry, if any. Returns ("", false) when
@@ -534,20 +550,33 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 			execInfo = newAPIExecution(lrGetter.GetLastRun())
 		}
 
+		var recent []apiRecentRun
+		if hJob, ok := job.(interface{ GetHistory() []*core.Execution }); ok {
+			hist := hJob.GetHistory()
+			start := 0
+			if len(hist) > recentRunCount {
+				start = len(hist) - recentRunCount
+			}
+			for _, e := range hist[start:] {
+				recent = append(recent, apiRecentRun{Date: e.Date, Duration: e.Duration, Failed: e.Failed, Skipped: e.Skipped})
+			}
+		}
+
 		nextRuns, prevRuns := s.computeRunTimes(job, now)
 		origin := s.jobOrigin(job.GetName())
 		cfgBytes, _ := json.Marshal(job)
 		jobs = append(jobs, apiJob{
-			Name:     job.GetName(),
-			Type:     jobType(job),
-			Schedule: job.GetSchedule(),
-			Command:  job.GetCommand(),
-			Running:  s.scheduler.IsJobRunning(job.GetName()),
-			LastRun:  execInfo,
-			NextRuns: nextRuns,
-			PrevRuns: prevRuns,
-			Origin:   origin,
-			Config:   cfgBytes,
+			Name:       job.GetName(),
+			Type:       jobType(job),
+			Schedule:   job.GetSchedule(),
+			Command:    job.GetCommand(),
+			Running:    s.scheduler.IsJobRunning(job.GetName()),
+			LastRun:    execInfo,
+			NextRuns:   nextRuns,
+			PrevRuns:   prevRuns,
+			Origin:     origin,
+			Config:     cfgBytes,
+			RecentRuns: recent,
 		})
 	}
 	return jobs
