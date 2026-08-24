@@ -499,8 +499,20 @@ func (s *Server) computeRunTimes(job core.Job, now time.Time) (next, prev []time
 	if s.scheduler.GetDisabledJob(job.GetName()) == nil {
 		entry := s.scheduler.EntryByName(job.GetName())
 		if entry.Valid() && entry.Schedule != nil && !cron.IsTriggered(entry.Schedule) {
-			next = cron.NextN(entry.Schedule, now, scheduleRunCount)
-			prev = cron.PrevN(entry.Schedule, now, scheduleRunCount)
+			// Anchor on the entry's own Next/Prev when the cron has them:
+			// for interval (@every) schedules, Next(t) is t+interval with
+			// no anchor, so projecting from `now` made the reported next
+			// run drift forward on every poll.
+			if !entry.Next.IsZero() {
+				next = append([]time.Time{entry.Next}, cron.NextN(entry.Schedule, entry.Next, scheduleRunCount-1)...)
+			} else {
+				next = cron.NextN(entry.Schedule, now, scheduleRunCount)
+			}
+			if !entry.Prev.IsZero() {
+				prev = append([]time.Time{entry.Prev}, cron.PrevN(entry.Schedule, entry.Prev, scheduleRunCount-1)...)
+			} else {
+				prev = cron.PrevN(entry.Schedule, now, scheduleRunCount)
+			}
 		}
 	}
 	if next == nil {
