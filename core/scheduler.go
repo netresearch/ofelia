@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -446,9 +448,10 @@ func (s *Scheduler) RemoveJobsByTag(tag string) int {
 	defer s.mu.Unlock()
 
 	for _, entry := range entries {
-		// Find and remove from Jobs slice (iterate backwards for safe removal)
-		for i := len(s.Jobs) - 1; i >= 0; i-- {
-			job := s.Jobs[i]
+		// Find and remove from Jobs slice. slices.Backward captures the
+		// slice header once, so the break right after the removal is what
+		// keeps this safe — no iteration step runs over the stale header.
+		for i, job := range slices.Backward(s.Jobs) {
 			if job.GetCronJobID() == uint64(entry.ID) {
 				s.Logger.Info(fmt.Sprintf("Job removed by tag %q: %q", tag, job.GetName()))
 				delete(s.jobsByName, job.GetName())
@@ -672,9 +675,7 @@ func (s *Scheduler) GetUnschedulableJobs() map[string]string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make(map[string]string, len(s.unschedulable))
-	for name, reason := range s.unschedulable {
-		out[name] = reason
-	}
+	maps.Copy(out, s.unschedulable)
 	return out
 }
 

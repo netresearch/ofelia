@@ -76,7 +76,7 @@ func assertDocumented(t *testing.T, docs string, f reflect.StructField, containe
 	if tag == "" {
 		return
 	}
-	name := strings.SplitN(tag, ",", 2)[0]
+	name, _, _ := strings.Cut(tag, ",")
 	if name == "" || name == "-" {
 		return // squash on the embed itself, or explicitly ignored
 	}

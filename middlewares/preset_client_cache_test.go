@@ -34,9 +34,9 @@ func TestPresetLoader_ClientReused(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	var factoryCalls int32
+	var factoryCalls atomic.Int32
 	SetTransportFactoryForTest(func() *http.Transport {
-		atomic.AddInt32(&factoryCalls, 1)
+		factoryCalls.Add(1)
 		return &http.Transport{}
 	})
 	t.Cleanup(func() { SetTransportFactoryForTest(NewSafeTransport) })
@@ -54,7 +54,7 @@ func TestPresetLoader_ClientReused(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, preset2)
 
-	assert.Equal(t, int32(1), atomic.LoadInt32(&factoryCalls),
+	assert.Equal(t, int32(1), factoryCalls.Load(),
 		"TransportFactory must be invoked exactly once: the *http.Client is cached on the loader")
 
 	// Pointer-identity check: the loader must expose the same *http.Client

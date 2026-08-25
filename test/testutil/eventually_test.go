@@ -24,9 +24,9 @@ func TestEventually_ConditionTrueImmediately(t *testing.T) {
 func TestEventually_ConditionBecomesTrueAfterDelay(t *testing.T) {
 	t.Parallel()
 
-	var counter int32
+	var counter atomic.Int32
 	result := Eventually(t, func() bool {
-		return atomic.AddInt32(&counter, 1) >= 3
+		return counter.Add(1) >= 3
 	}, WithTimeout(1*time.Second), WithInterval(10*time.Millisecond))
 
 	if !result {
@@ -68,10 +68,10 @@ func TestNever_ConditionBecomesTrue(t *testing.T) {
 	t.Parallel()
 
 	mockT := &mockTB{}
-	var counter int32
+	var counter atomic.Int32
 
 	result := Never(mockT, func() bool {
-		return atomic.AddInt32(&counter, 1) >= 2
+		return counter.Add(1) >= 2
 	}, WithTimeout(1*time.Second), WithInterval(10*time.Millisecond))
 
 	if result {
@@ -142,9 +142,9 @@ func TestWaitForClose_ChannelCloses(t *testing.T) {
 func TestEventuallyWithT_CollectsErrors(t *testing.T) {
 	t.Parallel()
 
-	var counter int32
+	var counter atomic.Int32
 	result := EventuallyWithT(t, func(collect *T) bool {
-		count := atomic.AddInt32(&counter, 1)
+		count := counter.Add(1)
 		if count < 3 {
 			collect.Errorf("not ready yet, count=%d", count)
 			return false

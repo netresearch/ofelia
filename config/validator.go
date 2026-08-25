@@ -387,11 +387,11 @@ func (cv *Validator2) validateSpecificStringField(v *Validator, path string, str
 	switch fieldKey(path) {
 	case keySchedule, "cron":
 		cv.validateCronField(v, path, str)
-	case "email-to", "email-from": //nolint:goconst // see comment above switch
+	case "email-to", "email-from":
 		cv.validateEmailField(v, path, str)
 	case "web-address", "pprof-address":
 		cv.validateAddressField(v, path, str)
-	case "log-level": //nolint:goconst // see comment above switch
+	case "log-level":
 		cv.validateLogLevelField(v, path, str)
 	case keyCommand, "cmd":
 		cv.validateCommandField(v, path, str)

@@ -32,9 +32,9 @@ func TestSendWithRetry_ZeroRetries(t *testing.T) {
 	SetTransportFactoryForTest(func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() })
 	defer SetTransportFactoryForTest(NewSafeTransport)
 
-	var attempts int32
+	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&attempts, 1)
+		attempts.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -68,7 +68,7 @@ func TestSendWithRetry_ZeroRetries(t *testing.T) {
 
 	err = webhook.sendWithRetry(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&attempts), "with RetryCount=0, exactly 1 attempt should be made")
+	assert.Equal(t, int32(1), attempts.Load(), "with RetryCount=0, exactly 1 attempt should be made")
 }
 
 // TestSendWithRetry_AllAttemptsFail kills:
@@ -84,9 +84,9 @@ func TestSendWithRetry_AllAttemptsFail(t *testing.T) {
 	SetTransportFactoryForTest(func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() })
 	defer SetTransportFactoryForTest(NewSafeTransport)
 
-	var attempts int32
+	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&attempts, 1)
+		attempts.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -120,7 +120,7 @@ func TestSendWithRetry_AllAttemptsFail(t *testing.T) {
 
 	err = webhook.sendWithRetry(ctx)
 	require.Error(t, err)
-	assert.Equal(t, int32(3), atomic.LoadInt32(&attempts),
+	assert.Equal(t, int32(3), attempts.Load(),
 		"with RetryCount=2, exactly 3 attempts (initial + 2 retries) should be made")
 	assert.Contains(t, err.Error(), "all 3 attempts failed")
 }
@@ -356,9 +356,9 @@ func TestSendWithRetry_ExactRetryCount_One(t *testing.T) {
 	SetTransportFactoryForTest(func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() })
 	defer SetTransportFactoryForTest(NewSafeTransport)
 
-	var attempts int32
+	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&attempts, 1)
+		attempts.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -393,7 +393,7 @@ func TestSendWithRetry_ExactRetryCount_One(t *testing.T) {
 	err = webhook.sendWithRetry(ctx)
 	require.Error(t, err)
 	// RetryCount=1 means exactly 2 attempts: initial + 1 retry
-	assert.Equal(t, int32(2), atomic.LoadInt32(&attempts),
+	assert.Equal(t, int32(2), attempts.Load(),
 		"with RetryCount=1, exactly 2 attempts should be made")
 }
 
@@ -406,9 +406,9 @@ func TestSendWithRetry_SucceedsOnSecondAttempt(t *testing.T) {
 	SetTransportFactoryForTest(func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() })
 	defer SetTransportFactoryForTest(NewSafeTransport)
 
-	var attempts int32
+	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := atomic.AddInt32(&attempts, 1)
+		n := attempts.Add(1)
 		if n == 1 {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -446,7 +446,7 @@ func TestSendWithRetry_SucceedsOnSecondAttempt(t *testing.T) {
 
 	err = webhook.sendWithRetry(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, int32(2), atomic.LoadInt32(&attempts),
+	assert.Equal(t, int32(2), attempts.Load(),
 		"should succeed on 2nd attempt and stop retrying")
 }
 
@@ -459,9 +459,9 @@ func TestWebhookRun_TriggerFiltering(t *testing.T) {
 	SetTransportFactoryForTest(func() *http.Transport { return http.DefaultTransport.(*http.Transport).Clone() })
 	defer SetTransportFactoryForTest(NewSafeTransport)
 
-	var called int32
+	var called atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&called, 1)
+		called.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -495,7 +495,7 @@ func TestWebhookRun_TriggerFiltering(t *testing.T) {
 	ctx.Stop(nil)
 
 	_ = webhook.Run(ctx)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&called),
+	assert.Equal(t, int32(0), called.Load(),
 		"webhook with TriggerError should not fire on success")
 
 	// TriggerError: should send on failure
@@ -506,7 +506,7 @@ func TestWebhookRun_TriggerFiltering(t *testing.T) {
 	ctx2.Stop(errors.New("job failed"))
 
 	_ = webhook.Run(ctx2)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&called),
+	assert.Equal(t, int32(1), called.Load(),
 		"webhook with TriggerError should fire on failure")
 }
 

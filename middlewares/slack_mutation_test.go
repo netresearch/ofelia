@@ -26,9 +26,9 @@ import (
 func TestSlackPushMessage_NilClient(t *testing.T) {
 	t.Parallel()
 
-	var called int32
+	var called atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&called, 1)
+		called.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
@@ -54,7 +54,7 @@ func TestSlackPushMessage_NilClient(t *testing.T) {
 
 	// Verify that the client was created (not nil anymore)
 	assert.NotNil(t, m.Client, "pushMessage should create a client when Client is nil")
-	assert.Equal(t, int32(1), atomic.LoadInt32(&called),
+	assert.Equal(t, int32(1), called.Load(),
 		"pushMessage should succeed even with initially nil client")
 }
 
@@ -64,9 +64,9 @@ func TestSlackPushMessage_NilClient(t *testing.T) {
 func TestSlackPushMessage_ExistingClient(t *testing.T) {
 	t.Parallel()
 
-	var called int32
+	var called atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&called, 1)
+		called.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
@@ -94,7 +94,7 @@ func TestSlackPushMessage_ExistingClient(t *testing.T) {
 	// Verify the original client is preserved (not overwritten)
 	assert.Equal(t, 42*time.Second, m.Client.Timeout,
 		"existing client should not be overwritten")
-	assert.Equal(t, int32(1), atomic.LoadInt32(&called))
+	assert.Equal(t, int32(1), called.Load())
 }
 
 // TestSlackPushMessage_HTTPError kills CONDITIONALS_NEGATION at slack.go:109
@@ -139,9 +139,9 @@ func TestSlackPushMessage_HTTPError(t *testing.T) {
 func TestSlackPushMessage_Non200Status(t *testing.T) {
 	t.Parallel()
 
-	var called int32
+	var called atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&called, 1)
+		called.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer ts.Close()
@@ -166,7 +166,7 @@ func TestSlackPushMessage_Non200Status(t *testing.T) {
 
 	m.pushMessage(ctx)
 
-	assert.Equal(t, int32(1), atomic.LoadInt32(&called))
+	assert.Equal(t, int32(1), called.Load())
 	// The logger should have received an error about non-200
 	assert.True(t, handler.HasError("non-200"), "non-200 status should be logged as error")
 }

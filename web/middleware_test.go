@@ -19,15 +19,15 @@ func TestRateLimiter(t *testing.T) {
 	rl := newRateLimiter(10, time.Second)
 
 	// Create a test handler that counts successful requests
-	var successCount int32
+	var successCount atomic.Int32
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&successCount, 1)
+		successCount.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 
 	// Send 20 requests rapidly (should hit rate limit)
 	var wg sync.WaitGroup
-	var rateLimitedCount int32
+	var rateLimitedCount atomic.Int32
 
 	for range 20 {
 		wg.Go(func() {
@@ -38,7 +38,7 @@ func TestRateLimiter(t *testing.T) {
 			handler.ServeHTTP(w, req)
 
 			if w.Code == http.StatusTooManyRequests {
-				atomic.AddInt32(&rateLimitedCount, 1)
+				rateLimitedCount.Add(1)
 			}
 		})
 	}
@@ -46,8 +46,8 @@ func TestRateLimiter(t *testing.T) {
 	wg.Wait()
 
 	// Check results
-	success := atomic.LoadInt32(&successCount)
-	limited := atomic.LoadInt32(&rateLimitedCount)
+	success := successCount.Load()
+	limited := rateLimitedCount.Load()
 
 	t.Logf("Rate Limiting Test Results:")
 	t.Logf("  Requests sent:        20")
@@ -68,9 +68,9 @@ func TestRateLimiterWindow(t *testing.T) {
 	// Create rate limiter: 5 requests per 100ms
 	rl := newRateLimiter(5, 100*time.Millisecond)
 
-	var successCount int32
+	var successCount atomic.Int32
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&successCount, 1)
+		successCount.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -116,9 +116,9 @@ func TestRateLimiterWindow(t *testing.T) {
 func TestRateLimiterPerIP(t *testing.T) {
 	rl := newRateLimiter(3, time.Second)
 
-	var successCount int32
+	var successCount atomic.Int32
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&successCount, 1)
+		successCount.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -148,7 +148,7 @@ func TestRateLimiterPerIP(t *testing.T) {
 		}
 	}
 
-	success := atomic.LoadInt32(&successCount)
+	success := successCount.Load()
 	if success != 6 {
 		t.Errorf("Expected 6 successful requests (3 per IP), got %d", success)
 	}

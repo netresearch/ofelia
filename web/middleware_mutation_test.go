@@ -176,9 +176,9 @@ func TestMiddleware_BoundaryExactlyAtWindow(t *testing.T) {
 	rl.requests[hostIP] = []time.Time{time.Now().Add(-window)}
 	rl.mu.Unlock()
 
-	var successCount int32
+	var successCount atomic.Int32
 	handler := rl.middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&successCount, 1)
+		successCount.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -190,7 +190,7 @@ func TestMiddleware_BoundaryExactlyAtWindow(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code, "request should succeed when old entry is exactly at window boundary")
-	assert.Equal(t, int32(1), atomic.LoadInt32(&successCount))
+	assert.Equal(t, int32(1), successCount.Load())
 }
 
 // TestMiddleware_RecentRequestCountedForLimit verifies that a request just

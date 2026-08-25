@@ -53,7 +53,7 @@ The project's lefthook `commit-msg` hook validates the presence of
 
 ### Prerequisites
 
-- Go 1.25 or higher
+- Go 1.26 or higher
 - Docker (for integration and E2E tests)
 - Docker Swarm enabled (for service job tests)
 
