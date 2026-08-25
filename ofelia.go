@@ -170,8 +170,7 @@ func run(args []string) int {
 			return exitOK
 		}
 
-		var flagErr *flags.Error
-		if errors.As(err, &flagErr) {
+		if _, ok := errors.AsType[*flags.Error](err); ok {
 			parser.WriteHelp(os.Stdout)
 			_, _ = fmt.Fprintf(os.Stdout, "\n%s\n", cli.VersionString())
 		}

@@ -110,9 +110,9 @@ func TestConvertToSwarmSpec(t *testing.T) {
 					ContainerSpec: domain.ContainerSpec{Image: "nginx"},
 					RestartPolicy: &domain.ServiceRestartPolicy{
 						Condition:   domain.RestartConditionOnFailure,
-						Delay:       durationPtr(5 * time.Second),
-						MaxAttempts: uint64Ptr(3),
-						Window:      durationPtr(2 * time.Minute),
+						Delay:       new(5 * time.Second),
+						MaxAttempts: new(uint64(3)),
+						Window:      new(2 * time.Minute),
 					},
 				},
 			},
@@ -219,7 +219,7 @@ func TestConvertToSwarmSpec(t *testing.T) {
 					ContainerSpec: domain.ContainerSpec{Image: "nginx"},
 				},
 				Mode: domain.ServiceMode{
-					Replicated: &domain.ReplicatedService{Replicas: uint64Ptr(3)},
+					Replicated: &domain.ReplicatedService{Replicas: new(uint64(3))},
 				},
 			},
 			validate: func(t *testing.T, result swarm.ServiceSpec) {
@@ -451,11 +451,3 @@ func TestConvertFromSwarmTask(t *testing.T) {
 }
 
 // --- Helper functions ---
-
-func durationPtr(d time.Duration) *time.Duration {
-	return &d
-}
-
-func uint64Ptr(v uint64) *uint64 {
-	return &v
-}

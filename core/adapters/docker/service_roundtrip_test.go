@@ -166,9 +166,9 @@ func TestServiceSpec_RoundTrip_RestartPolicy(t *testing.T) {
 			},
 			RestartPolicy: &domain.ServiceRestartPolicy{
 				Condition:   domain.RestartConditionOnFailure,
-				Delay:       durationPtr(10 * time.Second),
-				MaxAttempts: uint64Ptr(5),
-				Window:      durationPtr(3 * time.Minute),
+				Delay:       new(10 * time.Second),
+				MaxAttempts: new(uint64(5)),
+				Window:      new(3 * time.Minute),
 			},
 		},
 	}
@@ -251,7 +251,7 @@ func TestServiceSpec_RoundTrip_ModeReplicated(t *testing.T) {
 		},
 		Mode: domain.ServiceMode{
 			Replicated: &domain.ReplicatedService{
-				Replicas: uint64Ptr(3),
+				Replicas: new(uint64(3)),
 			},
 		},
 	}

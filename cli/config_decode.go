@@ -168,7 +168,7 @@ func mapstructureKeyForField(field reflect.StructField) string {
 		return ""
 	}
 	if tag != "" {
-		if name := strings.SplitN(tag, ",", 2)[0]; name != "" && name != "-" {
+		if name, _, _ := strings.Cut(tag, ","); name != "" && name != "-" {
 			return name
 		}
 	}

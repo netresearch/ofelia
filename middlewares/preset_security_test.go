@@ -62,8 +62,7 @@ func TestPresetLoader_LoadFromURL_PinsTLSVerificationPosture(t *testing.T) {
 
 	// Stronger contract: the underlying error chain should include a
 	// CertificateVerificationError when running on modern Go.
-	var certErr *tls.CertificateVerificationError
-	if errors.As(err, &certErr) {
+	if certErr, ok := errors.AsType[*tls.CertificateVerificationError](err); ok {
 		assert.NotNil(t, certErr.UnverifiedCertificates,
 			"CertificateVerificationError should expose the unverified chain")
 	}

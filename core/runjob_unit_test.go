@@ -453,8 +453,7 @@ func TestRunJobUnit_WatchContainer(t *testing.T) {
 					t.Errorf("expected ErrUnexpected, got %v", err)
 				}
 			} else {
-				var nze NonZeroExitError
-				if !errors.As(err, &nze) {
+				if _, ok := errors.AsType[NonZeroExitError](err); !ok {
 					t.Errorf("expected NonZeroExitError, got %T: %v", err, err)
 				}
 			}
