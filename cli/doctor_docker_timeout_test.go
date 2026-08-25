@@ -86,9 +86,13 @@ func (h *hangingDoctorProvider) InspectExec(_ context.Context, _ string) (*domai
 func (h *hangingDoctorProvider) RunExec(_ context.Context, _ string, _ *domain.ExecConfig, _, _ io.Writer) (int, error) {
 	return 0, nil
 }
-func (h *hangingDoctorProvider) PullImage(_ context.Context, _ string) error           { return nil }
+
+func (h *hangingDoctorProvider) PullImage(_ context.Context, _ string) error { return nil }
+
 func (h *hangingDoctorProvider) EnsureImage(_ context.Context, _ string, _ bool) error { return nil }
-func (h *hangingDoctorProvider) ConnectNetwork(_ context.Context, _, _ string) error   { return nil }
+
+func (h *hangingDoctorProvider) ConnectNetwork(_ context.Context, _, _ string) error { return nil }
+
 func (h *hangingDoctorProvider) FindNetworkByName(_ context.Context, _ string) ([]domain.Network, error) {
 	return nil, nil
 }

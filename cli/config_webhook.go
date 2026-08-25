@@ -405,7 +405,7 @@ func applyWebhookLabelParams(config *middlewares.WebhookConfig, params map[strin
 			config.Preset = val
 		case "id":
 			config.ID = val
-		case "secret": //nolint:goconst // matches gcfg:"secret" struct tag — Go syntax requires literal in tag
+		case "secret":
 			config.Secret = val
 		case "url":
 			config.URL = val

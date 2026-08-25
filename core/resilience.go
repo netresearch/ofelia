@@ -304,7 +304,7 @@ func (cb *CircuitBreaker) GetMetrics() map[string]any {
 	defer cb.mu.Unlock()
 
 	return map[string]any{
-		"name":             cb.name, //nolint:goconst // metrics map key — coincidental collision with other "name" literals
+		"name":             cb.name,
 		"state":            cb.state.String(),
 		"total_calls":      atomic.LoadUint64(&cb.totalCalls),
 		"total_successes":  atomic.LoadUint64(&cb.totalSuccesses),

@@ -397,7 +397,7 @@ func (p *SDKDockerProvider) FindNetworkByName(ctx context.Context, networkName s
 
 	opts := domain.NetworkListOptions{
 		Filters: map[string][]string{
-			"name": {networkName}, //nolint:goconst // Docker SDK filter key — coincidental collision with other "name" string literals
+			"name": {networkName},
 		},
 	}
 

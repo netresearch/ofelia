@@ -527,7 +527,7 @@ func (c *Config) filterGlobalLabelKey(key, value, containerName string, globalCo
 
 func hasServiceLabel(labels map[string]string) bool {
 	for k, v := range labels {
-		if k == serviceLabel && v == "true" { //nolint:goconst // Docker labels are stringly-typed — value is the literal "true"
+		if k == serviceLabel && v == "true" {
 			return true
 		}
 	}
