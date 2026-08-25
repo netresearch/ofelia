@@ -448,7 +448,9 @@ func (s *Scheduler) RemoveJobsByTag(tag string) int {
 	defer s.mu.Unlock()
 
 	for _, entry := range entries {
-		// Find and remove from Jobs slice (iterate backwards for safe removal)
+		// Find and remove from Jobs slice. slices.Backward captures the
+		// slice header once, so the break right after the removal is what
+		// keeps this safe — no iteration step runs over the stale header.
 		for i, job := range slices.Backward(s.Jobs) {
 			if job.GetCronJobID() == uint64(entry.ID) {
 				s.Logger.Info(fmt.Sprintf("Job removed by tag %q: %q", tag, job.GetName()))
