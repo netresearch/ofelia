@@ -1,8 +1,10 @@
 openapi: 3.0.3
 info:
   title: Ofelia Job Scheduler API
-  description: REST API for Ofelia Docker job scheduler with authentication and metrics
-  version: 1.1.0
+  description: >-
+    REST API of the Ofelia web server (--enable-web). Paths mirror the route
+    table in web/server.go; docs/API.md carries the narrative version.
+  version: 1.2.0
   contact:
     name: Ofelia Support
     url: https://github.com/netresearch/ofelia
@@ -11,21 +13,18 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:8080
-    description: Local development server
-  - url: https://ofelia.example.com
-    description: Production server
+  - url: http://localhost:8081
+    description: Local ofelia web server (default --web-address)
 
 security:
   - BearerAuth: []
   - CookieAuth: []
 
 paths:
-  /login:
+  /api/login:
     post:
-      summary: Authenticate user
-      tags:
-        - Authentication
+      summary: Authenticate (only registered when web auth is enabled)
+      tags: [Authentication]
       security: []
       requestBody:
         required: true
@@ -33,524 +32,272 @@ paths:
           application/json:
             schema:
               type: object
-              required:
-                - username
-                - password
+              required: [username, password]
               properties:
-                username:
-                  type: string
-                  example: admin
-                password:
-                  type: string
-                  format: password
-                  example: secret123
+                username: {type: string}
+                password: {type: string}
       responses:
-        '200':
-          description: Authentication successful
-          headers:
-            Set-Cookie:
-              schema:
-                type: string
-                example: auth_token=abc123; Path=/; HttpOnly; Secure; SameSite=Strict
+        "200":
+          description: Authenticated; auth_token cookie is set alongside the JSON body
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  token:
-                    type: string
-                    example: "<jwt-token>"
-                  expires_in:
-                    type: number
-                    example: 3600
-        '401':
-          description: Invalid credentials
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: Invalid credentials
-        '400':
-          description: Bad request
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: Invalid request body
-
-  /logout:
+                  token: {type: string}
+                  csrf_token: {type: string}
+                  expires_in: {type: number, description: seconds}
+        "401": {$ref: "#/components/responses/PlainError"}
+        "429": {$ref: "#/components/responses/PlainError"}
+  /api/logout:
     post:
-      summary: Logout user
-      tags:
-        - Authentication
+      summary: Clear the auth cookie
+      tags: [Authentication]
       responses:
-        '200':
-          description: Logout successful
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: Logged out successfully
-
-  /metrics:
+        "204": {description: Logged out}
+  /api/auth/status:
     get:
-      summary: Get Prometheus metrics
-      tags:
-        - Monitoring
+      summary: Whether auth is enabled and the caller is authenticated
+      tags: [Authentication]
       security: []
       responses:
-        '200':
-          description: Prometheus metrics in text format
+        "200": {description: Status object}
+  /api/csrf-token:
+    get:
+      summary: CSRF token for the session (used by the login form)
+      tags: [Authentication]
+      security: []
+      responses:
+        "200": {description: Token object}
+
+  /api/jobs:
+    get:
+      summary: List active jobs
+      tags: [Jobs]
+      responses:
+        "200":
+          description: Array of jobs
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                example: |
-                  # HELP ofelia_jobs_total Total number of jobs executed
-                  # TYPE ofelia_jobs_total counter
-                  ofelia_jobs_total 42
-                  
-                  # HELP ofelia_jobs_running Number of currently running jobs
-                  # TYPE ofelia_jobs_running gauge
-                  ofelia_jobs_running 3
+                type: array
+                items: {$ref: "#/components/schemas/Job"}
+  /api/jobs/removed:
+    get:
+      summary: List jobs removed from the configuration
+      tags: [Jobs]
+      responses:
+        "200":
+          description: Array of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Job"}
+  /api/jobs/disabled:
+    get:
+      summary: List disabled (paused) jobs
+      tags: [Jobs]
+      responses:
+        "200":
+          description: Array of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Job"}
+  /api/jobs/{jobName}/history:
+    get:
+      summary: Execution history of one job
+      tags: [Jobs]
+      parameters:
+        - name: jobName
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Array of executions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Execution"}
+        "404": {$ref: "#/components/responses/PlainError"}
+
+  /api/jobs/run:
+    post:
+      summary: Trigger a job now
+      tags: [Job mutations]
+      requestBody: {$ref: "#/components/requestBodies/JobName"}
+      responses:
+        "204": {description: Job triggered}
+        "400": {$ref: "#/components/responses/PlainError"}
+        "404": {$ref: "#/components/responses/PlainError"}
+        "405": {$ref: "#/components/responses/PlainError"}
+        "500": {$ref: "#/components/responses/PlainError"}
+  /api/jobs/disable:
+    post:
+      summary: Disable (pause) a job of any origin; persisted across restarts
+      tags: [Job mutations]
+      requestBody: {$ref: "#/components/requestBodies/JobName"}
+      responses:
+        "204": {description: Job disabled}
+        "400": {$ref: "#/components/responses/PlainError"}
+        "404": {$ref: "#/components/responses/PlainError"}
+        "405": {$ref: "#/components/responses/PlainError"}
+        "500": {$ref: "#/components/responses/PlainError"}
+  /api/jobs/enable:
+    post:
+      summary: Re-enable a disabled job
+      tags: [Job mutations]
+      requestBody: {$ref: "#/components/requestBodies/JobName"}
+      responses:
+        "204": {description: Job enabled}
+        "400": {$ref: "#/components/responses/PlainError"}
+        "404": {$ref: "#/components/responses/PlainError"}
+        "405": {$ref: "#/components/responses/PlainError"}
+        "500": {$ref: "#/components/responses/PlainError"}
+  /api/jobs/create:
+    post:
+      summary: Create a job (persisted across restarts)
+      tags: [Job mutations]
+      requestBody: {$ref: "#/components/requestBodies/JobRequest"}
+      responses:
+        "201": {description: Job created}
+        "400": {$ref: "#/components/responses/PlainError"}
+        "405": {$ref: "#/components/responses/PlainError"}
+  /api/jobs/update:
+    post:
+      summary: Update a job (full replace; creates it when missing)
+      tags: [Job mutations]
+      requestBody: {$ref: "#/components/requestBodies/JobRequest"}
+      responses:
+        "200": {description: Job updated}
+        "201": {description: Job did not exist and was created}
+        "400": {$ref: "#/components/responses/PlainError"}
+        "405": {$ref: "#/components/responses/PlainError"}
+        "500": {$ref: "#/components/responses/PlainError"}
+  /api/jobs/delete:
+    post:
+      summary: Delete an API/web-created job
+      tags: [Job mutations]
+      requestBody: {$ref: "#/components/requestBodies/JobName"}
+      responses:
+        "204": {description: Job deleted}
+        "400": {$ref: "#/components/responses/PlainError"}
+        "403":
+          description: Job is owned by INI/label config; edit the source or use /api/jobs/disable
+        "404": {$ref: "#/components/responses/PlainError"}
+        "405": {$ref: "#/components/responses/PlainError"}
+
+  /api/config:
+    get:
+      summary: Running configuration (job collections stripped)
+      tags: [Configuration]
+      responses:
+        "200": {description: Configuration object}
 
   /health:
     get:
-      summary: Detailed health report
-      description: >-
-        Always answers 200, including while the report says `degraded` or
-        `unhealthy` — the status is in the body, not the status code, so a
-        monitoring system can read *why* rather than only that something is
-        wrong. Use /ready for a probe that fails the request.
-      tags:
-        - Monitoring
+      summary: Aggregate health report
+      tags: [Health]
       security: []
       responses:
-        '200':
-          description: The current report, whatever its status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthResponse'
-
+        "200": {description: Healthy}
+        "503": {description: Unhealthy}
   /healthz:
     get:
-      summary: Detailed health report (alias of /health)
-      tags:
-        - Monitoring
+      summary: Alias of /health
+      tags: [Health]
       security: []
       responses:
-        '200':
-          description: The current report, whatever its status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthResponse'
-
+        "200": {description: Healthy}
+        "503": {description: Unhealthy}
   /ready:
     get:
       summary: Readiness probe
-      description: >-
-        Same body as /health, but the status code carries the verdict: 503 when
-        the overall status is `unhealthy`, 200 otherwise. `degraded` stays 200
-        on purpose — one job with an unparsable schedule should not take the
-        whole daemon out of rotation while its other jobs keep running.
-      tags:
-        - Monitoring
+      tags: [Health]
       security: []
       responses:
-        '200':
-          description: Ready — overall status is `healthy` or `degraded`
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthResponse'
-        '503':
-          description: Not ready — overall status is `unhealthy`
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HealthResponse'
-
+        "200": {description: Ready}
+        "503": {description: Not ready}
   /live:
     get:
       summary: Liveness probe
-      description: >-
-        Answers as long as the process serves HTTP at all. It runs no checks,
-        so it never reports on Docker or the scheduler.
-      tags:
-        - Monitoring
+      tags: [Health]
       security: []
       responses:
-        '200':
-          description: The process is running
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: OK
-
-  /jobs:
-    get:
-      summary: List all jobs
-      tags:
-        - Jobs
-      parameters:
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [all, running, scheduled, disabled]
-            default: all
-          description: Filter jobs by status
-      responses:
-        '200':
-          description: List of jobs
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Job'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /jobs/{jobName}:
-    parameters:
-      - name: jobName
-        in: path
-        required: true
-        schema:
-          type: string
-        description: Name of the job
-    
-    get:
-      summary: Get job details
-      tags:
-        - Jobs
-      responses:
-        '200':
-          description: Job details
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JobDetails'
-        '404':
-          description: Job not found
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-    
-    post:
-      summary: Run job manually
-      tags:
-        - Jobs
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                wait:
-                  type: boolean
-                  default: false
-                  description: Wait for job completion
-      responses:
-        '200':
-          description: Job started successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  jobId:
-                    type: string
-                    example: "job-123"
-                  status:
-                    type: string
-                    example: "started"
-        '404':
-          description: Job not found
-        '409':
-          description: Job already running
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-    
-    delete:
-      summary: Disable job
-      tags:
-        - Jobs
-      responses:
-        '200':
-          description: Job disabled
-        '404':
-          description: Job not found
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /jobs/{jobName}/enable:
-    parameters:
-      - name: jobName
-        in: path
-        required: true
-        schema:
-          type: string
-    post:
-      summary: Enable job
-      tags:
-        - Jobs
-      responses:
-        '200':
-          description: Job enabled
-        '404':
-          description: Job not found
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /jobs/{jobName}/history:
-    parameters:
-      - name: jobName
-        in: path
-        required: true
-        schema:
-          type: string
-    get:
-      summary: Get job execution history
-      tags:
-        - Jobs
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 10
-      responses:
-        '200':
-          description: Job history
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/JobExecution'
-        '404':
-          description: Job not found
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+        "200": {description: Alive}
 
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
-      description: JWT token authentication
-    
     CookieAuth:
       type: apiKey
       in: cookie
       name: auth_token
-      description: Session cookie authentication
-
+  requestBodies:
+    JobName:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name]
+            properties:
+              name: {type: string, maxLength: 256}
+    JobRequest:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/JobRequest"}
+  responses:
+    PlainError:
+      description: Plain-text error message
+      content:
+        text/plain:
+          schema: {type: string}
   schemas:
-    HealthCheck:
+    JobRequest:
       type: object
-      description: One individual check within the health report.
+      required: [name, type]
       properties:
-        name:
-          type: string
-          example: scheduler
-        status:
-          type: string
-          enum: [healthy, degraded, unhealthy]
-          example: degraded
-        message:
-          type: string
-          description: Omitted when empty.
-          example: "1 configured job(s) are not scheduled and will not run: broken"
-        lastChecked:
-          type: string
-          format: date-time
-        durationMs:
-          type: integer
-          format: int64
-          description: >-
-            How long the check took, in **nanoseconds** despite the field name —
-            it serialises a Go time.Duration, which marshals as nanoseconds. A
-            local Docker ping reports roughly 8000000 here, i.e. 8 ms.
-          example: 8332586
-      required: [name, status, lastChecked, durationMs]
-
-    HealthResponse:
-      type: object
-      description: >-
-        The body served by /health, /healthz and /ready. `status` is the worst
-        status among `checks`: any unhealthy check makes the whole report
-        unhealthy, otherwise any degraded check makes it degraded.
-      properties:
-        status:
-          type: string
-          enum: [healthy, degraded, unhealthy]
-          example: degraded
-        timestamp:
-          type: string
-          format: date-time
-        uptimeSeconds:
-          type: number
-          example: 3600
-        version:
-          type: string
-          description: >-
-            The running build's version, or `dev` when built without ldflags.
-          example: v0.28.1
-        checks:
-          type: object
-          description: Keyed by check name — `docker`, `scheduler` and `system`.
-          additionalProperties:
-            $ref: '#/components/schemas/HealthCheck'
-        system:
-          $ref: '#/components/schemas/SystemInfo'
-      required: [status, timestamp, uptimeSeconds, version, checks, system]
-
-    SystemInfo:
-      type: object
-      properties:
-        goVersion:
-          type: string
-          example: go1.26.0
-        goroutines:
-          type: integer
-          example: 24
-        cpus:
-          type: integer
-          example: 8
-        memoryAllocBytes:
-          type: integer
-          format: int64
-        memoryTotalBytes:
-          type: integer
-          format: int64
-        gcRuns:
-          type: integer
-
+        name: {type: string, maxLength: 256}
+        type: {type: string, enum: [run, exec, local, service-run, compose]}
+        schedule: {type: string}
+        command: {type: string}
+        image: {type: string, description: run jobs}
+        container: {type: string, description: exec jobs}
+        file: {type: string, description: compose jobs}
+        service: {type: string, description: service-run jobs}
+        exec: {type: boolean, description: "compose jobs: exec in a running service"}
     Job:
       type: object
       properties:
-        name:
-          type: string
-          example: "backup-database"
-        schedule:
-          type: string
-          example: "0 2 * * *"
-        command:
-          type: string
-          example: "pg_dump database > backup.sql"
-        type:
-          type: string
-          enum: [local, exec, run, service, compose]
-          example: "exec"
-        status:
-          type: string
-          enum: [scheduled, running, disabled]
-          example: "scheduled"
-        lastRun:
-          type: string
-          format: date-time
-          example: "2024-01-15T02:00:00Z"
-        nextRun:
-          type: string
-          format: date-time
-          example: "2024-01-16T02:00:00Z"
+        name: {type: string}
+        type: {type: string}
+        schedule: {type: string}
+        command: {type: string}
+        running: {type: boolean}
+        lastRun: {$ref: "#/components/schemas/Execution"}
         nextRuns:
           type: array
-          items:
-            type: string
-            format: date-time
-          description: Next 5 scheduled execution times
-          example: ["2024-01-16T02:00:00Z", "2024-01-17T02:00:00Z"]
+          items: {type: string, format: date-time}
         prevRuns:
           type: array
-          items:
-            type: string
-            format: date-time
-          description: Previous 5 execution times
-          example: ["2024-01-15T02:00:00Z", "2024-01-14T02:00:00Z"]
-
-    JobDetails:
-      allOf:
-        - $ref: '#/components/schemas/Job'
-        - type: object
-          properties:
-            container:
-              type: string
-              example: "postgres-db"
-              description: For exec jobs
-            image:
-              type: string
-              example: "alpine:latest"
-              description: For run jobs
-            network:
-              type: string
-              example: "bridge"
-            environment:
-              type: array
-              items:
-                type: string
-              example: ["DB_HOST=localhost", "DB_USER=admin"]
-            volumes:
-              type: array
-              items:
-                type: string
-              example: ["/data:/backup"]
-            user:
-              type: string
-              example: "root"
-            workingDir:
-              type: string
-              example: "/app"
-
-    JobExecution:
+          items: {type: string, format: date-time}
+        origin: {type: string, enum: [ini, label, api, web]}
+        config: {type: object, description: full job configuration}
+    Execution:
       type: object
       properties:
-        executionId:
-          type: string
-          example: "exec-456"
-        startTime:
-          type: string
-          format: date-time
-          example: "2024-01-15T02:00:00Z"
-        endTime:
-          type: string
-          format: date-time
-          example: "2024-01-15T02:05:30Z"
-        duration:
-          type: number
-          description: Duration in seconds
-          example: 330
-        status:
-          type: string
-          enum: [success, failure, timeout]
-          example: "success"
-        exitCode:
-          type: integer
-          example: 0
-        output:
-          type: string
-          example: "Backup completed successfully"
-        error:
-          type: string
-          example: ""
-
-  responses:
-    Unauthorized:
-      description: Authentication required
-      content:
-        text/plain:
-          schema:
-            type: string
-            example: Unauthorized
-      headers:
-        WWW-Authenticate:
-          schema:
-            type: string
-            example: Bearer realm="Ofelia"
+        date: {type: string, format: date-time}
+        duration: {type: integer, description: nanoseconds}
+        failed: {type: boolean}
+        skipped: {type: boolean}
+        error: {type: string}
+        stdout: {type: string}
+        stderr: {type: string}
