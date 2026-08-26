@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-08-26
+
+A maintenance release: Go 1.27, the whole dependency graph brought current,
+and the codebase modernized to the Go 1.26 idioms.
+
+### Changed
+
+- Go toolchain updated to go1.27.0; the supported minimum stays Go 1.26 ([#800](https://github.com/netresearch/ofelia/pull/800)).
+- Scheduler dependency netresearch/go-cron updated to [v0.16.0](https://github.com/netresearch/go-cron/releases/tag/v0.16.0), its first release with the Go 1.26 floor ([#802](https://github.com/netresearch/ofelia/pull/802)).
+- All Go dependencies updated across the module graph — docker/cli 29.7.2, emersion/go-smtp 0.25.0, moby/moby/client 0.5.1, testify 1.12.1, golang.org/x/crypto 0.55.0, golang.org/x/text 0.41.0 and indirect moves ([#801](https://github.com/netresearch/ofelia/pull/801)).
+
+### Internal
+
+- Codebase modernized via `go fix` and manual passes: `strings.Cut`, `slices.Backward`, `maps.Copy`, `errors.AsType[T]`, `atomic.Int32` in tests, and six stale `//nolint:goconst` directives removed; no behavior change ([#800](https://github.com/netresearch/ofelia/pull/800)).
+
 ## [0.29.1] - 2026-08-12
 
 A security release. Jobs defined through Docker container labels could carry privilege-bearing keys the label-security policy did not cover, letting an untrusted self-labeling container escalate against the host or read another container's secrets — in the default configuration. See [GHSA-h7m7-v83x-vfp3](https://github.com/netresearch/ofelia/security/advisories/GHSA-h7m7-v83x-vfp3).
