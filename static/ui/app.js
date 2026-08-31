@@ -1,3 +1,27 @@
+/* ── Stored preferences ──
+   A browser with site data blocked (privacy setting, hardened profile,
+   some private windows) throws on the localStorage property itself, so
+   even a read throws. These calls sit at the top level of the script:
+   an unguarded throw would abort app.js before the first render and
+   leave the dashboard blank, instead of costing only the remembered
+   theme, density and timezone. Both helpers degrade to "nothing
+   stored", which is the path a first-time visitor takes anyway. */
+function storedPref(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (e) {
+    return null;
+  }
+}
+
+function storePref(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    /* preference stays for this page view only */
+  }
+}
+
 /* ── Tabs ── */
 document.querySelectorAll('.tabs button').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -42,7 +66,7 @@ const TZ_PREFS = Array.from(tzSelect.options, o => o.value);
 // about the same stored value. Unknown values fall back to the first
 // option — the default choice, currently 'local'.
 const validTzPref = (v) => TZ_PREFS.includes(v) ? v : TZ_PREFS[0];
-let tzPref = validTzPref(localStorage.getItem('timezone'));
+let tzPref = validTzPref(storedPref('timezone'));
 
 /* Epoch ms for sort keys and next-run comparisons — never the raw
    RFC3339 string: the server emits local-zone offsets, and
@@ -213,7 +237,7 @@ function repaintTimestamps() {
    which falls back the same way. */
 function adoptTzPref(value, persist) {
   const next = validTzPref(value);
-  if (persist) localStorage.setItem('timezone', next);
+  if (persist) storePref('timezone', next);
   if (next === tzPref) return; // no repaint when nothing changed
   tzPref = next;
   tzSelect.value = next;
@@ -240,13 +264,13 @@ const themeText = { auto: 'Auto', light: 'Light', dark: 'Dark' };
 // Validated like the timezone preference: an unknown stored value
 // (another app version, a manual edit) must not leak into the button
 // label as the literal string "undefined".
-let currentTheme = localStorage.getItem('theme');
+let currentTheme = storedPref('theme');
 if (!themeCycle.includes(currentTheme)) currentTheme = 'auto';
 const themeBtn = document.getElementById('themeBtn');
 
 function applyTheme(t) {
   currentTheme = t;
-  localStorage.setItem('theme', t);
+  storePref('theme', t);
   if (t === 'auto') {
     delete document.documentElement.dataset.theme;
   } else {
@@ -266,7 +290,7 @@ const densityText = { auto: 'Auto', compact: 'Compact', comfortable: 'Comfy' };
 // Validated like theme above: garbage here would additionally skip
 // compact resolution entirely (effectiveDensity passes unknown values
 // through and they match neither 'compact' nor 'comfortable').
-let currentDensity = localStorage.getItem('density');
+let currentDensity = storedPref('density');
 if (!densityCycle.includes(currentDensity)) currentDensity = 'auto';
 const densityBtn = document.getElementById('densityBtn');
 
@@ -284,7 +308,7 @@ const effectiveDensity = globalThis.ofeliaEffectiveDensity ||
 
 function applyDensity(d) {
   currentDensity = d;
-  localStorage.setItem('density', d);
+  storePref('density', d);
   const effective = effectiveDensity(d);
   document.body.classList.toggle('compact', effective === 'compact');
   document.documentElement.classList.remove('compact-early');

@@ -26,10 +26,20 @@
       /* Stored values are validated (a value written by another app
          version or a manual edit must not leak into dataset.theme or
          the density resolution); app.js validates its reads the same
-         way. */
-      var t = localStorage.getItem('theme');
+         way.
+
+         The reads are guarded because a browser with site data blocked
+         (a privacy setting, a hardened profile) throws on the
+         localStorage property itself, not just on write. An unguarded
+         throw here happens before first paint and takes the theme and
+         density defaults with it, so the guard degrades to "nothing
+         stored" — the same path a first-time visitor takes. */
+      var t = null, d = null;
+      try {
+        t = localStorage.getItem('theme');
+        d = localStorage.getItem('density');
+      } catch (e) { /* site data blocked: fall back to the defaults */ }
       if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-      var d = localStorage.getItem('density');
       if (d !== 'compact' && d !== 'comfortable') d = 'auto';
       var eff = globalThis.ofeliaEffectiveDensity(d);
       if (eff === 'compact') document.body ? document.body.classList.add('compact') : document.documentElement.classList.add('compact-early');
