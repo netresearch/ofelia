@@ -359,8 +359,13 @@ function createTableSort(tableId, keys, onChange) {
     const key = th.dataset.sort;
     if (col === key) { dir = -dir; } else { col = key; dir = 1; }
     thead.querySelectorAll('th[data-sort]').forEach(h => {
-      h.classList.toggle('sort-asc', h === th && dir === 1);
-      h.classList.toggle('sort-desc', h === th && dir === -1);
+      const asc = h === th && dir === 1;
+      const desc = h === th && dir === -1;
+      h.classList.toggle('sort-asc', asc);
+      h.classList.toggle('sort-desc', desc);
+      // The classes only paint the chevron; aria-sort is what screen
+      // readers announce, so it has to track the same state.
+      h.setAttribute('aria-sort', asc ? 'ascending' : desc ? 'descending' : 'none');
     });
     onChange();
   });

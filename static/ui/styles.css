@@ -172,6 +172,7 @@ td.wrap { white-space: normal; word-break: break-all; }
    interactive text/icons (tab, job name, modal close). */
 .tabs button,
 .job-name,
+.th-sort,
 #historyModal .close-btn { background: none; border: none; margin: 0;
   cursor: pointer; box-shadow: none; width: auto; }
 /* box-shadow: none above (and on the other ghost buttons) also kills
@@ -179,6 +180,7 @@ td.wrap { white-space: normal; word-break: break-all; }
    outline so keyboard focus stays visible. */
 .tabs button:focus-visible,
 .job-name:focus-visible,
+.th-sort:focus-visible,
 #historyModal .close-btn:focus-visible,
 #history .toggle-output:focus-visible { outline: 2px solid var(--pico-primary); outline-offset: 2px; }
 
@@ -403,6 +405,11 @@ body.compact .table-search { padding-block: .2rem; font-size: var(--fs-xs); heig
    SVG chevron via mask (font glyphs center inconsistently); painted
    with background-color so it follows currentColor/primary. */
 th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+/* The label is a button so the column is keyboard-operable; it has to
+   render as the plain header text (the ghost reset above strips Pico's
+   button chrome, this drops the rest of the type differences). */
+.th-sort { display: inline-block; padding: 0; color: inherit; font-size: inherit; font-weight: inherit;
+  line-height: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; }
 th[data-sort]::after { content: ""; display: inline-block; width: 1em; height: 1em;
   margin-left: .25rem; vertical-align: -.15em; background-color: currentColor; opacity: .35;
   -webkit-mask-image: var(--chevron-both);

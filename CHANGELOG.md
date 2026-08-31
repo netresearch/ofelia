@@ -41,9 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ~140 kB → ~28 kB; each dashboard poll 5.8 kB → 1.6 kB). The wrapper
   enables zstd next to gzip and prefers it at equal q-values, so Chrome,
   Edge and Firefox — which send `Accept-Encoding: gzip, deflate, br,
-  zstd` — receive `Content-Encoding: zstd`, and clients without zstd
-  (Safari below 26, curl defaults, monitoring scripts) receive gzip.
-  Identity responses for everyone else. Delegated to
+  zstd` — receive `Content-Encoding: zstd`, and clients that advertise
+  gzip but not zstd (Safari below 26, older monitoring scripts) receive
+  gzip. Clients that advertise no encoding at all, `curl` with no flags
+  among them, get an identity response. Delegated to
   `klauspost/compress/gzhttp`, which handles Accept-Encoding qvalues,
   content sniffing, bodiless statuses, and ranged requests.
 - **`GET /api/dashboard` — aggregate snapshot endpoint.** Returns jobs,
