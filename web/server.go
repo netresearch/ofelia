@@ -564,8 +564,23 @@ func (s *Server) computeRunTimes(job core.Job, now time.Time) (next, prev []time
 	return next, prev
 }
 
-// buildAPIJobs converts a slice of core.Job into apiJob payloads.
+// buildAPIJobs converts a slice of core.Job into apiJob payloads,
+// including the recent-run summary the jobs table's sparkline and
+// duration cell read.
 func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
+	return s.buildAPIJobList(list, true)
+}
+
+// buildAPIRemovedJobs is buildAPIJobs without the recent-run summary.
+// The removed tab shows a name, a type, a schedule and the last run;
+// nothing there reads recentRuns, so computing and marshaling the
+// newest runs of every removed job was work the 5s poll paid for on
+// every tick and threw away.
+func (s *Server) buildAPIRemovedJobs(list []core.Job) []apiJob {
+	return s.buildAPIJobList(list, false)
+}
+
+func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool) []apiJob {
 	now := time.Now()
 	jobs := make([]apiJob, 0, len(list))
 	for _, job := range list {
@@ -575,8 +590,8 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 		}
 
 		var recent []apiRecentRun
-		if hJob, ok := job.(interface{ GetHistory() []*core.Execution }); ok {
-			hist := hJob.GetHistory()
+		if withRecentRuns {
+			hist := job.GetHistory()
 			start := 0
 			if len(hist) > recentRunCount {
 				start = len(hist) - recentRunCount
@@ -613,7 +628,7 @@ func (s *Server) jobsHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) removedJobsHandler(w http.ResponseWriter, _ *http.Request) {
-	jobs := s.buildAPIJobs(s.scheduler.GetRemovedJobs())
+	jobs := s.buildAPIRemovedJobs(s.scheduler.GetRemovedJobs())
 	w.Header().Set(headerContentType, contentTypeJSON)
 	_ = json.NewEncoder(w).Encode(jobs)
 }
@@ -1090,33 +1105,19 @@ func stripJobs(cfg any) any {
 }
 
 // buildAPIHistory converts the named job's execution history into API
-// payloads. ok is false when the job does not exist or keeps no history.
-// Shared by the per-job history endpoint and the dashboard aggregate.
+// payloads. ok is false when the job does not exist. Shared by the
+// per-job history endpoint and the dashboard aggregate.
 func (s *Server) buildAPIHistory(name string) (out []apiExecution, ok bool) {
 	target := s.scheduler.GetAnyJob(name)
 	if target == nil {
 		return nil, false
 	}
-	hJob, ok := target.(interface{ GetHistory() []*core.Execution })
-	if !ok {
-		return nil, false
-	}
-	hist := hJob.GetHistory()
+	hist := target.GetHistory()
 	out = make([]apiExecution, 0, len(hist))
 	for _, e := range hist {
-		errStr := ""
-		if e.Error != nil {
-			errStr = e.Error.Error()
+		if a := newAPIExecution(e); a != nil {
+			out = append(out, *a)
 		}
-		out = append(out, apiExecution{
-			Date:     e.Date,
-			Duration: e.Duration,
-			Failed:   e.Failed,
-			Skipped:  e.Skipped,
-			Error:    errStr,
-			Stdout:   e.GetStdout(),
-			Stderr:   e.GetStderr(),
-		})
 	}
 	return out, true
 }

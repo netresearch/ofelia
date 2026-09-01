@@ -74,7 +74,7 @@ func (s *Server) dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	resp := dashboardResponse{
 		Jobs:     s.buildAPIJobs(active),
 		Disabled: s.buildAPIJobs(disabled),
-		Removed:  s.buildAPIJobs(removed),
+		Removed:  s.buildAPIRemovedJobs(removed),
 		Config:   stripJobs(s.config),
 	}
 	if name := r.URL.Query().Get("history"); name != "" {
