@@ -38,10 +38,15 @@ type dashboardResponse struct {
 }
 
 func (s *Server) dashboardHandler(w http.ResponseWriter, r *http.Request) {
+	// One snapshot, not three reads: taken separately, a job disabled or
+	// removed between two of them lands in two lists or in none, and the
+	// UI renders the lists without deduplicating by name — so it showed
+	// as two rows until the next tick healed it.
+	active, disabled, removed := s.scheduler.GetJobSnapshot()
 	resp := dashboardResponse{
-		Jobs:     s.buildAPIJobs(s.scheduler.GetActiveJobs()),
-		Disabled: s.buildAPIJobs(s.scheduler.GetDisabledJobs()),
-		Removed:  s.buildAPIJobs(s.scheduler.GetRemovedJobs()),
+		Jobs:     s.buildAPIJobs(active),
+		Disabled: s.buildAPIJobs(disabled),
+		Removed:  s.buildAPIJobs(removed),
 		Config:   stripJobs(s.config),
 	}
 	if name := r.URL.Query().Get("history"); name != "" {

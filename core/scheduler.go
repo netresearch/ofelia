@@ -653,6 +653,32 @@ func (s *Scheduler) GetActiveJobs() []Job {
 	return jobs
 }
 
+// GetJobSnapshot returns the active, disabled and removed job lists as they
+// stood at one instant.
+//
+// Calling GetActiveJobs, GetDisabledJobs and GetRemovedJobs in sequence takes
+// three separate read locks, so a job disabled or removed between two of them
+// appears in both lists or in neither. The dashboard renders the lists without
+// deduplicating by name, so such a job showed as two rows until the next poll
+// healed it.
+func (s *Scheduler) GetJobSnapshot() (active, disabled, removed []Job) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	active = make([]Job, 0, len(s.Jobs))
+	disabled = make([]Job, 0, len(s.disabledNames))
+	for _, j := range s.Jobs {
+		if _, off := s.disabledNames[j.GetName()]; off {
+			disabled = append(disabled, j)
+		} else {
+			active = append(active, j)
+		}
+	}
+	removed = make([]Job, len(s.Removed))
+	copy(removed, s.Removed)
+	return active, disabled, removed
+}
+
 // recordUnschedulable notes that a job was refused, so the health report can
 // say a configured job is not running rather than leaving it to whoever reads
 // the startup log.
