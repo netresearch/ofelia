@@ -69,10 +69,14 @@ type HealthChecker struct {
 	scheduler      *core.Scheduler
 	version        string
 	checks         map[string]HealthCheck
-	mu             sync.RWMutex
-	checkInterval  time.Duration
-	stop           chan struct{}
-	stopOnce       sync.Once
+	// memStats is the last snapshot taken by the periodic system check.
+	// GetHealth reads it instead of calling runtime.ReadMemStats itself
+	// — see checkSystemResources.
+	memStats      runtime.MemStats
+	mu            sync.RWMutex
+	checkInterval time.Duration
+	stop          chan struct{}
+	stopOnce      sync.Once
 }
 
 // NewHealthChecker creates a new health checker.
@@ -89,6 +93,9 @@ func NewHealthChecker(dockerProvider core.DockerProvider, scheduler *core.Schedu
 		checkInterval:  30 * time.Second,
 		stop:           make(chan struct{}),
 	}
+	// Seed the snapshot GetHealth reports from, so a scrape landing
+	// before the first periodic check does not answer with zeroes.
+	runtime.ReadMemStats(&hc.memStats)
 
 	// Start background health checks
 	go hc.runPeriodicChecks()
@@ -252,6 +259,15 @@ func (hc *HealthChecker) checkSystemResources() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
+	// Kept for GetHealth, which reports the same numbers: ReadMemStats
+	// stops the world, and /ready is exempt from rate limiting, so
+	// reading it per request handed an unauthenticated caller a GC pause
+	// per request. The periodic check already pays that cost once per
+	// interval — the report is a snapshot either way.
+	hc.mu.Lock()
+	hc.memStats = m
+	hc.mu.Unlock()
+
 	// Check memory usage
 	memoryUsagePercent := float64(m.Alloc) / float64(m.Sys) * 100
 
@@ -279,6 +295,7 @@ func (hc *HealthChecker) GetHealth() HealthResponse {
 	hc.mu.RLock()
 	checks := make(map[string]HealthCheck)
 	maps.Copy(checks, hc.checks)
+	m := hc.memStats
 	hc.mu.RUnlock()
 
 	// Determine overall status
@@ -291,10 +308,6 @@ func (hc *HealthChecker) GetHealth() HealthResponse {
 			status = HealthStatusDegraded
 		}
 	}
-
-	// Get system info
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
 
 	return HealthResponse{
 		Status:    status,

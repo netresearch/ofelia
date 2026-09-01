@@ -164,16 +164,19 @@ func ParseTrustedProxies(cidrs []string) ([]*net.IPNet, error) {
 // isOrchestratorProbePath reports whether path is one of the two probe
 // endpoints an orchestrator polls: /live and /ready. They bypass rate
 // limiting — a probe answered 429 reads as "unhealthy" and gets the
-// daemon restarted — and both are cheap: a constant string and a
-// scheduler-state lookup.
+// daemon restarted — and both are cheap: a constant string, and a copy
+// of the check map the background loop maintains. Keeping /ready cheap
+// is what makes the exemption safe: it used to call
+// runtime.ReadMemStats through GetHealth, so an unauthenticated caller
+// could force one stop-the-world pause per request on an endpoint with
+// no rate limit at all. GetHealth now reports the snapshot the periodic
+// system check takes (web/health.go).
 //
-// /health and /healthz are deliberately NOT exempt. They are
-// token-free like the probes, but HealthChecker.GetHealth calls
-// runtime.ReadMemStats on every request, which stops the world, and
-// answers with the version and the goroutine count. Exempting them
-// would leave an unauthenticated, unthrottled endpoint that pauses the
-// GC once per call. They stay inside the per-IP budget; the UI's single
-// footer-version fetch fits in it easily.
+// /health and /healthz are deliberately NOT exempt. They are token-free
+// like the probes, but they answer with the full report — every check,
+// the version and the goroutine count — which is both more work per
+// request and more than a probe needs to know. They stay inside the
+// per-IP budget; the UI's single footer-version fetch fits in it easily.
 func isOrchestratorProbePath(path string) bool {
 	return path == "/live" || path == "/ready"
 }
