@@ -365,7 +365,10 @@ function createTableSort(tableId, keys, onChange) {
       h.classList.toggle('sort-desc', desc);
       // The classes only paint the chevron; aria-sort is what screen
       // readers announce, so it has to track the same state.
-      h.setAttribute('aria-sort', asc ? 'ascending' : desc ? 'descending' : 'none');
+      let ariaSort = 'none';
+      if (asc) ariaSort = 'ascending';
+      else if (desc) ariaSort = 'descending';
+      h.setAttribute('aria-sort', ariaSort);
     });
     onChange();
   });

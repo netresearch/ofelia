@@ -287,7 +287,7 @@ tr.output-row td { white-space: normal; }
 /* Density-scaled breathing room around the expanded output; the double
    class outguns the compact table-cell padding override. */
 tr.output-row.open td { padding: calc(var(--pico-spacing) * .8) calc(var(--pico-spacing) * 1.2); }
-tr.output-row pre { white-space: pre-wrap; word-break: break-word; max-height: 20rem; overflow: auto;
+tr.output-row pre { white-space: pre-wrap; overflow-wrap: break-word; max-height: 20rem; overflow: auto;
   margin: .3rem 0; background: none; }
 tr.output-row pre.stderr { color: var(--pico-del-color); }
 table#history.striped tbody tr:not(.output-row):hover td { background-color: var(--row-hover); }
@@ -411,7 +411,7 @@ th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
 .th-sort { display: inline-block; padding: 0; color: inherit; font-size: inherit; font-weight: inherit;
   line-height: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; }
 th[data-sort]::after { content: ""; display: inline-block; width: 1em; height: 1em;
-  margin-left: .25rem; vertical-align: -.15em; background-color: currentColor; opacity: .35;
+  margin-left: .25rem; vertical-align: -.15em; background-color: currentcolor; opacity: .35;
   -webkit-mask-image: var(--chevron-both);
   -webkit-mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat;
   mask-image: var(--chevron-both);

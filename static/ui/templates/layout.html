@@ -77,8 +77,6 @@
     {{template "tabs-config.html" .}}
   </main>
 
-  <script src="app.js"></script>
-
   <footer class="app-footer">
     <div class="footer-inner">
       <span>&copy; Netresearch DTT GmbH &middot; MIT License &middot; Originally by M&aacute;ximo Cuadros &middot; <span id="footer-version"></span></span>
@@ -93,5 +91,9 @@
       </div>
     </div>
   </footer>
+
+  <!-- Last in the body: app.js queries elements at top level (footer-version
+       among them), so every element it touches must already be parsed. -->
+  <script src="app.js"></script>
 </body>
 </html>
