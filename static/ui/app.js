@@ -654,6 +654,18 @@ let historyCache = null;
 // refreshSeq/adoptedSeq below.
 let historyReqSeq = 0;
 let historyAdoptedSeq = 0;
+// Server-issued identity of the runs currently held, echoed back on the
+// next poll as ?historyFp=. On a match the server omits the history from
+// the response instead of re-serializing (and re-compressing) the full
+// stdout/stderr of every run of the open job on every 5s tick — which
+// the guard below would discard anyway. Bound to the job it came from,
+// so it can never elide the history of a different job.
+let historyFp = null;
+let historyFpJob = null;
+function forgetHistoryFingerprint() {
+  historyFp = null;
+  historyFpJob = null;
+}
 const historySort = createTableSort('history', {
   date: e => epochMs(e.date),
   duration: e => e.duration,
@@ -662,6 +674,9 @@ const historySort = createTableSort('history', {
 
 async function loadHistory(name) {
   selectedJob = name;
+  // The direct endpoint issues no fingerprint, so the one held (if any)
+  // describes runs this load is about to replace.
+  forgetHistoryFingerprint();
   const seq = ++historyReqSeq;
   document.getElementById('historyJob').textContent = name;
   const modal = document.getElementById('historyModal');
@@ -797,6 +812,7 @@ historyModal.addEventListener('close', () => {
   // the lifetime of the tab.
   historyCache = null;
   historyGuard.reset();
+  forgetHistoryFingerprint();
   // The rows just wiped (and any loader/error state a reopen paints)
   // live OUTSIDE the guards, but the identical-payload short-circuit in
   // refresh() only knows the raw payload text: left in place, a
@@ -1160,9 +1176,14 @@ async function refresh() {
   // historyReqSeq): its response must not repaint over a fresher
   // direct load adopted while this poll was in flight.
   const historySeq = historyFor ? ++historyReqSeq : 0;
-  const url = historyFor
-    ? `/api/dashboard?history=${encodeURIComponent(historyFor)}`
-    : '/api/dashboard';
+  let url = '/api/dashboard';
+  if (historyFor) {
+    url += `?history=${encodeURIComponent(historyFor)}`;
+    // Only for the job the fingerprint was issued for — see historyFp.
+    if (historyFp !== null && historyFpJob === historyFor) {
+      url += `&historyFp=${encodeURIComponent(historyFp)}`;
+    }
+  }
   let text;
   try {
     const resp = await fetch(url);
@@ -1221,6 +1242,17 @@ async function refresh() {
       historySeq > historyAdoptedSeq && Array.isArray(d.history)) {
     historyAdoptedSeq = historySeq;
     historyGuard.apply(d.history);
+  }
+  // Record the identity of the runs now held so the next tick can ask the
+  // server to omit them. Only for the still-open job, and only when the
+  // response actually carried its history or confirmed the one held:
+  // absent means the job has no history (or vanished), and a stale
+  // fingerprint must never elide a payload the modal needs.
+  if (historyFor && historyFor === selectedJob && typeof d.historyFingerprint === 'string') {
+    historyFp = d.historyFingerprint;
+    historyFpJob = historyFor;
+  } else if (historyFor === selectedJob) {
+    forgetHistoryFingerprint();
   }
   // Recorded last, after every section render returned: recorded any
   // earlier, a section render that throws would mark the payload as

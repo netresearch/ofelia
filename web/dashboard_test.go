@@ -15,11 +15,12 @@ import (
 )
 
 type dashboardResponse struct {
-	Jobs     []json.RawMessage `json:"jobs"`
-	Disabled []json.RawMessage `json:"disabled"`
-	Removed  []json.RawMessage `json:"removed"`
-	Config   json.RawMessage   `json:"config"`
-	History  []apiExecution    `json:"history"`
+	Jobs               []json.RawMessage `json:"jobs"`
+	Disabled           []json.RawMessage `json:"disabled"`
+	Removed            []json.RawMessage `json:"removed"`
+	Config             json.RawMessage   `json:"config"`
+	History            []apiExecution    `json:"history"`
+	HistoryFingerprint string            `json:"historyFingerprint"`
 }
 
 // TestDashboardEndpoint pins the aggregate poll endpoint: one request
