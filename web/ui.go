@@ -5,6 +5,8 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -65,17 +67,54 @@ func uiHandler() (http.Handler, error) {
 		return nil, err
 	}
 	files := http.FileServer(http.FS(uiFS))
+	etag, err := embeddedAssetsETag(uiFS)
+	if err != nil {
+		return nil, err
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isTemplateSourcePath(r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}
 		if !isUIPagePath(r.URL.Path) {
+			// Embedded files carry no ModTime, so http.ServeContent had
+			// nothing to build a validator from and every asset came back
+			// 200 with a full body — recompressed per request — however
+			// often the browser asked. One ETag for the whole embedded
+			// tree is enough: it is per-URL on the client side, and the
+			// assets can only change together, with the binary.
+			w.Header().Set("ETag", etag)
 			files.ServeHTTP(w, r)
 			return
 		}
 		renderUIPage(w, tpl)
 	}), nil
+}
+
+// embeddedAssetsETag derives a strong validator for the embedded UI tree
+// from the names and contents of its files, so it changes exactly when a
+// rebuild changes an asset. http.ServeContent answers 304 against it.
+func embeddedAssetsETag(fsys fs.FS) (string, error) {
+	h := sha256.New()
+	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		b, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		fmt.Fprintf(h, "%s:%d:", path, len(b))
+		h.Write(b)
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("fingerprint UI assets: %w", err)
+	}
+	return `"` + hex.EncodeToString(h.Sum(nil)[:16]) + `"`, nil
 }
 
 // isTemplateSourcePath reports whether the request points into the
