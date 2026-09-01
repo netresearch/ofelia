@@ -437,7 +437,16 @@ function formatTimeParts(dateStr) {
     const iso = dt.toISOString();
     return { date: iso.slice(0, 10), time: iso.slice(11, 19) };
   }
-  if (pref === 'server') return { date: str.slice(0, 10), time: str.slice(11, 19) };
+  if (pref === 'server') {
+    // Keep the server's zone offset on the time. Slicing it away left
+    // nothing in the UI that reveals which zone the server is in, so a
+    // user correlating a timestamp against the server's own logs read it
+    // as local time and was wrong by the offset. Z is spelled out rather
+    // than shown as a bare letter.
+    const zone = str.match(/(Z|[+-]\d{2}:\d{2})$/);
+    const suffix = zone ? ' ' + (zone[1] === 'Z' ? 'UTC' : zone[1]) : '';
+    return { date: str.slice(0, 10), time: str.slice(11, 19) + suffix };
+  }
   return { date: dt.toLocaleDateString(), time: dt.toLocaleTimeString() };
 }
 
