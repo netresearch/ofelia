@@ -83,7 +83,15 @@ func uiHandler() (http.Handler, error) {
 			// often the browser asked. One ETag for the whole embedded
 			// tree is enough: it is per-URL on the client side, and the
 			// assets can only change together, with the binary.
-			w.Header().Set("ETag", etag)
+			//
+			// It is deliberately not varied per content-coding. gzhttp
+			// can suffix the ETag of a compressed response, but the
+			// suffix is added on the way out and never removed on the way
+			// in, so the browser would echo a tag ServeContent cannot
+			// match and no request would ever 304 — the whole point of
+			// setting one. Vary: Accept-Encoding (which gzhttp sets) is
+			// what keeps a shared cache from serving the wrong coding.
+			w.Header().Set(headerETag, etag)
 			files.ServeHTTP(w, r)
 			return
 		}
@@ -150,6 +158,6 @@ func renderUIPage(w http.ResponseWriter, tpl *template.Template) {
 		http.Error(w, "ui render error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set(headerContentType, "text/html; charset=utf-8")
 	_, _ = w.Write(page.Bytes())
 }

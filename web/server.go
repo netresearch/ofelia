@@ -83,6 +83,7 @@ const (
 	pathAPIJobsPrefix = "/api/jobs/"
 
 	headerContentType = "Content-Type"
+	headerETag        = "ETag"
 	contentTypeJSON   = "application/json"
 
 	msgMethodNotAllowed   = "method not allowed"

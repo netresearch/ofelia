@@ -704,10 +704,11 @@ function forgetHistoryFingerprint() {
   historyFpJob = null;
 }
 /* The fingerprint is server-issued and goes back out in a request URL, so
-   it is accepted only in the shape the server produces — base-36 of a
-   64-bit hash, at most 13 characters. Anything else (a proxy rewriting
-   the body, a version skew) is dropped rather than echoed, which costs
-   one full history payload and nothing else. */
+   it is accepted only in the shape the server produces: base-36 digits,
+   which a 64-bit hash never spends more than 13 of (the bound below
+   leaves slack rather than tracking that arithmetic). Anything else — a
+   proxy rewriting the body, a version skew — is dropped rather than
+   echoed, which costs one full history payload and nothing else. */
 function adoptHistoryFingerprint(job, value) {
   if (typeof value === 'string' && /^[0-9a-z]{1,16}$/.test(value)) {
     historyFp = value;

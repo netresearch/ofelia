@@ -54,13 +54,17 @@ type dashboardResponse struct {
 // output is immutable, so a change in either stream changes its length or
 // one of the other fields. This mirrors the identity key the client's own
 // history guard already computes.
+//
+// The error is length-prefixed rather than delimited, so no error text can
+// imitate the field separator and make two different histories hash the
+// same — a collision would leave the open modal showing stale runs.
 func historyFingerprint(hist []apiExecution) string {
 	h := fnv.New64a()
 	for i := range hist {
 		e := &hist[i]
-		fmt.Fprintf(h, "%d|%d|%t|%t|%s|%d|%d\n",
-			e.Date.UnixNano(), e.Duration, e.Failed, e.Skipped, e.Error,
-			len(e.Stdout), len(e.Stderr))
+		fmt.Fprintf(h, "%d|%d|%t|%t|%d:%s|%d|%d\n",
+			e.Date.UnixNano(), e.Duration, e.Failed, e.Skipped,
+			len(e.Error), e.Error, len(e.Stdout), len(e.Stderr))
 	}
 	return strconv.FormatUint(h.Sum64(), 36)
 }
