@@ -333,7 +333,7 @@ func (hc *HealthChecker) LivenessHandler() http.HandlerFunc {
 		// Content-Type: without it, a compressed response would be
 		// content-sniffed on the compressed bytes and answer with the
 		// codec's own type (application/x-gzip, application/zstd).
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set(headerContentType, "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	}
@@ -350,7 +350,7 @@ func (hc *HealthChecker) ReadinessHandler() http.HandlerFunc {
 			statusCode = http.StatusServiceUnavailable
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		w.WriteHeader(statusCode)
 		_ = json.NewEncoder(w).Encode(health)
 	}
@@ -362,7 +362,7 @@ func (hc *HealthChecker) HealthHandler() http.HandlerFunc {
 		health := hc.GetHealth()
 
 		// Always return 200 for health endpoint (monitoring tools expect this)
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(health)
 	}

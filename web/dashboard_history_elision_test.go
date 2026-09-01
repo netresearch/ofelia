@@ -123,7 +123,7 @@ func TestDashboardHistoryFingerprintTracksOutputGrowth(t *testing.T) {
 
 	before := fingerprint()
 	_, _ = e.OutputStream.Write([]byte(" and more"))
-	if after := fingerprint(); after == before {
+	if fingerprint() == before {
 		t.Fatal("the fingerprint ignored a change in run output")
 	}
 }

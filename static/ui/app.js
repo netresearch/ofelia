@@ -426,6 +426,18 @@ const jobSort = createTableSort('jobs', {
 /* ── Stat cards ── */
 /* Quiet number+label tiles above the jobs table, recomputed from the
    same dashboard payload every tick — no extra API calls. */
+/* The zone an RFC3339 timestamp carries, as a display suffix. Read off
+   the end of the string rather than matched: the server emits either a
+   trailing Z or a six-character offset, and both are fixed-width. Z is
+   spelled out — a bare letter reads as part of the time. */
+function zoneSuffix(str) {
+  if (str.endsWith('Z')) return ' UTC';
+  const tail = str.slice(-6);
+  const sign = tail.charAt(0);
+  if ((sign === '+' || sign === '-') && tail.charAt(3) === ':') return ' ' + tail;
+  return '';
+}
+
 /* Date and time as separate strings (for two-line table cells),
    honoring the timezone preference like formatTime. */
 function formatTimeParts(dateStr) {
@@ -441,11 +453,8 @@ function formatTimeParts(dateStr) {
     // Keep the server's zone offset on the time. Slicing it away left
     // nothing in the UI that reveals which zone the server is in, so a
     // user correlating a timestamp against the server's own logs read it
-    // as local time and was wrong by the offset. Z is spelled out rather
-    // than shown as a bare letter.
-    const zone = str.match(/(Z|[+-]\d{2}:\d{2})$/);
-    const suffix = zone ? ' ' + (zone[1] === 'Z' ? 'UTC' : zone[1]) : '';
-    return { date: str.slice(0, 10), time: str.slice(11, 19) + suffix };
+    // as local time and was wrong by the offset.
+    return { date: str.slice(0, 10), time: str.slice(11, 19) + zoneSuffix(str) };
   }
   return { date: dt.toLocaleDateString(), time: dt.toLocaleTimeString() };
 }
@@ -693,6 +702,32 @@ let historyFpJob = null;
 function forgetHistoryFingerprint() {
   historyFp = null;
   historyFpJob = null;
+}
+/* The fingerprint is server-issued and goes back out in a request URL, so
+   it is accepted only in the shape the server produces — base-36 of a
+   64-bit hash, at most 13 characters. Anything else (a proxy rewriting
+   the body, a version skew) is dropped rather than echoed, which costs
+   one full history payload and nothing else. */
+function adoptHistoryFingerprint(job, value) {
+  if (typeof value === 'string' && /^[0-9a-z]{1,16}$/.test(value)) {
+    historyFp = value;
+    historyFpJob = job;
+    return;
+  }
+  // Absent means the job has no history or vanished; a stale fingerprint
+  // must never elide a payload the modal still needs.
+  forgetHistoryFingerprint();
+}
+/* The poll URL. The open job's history rides along, and the fingerprint
+   of the runs already held rides with it so the server can omit them. */
+function dashboardURL(historyFor) {
+  if (!historyFor) return '/api/dashboard';
+  let url = `/api/dashboard?history=${encodeURIComponent(historyFor)}`;
+  // Only for the job the fingerprint was issued for — see historyFp.
+  if (historyFp !== null && historyFpJob === historyFor) {
+    url += `&historyFp=${encodeURIComponent(historyFp)}`;
+  }
+  return url;
 }
 const historySort = createTableSort('history', {
   date: e => epochMs(e.date),
@@ -1204,14 +1239,7 @@ async function refresh() {
   // historyReqSeq): its response must not repaint over a fresher
   // direct load adopted while this poll was in flight.
   const historySeq = historyFor ? ++historyReqSeq : 0;
-  let url = '/api/dashboard';
-  if (historyFor) {
-    url += `?history=${encodeURIComponent(historyFor)}`;
-    // Only for the job the fingerprint was issued for — see historyFp.
-    if (historyFp !== null && historyFpJob === historyFor) {
-      url += `&historyFp=${encodeURIComponent(historyFp)}`;
-    }
-  }
+  const url = dashboardURL(historyFor);
   let text;
   try {
     const resp = await fetch(url);
@@ -1271,17 +1299,7 @@ async function refresh() {
     historyAdoptedSeq = historySeq;
     historyGuard.apply(d.history);
   }
-  // Record the identity of the runs now held so the next tick can ask the
-  // server to omit them. Only for the still-open job, and only when the
-  // response actually carried its history or confirmed the one held:
-  // absent means the job has no history (or vanished), and a stale
-  // fingerprint must never elide a payload the modal needs.
-  if (historyFor && historyFor === selectedJob && typeof d.historyFingerprint === 'string') {
-    historyFp = d.historyFingerprint;
-    historyFpJob = historyFor;
-  } else if (historyFor === selectedJob) {
-    forgetHistoryFingerprint();
-  }
+  if (historyFor === selectedJob) adoptHistoryFingerprint(historyFor, d.historyFingerprint);
   // Recorded last, after every section render returned: recorded any
   // earlier, a section render that throws would mark the payload as
   // painted and the identical-payload short-circuit above would pin
