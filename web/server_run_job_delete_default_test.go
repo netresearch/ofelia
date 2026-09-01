@@ -20,20 +20,24 @@ import (
 // left behind and collided with the next run's `docker create` on the
 // same name ("resource conflict"). Delete must default to "true" here
 // to match the config.ini behavior.
+//
+// The seam is jobFromRequest, not the per-type constructor: that is what
+// the create and update handlers call, and it is where defaults.Set now
+// runs for every job type rather than for run jobs alone.
 func TestNewRunJobFromRequest_DefaultsDelete(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	s := NewServer("", core.NewScheduler(logger), nil, newHangingDockerProvider())
 
-	job, err := s.newRunJobFromRequest(&jobRequest{
+	job, err := s.jobFromRequest(&jobRequest{
 		Name:     "api-run-job",
 		Type:     "run",
 		Schedule: "@hourly",
 		Image:    "busybox",
 	})
 	if err != nil {
-		t.Fatalf("newRunJobFromRequest: %v", err)
+		t.Fatalf("jobFromRequest: %v", err)
 	}
 
 	rj, ok := job.(*core.RunJob)

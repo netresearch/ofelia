@@ -894,8 +894,6 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 		return nil, fmt.Errorf("docker provider unavailable for run job")
 	}
 	j := core.NewRunJob(s.provider)
-	// struct-tag defaults are only applied by the config decoder — apply them here too.
-	_ = defaults.Set(j)
 	j.Name = req.Name
 	j.Schedule = req.Schedule
 	j.Command = req.Command
@@ -962,18 +960,35 @@ func newLocalJobFromRequest(req *jobRequest) (core.Job, error) {
 }
 
 func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
+	var (
+		job core.Job
+		err error
+	)
 	switch req.Type {
 	case "run":
-		return s.newRunJobFromRequest(req)
+		job, err = s.newRunJobFromRequest(req)
 	case "exec":
-		return s.newExecJobFromRequest(req)
+		job, err = s.newExecJobFromRequest(req)
 	case "compose":
-		return newComposeJobFromRequest(req)
+		job, err = newComposeJobFromRequest(req)
 	case "", "local":
-		return newLocalJobFromRequest(req)
+		job, err = newLocalJobFromRequest(req)
 	default:
 		return nil, fmt.Errorf("unknown job type %q", req.Type)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// Struct-tag defaults are applied by the config decoder, not by the
+	// constructors, so an API-built job used to keep every zero value —
+	// most damagingly HistoryLimit 0, which makes BareJob.GetHistory
+	// retain every Execution (up to 2×10 MB of output buffers each) for
+	// the lifetime of the daemon. Only the run-job constructor applied
+	// them; doing it here covers every type and every future one.
+	// creasty/defaults fills initial values only, so the fields the
+	// request set above are left alone.
+	_ = defaults.Set(job)
+	return job, nil
 }
 
 func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
