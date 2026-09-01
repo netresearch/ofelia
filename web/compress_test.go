@@ -6,6 +6,7 @@ package web_test
 import (
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,7 @@ import (
 func TestResponseCompression(t *testing.T) {
 	t.Parallel()
 
-	sched := &core.Scheduler{Jobs: []core.Job{}, Logger: stubDiscardLogger()}
+	sched := &core.Scheduler{Jobs: compressibleJobs(), Logger: stubDiscardLogger()}
 	srv := webpkg.NewServer("", sched, nil, nil)
 	handler := srv.HTTPServer().Handler
 
@@ -103,7 +104,7 @@ func TestResponseCompression(t *testing.T) {
 func TestZstdCompression(t *testing.T) {
 	t.Parallel()
 
-	sched := &core.Scheduler{Jobs: []core.Job{}, Logger: stubDiscardLogger()}
+	sched := &core.Scheduler{Jobs: compressibleJobs(), Logger: stubDiscardLogger()}
 	srv := webpkg.NewServer("", sched, nil, nil)
 	handler := srv.HTTPServer().Handler
 
@@ -242,4 +243,26 @@ func TestCompressNegotiationEdgeCases(t *testing.T) {
 	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
 		t.Fatalf("/live under gzip answered Content-Type %q", ct)
 	}
+	// And it is not compressed at all: below gzhttp's 1 KiB threshold the
+	// framing and the CPU cost buy no fewer bytes on the wire. /live's
+	// two-byte "OK" is the clearest case.
+	if enc := w.Header().Get("Content-Encoding"); enc != "" {
+		t.Fatalf("a two-byte body was compressed: Content-Encoding %q", enc)
+	}
+}
+
+// compressibleJobs returns enough jobs for /api/dashboard to exceed
+// gzhttp's 1 KiB threshold, which is what a real deployment looks like.
+// An empty scheduler produces a payload too small to be worth
+// compressing, and the wrapper correctly leaves it alone.
+func compressibleJobs() []core.Job {
+	jobs := make([]core.Job, 0, 12)
+	for i := range 12 {
+		j := &testJob{}
+		j.Name = fmt.Sprintf("compressible-job-%02d", i)
+		j.Schedule = schedDaily
+		j.Command = "echo " + strings.Repeat("payload ", 8)
+		jobs = append(jobs, j)
+	}
+	return jobs
 }

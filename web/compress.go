@@ -23,10 +23,13 @@ import (
 // The edge cases — Accept-Encoding qvalues, Content-Type sniffing of the
 // uncompressed bytes, bodiless statuses (204/304), ranged requests,
 // writer pooling — are delegated to gzhttp instead of being maintained
-// by hand. MinSize(0) keeps the previous contract: everything this
-// server produces is textual, so compression applies across the board.
+// by hand, and so is the size threshold: gzhttp's default 1 KiB. There
+// is no previous contract to keep — the merge base compresses nothing —
+// and below roughly a packet's worth of payload the framing plus the CPU
+// cost buys no fewer bytes on the wire. /live's two-byte "OK" is the
+// clearest case.
 var compressWrap = func() func(http.Handler) http.HandlerFunc {
-	wrapper, err := gzhttp.NewWrapper(gzhttp.MinSize(0))
+	wrapper, err := gzhttp.NewWrapper()
 	if err != nil {
 		// Static configuration; can only fail on an invalid option.
 		panic(err)
