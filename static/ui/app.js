@@ -139,11 +139,18 @@ function statusDot(failed, skipped) {
 (() => {
   const el = document.createElement('div');
   el.id = 'custom-tooltip';
+  // role + aria-describedby (set on the anchor while the bubble is up)
+  // is what makes the text reachable at all: the reason an edit or
+  // delete button is inert ("Managed by the INI config") lived only in
+  // data-custom-tooltip, which no screen reader reads.
+  el.setAttribute('role', 'tooltip');
   document.body.appendChild(el);
   let anchor = null;
 
   function show(target) {
+    if (anchor && anchor !== target) anchor.removeAttribute('aria-describedby');
     anchor = target;
+    target.setAttribute('aria-describedby', el.id);
     // Watch for the anchor being destroyed only while a bubble is
     // visible — a permanent body-wide observer would run on every DOM
     // churn of the 5s poll for a tooltip that is rarely open. Calling
@@ -167,6 +174,7 @@ function statusDot(failed, skipped) {
     el.style.top = `${y}px`;
   }
   function hide() {
+    if (anchor) anchor.removeAttribute('aria-describedby');
     anchor = null;
     el.classList.remove('visible');
     orphanWatch.disconnect();
@@ -187,6 +195,14 @@ function statusDot(failed, skipped) {
   });
   document.addEventListener('focusout', hide);
   document.addEventListener('scroll', hide, true);
+  // WCAG 2.2 SC 1.4.13 requires hover/focus content to be dismissable
+  // without moving the pointer or the focus — the bubble is positioned
+  // over the row beneath it. The event is neither stopped nor
+  // default-prevented, so the history dialog still closes on the same
+  // key press rather than needing a second one.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hide();
+  });
   // Pointer left the window entirely: no further mouseover will fire,
   // so hide explicitly (relatedTarget is null only on window exit).
   document.addEventListener('mouseout', (e) => {
