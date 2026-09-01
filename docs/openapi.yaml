@@ -166,6 +166,11 @@ paths:
       responses:
         "201": {description: Job created}
         "400": {$ref: "#/components/responses/PlainError"}
+        "403":
+          description: >-
+            The name is owned by INI/label config; edit the source or use
+            /api/jobs/disable. Gated on the name, not on a registered job: a
+            config job with an empty or malformed schedule holds no cron entry.
         "405": {$ref: "#/components/responses/PlainError"}
   /api/jobs/update:
     post:
@@ -208,6 +213,14 @@ paths:
           in: query
           required: false
           description: Include this job's executions in the history field
+          schema: {type: string}
+        - name: historyFp
+          in: query
+          required: false
+          description: >-
+            The historyFingerprint from a previous response. When it still
+            matches, history is omitted from this one — the client already holds
+            those runs. Omit the parameter to always receive the full history.
           schema: {type: string}
       responses:
         "200":
@@ -352,6 +365,12 @@ components:
             when the parameter is absent or names no job; an empty array for an
             existing job without executions.
           items: {$ref: "#/components/schemas/Execution"}
+        historyFingerprint:
+          type: string
+          description: >-
+            Identity of the requested job's executions. Echo it as the historyFp
+            query parameter to have an unchanged history omitted. Absent when no
+            history was requested or the job does not exist.
     Execution:
       type: object
       properties:

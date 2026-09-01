@@ -118,8 +118,8 @@ Each returns a JSON **array** of job objects:
 
 `recentRuns` summarises up to the ten newest executions, oldest first, so a list
 view can show outcome history without a history request per job. It is omitted
-for job types that keep no history. Use `/api/jobs/{name}/history` for the full
-records including output.
+for jobs that have not run, and on `/api/jobs/removed`, where nothing reads it.
+Use `/api/jobs/{name}/history` for the full records including output.
 
 ### Job history
 
@@ -188,6 +188,12 @@ The request body (`jobRequest`) accepts:
 Returns `201 Created`. Validation failures return `400 Bad Request`.
 API-created jobs are persisted and survive restarts.
 
+A name owned by the INI file or by Docker labels returns `403 Forbidden`, the
+same gate update and delete apply. The gate is on the *name*, not on a
+registered job: a config job with an empty or malformed schedule holds no cron
+entry, so nothing else would stop a create from taking its name and replacing
+it with a caller-chosen job.
+
 ### Update a job
 
 ```http
@@ -222,6 +228,7 @@ here.
 ```http
 GET /api/dashboard
 GET /api/dashboard?history=<job name>
+GET /api/dashboard?history=<job name>&historyFp=<fingerprint>
 ```
 
 One aggregate snapshot for polling clients: the three job lists, the stripped
@@ -242,6 +249,11 @@ moment in time.
 [List jobs](#list-jobs). `history` is `null` when the query parameter is absent
 or names no job, and `[]` for an existing job with no executions — a vanished
 job does not fail the request.
+
+A response carrying history also carries `historyFingerprint`. Pass it back as
+`&historyFp=<value>` and the next response omits `history` while it still
+matches, instead of re-sending every run's full output on each tick. Clients
+that do not send the parameter always receive the history.
 
 The endpoint is additive and exists for clients that would otherwise issue four
 or five requests per tick (the bundled web UI polls it every five seconds); the

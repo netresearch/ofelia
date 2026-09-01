@@ -73,6 +73,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and rewrote the job's origin, after which the delete gate could be
   bypassed and a label job deleted. The UI shows edit and delete on
   those jobs as disabled buttons with a tooltip naming the source.
+- **BREAKING (API behavior):** `POST /api/jobs/create` now returns
+  `403 Forbidden` for a name owned by INI config or Docker labels, where
+  it previously answered `201 Created`. The gate is on the name, not on a
+  registered job: a config job with an empty or malformed schedule holds
+  no cron entry, so nothing stopped a create from taking its name,
+  replacing it with a caller-chosen job and recording `origin: api` —
+  after which the update and delete gates no longer recognised it either.
+- **API-created exec, compose and local jobs get the config decoder's
+  struct-tag defaults.** Only run jobs did. Most importantly
+  `HistoryLimit` was 0, which makes the job retain every execution
+  forever — each holding up to two 10 MB output buffers — so a
+  frequently-run API-created job exhausted daemon memory. The other
+  defaults now apply too: `AllowParallel` true, `RetryDelayMs` 1000,
+  and `compose.yml` as a compose job's default file.
+- **The health report is served from a snapshot.** `GetHealth` called
+  `runtime.ReadMemStats` per request, which stops the world, and `/ready`
+  is exempt from rate limiting — an unauthenticated caller could force a
+  GC pause per request. The periodic system check already takes that
+  reading once per interval; the report now uses it. Same wire shape.
+- **Responses below 1 KiB are no longer compressed.** Below roughly a
+  packet's worth of payload the codec framing plus the CPU cost buys no
+  fewer bytes on the wire — `/live`'s two-byte `OK` is the clearest case.
+  gzhttp's default threshold applies instead of `MinSize(0)`.
+- **The embedded UI assets carry an ETag**, so a browser revalidating one
+  gets a 304 instead of a full, freshly compressed body. Embedded files
+  have no ModTime, so nothing could 304 before.
+- **The open job's history is sent only when it changes.** A response
+  carrying history also carries `historyFingerprint`; a client echoing it
+  as `&historyFp=` gets `history` omitted while it still matches, instead
+  of the full stdout and stderr of every retained run on every 5s tick.
+- **`/api/jobs/removed` no longer carries `recentRuns`.** Nothing in the
+  removed tab reads it.
 - **BREAKING (source-only, pre-1.0):** `core.DockerProvider` gains
   `CopyContainerLogs`, needed to demux container output server-side.
   Downstream Go code implementing the exported interface fails to
@@ -85,16 +117,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detect "not scheduled" must check the disabled state explicitly.
 - **Only `/live` and `/ready` bypass the rate limiter.** A probe answered
   429 reads as unhealthy and gets the daemon restarted, and both probes
-  are cheap. `/health` and `/healthz` stay token-free but counted:
-  `GetHealth` calls `runtime.ReadMemStats` on every request, which stops
-  the world, and answers with the version and goroutine count — an
-  exemption there would leave an unauthenticated, unthrottled endpoint
-  that pauses the GC per call. Every other request is counted too, static
-  assets included: each asset response is compressed per request, which
-  is exactly the work an unauthenticated flood would target. The UI stays
-  inside the budget by polling one aggregate endpoint per tick rather
-  than by being exempted. `/api/login` keeps its own stricter login
-  limiter.
+  are cheap — a constant string and a copy of the check map the
+  background loop maintains. `/health` and `/healthz` stay token-free but
+  counted: they answer with the full report — every check, the version
+  and the goroutine count — which is both more work per request and more
+  than a probe needs to know. Every other request is counted too, static
+  assets included. The UI stays inside the budget by polling one
+  aggregate endpoint per tick rather than by being exempted.
+  `/api/login` keeps its own stricter login limiter.
 - **The dashboard renders with site data blocked.** Both the pre-paint
   script and `app.js` read `localStorage` at the top level, and a browser
   that blocks site data throws on the property itself — the script
@@ -153,6 +183,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   column has a fixed narrow width (`--dot-col`) so rows stay aligned.
 - **The rendered page and stylesheet pass the W3C Nu validator** (checked
   locally via the `ghcr.io/validator/validator` Docker image).
+
+### Fixed
+
+- **A delete landing mid-update can no longer leave a ghost job.**
+  `RemoveJob` drops the cron entry before it takes the scheduler lock, so
+  it can complete inside `UpdateJob`'s window; the update then reinserted
+  the deleted name into the by-name map, where it had no cron entry, never
+  fired again, and was still reported as live by the API. The update also
+  performed its last fallible step after rewriting its state, so a
+  failure reported an update that had in fact taken effect.
+- **A failed UI render answers 500 instead of a half-rendered 200.** The
+  page was executed straight into the response, so a template failing
+  partway through — reachable under `OFELIA_UI_DEV_DIR` — committed a 200
+  and then appended the error text to the partial page.
+- **The dashboard job lists come from one snapshot.** Read through three
+  separate locks, a job disabled or removed between two of them appeared
+  in two lists at once and showed as two rows until the next tick.
+- **Server-time display keeps the zone offset.** It was sliced off, and
+  nothing else in the UI reveals the server's zone, so a timestamp
+  correlated against server logs read as local time.
+- **Tooltip text reaches screen readers and dismisses on Escape.** The
+  reason an edit or delete button is inert lived only in a data
+  attribute; the bubble now carries `role="tooltip"` and its anchor
+  `aria-describedby` (WCAG 2.2 SC 1.4.13 for the dismissal).
 
 ## [0.30.0] - 2026-08-26
 

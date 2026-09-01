@@ -281,9 +281,10 @@ Responses are compressed for clients that advertise a supported codec, via
 `klauspost/compress/gzhttp` as the innermost middleware. The wrapper enables
 **zstd** alongside gzip and prefers zstd at equal q-values, so Chrome, Edge and
 Firefox — which send `Accept-Encoding: gzip, deflate, br, zstd` — receive
-`Content-Encoding: zstd`, while clients without zstd (Safari below 26, curl
-defaults, monitoring scripts) receive gzip. Clients advertising neither get
-identity responses. A handler that calls `WriteHeader` before its first body
+`Content-Encoding: zstd`, while clients that advertise gzip but not zstd receive
+gzip. Clients advertising neither get identity responses. Responses below
+gzhttp's 1 KiB threshold are not compressed at all. A handler that calls
+`WriteHeader` before its first body
 write must set `Content-Type` explicitly: the wrapper can only sniff a missing
 type on the first write, and that sniff would otherwise run on the compressed
 bytes.
@@ -300,12 +301,24 @@ bytes.
 | `/api/jobs/run` | POST | Trigger job execution |
 | `/api/jobs/disable` | POST | Disable a job |
 | `/api/jobs/enable` | POST | Enable a job |
-| `/api/jobs/create` | POST | Create new job |
+| `/api/jobs/create` | POST | Create new job (403 for INI/label-owned names) |
 | `/api/jobs/update` | POST | Update job configuration (403 for INI/label-owned jobs) |
 | `/api/jobs/delete` | POST | Delete a job (403 for INI/label-owned jobs) |
 | `/api/jobs/{name}/history` | GET | Get job execution history |
 | `/api/config` | GET | Get server configuration (jobs stripped) |
 | `/api/dashboard` | GET | Aggregate of jobs, disabled, removed and config in one response; `?history=<job>` adds the runs of that job |
+
+All three mutating endpoints refuse jobs whose source is the INI file or a
+Docker label: they are changed at their source, and `POST /api/jobs/disable`
+suppresses one without editing it. Create is gated on the *name*, not on a
+registered job — a config job with an empty or malformed schedule holds no cron
+entry, so nothing else would have stopped a create from taking its name.
+
+The history that rides along on `?history=<job>` is elided once the client
+already has it. Each response carrying history also carries
+`historyFingerprint`; passing it back as `&historyFp=<value>` on the next poll
+omits `history` from the response when it still matches. Clients that do not
+send the parameter always receive the full history.
 
 #### Job API Types
 
@@ -316,9 +329,23 @@ type apiJob struct {
     Type     string          `json:"type"`     // "run", "exec", "local", "service", "compose"
     Schedule string          `json:"schedule"`
     Command  string          `json:"command"`
+    Running  bool            `json:"running"`
     LastRun  *apiExecution   `json:"lastRun,omitempty"`
-    Origin   string          `json:"origin"`   // "config", "docker", "api"
+    NextRuns []time.Time     `json:"nextRuns"`
+    PrevRuns []time.Time     `json:"prevRuns"`
+    Origin   string          `json:"origin"`   // "ini", "label", "api", "web"
     Config   json.RawMessage `json:"config"`
+    // Outcome summary of the newest runs (oldest first, at most 10), so
+    // list views can draw a sparkline without fetching each job's
+    // history. Omitted on /api/jobs/removed, where nothing reads it.
+    RecentRuns []apiRecentRun `json:"recentRuns,omitempty"`
+}
+
+type apiRecentRun struct {
+    Date     time.Time     `json:"date"`
+    Duration time.Duration `json:"duration"`
+    Failed   bool          `json:"failed"`
+    Skipped  bool          `json:"skipped"`
 }
 ```
 
