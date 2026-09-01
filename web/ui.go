@@ -4,6 +4,7 @@
 package web
 
 import (
+	"bytes"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -97,9 +98,19 @@ func isUIPagePath(path string) bool {
 // renderUIPage executes the layout template, which pulls in the tab
 // partials. Template data is nil for now; the parameter of
 // ExecuteTemplate is the seam for future server-injected values.
+//
+// The page is rendered into a buffer first. Executing straight into the
+// ResponseWriter commits a 200 with the bytes written so far the moment
+// the template fails mid-execution — reachable under OFELIA_UI_DEV_DIR,
+// where the templates are re-parsed per request — and http.Error then
+// appended its message to the half-rendered page behind a superfluous
+// WriteHeader. With the buffer, a failed render is a clean 500.
 func renderUIPage(w http.ResponseWriter, tpl *template.Template) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tpl.ExecuteTemplate(w, "layout.html", nil); err != nil {
+	var page bytes.Buffer
+	if err := tpl.ExecuteTemplate(&page, "layout.html", nil); err != nil {
 		http.Error(w, "ui render error: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(page.Bytes())
 }
