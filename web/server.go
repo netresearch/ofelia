@@ -451,6 +451,42 @@ func (s *Server) jobOrigin(name string) string {
 	return jobOrigin(s.config, name)
 }
 
+// guardConfigOwned answers 403 and reports true when the named job is
+// owned by the INI file or by Docker labels. #593: such jobs are changed
+// at their source, so create, update and delete all refuse them.
+//
+// The gate lives in one function because it was copy-pasted per handler
+// and create simply did not get a copy — with AddJob no backstop, since a
+// config job with an empty or malformed schedule holds no cron entry and
+// so never triggers ErrDuplicateName. A create under its name replaced it
+// with a caller-chosen job and recorded origin=api, after which update
+// and delete stopped recognizing it as config-owned as well.
+func (s *Server) guardConfigOwned(w http.ResponseWriter, name, verb string) bool {
+	origin := s.jobOrigin(name)
+	if !isConfigOwned(origin) {
+		return false
+	}
+	http.Error(w,
+		"job came from "+origin+" config; edit the source to "+verb+" it (or use /api/jobs/disable to suppress it)",
+		http.StatusForbidden)
+	return true
+}
+
+// requestOrigin returns the origin to record for an API mutation.
+//
+// Client-supplied X-Origin is untrusted metadata: "api"/"web" are taken
+// verbatim but any "ini"/"label" claim is forced to "api", so a caller
+// cannot mark its own job as config-owned (which would then block the
+// legitimate API delete). Every request reaching a mutation handler is an
+// API mutation regardless of what the header says.
+func requestOrigin(r *http.Request) string {
+	origin := r.Header.Get("X-Origin")
+	if origin == "" || isConfigOwned(origin) {
+		return originAPI
+	}
+	return origin
+}
+
 func jobType(j core.Job) string {
 	switch j.(type) {
 	case *core.RunJob:
@@ -764,6 +800,12 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Same policy as update and delete (#593): a name the config owns is
+	// not available to the API, whether or not the scheduler managed to
+	// register it.
+	if s.guardConfigOwned(w, req.Name, "create") {
+		return
+	}
 	job, err := s.jobFromRequest(&req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -774,21 +816,8 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to create job", http.StatusBadRequest)
 		return
 	}
-	origin := r.Header.Get("X-Origin")
-	if origin == "" {
-		origin = originAPI
-	}
-	// Client-supplied X-Origin is treated as untrusted metadata: we
-	// accept "api"/"web" verbatim but force any "ini"/"label" claim
-	// to "api" so a malicious client can't mark its own job as
-	// config-owned (which would later block legitimate API delete).
-	// All requests reaching this handler are API mutations regardless
-	// of what the header says.
-	if isConfigOwned(origin) {
-		origin = originAPI
-	}
 	s.originsMu.Lock()
-	s.origins[req.Name] = origin
+	s.origins[req.Name] = requestOrigin(r)
 	s.originsMu.Unlock()
 	// Persist (#593) any successful API mutation — origin only gates
 	// what the delete handler can later remove, not whether the
@@ -821,10 +850,7 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	// job in memory until the next config sync — and rewrote the job's
 	// origin to api/web, after which the delete gate no longer saw the
 	// job as config-owned: editing a label job unlocked deleting it.
-	if origin := s.jobOrigin(req.Name); isConfigOwned(origin) {
-		http.Error(w,
-			"job came from "+origin+" config; edit the source to change it (or use /api/jobs/disable to suppress it)",
-			http.StatusForbidden)
+	if s.guardConfigOwned(w, req.Name, "change") {
 		return
 	}
 	job, err := s.jobFromRequest(&req)
@@ -853,15 +879,8 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 	}
 
-	origin := r.Header.Get("X-Origin")
-	if origin == "" {
-		origin = originAPI
-	}
-	if isConfigOwned(origin) {
-		origin = originAPI // see createJobHandler for the trust rationale
-	}
 	s.originsMu.Lock()
-	s.origins[req.Name] = origin
+	s.origins[req.Name] = requestOrigin(r)
 	s.originsMu.Unlock()
 	// Persist (#593) any successful API update — same rationale as create.
 	if err := s.persistJob(req.Name, &req); err != nil {
@@ -983,10 +1002,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	// reject explicitly so the operator sees the right error path.
 	// Operators wanting to suppress an INI/label job temporarily
 	// should use POST /api/jobs/disable instead, which now persists.
-	if origin := s.jobOrigin(req.Name); isConfigOwned(origin) {
-		http.Error(w,
-			"job came from "+origin+" config; edit the source to delete it (or use /api/jobs/disable to suppress it)",
-			http.StatusForbidden)
+	if s.guardConfigOwned(w, req.Name, "delete") {
 		return
 	}
 	_ = s.scheduler.RemoveJob(j)
