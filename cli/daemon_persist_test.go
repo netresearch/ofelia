@@ -226,3 +226,49 @@ func writePersistFile(t *testing.T, state persist.State) string {
 	require.NoError(t, os.WriteFile(path, raw, 0o600))
 	return path
 }
+
+// TestPersistedJobToScheduler_AppliesStructTagDefaults pins that a job
+// coming back from the state file gets the same struct-tag defaults the
+// config decoder applies — the boundary twin of the API-side fix.
+//
+// Only buildPersistedRunJob called defaults.Set, so an API-created exec,
+// compose or local job returned from disk with HistoryLimit 0, which
+// makes BareJob.GetHistory retain every Execution (up to two 10 MB
+// output buffers each) for the lifetime of the daemon. The leak fixed on
+// the API path came back on the first restart.
+func TestPersistedJobToScheduler_AppliesStructTagDefaults(t *testing.T) {
+	t.Parallel()
+	c := newDaemonForPersistTest(t)
+
+	cases := []struct {
+		name string
+		job  *persist.Job
+	}{
+		{"local", &persist.Job{Type: persist.JobTypeLocal, Schedule: "@hourly", Command: "echo hi"}},
+		{"compose", &persist.Job{Type: persist.JobTypeCompose, Schedule: "@hourly", Service: "web", File: "compose.yaml"}},
+		{"empty-type", &persist.Job{Type: "", Schedule: "@hourly", Command: "echo hi"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			job, err := c.persistedJobToScheduler("persisted-"+tc.name, tc.job)
+			require.NoError(t, err)
+
+			var limit int
+			switch j := job.(type) {
+			case *core.LocalJob:
+				limit = j.HistoryLimit
+			case *core.ComposeJob:
+				limit = j.HistoryLimit
+			case *core.ExecJob:
+				limit = j.HistoryLimit
+			case *core.RunJob:
+				limit = j.HistoryLimit
+			default:
+				t.Fatalf("unexpected job type %T", job)
+			}
+			assert.Positive(t, limit,
+				"HistoryLimit 0 keeps every Execution for the lifetime of the daemon")
+		})
+	}
+}

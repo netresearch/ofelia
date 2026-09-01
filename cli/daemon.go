@@ -626,18 +626,35 @@ func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (co
 	}
 	provider := c.dockerProviderOrNil()
 	validator := cfgvalidator.NewCommandValidator()
+	var (
+		job core.Job
+		err error
+	)
 	switch j.Type {
 	case persist.JobTypeRun:
-		return c.buildPersistedRunJob(name, j, provider)
+		job, err = c.buildPersistedRunJob(name, j, provider)
 	case persist.JobTypeExec:
-		return c.buildPersistedExecJob(name, j, provider)
+		job, err = c.buildPersistedExecJob(name, j, provider)
 	case persist.JobTypeCompose:
-		return buildPersistedComposeJob(name, j, validator)
+		job, err = buildPersistedComposeJob(name, j, validator)
 	case persist.JobTypeLocal, "":
-		return buildPersistedLocalJob(name, j, validator)
+		job, err = buildPersistedLocalJob(name, j, validator)
 	default:
 		return nil, fmt.Errorf("unknown job type %q", j.Type)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// The struct-tag defaults, for every type — the same reason and the
+	// same placement as web.Server.jobFromRequest. Only the run-job
+	// builder applied them, so an API-created exec, compose or local job
+	// came back from the state file with HistoryLimit 0 and retained
+	// every Execution for the lifetime of the daemon: the leak the API
+	// path was just fixed for, reintroduced by the first restart.
+	// creasty/defaults fills initial values only, so the fields the
+	// builders set above are left alone.
+	_ = defaults.Set(job)
+	return job, nil
 }
 
 // buildPersistedRunJob materializes a persist.JobTypeRun into a core.RunJob.
@@ -646,7 +663,12 @@ func (c *DaemonCommand) buildPersistedRunJob(name string, j *persist.Job, provid
 		return nil, fmt.Errorf("docker provider unavailable for run job")
 	}
 	rj := core.NewRunJob(provider)
-	// struct-tag defaults are only applied by the config decoder — apply them here too.
+	// Also applied centrally in persistedJobToScheduler, which is the
+	// only caller. Kept here because RunJob is the one type whose
+	// defaults are load-bearing rather than cosmetic — Delete "true" is
+	// what stops every restored run job leaking its container — and
+	// creasty/defaults fills initial values only, so the second call is
+	// a no-op.
 	_ = defaults.Set(rj)
 	rj.Name = name
 	rj.Schedule = j.Schedule

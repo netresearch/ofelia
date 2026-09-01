@@ -80,13 +80,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no cron entry, so nothing stopped a create from taking its name,
   replacing it with a caller-chosen job and recording `origin: api` —
   after which the update and delete gates no longer recognised it either.
-- **API-created exec, compose and local jobs get the config decoder's
-  struct-tag defaults.** Only run jobs did. Most importantly
-  `HistoryLimit` was 0, which makes the job retain every execution
-  forever — each holding up to two 10 MB output buffers — so a
-  frequently-run API-created job exhausted daemon memory. The other
-  defaults now apply too: `AllowParallel` true, `RetryDelayMs` 1000,
-  and `compose.yml` as a compose job's default file.
+- **BREAKING (runtime behavior):** API-created exec, compose and local
+  jobs get the config decoder's struct-tag defaults. Only run jobs did.
+  Most importantly `HistoryLimit` was 0, which makes the job retain every
+  execution forever — each holding up to two 10 MB output buffers — so a
+  frequently-run API-created job exhausted daemon memory. The same gap
+  existed on the state-file loader, so the leak came back on the first
+  restart even for a job created after the fix; both boundaries apply the
+  defaults now. The other defaults come with it, and one of them changes
+  what an existing setup does: `AllowParallel` is true, so an
+  API-created job whose run outlasts its interval now overlaps itself
+  where the run used to be skipped — the same behavior INI-defined and
+  label-defined jobs have always had. Also `RetryDelayMs` 1000 and
+  `compose.yml` as a compose job's default file.
 - **The health report is served from a snapshot.** `GetHealth` called
   `runtime.ReadMemStats` per request, which stops the world, and `/ready`
   is exempt from rate limiting — an unauthenticated caller could force a
