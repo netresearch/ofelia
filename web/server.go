@@ -359,8 +359,9 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 }
 
 // wrapMiddleware layers the shared middleware chain around mux —
-// compression innermost, then security headers, then the rate limiter,
-// with auth outermost when enabled. Single source for both construction sites
+// compression innermost, then security headers, then auth when enabled,
+// with the rate limiter outermost so a request rejected with 401 has
+// still been counted (#804). Single source for both construction sites
 // (NewServerWithAuth and RegisterHealthEndpoints) so the chain cannot
 // drift between them.
 func (s *Server) wrapMiddleware(mux http.Handler) http.Handler {

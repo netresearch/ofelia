@@ -25,9 +25,10 @@ func newAuthedTestServer(t *testing.T) http.Handler {
 	authCfg := &SecureAuthConfig{
 		Enabled:  true,
 		Username: "operator",
-		// bcrypt of an arbitrary password; these tests never log in.
-		PasswordHash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy",
-		SecretKey:    "0123456789abcdef0123456789abcdef",
+		// The placeholders every other auth test in this package uses;
+		// nothing here ever logs in.
+		PasswordHash: "$2a$04$placeholder",
+		SecretKey:    "test-secret-key-32-bytes-long!!!",
 		TokenExpiry:  24,
 		MaxAttempts:  5,
 	}
