@@ -900,18 +900,19 @@ function outputScrollKey(row, pre) {
   return `${row.dataset.key}\u0000${outputStream(pre)}`;
 }
 
-/* Where each expanded output block is scrolled to. A reader sitting at
-   the bottom is recorded as such rather than by offset: for a run that is
-   still growing, the offset that was the bottom a tick ago is no longer
-   the bottom, and pinning it there would drift away from the newest
-   output. */
+/* Where each expanded output block is scrolled to.
+   The offset is enough — no separate "was at the bottom" state. The table
+   only ever shows COMPLETED runs (SetLastRun runs in jobWrapper.stop,
+   after ctx.Stop), so an expanded run's output is immutable: its
+   scrollHeight after a rebuild is the height it had before, and the saved
+   offset still means the same place. An earlier version carried a
+   'bottom' sentinel for runs that keep growing; no such run is ever in
+   this table, so it could not differ from the offset it replaced. */
 function captureOutputScroll(tbody) {
   const scroll = new Map();
   tbody.querySelectorAll('tr.output-row.open').forEach(row => {
     row.querySelectorAll('pre').forEach(pre => {
-      if (pre.scrollTop === 0) return;
-      const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight <= 2;
-      scroll.set(outputScrollKey(row, pre), atBottom ? 'bottom' : pre.scrollTop);
+      if (pre.scrollTop > 0) scroll.set(outputScrollKey(row, pre), pre.scrollTop);
     });
   });
   return scroll;
@@ -922,8 +923,7 @@ function restoreOutputScroll(tbody, scroll) {
   tbody.querySelectorAll('tr.output-row.open').forEach(row => {
     row.querySelectorAll('pre').forEach(pre => {
       const at = scroll.get(outputScrollKey(row, pre));
-      if (at === undefined) return;
-      pre.scrollTop = at === 'bottom' ? pre.scrollHeight : at;
+      if (at !== undefined) pre.scrollTop = at;
     });
   });
 }

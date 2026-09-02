@@ -8,6 +8,7 @@ package e2e
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -70,7 +71,8 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 		lastOpenPre = `(() => { const p = document.querySelectorAll('#history tbody tr.output-row.open pre'); return p[p.length - 1]; })()`
 	)
 
-	var scrolledTo, maxScroll, afterRefresh float64
+	var scrolledTo, maxScroll, afterRefresh, bottomAfter float64
+	var newestKeyBefore string
 	if err := chromedp.Run(ctx,
 		chromedp.Navigate("http://"+addr+"/"),
 		chromedp.WaitVisible(jobRow, chromedp.ByQuery),
@@ -101,15 +103,42 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 			return pre ? pre.scrollHeight - pre.clientHeight : -1;
 		})()`, &maxScroll),
 
-		// Outlast a full refresh cycle plus another run of the job, so the
-		// history genuinely changes and the table is genuinely rebuilt.
-		chromedp.Sleep(uiRefreshInterval+4*time.Second),
+		// The newest run's key, so the wait below can tell a rebuilt table
+		// from a table nothing happened to.
+		chromedp.Evaluate(`(() => {
+			const all = document.querySelectorAll('`+historyToggle+`');
+			const b = all[all.length - 1];
+			return b ? String(b.dataset.key) : '';
+		})()`, &newestKeyBefore),
+	); err != nil {
+		t.Fatalf("driving the web UI failed: %v", err)
+	}
+
+	// Wait for the table to actually be rebuilt rather than assuming it. A
+	// bare sleep would pass even if the refresh had stopped happening —
+	// precisely the condition this test exists to notice. A different
+	// newest key proves a new execution landed and the poll re-rendered
+	// the table around the block whose scroll position is under test.
+	newestChanged := `(() => {
+		const all = document.querySelectorAll('` + historyToggle + `');
+		const b = all[all.length - 1];
+		return !!b && String(b.dataset.key) !== ` + strconv.Quote(newestKeyBefore) + `;
+	})()`
+	if err := chromedp.Run(ctx,
+		chromedp.Poll(newestChanged, nil, chromedp.WithPollingTimeout(40*time.Second)),
 		chromedp.Evaluate(`(() => {
 			const pre = `+lastOpenPre+`;
 			return pre ? pre.scrollTop : -1;
 		})()`, &afterRefresh),
+		// The bottom as it stands AFTER the rebuild: comparing only against
+		// the old absolute offset would pass even if the block had grown
+		// and the reader were no longer at the end of it.
+		chromedp.Evaluate(`(() => {
+			const pre = `+lastOpenPre+`;
+			return pre ? pre.scrollHeight - pre.clientHeight : -1;
+		})()`, &bottomAfter),
 	); err != nil {
-		t.Fatalf("driving the web UI failed: %v", err)
+		t.Fatalf("waiting for the refresh failed: %v", err)
 	}
 
 	if maxScroll <= 0 {
@@ -128,5 +157,9 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 		t.Fatalf("the refresh moved the log away from where the reader left it: scrollTop was "+
 			"%.0f (bottom, max %.0f) before and %.0f after (issue #808)",
 			scrolledTo, maxScroll, afterRefresh)
+	}
+	if afterRefresh < bottomAfter-tolerance {
+		t.Fatalf("the reader was at the bottom and is no longer: scrollTop %.0f against a "+
+			"post-refresh bottom of %.0f (issue #808)", afterRefresh, bottomAfter)
 	}
 }
