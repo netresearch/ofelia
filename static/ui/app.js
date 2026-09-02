@@ -1103,6 +1103,21 @@ document.getElementById('jobForm').addEventListener('submit', async e => {
   refresh();
 });
 
+/* role="switch" overrides the input's implicit checkbox role, and with it
+   the state the browser would have exposed on its own — so aria-checked
+   has to be maintained by hand or assistive technology reads the switch
+   as permanently off. Every write to .checked goes through here, and the
+   listener below covers the user's own toggles. */
+function setExecSwitch(checked) {
+  const el = document.getElementById('jobExec');
+  if (!el) return;
+  el.checked = checked;
+  el.setAttribute('aria-checked', String(checked));
+}
+document.getElementById('jobExec')?.addEventListener('change', (e) => {
+  e.target.setAttribute('aria-checked', String(e.target.checked));
+});
+
 function editJob(name) {
   const j = jobByName(name);
   if (!j) return;
@@ -1120,8 +1135,7 @@ function editJob(name) {
   document.getElementById('jobContainer').value = j.config.Container || '';
   document.getElementById('jobFile').value = j.config.File || '';
   document.getElementById('jobService').value = j.config.Service || '';
-  const execEl = document.getElementById('jobExec');
-  if (execEl) execEl.checked = j.config.Exec || false;
+  setExecSwitch(j.config.Exec || false);
   editing = name;
   updateFormChrome();
   updateTypeFields();
@@ -1130,9 +1144,11 @@ function editJob(name) {
 
 function resetForm() {
   document.getElementById('jobForm').reset();
+  // form.reset() restores .checked but not the ARIA mirror below.
+  setExecSwitch(false);
   const nameEl = document.getElementById('jobName');
   nameEl.readOnly = false;
-  nameEl.removeAttribute('data-custom-tooltip');
+  delete nameEl.dataset.customTooltip;
   editing = null;
   updateFormChrome();
   updateTypeFields();
