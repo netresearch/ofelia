@@ -24,6 +24,14 @@ type stubGlobalConfig struct{ d time.Duration }
 
 func (s stubGlobalConfig) GlobalMaxRuntime() time.Duration { return s.d }
 
+// ptrGlobalConfig has a pointer receiver, so a nil *ptrGlobalConfig in an
+// `any` satisfies the interface and panics when called — the shape a nil
+// *cli.Config would take. The method body is unreachable in that case and
+// exists only to satisfy the interface.
+type ptrGlobalConfig struct{ d time.Duration }
+
+func (p *ptrGlobalConfig) GlobalMaxRuntime() time.Duration { return p.d }
+
 func runJobFor(t *testing.T, cfg any, requested string) *core.RunJob {
 	t.Helper()
 
@@ -82,6 +90,10 @@ func TestRunJob_WithoutGlobalStaysZero(t *testing.T) {
 		"nil config":            nil,
 		"config without global": struct{ Unrelated int }{},
 		"global of zero":        stubGlobalConfig{d: 0},
+		// A nil pointer stored in an `any` satisfies the interface and
+		// panics on the call. NewServer takes `any` and is exported, so
+		// this arrives from outside the repo, not from the daemon.
+		"typed-nil provider": (*ptrGlobalConfig)(nil),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

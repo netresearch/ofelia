@@ -6,15 +6,7 @@ import (
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/persist"
-	"github.com/netresearch/ofelia/web"
 )
-
-// The web server holds this configuration as `any`, so nothing in the
-// compiler links the two sides of #806 except this line. Without it, a
-// rename of GlobalMaxRuntime would leave the server's type assertion
-// failing at runtime and every API-created run job back on the 24h
-// constant — the exact bug, restored silently.
-var _ web.GlobalMaxRuntimeProvider = (*Config)(nil)
 
 func TestConfig_GlobalMaxRuntime(t *testing.T) {
 	t.Parallel()

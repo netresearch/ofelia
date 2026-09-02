@@ -21,6 +21,7 @@ import (
 	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
+	"github.com/netresearch/ofelia/web"
 )
 
 const (
@@ -576,6 +577,14 @@ func (c *Config) mergeJobsFromDockerContainers() {
 	_ = c.applyAllowListedGlobals(parsed)
 	c.refreshRuntimeKnobsAfterGlobalMerge(prevLogLevel, prevCooldown)
 }
+
+// The web server holds this configuration as `any`, so nothing links the
+// two sides of #806 except this line. It lives here rather than in a test
+// on purpose: in a _test.go file `go build ./...` would still succeed
+// after a rename, the server's type assertion would start failing at
+// runtime, and every API-created run job would be back on the 24h
+// constant -- the bug, restored silently in exactly the builds that ship.
+var _ web.GlobalMaxRuntimeProvider = (*Config)(nil)
 
 // GlobalMaxRuntime reports the operator's `[global] max-runtime`.
 //

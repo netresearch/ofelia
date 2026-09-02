@@ -960,12 +960,24 @@ type GlobalMaxRuntimeProvider interface {
 // when the server was built without a configuration that exposes one --
 // which is every test that passes nil, and any embedder that does not
 // implement the interface.
+//
+// The typed-nil check is not ceremony: config arrives as `any` through an
+// exported constructor, and a nil *cli.Config stored in one satisfies the
+// assertion while panicking on the call. Falling back to zero is what a
+// caller who has no configuration meant.
 func (s *Server) globalMaxRuntime() time.Duration {
 	p, ok := s.config.(GlobalMaxRuntimeProvider)
-	if !ok {
+	if !ok || isNilPointer(p) {
 		return 0
 	}
 	return p.GlobalMaxRuntime()
+}
+
+// isNilPointer reports whether v holds a nil pointer, which a plain
+// `v == nil` misses once the value carries a type.
+func isNilPointer(v any) bool {
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Pointer && rv.IsNil()
 }
 
 func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
