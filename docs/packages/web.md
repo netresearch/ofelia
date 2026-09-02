@@ -10,7 +10,7 @@ The web package provides a comprehensive HTTP interface for Ofelia, including RE
 
 ![The Ofelia web UI, light theme on the left and dark on the right](../images/dashboard-light-dark.png)
 
-The page is rendered server-side from the `html/template` partials in `static/ui/templates/`; the theme follows the system colour scheme unless the header control overrides it.
+The page is rendered server-side from the `html/template` partials in `static/ui/templates/`; the theme follows the system color scheme unless the header control overrides it.
 
 ## Key Components
 

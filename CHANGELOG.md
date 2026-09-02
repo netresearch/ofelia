@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered job: a config job with an empty or malformed schedule holds
   no cron entry, so nothing stopped a create from taking its name,
   replacing it with a caller-chosen job and recording `origin: api` —
-  after which the update and delete gates no longer recognised it either.
+  after which the update and delete gates no longer recognized it either.
 - **BREAKING (runtime behavior):** API-created exec, compose and local
   jobs get the config decoder's struct-tag defaults. Only run jobs did.
   Most importantly `HistoryLimit` was 0, which makes the job retain every

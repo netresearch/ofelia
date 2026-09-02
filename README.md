@@ -160,7 +160,7 @@ server rejects such requests if no Docker client is available.
 
 ![The Ofelia web UI, light theme on the left and dark on the right](docs/images/dashboard-light-dark.png)
 
-The UI follows the system colour scheme by default; the theme control in the
+The UI follows the system color scheme by default; the theme control in the
 header switches between auto, light and dark and remembers the choice.
 
 #### Interactive Setup
