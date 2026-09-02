@@ -840,6 +840,14 @@ function renderHistory() {
       ? Array.from(tbody.querySelectorAll('tr.output-row.open')).map(r => r.dataset.key)
       : []
   );
+  // Preserve where the user had scrolled inside each expanded output. The
+  // rebuild below replaces every <pre>, and a fresh element starts at
+  // scrollTop 0 — so a job that keeps producing runs yanked the reader
+  // back to the top of the log on every 5s tick, which made a long log
+  // impossible to read (#808). Same keying as openOutputs, plus which
+  // stream the block shows, because stdout and stderr each get their own
+  // scroller.
+  const openScroll = tbody.dataset.job === name ? captureOutputScroll(tbody) : new Map();
   tbody.dataset.job = name;
   tbody.innerHTML = '';
   if (historyCache.length === 0) {
@@ -877,6 +885,47 @@ function renderHistory() {
     frag.appendChild(sub);
   });
   tbody.appendChild(frag);
+  restoreOutputScroll(tbody, openScroll);
+}
+
+/* Which stream an output block shows. Used as part of the scroll key so
+   the saved position follows the stream rather than its position in the
+   subrow: a run that has only stderr renders one block at index 0, and
+   keying by index would hand that offset to stdout if the same key ever
+   rendered both. */
+function outputStream(pre) {
+  return pre.classList.contains('stderr') ? 'stderr' : 'stdout';
+}
+function outputScrollKey(row, pre) {
+  return `${row.dataset.key}\u0000${outputStream(pre)}`;
+}
+
+/* Where each expanded output block is scrolled to.
+   The offset is enough — no separate "was at the bottom" state. The table
+   only ever shows COMPLETED runs (SetLastRun runs in jobWrapper.stop,
+   after ctx.Stop), so an expanded run's output is immutable: its
+   scrollHeight after a rebuild is the height it had before, and the saved
+   offset still means the same place. An earlier version carried a
+   'bottom' sentinel for runs that keep growing; no such run is ever in
+   this table, so it could not differ from the offset it replaced. */
+function captureOutputScroll(tbody) {
+  const scroll = new Map();
+  tbody.querySelectorAll('tr.output-row.open').forEach(row => {
+    row.querySelectorAll('pre').forEach(pre => {
+      if (pre.scrollTop > 0) scroll.set(outputScrollKey(row, pre), pre.scrollTop);
+    });
+  });
+  return scroll;
+}
+
+function restoreOutputScroll(tbody, scroll) {
+  if (scroll.size === 0) return;
+  tbody.querySelectorAll('tr.output-row.open').forEach(row => {
+    row.querySelectorAll('pre').forEach(pre => {
+      const at = scroll.get(outputScrollKey(row, pre));
+      if (at !== undefined) pre.scrollTop = at;
+    });
+  });
 }
 
 /* Toggle an output subrow open/closed; the run's own row is highlighted
