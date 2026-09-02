@@ -604,12 +604,38 @@ func (c *Config) registerJob(name string, j core.Job) bool {
 	return true
 }
 
+// registerAllJobs materializes every configured job and hands it to the
+// scheduler, in a fixed order per kind.
+//
+// One method per kind rather than one generic pass: the five prologues
+// genuinely differ — only the Docker-backed kinds take a provider and
+// runtime fields, only run and service inherit the global max-runtime —
+// and the config types embed different core jobs, so a shared interface
+// would have to be invented for the occasion. Splitting keeps each kind
+// readable on its own and leaves this function as what it says it is.
 func (c *Config) registerAllJobs() {
 	provider := c.dockerHandler.GetDockerProvider()
-	rejected := 0
-
 	wm := c.getWebhookManager()
 
+	rejected := c.registerExecJobs(provider, wm) +
+		c.registerRunJobs(provider, wm) +
+		c.registerLocalJobs(wm) +
+		c.registerServiceJobs(provider, wm) +
+		c.registerComposeJobs(wm)
+
+	// One line an operator can act on. Without it the only trace of a rejected
+	// job is a message among the startup noise, while the daemon reports
+	// itself healthy.
+	if rejected > 0 {
+		c.logger.Error("some jobs were not scheduled and will never run",
+			"rejected", rejected, "scheduled", len(c.sh.GetActiveJobs()))
+	}
+}
+
+// Each of the five below returns the number of jobs the scheduler refused.
+
+func (c *Config) registerExecJobs(provider core.DockerProvider, wm *middlewares.WebhookManager) int {
+	rejected := 0
 	for name, j := range c.ExecJobs {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
@@ -623,6 +649,11 @@ func (c *Config) registerAllJobs() {
 			rejected++
 		}
 	}
+	return rejected
+}
+
+func (c *Config) registerRunJobs(provider core.DockerProvider, wm *middlewares.WebhookManager) int {
+	rejected := 0
 	for name, j := range c.RunJobs {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
@@ -639,6 +670,11 @@ func (c *Config) registerAllJobs() {
 			rejected++
 		}
 	}
+	return rejected
+}
+
+func (c *Config) registerLocalJobs(wm *middlewares.WebhookManager) int {
+	rejected := 0
 	for name, j := range c.LocalJobs {
 		_ = defaults.Set(j)
 		j.Name = name
@@ -649,6 +685,11 @@ func (c *Config) registerAllJobs() {
 			rejected++
 		}
 	}
+	return rejected
+}
+
+func (c *Config) registerServiceJobs(provider core.DockerProvider, wm *middlewares.WebhookManager) int {
+	rejected := 0
 	for name, j := range c.ServiceJobs {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
@@ -665,6 +706,11 @@ func (c *Config) registerAllJobs() {
 			rejected++
 		}
 	}
+	return rejected
+}
+
+func (c *Config) registerComposeJobs(wm *middlewares.WebhookManager) int {
+	rejected := 0
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
 		j.Name = name
@@ -675,14 +721,7 @@ func (c *Config) registerAllJobs() {
 			rejected++
 		}
 	}
-
-	// One line an operator can act on. Without it the only trace of a rejected
-	// job is a message among the startup noise, while the daemon reports
-	// itself healthy.
-	if rejected > 0 {
-		c.logger.Error("some jobs were not scheduled and will never run",
-			"rejected", rejected, "scheduled", len(c.sh.GetActiveJobs()))
-	}
+	return rejected
 }
 
 func (c *Config) injectDedup(slack *middlewares.SlackConfig, mail *middlewares.MailConfig) {
