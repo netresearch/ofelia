@@ -366,10 +366,18 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 func (s *Server) wrapMiddleware(mux http.Handler) http.Handler {
 	handler := compressMiddleware(mux)
 	handler = securityHeaders(handler)
-	handler = s.rl.middleware(handler)
 	if s.authConfig != nil && s.authConfig.Enabled {
 		handler = s.authMiddleware(handler)
 	}
+	// The limiter goes outside auth, so a request rejected with 401 has
+	// still been counted. With the order reversed, /api/* token guessing
+	// was the one traffic the limiter never saw: authMiddleware answers
+	// it and returns, so a caller could try tokens without limit while
+	// the same IP was being metered on every static asset. Paths auth
+	// lets through unauthenticated (the page, assets, probes) were
+	// always counted and are unaffected — isOrchestratorProbePath still
+	// exempts /live and /ready from the outer position. See #804.
+	handler = s.rl.middleware(handler)
 	return handler
 }
 
