@@ -92,8 +92,11 @@ const (
 )
 
 // The job-type tokens the API speaks, in jobRequest.Type and in the type
-// field of a job payload. Named because they appear in three switches
-// plus the tests, which is enough occurrences for goconst to ask.
+// field of a job payload. Named because the literals occur in three
+// switches here and again throughout the package's tests, which is
+// enough occurrences for goconst to ask. The tests keep spelling the
+// tokens out on purpose: one written against these constants would
+// follow a wrong rename instead of catching it.
 const (
 	jobTypeRun     = "run"
 	jobTypeExec    = "exec"
