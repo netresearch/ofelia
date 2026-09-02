@@ -200,9 +200,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every static asset it fetched. Measured before the fix, 400
   unauthenticated requests to `/api/jobs` from one address produced 400
   `401`s and no `429` at any point. The limiter now wraps auth from
-  outside. Paths auth lets through unauthenticated — the page, static
-  assets, the orchestrator probes — were always counted and are
-  unaffected, and `/live` and `/ready` stay exempt
+  outside. Nothing else changes: auth only guards `/api/*`, so the
+  rendered page and the static assets were already counted, and the
+  orchestrator probes `/live` and `/ready` were exempt before the move
+  and stay exempt
   ([#804](https://github.com/netresearch/ofelia/issues/804)).
 - **A delete landing mid-update can no longer leave a ghost job.**
   `RemoveJob` drops the cron entry before it takes the scheduler lock, so

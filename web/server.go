@@ -374,10 +374,13 @@ func (s *Server) wrapMiddleware(mux http.Handler) http.Handler {
 	// still been counted. With the order reversed, /api/* token guessing
 	// was the one traffic the limiter never saw: authMiddleware answers
 	// it and returns, so a caller could try tokens without limit while
-	// the same IP was being metered on every static asset. Paths auth
-	// lets through unauthenticated (the page, assets, probes) were
-	// always counted and are unaffected — isOrchestratorProbePath still
-	// exempts /live and /ready from the outer position. See #804.
+	// the same IP was being metered on every static asset it fetched.
+	//
+	// Nothing else changes. authMiddleware only guards /api/*, so the
+	// rendered page and the static assets already passed through it and
+	// were already counted; /live and /ready were exempt before the move
+	// and stay exempt, because isOrchestratorProbePath returns early in
+	// the limiter itself and does so from either position. See #804.
 	handler = s.rl.middleware(handler)
 	return handler
 }
