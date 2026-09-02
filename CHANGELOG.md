@@ -213,6 +213,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reason an edit or delete button is inert lived only in a data
   attribute; the bubble now carries `role="tooltip"` and its anchor
   `aria-describedby` (WCAG 2.2 SC 1.4.13 for the dismissal).
+- **A long log stays where you scrolled it.** Scrolling to the bottom of a
+  run's output threw the reader back to the top on the next 5s refresh,
+  which made a long log effectively unreadable. The refresh rebuilds the
+  history table, so the element that owns the scrollbar was replaced; the
+  scroll offset is now carried across, and a reader sitting at the bottom
+  of a still-growing log stays at the bottom
+  ([#808](https://github.com/netresearch/ofelia/issues/808)).
 - **The Exec-mode switch reports its own state.** `role="switch"` on the
   create/edit form's Exec checkbox overrides the input's implicit role,
   and with it the checked state the browser would otherwise expose — so
