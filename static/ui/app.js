@@ -159,7 +159,7 @@ function statusDot(failed, skipped) {
     orphanWatch.observe(document.body, { childList: true, subtree: true });
     const host = target.closest('dialog[open]') || document.body;
     if (el.parentElement !== host) host.appendChild(el);
-    el.textContent = target.getAttribute('data-custom-tooltip');
+    el.textContent = target.dataset.customTooltip;
     el.classList.add('visible');
     const r = target.getBoundingClientRect();
     el.style.left = '0px';
@@ -293,7 +293,7 @@ function applyTheme(t) {
     document.documentElement.dataset.theme = t;
   }
   themeBtn.textContent = themeText[t];
-  themeBtn.setAttribute('data-custom-tooltip', 'Theme: ' + themeText[t]);
+  themeBtn.dataset.customTooltip = 'Theme: ' + themeText[t];
 }
 themeBtn.addEventListener('click', () => {
   applyTheme(themeCycle[(themeCycle.indexOf(currentTheme) + 1) % themeCycle.length]);
@@ -329,7 +329,7 @@ function applyDensity(d) {
   document.body.classList.toggle('compact', effective === 'compact');
   document.documentElement.classList.remove('compact-early');
   densityBtn.textContent = densityText[d];
-  densityBtn.setAttribute('data-custom-tooltip', 'Density: ' + densityText[d] + (d === 'auto' ? ' (' + effective + ')' : ''));
+  densityBtn.dataset.customTooltip = 'Density: ' + densityText[d] + (d === 'auto' ? ' (' + effective + ')' : '');
 }
 densityBtn.addEventListener('click', () => {
   applyDensity(densityCycle[(densityCycle.indexOf(currentDensity) + 1) % densityCycle.length]);
@@ -417,6 +417,33 @@ const jobSort = createTableSort('jobs', {
   duration: j => j.lastRun?.duration ?? -1
 }, () => renderJobs());
 
+/* One outcome word per run, and the sparkline class that goes with it.
+   Kept as a lookup rather than a chain of ternaries so the two can never
+   describe different states. */
+function runState(r) {
+  if (r.failed) return 'failed';
+  if (r.skipped) return 'skipped';
+  return 'ok';
+}
+const SPARK_CLASS = { failed: 'fail', skipped: 'skip', ok: 'ok' };
+
+/* Where a job came from, phrased for the tooltip on its name. Empty when
+   the origin is unknown — an empty tooltip is omitted by the caller. */
+function originTooltip(origin, configOwned) {
+  if (configOwned) {
+    const source = origin === 'ini' ? 'INI config file' : 'Docker labels';
+    return `Defined in the ${source} — edit or delete it at the source`;
+  }
+  if (!origin) return '';
+  return `Created via the ${origin === 'web' ? 'web UI' : 'API'}`;
+}
+
+/* The show/hide control for a run's output subrow. */
+function outputToggle(key, isOpen) {
+  const label = isOpen ? 'hide' : 'view';
+  return `<button type="button" class="toggle-output" data-action="toggle-output" data-key="${key}">${label}</button>`;
+}
+
 /* ── Jobs table (merged: active + disabled) ── */
 /* The 5s poll fetches everything through the aggregate /api/dashboard
    (one request instead of five — five per tick used to exhaust the
@@ -470,16 +497,16 @@ function setStat(id, value, label, alert, tooltip) {
   card.querySelector('.stat-label').textContent = label;
   card.classList.toggle('alert', Boolean(alert));
   if (tooltip) {
-    card.setAttribute('data-custom-tooltip', tooltip);
+    card.dataset.customTooltip = tooltip;
   } else {
-    card.removeAttribute('data-custom-tooltip');
+    delete card.dataset.customTooltip;
   }
 }
 function updateStats(active, disabled) {
   setStat('statActive', String(active.length),
     'Active' + (disabled.length ? ` · ${disabled.length} paused` : ''), false);
 
-  const failing = active.filter(j => j.lastRun && j.lastRun.failed);
+  const failing = active.filter(j => j.lastRun?.failed);
   // The tooltip must be re-passed on every tick: setStat removes the
   // attribute when none is given, which would strip the one the template
   // sets after the first poll.
@@ -553,7 +580,7 @@ function renderJobs() {
   // only, mirroring how the Failing stat itself is counted.
   const searchActive = jobSearch.active(); // once per render, not per row
   const visible = jobSort.apply(jobsCache.filter(j =>
-    (!failingOnly || (!j._disabled && j.lastRun && j.lastRun.failed)) &&
+    (!failingOnly || (!j._disabled && j.lastRun?.failed)) &&
     (!searchActive ||
       jobSearch.matches(
         j.name, j.command || '', j.schedule || '',
@@ -599,9 +626,7 @@ function renderJobs() {
     // names the job's origin — and for config-owned jobs (which have no
     // delete button) where deletion actually happens.
     const configOwned = j.origin === 'ini' || j.origin === 'label';
-    const originTitle = configOwned
-      ? `Defined in the ${j.origin === 'ini' ? 'INI config file' : 'Docker labels'} — edit or delete it at the source`
-      : (j.origin ? `Created via the ${j.origin === 'web' ? 'web UI' : 'API'}` : '');
+    const originTitle = originTooltip(j.origin, configOwned);
     const nameText = j._disabled ? `<s class="disabled-text">${eName}</s>` : eName;
     const name = `<button type="button" class="job-name" data-action="history" data-job="${eName}"${originTitle ? ` data-custom-tooltip="${escapeHtml(originTitle)}"` : ''}>${nameText}</button>`;
     const eSched = escapeHtml(j.schedule);
@@ -610,9 +635,8 @@ function renderJobs() {
 
     // Result sparkline: one square per recent run, oldest first.
     const spark = (j.recentRuns || []).map(r => {
-      const cls = r.failed ? 'fail' : (r.skipped ? 'skip' : 'ok');
-      const state = r.failed ? 'failed' : (r.skipped ? 'skipped' : 'ok');
-      return `<i class="${cls}" data-custom-tooltip="${escapeHtml(formatTime(r.date))} · ${state}"></i>`;
+      const state = runState(r);
+      return `<i class="${SPARK_CLASS[state]}" data-custom-tooltip="${escapeHtml(formatTime(r.date))} · ${state}"></i>`;
     }).join('');
     const sparkCell = spark ? `<span class="spark">${spark}</span>` : '';
 
@@ -766,7 +790,7 @@ async function loadHistory(name) {
     const resp = await fetch(`/api/jobs/${encodeURIComponent(name)}/history`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     runs = await resp.json();
-  } catch (err) {
+  } catch {
     // An outdated request's failure must not paint an error state on
     // top of history a newer response (direct or rider) has already
     // painted — mirror the success path's staleness check below.
@@ -823,8 +847,7 @@ function renderHistory() {
     const hasOut = stdout || stderr;
     const key = escapeHtml(String(e.date));
     const isOpen = openOutputs.has(String(e.date));
-    const output = hasOut ?
-      `<button type="button" class="toggle-output" data-action="toggle-output" data-key="${key}">${isOpen ? 'hide' : 'view'}</button>` : '';
+    const output = hasOut ? outputToggle(key, isOpen) : '';
     if (isOpen) row.classList.add('selected');
     row.innerHTML = `<td>${dot}</td><td>${escapeHtml(formatTime(e.date))}</td><td>${formatDuration(e.duration)}</td>` +
       `<td class="wrap">${err}</td><td>${output}</td>`;
@@ -854,7 +877,7 @@ document.querySelector('#history tbody').addEventListener('click', (e) => {
   if (!btn) return;
   const row = btn.closest('tr');
   const sub = row.nextElementSibling;
-  if (!sub || !sub.classList.contains('output-row')) return;
+  if (!sub?.classList.contains('output-row')) return;
   const open = sub.classList.toggle('open');
   row.classList.toggle('selected', open);
   btn.textContent = open ? 'hide' : 'view';
@@ -1103,6 +1126,21 @@ document.getElementById('jobForm').addEventListener('submit', async e => {
   refresh();
 });
 
+/* role="switch" overrides the input's implicit checkbox role, and with it
+   the state the browser would have exposed on its own — so aria-checked
+   has to be maintained by hand or assistive technology reads the switch
+   as permanently off. Every write to .checked goes through here, and the
+   listener below covers the user's own toggles. */
+function setExecSwitch(checked) {
+  const el = document.getElementById('jobExec');
+  if (!el) return;
+  el.checked = checked;
+  el.setAttribute('aria-checked', String(checked));
+}
+document.getElementById('jobExec')?.addEventListener('change', (e) => {
+  e.target.setAttribute('aria-checked', String(e.target.checked));
+});
+
 function editJob(name) {
   const j = jobByName(name);
   if (!j) return;
@@ -1111,7 +1149,7 @@ function editJob(name) {
   // The API cannot rename a job; an editable name would silently create
   // a duplicate on submit.
   nameEl.readOnly = true;
-  nameEl.setAttribute('data-custom-tooltip', 'Job name cannot be changed');
+  nameEl.dataset.customTooltip = 'Job name cannot be changed';
   const typeSel = document.getElementById('jobType');
   typeSel.value = Array.from(typeSel.options).map(o=>o.value).includes(j.type) ? j.type : 'local';
   document.getElementById('jobSchedule').value = j.schedule;
@@ -1120,8 +1158,7 @@ function editJob(name) {
   document.getElementById('jobContainer').value = j.config.Container || '';
   document.getElementById('jobFile').value = j.config.File || '';
   document.getElementById('jobService').value = j.config.Service || '';
-  const execEl = document.getElementById('jobExec');
-  if (execEl) execEl.checked = j.config.Exec || false;
+  setExecSwitch(j.config.Exec || false);
   editing = name;
   updateFormChrome();
   updateTypeFields();
@@ -1130,9 +1167,11 @@ function editJob(name) {
 
 function resetForm() {
   document.getElementById('jobForm').reset();
+  // form.reset() restores .checked but not the ARIA mirror below.
+  setExecSwitch(false);
   const nameEl = document.getElementById('jobName');
   nameEl.readOnly = false;
-  nameEl.removeAttribute('data-custom-tooltip');
+  delete nameEl.dataset.customTooltip;
   editing = null;
   updateFormChrome();
   updateTypeFields();
@@ -1259,8 +1298,9 @@ async function refresh() {
     }
     if (!resp.ok) return; // transient failure: keep showing the last state
     text = await resp.text();
-  } catch (err) {
-    return; // network drop (daemon restart, offline): keep the last state
+  } catch {
+    // Network drop (daemon restart, offline): keep the last state.
+    return;
   }
   if (seq <= adoptedSeq) return; // outpaced while the body streamed
   authWarned = false;
@@ -1323,5 +1363,5 @@ document.addEventListener('visibilitychange', () => {
 
 // Build version in the footer; fetched once, /health is auth-exempt.
 fetch('/health').then(r => r.json()).then(d => {
-  if (d && d.version) document.getElementById('footer-version').textContent = d.version;
+  if (d?.version) document.getElementById('footer-version').textContent = d.version;
 }).catch((err) => {console.error('Failed to fetch health:', err);});

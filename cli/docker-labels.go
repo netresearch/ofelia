@@ -623,9 +623,16 @@ func markJobSource[J interface{ SetJobSource(JobSource) }](m map[string]J, src J
 	}
 }
 
+// Label parameters that accept a JSON array. Named because each appears
+// both in the list-valued switch below and in the canonical-key table.
+const (
+	labelParamEnvFile = "env-file"
+	labelParamEnvFrom = "env-from"
+)
+
 func setJobParam(params map[string]any, paramName, paramVal string) {
 	switch strings.ToLower(paramName) {
-	case "volume", "environment", "volumes-from", "depends-on", "on-success", "on-failure", "env-file", "env-from":
+	case "volume", "environment", "volumes-from", "depends-on", "on-success", "on-failure", labelParamEnvFile, labelParamEnvFrom:
 		arr := []string{} // allow providing JSON arr of volume mounts or dependency lists
 		if err := json.Unmarshal([]byte(paramVal), &arr); err == nil {
 			params[paramName] = arr
@@ -769,9 +776,9 @@ func filterJobsWithHostEscalation(jobs map[string]map[string]any, jobType string
 // same fields), so the strip must catch every variant, not just the
 // canonical lowercase-kebab spelling. See GHSA-h7m7-v83x-vfp3.
 var labelHostEscalationStripKeys = map[string]string{
-	normalizeKey("privileged"): "privileged",
-	normalizeKey("env-file"):   "env-file",
-	normalizeKey("env-from"):   "env-from",
+	normalizeKey("privileged"):      "privileged",
+	normalizeKey(labelParamEnvFile): labelParamEnvFile,
+	normalizeKey(labelParamEnvFrom): labelParamEnvFrom,
 }
 
 // stripLabelHostEscalationKeys removes the privilege-bearing keys

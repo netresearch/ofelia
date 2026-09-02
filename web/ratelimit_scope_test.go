@@ -63,13 +63,14 @@ func TestRateLimiterScope(t *testing.T) {
 	// The orchestrator probes must never see 429, even from an
 	// exhausted IP.
 	for _, path := range []string{"/ready", "/live"} {
-		if code := probe(path); code == http.StatusTooManyRequests {
+		if probe(path) == http.StatusTooManyRequests {
 			t.Fatalf("orchestrator probe %s rate-limited", path)
 		}
 	}
 
-	// The health endpoints are expensive (ReadMemStats stops the world)
-	// and must stay inside the budget.
+	// The health endpoints answer with the full report — every check, the
+	// version, the goroutine count — which is both more work per request
+	// and more than a probe needs to know, so they stay inside the budget.
 	for _, path := range []string{"/health", "/healthz"} {
 		if code := probe(path); code != http.StatusTooManyRequests {
 			t.Fatalf("%s is exempt from rate limiting, got %d", path, code)
