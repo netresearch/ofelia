@@ -679,6 +679,16 @@ func (c *DaemonCommand) buildPersistedRunJob(name string, j *persist.Job, provid
 	if err != nil {
 		return nil, fmt.Errorf("job %q: %w", name, err)
 	}
+	// The same inheritance web.Server.newRunJobFromRequest applies when
+	// the job is created. It has to be repeated here rather than resolved
+	// once and persisted: the state file keeps what the caller asked for,
+	// so a job that named no bound picks up whatever the global says at
+	// the next start, exactly as an INI job does. Without this, the first
+	// restart would silently move every such job back to the 24h constant
+	// (#806).
+	if maxRuntime == 0 && c.config != nil {
+		maxRuntime = c.config.GlobalMaxRuntime()
+	}
 	rj.MaxRuntime = maxRuntime
 	return rj, nil
 }

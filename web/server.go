@@ -677,16 +677,17 @@ type jobRequest struct {
 	Service   string `json:"service,omitempty"`
 	ExecFlag  bool   `json:"exec,omitempty"`
 	// MaxRuntime is a Go duration string (e.g. "30m"), run-jobs only —
-	// see core.ParseMaxRuntime. Empty means "no per-job override", and
-	// the job then falls back to the scheduler's 24h default
-	// (defaultJobMaxRuntime). "0s" is equivalent to omitting it: it is
-	// not a way to ask for no bound.
+	// see core.ParseMaxRuntime. Empty means "no per-job override": the
+	// job then inherits `[global] max-runtime`, and only falls through
+	// to the scheduler's 24h default (defaultJobMaxRuntime) when there
+	// is no global either. "0s" is equivalent to omitting it: it is not
+	// a way to ask for no bound.
 	//
-	// Note this is NOT the same fallback a config.ini [job-run] section
-	// gets: an INI or label run-job with no per-job max-runtime inherits
-	// `[global] max-runtime` first (cli/config.go, registerRunJobs), and
-	// only reaches the 24h default when the global is unset too. An
-	// API-created job never sees the global — issue #806.
+	// That is the same ladder a config.ini [job-run] section climbs
+	// (cli/config.go, registerAllJobs). It used to stop one rung short
+	// here — an API-created job never saw the global, so an operator who
+	// set one got it for INI run jobs and 24h for API ones — which was
+	// issue #806.
 	MaxRuntime string `json:"maxRuntime,omitempty"`
 }
 
@@ -944,6 +945,29 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(status)
 }
 
+// GlobalMaxRuntimeProvider is satisfied by the configuration the daemon
+// hands NewServer. The server holds that configuration as `any` to keep
+// this package from importing cli, so this is how an API-created run job
+// reaches `[global] max-runtime`.
+//
+// Implemented by *cli.Config; cli asserts the link at compile time so a
+// rename cannot quietly reduce this to the nil case.
+type GlobalMaxRuntimeProvider interface {
+	GlobalMaxRuntime() time.Duration
+}
+
+// globalMaxRuntime returns the operator's `[global] max-runtime`, or zero
+// when the server was built without a configuration that exposes one --
+// which is every test that passes nil, and any embedder that does not
+// implement the interface.
+func (s *Server) globalMaxRuntime() time.Duration {
+	p, ok := s.config.(GlobalMaxRuntimeProvider)
+	if !ok {
+		return 0
+	}
+	return p.GlobalMaxRuntime()
+}
+
 func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 	if s.provider == nil {
 		return nil, fmt.Errorf("docker provider unavailable for run job")
@@ -957,6 +981,15 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 	maxRuntime, err := core.ParseMaxRuntime(req.MaxRuntime)
 	if err != nil {
 		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
+	}
+	// Same rule registerAllJobs applies to an INI run job: a job that
+	// named no bound of its own inherits the operator's global, and only
+	// falls through to the scheduler's 24h constant when there is no
+	// global either. "0s" parses to zero and therefore inherits too,
+	// which is what makes it equivalent to omitting the field (#789)
+	// rather than a way to ask for no bound. See #806.
+	if maxRuntime == 0 {
+		maxRuntime = s.globalMaxRuntime()
 	}
 	j.MaxRuntime = maxRuntime
 	return j, nil

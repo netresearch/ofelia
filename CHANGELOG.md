@@ -205,6 +205,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   orchestrator probes `/live` and `/ready` were exempt before the move
   and stay exempt
   ([#804](https://github.com/netresearch/ofelia/issues/804)).
+- **API-created run jobs inherit `[global] max-runtime`.** An INI
+  `[job-run]` section with no per-job bound picks up the operator's
+  global at config load; a run job created over the API skipped that
+  rung and landed on the scheduler's 24h constant, so one daemon applied
+  two different bounds to the same job type depending on where the job
+  came from. The divergence was invisible until an operator overrode the
+  global, since the constant and the documented default are both 24h —
+  which is to say it appeared exactly when someone had expressed an
+  intent. Creation and restore-from-state-file both inherit now, and the
+  state file keeps what the caller asked for rather than the resolved
+  value, so a changed global reaches restored jobs at the next start the
+  way it reaches INI ones. `"0s"` still means the same as omitting the
+  field ([#806](https://github.com/netresearch/ofelia/issues/806)).
 - **A delete landing mid-update can no longer leave a ghost job.**
   `RemoveJob` drops the cron entry before it takes the scheduler lock, so
   it can complete inside `UpdateJob`'s window; the update then reinserted

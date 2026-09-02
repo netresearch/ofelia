@@ -577,6 +577,20 @@ func (c *Config) mergeJobsFromDockerContainers() {
 	c.refreshRuntimeKnobsAfterGlobalMerge(prevLogLevel, prevCooldown)
 }
 
+// GlobalMaxRuntime reports the operator's `[global] max-runtime`.
+//
+// It exists for the web server, which holds this configuration as `any`
+// and reads it through web.GlobalMaxRuntimeProvider so an API-created run
+// job inherits the same bound an INI one gets from registerAllJobs (#806).
+//
+// Takes the read lock: the label reconcile writes Global under c.mu while
+// the web server serves requests.
+func (c *Config) GlobalMaxRuntime() time.Duration {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Global.MaxRuntime
+}
+
 // mergeJobs copies jobs from src into dst while respecting INI precedence.
 func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind string) {
 	for name, j := range src {
