@@ -199,43 +199,53 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ip := extractRemoteIP(r.RemoteAddr)
-		// Only trust forwarded headers from trusted proxies (loopback or configured CIDRs)
-		if isTrustedProxy(ip, rl.trustedProxies) {
-			if xForwarded := r.Header.Get("X-Forwarded-For"); xForwarded != "" {
-				ip = strings.TrimSpace(strings.Split(xForwarded, ",")[0])
-			} else if xRealIP := r.Header.Get("X-Real-IP"); xRealIP != "" {
-				ip = xRealIP
-			}
-		}
-
-		rl.mu.Lock()
-		now := time.Now()
-
-		// Get or create request history for this IP
-		if rl.requests[ip] == nil {
-			rl.requests[ip] = []time.Time{}
-		}
-
-		// Filter out old requests
-		var valid []time.Time
-		for _, t := range rl.requests[ip] {
-			if now.Sub(t) < rl.window {
-				valid = append(valid, t)
-			}
-		}
-
-		// Check if limit exceeded
-		if len(valid) >= rl.limit {
-			rl.mu.Unlock()
+		if !rl.allow(rl.clientIP(r), time.Now()) {
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
 
-		// Add current request
-		rl.requests[ip] = append(valid, now)
-		rl.mu.Unlock()
-
 		next.ServeHTTP(w, r)
 	})
+}
+
+// clientIP resolves the address the limiter counts against. Forwarded
+// headers are honored only when the direct peer is a trusted proxy —
+// otherwise any client could spoof itself a fresh budget per request by
+// sending its own X-Forwarded-For.
+func (rl *rateLimiter) clientIP(r *http.Request) string {
+	ip := extractRemoteIP(r.RemoteAddr)
+	if !isTrustedProxy(ip, rl.trustedProxies) {
+		return ip
+	}
+	if xForwarded := r.Header.Get("X-Forwarded-For"); xForwarded != "" {
+		return strings.TrimSpace(strings.Split(xForwarded, ",")[0])
+	}
+	if xRealIP := r.Header.Get("X-Real-IP"); xRealIP != "" {
+		return xRealIP
+	}
+	return ip
+}
+
+// allow reports whether a request from ip fits inside the window, and
+// records it when it does. Entries older than the window are dropped on
+// the way past, which is what keeps the per-IP slice bounded.
+//
+// A rejected request is deliberately not recorded: the limit is on
+// requests admitted per window, so a client that keeps hammering does
+// not push its own window forward.
+func (rl *rateLimiter) allow(ip string, now time.Time) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	valid := make([]time.Time, 0, len(rl.requests[ip]))
+	for _, t := range rl.requests[ip] {
+		if now.Sub(t) < rl.window {
+			valid = append(valid, t)
+		}
+	}
+	if len(valid) >= rl.limit {
+		return false
+	}
+	rl.requests[ip] = append(valid, now)
+	return true
 }
