@@ -103,14 +103,23 @@ func (j *RunJob) GetMaxRuntime() time.Duration {
 	return j.MaxRuntime
 }
 
-// ParseMaxRuntime parses the `max-runtime` duration string used by the
-// `[job-run]` config section, Docker labels, and the `maxRuntime` field of
-// the API's jobRequest — a single parser for all three input paths keeps
-// their validation from drifting apart (see issue #745, where the API and
-// state-file reconstruction paths silently disagreed on RunJob.Delete).
+// ParseMaxRuntime parses a `max-runtime` duration string into the value
+// RunJob.MaxRuntime carries.
+//
+// Its callers are the two paths that build a run job from untyped input:
+// web.newRunJobFromRequest, for the API's `maxRuntime` field, and
+// cli.buildPersistedRunJob, for the same value coming back out of the
+// state file. One parser for both keeps them from drifting apart the way
+// the API and state-file paths once disagreed on RunJob.Delete (PR #745).
+// The `[job-run]` config section and Docker labels do NOT come through
+// here — gcfg and mapstructure decode `max-runtime` into the field
+// directly.
+//
 // An empty string returns a zero Duration, meaning "no per-job override";
 // callers wire that straight into RunJob.MaxRuntime, whose own zero value
-// already carries that same meaning (see GetMaxRuntime).
+// already carries that same meaning (see GetMaxRuntime). "0s" parses to
+// the same zero and therefore means the same thing — it does not mean
+// "unlimited".
 func ParseMaxRuntime(s string) (time.Duration, error) {
 	if s == "" {
 		return 0, nil

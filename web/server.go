@@ -91,6 +91,17 @@ const (
 	msgJobNotFound        = "job not found"
 )
 
+// The job-type tokens the API speaks, in jobRequest.Type and in the type
+// field of a job payload. Named because they appear in three switches
+// plus the tests, which is enough occurrences for goconst to ask.
+const (
+	jobTypeRun     = "run"
+	jobTypeExec    = "exec"
+	jobTypeLocal   = "local"
+	jobTypeService = "service"
+	jobTypeCompose = "compose"
+)
+
 // isConfigOwned reports whether `origin` denotes a job whose
 // authoritative source is the INI file or Docker labels. Such jobs
 // are NOT deletable via the API and NOT persisted in the state file
@@ -491,13 +502,13 @@ func requestOrigin(r *http.Request) string {
 func jobType(j core.Job) string {
 	switch j.(type) {
 	case *core.RunJob:
-		return "run"
+		return jobTypeRun
 	case *core.ExecJob:
-		return "exec"
+		return jobTypeExec
 	case *core.LocalJob:
-		return "local"
+		return jobTypeLocal
 	case *core.RunServiceJob:
-		return "service"
+		return jobTypeService
 	case *core.ComposeJob:
 		return "compose"
 	default:
@@ -651,8 +662,10 @@ type jobRequest struct {
 	Service   string `json:"service,omitempty"`
 	ExecFlag  bool   `json:"exec,omitempty"`
 	// MaxRuntime is a Go duration string (e.g. "30m"), run-jobs only —
-	// see core.ParseMaxRuntime. Empty means "no per-job override",
-	// same as omitting `max-runtime` from a config.ini [job-run] section.
+	// see core.ParseMaxRuntime. Empty means "no per-job override", same
+	// as omitting `max-runtime` from a config.ini [job-run] section, and
+	// the job then falls back to the scheduler's 24h default. "0s" is
+	// equivalent to omitting it: it is not a way to ask for no bound.
 	MaxRuntime string `json:"maxRuntime,omitempty"`
 }
 
@@ -783,7 +796,7 @@ func (s *Server) persistJob(name string, req *jobRequest) error {
 	}
 	j := persist.Job{Schedule: req.Schedule, Command: req.Command}
 	switch req.Type {
-	case "run":
+	case jobTypeRun:
 		j.Type = persist.JobTypeRun
 		j.Image = req.Image
 		j.Container = req.Container
@@ -991,13 +1004,13 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 		err error
 	)
 	switch req.Type {
-	case "run":
+	case jobTypeRun:
 		job, err = s.newRunJobFromRequest(req)
-	case "exec":
+	case jobTypeExec:
 		job, err = s.newExecJobFromRequest(req)
-	case "compose":
+	case jobTypeCompose:
 		job, err = newComposeJobFromRequest(req)
-	case "", "local":
+	case "", jobTypeLocal:
 		job, err = newLocalJobFromRequest(req)
 	default:
 		return nil, fmt.Errorf("unknown job type %q", req.Type)
