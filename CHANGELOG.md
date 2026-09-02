@@ -217,8 +217,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run's output threw the reader back to the top on the next 5s refresh,
   which made a long log effectively unreadable. The refresh rebuilds the
   history table, so the element that owns the scrollbar was replaced; the
-  scroll offset is now carried across, and a reader sitting at the bottom
-  of a still-growing log stays at the bottom
+  scroll offset is now carried across the rebuild
   ([#808](https://github.com/netresearch/ofelia/issues/808)).
 - **The Exec-mode switch reports its own state.** `role="switch"` on the
   create/edit form's Exec checkbox overrides the input's implicit role,
