@@ -662,10 +662,16 @@ type jobRequest struct {
 	Service   string `json:"service,omitempty"`
 	ExecFlag  bool   `json:"exec,omitempty"`
 	// MaxRuntime is a Go duration string (e.g. "30m"), run-jobs only —
-	// see core.ParseMaxRuntime. Empty means "no per-job override", same
-	// as omitting `max-runtime` from a config.ini [job-run] section, and
-	// the job then falls back to the scheduler's 24h default. "0s" is
-	// equivalent to omitting it: it is not a way to ask for no bound.
+	// see core.ParseMaxRuntime. Empty means "no per-job override", and
+	// the job then falls back to the scheduler's 24h default
+	// (defaultJobMaxRuntime). "0s" is equivalent to omitting it: it is
+	// not a way to ask for no bound.
+	//
+	// Note this is NOT the same fallback a config.ini [job-run] section
+	// gets: an INI or label run-job with no per-job max-runtime inherits
+	// `[global] max-runtime` first (cli/config.go, registerRunJobs), and
+	// only reaches the 24h default when the global is unset too. An
+	// API-created job never sees the global — issue #806.
 	MaxRuntime string `json:"maxRuntime,omitempty"`
 }
 
