@@ -213,6 +213,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reason an edit or delete button is inert lived only in a data
   attribute; the bubble now carries `role="tooltip"` and its anchor
   `aria-describedby` (WCAG 2.2 SC 1.4.13 for the dismissal).
+- **The Exec-mode switch reports its own state.** `role="switch"` on the
+  create/edit form's Exec checkbox overrides the input's implicit role,
+  and with it the checked state the browser would otherwise expose — so
+  assistive technology read the switch as permanently off however the
+  user set it. `aria-checked` is now declared and kept in sync
+  ([#811](https://github.com/netresearch/ofelia/pull/811)).
 
 ## [0.30.0] - 2026-08-26
 
