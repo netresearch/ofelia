@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   remain the default.
 - **Build version in the footer.** Fetched once from the auth-exempt `/health`
   endpoint; release builds show the goreleaser version, dev builds show `dev`.
+- **`POST /api/jobs/create`/`update` accept `maxRuntime` for `type=run` jobs.** Previously the only way to bound how long an API-created run-job could execute was the scheduler's fixed 24h default (`defaultJobMaxRuntime`, issue #638) — `config.ini`/label jobs could already set a per-job `max-runtime`, but the API had no field for it. `maxRuntime` takes a Go duration string (e.g. `"30m"`), mirrors the `[job-run] max-runtime` syntax, and round-trips through the state file so a persisted job keeps its override across daemon restarts ([#789](https://github.com/netresearch/ofelia/pull/789)). `"0s"` is equivalent to omitting the field: it falls back to the 24h default rather than meaning "unlimited".
 
 ### Changed
 

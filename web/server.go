@@ -91,6 +91,20 @@ const (
 	msgJobNotFound        = "job not found"
 )
 
+// The job-type tokens the API speaks, in jobRequest.Type and in the type
+// field of a job payload. Named because the literals occur in three
+// switches here and again throughout the package's tests, which is
+// enough occurrences for goconst to ask. The tests keep spelling the
+// tokens out on purpose: one written against these constants would
+// follow a wrong rename instead of catching it.
+const (
+	jobTypeRun     = "run"
+	jobTypeExec    = "exec"
+	jobTypeLocal   = "local"
+	jobTypeService = "service"
+	jobTypeCompose = "compose"
+)
+
 // isConfigOwned reports whether `origin` denotes a job whose
 // authoritative source is the INI file or Docker labels. Such jobs
 // are NOT deletable via the API and NOT persisted in the state file
@@ -491,15 +505,15 @@ func requestOrigin(r *http.Request) string {
 func jobType(j core.Job) string {
 	switch j.(type) {
 	case *core.RunJob:
-		return "run"
+		return jobTypeRun
 	case *core.ExecJob:
-		return "exec"
+		return jobTypeExec
 	case *core.LocalJob:
-		return "local"
+		return jobTypeLocal
 	case *core.RunServiceJob:
-		return "service"
+		return jobTypeService
 	case *core.ComposeJob:
-		return "compose"
+		return jobTypeCompose
 	default:
 		t := reflect.TypeOf(j)
 		if t.Kind() == reflect.Pointer {
@@ -650,6 +664,18 @@ type jobRequest struct {
 	File      string `json:"file,omitempty"`
 	Service   string `json:"service,omitempty"`
 	ExecFlag  bool   `json:"exec,omitempty"`
+	// MaxRuntime is a Go duration string (e.g. "30m"), run-jobs only —
+	// see core.ParseMaxRuntime. Empty means "no per-job override", and
+	// the job then falls back to the scheduler's 24h default
+	// (defaultJobMaxRuntime). "0s" is equivalent to omitting it: it is
+	// not a way to ask for no bound.
+	//
+	// Note this is NOT the same fallback a config.ini [job-run] section
+	// gets: an INI or label run-job with no per-job max-runtime inherits
+	// `[global] max-runtime` first (cli/config.go, registerRunJobs), and
+	// only reaches the 24h default when the global is unset too. An
+	// API-created job never sees the global — issue #806.
+	MaxRuntime string `json:"maxRuntime,omitempty"`
 }
 
 // validateJobName checks that a job name is non-empty, not too long, and does
@@ -779,19 +805,20 @@ func (s *Server) persistJob(name string, req *jobRequest) error {
 	}
 	j := persist.Job{Schedule: req.Schedule, Command: req.Command}
 	switch req.Type {
-	case "run":
+	case jobTypeRun:
 		j.Type = persist.JobTypeRun
 		j.Image = req.Image
 		j.Container = req.Container
-	case "exec":
+		j.MaxRuntime = req.MaxRuntime
+	case jobTypeExec:
 		j.Type = persist.JobTypeExec
 		j.Container = req.Container
-	case "compose":
+	case jobTypeCompose:
 		j.Type = persist.JobTypeCompose
 		j.File = req.File
 		j.Service = req.Service
 		j.Exec = req.ExecFlag
-	case "", "local":
+	case "", jobTypeLocal:
 		j.Type = persist.JobTypeLocal
 	default:
 		return fmt.Errorf("unknown job type %q", req.Type)
@@ -915,6 +942,11 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 	j.Command = req.Command
 	j.Image = req.Image
 	j.Container = req.Container
+	maxRuntime, err := core.ParseMaxRuntime(req.MaxRuntime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
+	}
+	j.MaxRuntime = maxRuntime
 	return j, nil
 }
 
@@ -981,13 +1013,13 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 		err error
 	)
 	switch req.Type {
-	case "run":
+	case jobTypeRun:
 		job, err = s.newRunJobFromRequest(req)
-	case "exec":
+	case jobTypeExec:
 		job, err = s.newExecJobFromRequest(req)
-	case "compose":
+	case jobTypeCompose:
 		job, err = newComposeJobFromRequest(req)
-	case "", "local":
+	case "", jobTypeLocal:
 		job, err = newLocalJobFromRequest(req)
 	default:
 		return nil, fmt.Errorf("unknown job type %q", req.Type)
