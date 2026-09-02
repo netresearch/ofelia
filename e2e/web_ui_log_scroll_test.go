@@ -29,6 +29,8 @@ import (
 // between ticks — a run that never changes would be skipped by the render
 // guard and would prove nothing.
 func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
+	t.Parallel()
+
 	browserPath := chromeExecutable()
 	if browserPath == "" {
 		t.Skip("no Chrome/Chromium executable found")
@@ -38,7 +40,7 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 	configBody := `
 [job-local "chatty"]
   schedule = @every 3s
-  command = sh -c 'seq 1 300 | sed "s/^/log line /"'
+  command = sh -c 'seq 1 300 | sed "s/^/log line /" && seq 1 300 | sed "s/^/err line /" 1>&2'
 `
 	configPath := writeConfig(t, configBody)
 	daemon := startDaemon(t, configPath, "--enable-web", "--web-address="+addr)
@@ -62,7 +64,10 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 	const (
 		jobRow        = `#jobs tbody tr[data-job-name="chatty"] button.job-name`
 		historyToggle = `#history tbody button[data-action="toggle-output"]`
-		openOutput    = `#history tbody tr.output-row.open pre`
+		// The stderr block, i.e. the second <pre> of the expanded subrow —
+		// the one whose scroll key would be wrong if the state were keyed by
+		// position instead of by stream.
+		lastOpenPre = `(() => { const p = document.querySelectorAll('#history tbody tr.output-row.open pre'); return p[p.length - 1]; })()`
 	)
 
 	var scrolledTo, maxScroll, afterRefresh float64
@@ -72,18 +77,27 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 		chromedp.Click(jobRow, chromedp.ByQuery),
 		chromedp.WaitVisible(historyToggle, chromedp.ByQuery),
 
-		// Expand a run's output, then scroll it to the bottom the way the
-		// reporter did.
-		chromedp.Evaluate(`document.querySelector('`+historyToggle+`').click(); true`, nil),
+		// Expand the NEWEST run, not the first: the history is capped, so
+		// the oldest row is the one about to be evicted, and picking it
+		// makes the test flaky on a slow runner for reasons that have
+		// nothing to do with scrolling. Same rationale as
+		// TestE2E_WebUI_ExpandedOutputSurvivesRefresh.
+		chromedp.Evaluate(`(() => {
+			const all = document.querySelectorAll('`+historyToggle+`');
+			const btn = all[all.length - 1];
+			if (!btn) return false;
+			btn.click();
+			return true;
+		})()`, nil),
 		chromedp.Sleep(500*time.Millisecond),
 		chromedp.Evaluate(`(() => {
-			const pre = document.querySelector('`+openOutput+`');
+			const pre = `+lastOpenPre+`;
 			if (!pre) return -1;
 			pre.scrollTop = pre.scrollHeight;
 			return pre.scrollTop;
 		})()`, &scrolledTo),
 		chromedp.Evaluate(`(() => {
-			const pre = document.querySelector('`+openOutput+`');
+			const pre = `+lastOpenPre+`;
 			return pre ? pre.scrollHeight - pre.clientHeight : -1;
 		})()`, &maxScroll),
 
@@ -91,7 +105,7 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 		// history genuinely changes and the table is genuinely rebuilt.
 		chromedp.Sleep(uiRefreshInterval+4*time.Second),
 		chromedp.Evaluate(`(() => {
-			const pre = document.querySelector('`+openOutput+`');
+			const pre = `+lastOpenPre+`;
 			return pre ? pre.scrollTop : -1;
 		})()`, &afterRefresh),
 	); err != nil {
@@ -105,8 +119,14 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 	if scrolledTo <= 0 {
 		t.Fatalf("could not scroll the output block (scrollTop %.0f)", scrolledTo)
 	}
-	if afterRefresh <= 0 {
-		t.Fatalf("the refresh reset the log to the top: scrollTop was %.0f before and %.0f after "+
-			"(issue #808)", scrolledTo, afterRefresh)
+	// Not merely "non-zero": a jump to a small offset would satisfy that
+	// while still losing the reader's place. The fixture scrolled to the
+	// bottom, so the position afterwards has to still be the bottom, give
+	// or take sub-pixel rounding.
+	const tolerance = 4
+	if afterRefresh < scrolledTo-tolerance {
+		t.Fatalf("the refresh moved the log away from where the reader left it: scrollTop was "+
+			"%.0f (bottom, max %.0f) before and %.0f after (issue #808)",
+			scrolledTo, maxScroll, afterRefresh)
 	}
 }

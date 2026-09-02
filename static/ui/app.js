@@ -844,9 +844,9 @@ function renderHistory() {
   // rebuild below replaces every <pre>, and a fresh element starts at
   // scrollTop 0 — so a job that keeps producing runs yanked the reader
   // back to the top of the log on every 5s tick, which made a long log
-  // impossible to read (#808). Same keying as openOutputs, plus the index
-  // of the block within the subrow, because stdout and stderr each get
-  // their own scroller.
+  // impossible to read (#808). Same keying as openOutputs, plus which
+  // stream the block shows, because stdout and stderr each get their own
+  // scroller.
   const openScroll = tbody.dataset.job === name ? captureOutputScroll(tbody) : new Map();
   tbody.dataset.job = name;
   tbody.innerHTML = '';
@@ -888,18 +888,30 @@ function renderHistory() {
   restoreOutputScroll(tbody, openScroll);
 }
 
-/* Where each expanded output block is scrolled to, keyed by run and by
-   position within the subrow. A reader sitting at the bottom is recorded
-   as such rather than by offset: for a run that is still growing, the
-   offset that was the bottom a tick ago is no longer the bottom, and
-   pinning it there would drift away from the newest output. */
+/* Which stream an output block shows. Used as part of the scroll key so
+   the saved position follows the stream rather than its position in the
+   subrow: a run that has only stderr renders one block at index 0, and
+   keying by index would hand that offset to stdout if the same key ever
+   rendered both. */
+function outputStream(pre) {
+  return pre.classList.contains('stderr') ? 'stderr' : 'stdout';
+}
+function outputScrollKey(row, pre) {
+  return `${row.dataset.key}\u0000${outputStream(pre)}`;
+}
+
+/* Where each expanded output block is scrolled to. A reader sitting at
+   the bottom is recorded as such rather than by offset: for a run that is
+   still growing, the offset that was the bottom a tick ago is no longer
+   the bottom, and pinning it there would drift away from the newest
+   output. */
 function captureOutputScroll(tbody) {
   const scroll = new Map();
   tbody.querySelectorAll('tr.output-row.open').forEach(row => {
-    row.querySelectorAll('pre').forEach((pre, i) => {
+    row.querySelectorAll('pre').forEach(pre => {
       if (pre.scrollTop === 0) return;
       const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight <= 2;
-      scroll.set(`${row.dataset.key}\u0000${i}`, atBottom ? 'bottom' : pre.scrollTop);
+      scroll.set(outputScrollKey(row, pre), atBottom ? 'bottom' : pre.scrollTop);
     });
   });
   return scroll;
@@ -908,8 +920,8 @@ function captureOutputScroll(tbody) {
 function restoreOutputScroll(tbody, scroll) {
   if (scroll.size === 0) return;
   tbody.querySelectorAll('tr.output-row.open').forEach(row => {
-    row.querySelectorAll('pre').forEach((pre, i) => {
-      const at = scroll.get(`${row.dataset.key}\u0000${i}`);
+    row.querySelectorAll('pre').forEach(pre => {
+      const at = scroll.get(outputScrollKey(row, pre));
       if (at === undefined) return;
       pre.scrollTop = at === 'bottom' ? pre.scrollHeight : at;
     });
