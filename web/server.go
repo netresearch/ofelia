@@ -510,7 +510,7 @@ func jobType(j core.Job) string {
 	case *core.RunServiceJob:
 		return jobTypeService
 	case *core.ComposeJob:
-		return "compose"
+		return jobTypeCompose
 	default:
 		t := reflect.TypeOf(j)
 		if t.Kind() == reflect.Pointer {
@@ -801,15 +801,15 @@ func (s *Server) persistJob(name string, req *jobRequest) error {
 		j.Image = req.Image
 		j.Container = req.Container
 		j.MaxRuntime = req.MaxRuntime
-	case "exec":
+	case jobTypeExec:
 		j.Type = persist.JobTypeExec
 		j.Container = req.Container
-	case "compose":
+	case jobTypeCompose:
 		j.Type = persist.JobTypeCompose
 		j.File = req.File
 		j.Service = req.Service
 		j.Exec = req.ExecFlag
-	case "", "local":
+	case "", jobTypeLocal:
 		j.Type = persist.JobTypeLocal
 	default:
 		return fmt.Errorf("unknown job type %q", req.Type)
