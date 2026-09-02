@@ -18,6 +18,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93
 	github.com/jessevdk/go-flags v1.6.1
+	github.com/klauspost/compress v1.19.2
 	github.com/manifoldco/promptui v0.9.0
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1

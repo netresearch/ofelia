@@ -7,6 +7,213 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Origin badges and honest delete buttons.** Config-owned jobs (INI or
+  Docker labels) show an `ini`/`label` badge explaining they are deleted
+  at their source, and the UI no longer offers them a delete button that
+  could only end in a 403.
+- **Running indicator** — a pulsing teal dot marks a job mid-run
+  (respects `prefers-reduced-motion`).
+- **The Failing stat card toggles a failed-only table filter**
+  (keyboard-accessible, `aria-pressed`).
+- **Result sparkline per job** — a "Last runs" column with one square per
+  recent execution (green/yellow/red, tooltip with time and outcome),
+  fed by a new additive `recentRuns` field on job payloads.
+- **The Duration cell shows last / avg / max** over the job's recent
+  completed runs as three labeled lines — a slowing job shows up at a
+  glance.
+- **Stat cards above the jobs table**: active jobs (with paused count),
+  jobs whose last run failed (red accent + ⚠ only when non-zero), and the
+  nearest upcoming run with a countdown. Computed from the same dashboard
+  poll — no extra requests.
+- **Job table search and sorting; sortable history.** A search input above
+  the jobs table matches name, command, schedule, and the displayed Last
+  Run/Duration formats; header clicks sort jobs (name, schedule, command,
+  last run, duration — raw values, so durations sort numerically and ISO
+  timestamps chronologically) and history (date, duration, error), with
+  SVG chevron indicators. Both are reusable opt-in helpers
+  (`createTableSearch`, `createTableSort` + `data-sort` header flags) and
+  re-render purely from cached data — zero API calls per keystroke or
+  sort click.
+- **Response compression, zstd or gzip.** Clients advertising a supported
+  codec get compressed pages, assets, and API responses (first page load
+  ~140 kB → ~28 kB; each dashboard poll 5.8 kB → 1.6 kB). The wrapper
+  enables zstd next to gzip and prefers it at equal q-values, so Chrome,
+  Edge and Firefox — which send `Accept-Encoding: gzip, deflate, br,
+  zstd` — receive `Content-Encoding: zstd`, and clients that advertise
+  gzip but not zstd (Safari below 26, older monitoring scripts) receive
+  gzip. Clients that advertise no encoding at all, `curl` with no flags
+  among them, get an identity response. Delegated to
+  `klauspost/compress/gzhttp`, which handles Accept-Encoding qvalues,
+  content sniffing, bodiless statuses, and ranged requests.
+- **`GET /api/dashboard` — aggregate snapshot endpoint.** Returns jobs,
+  disabled, removed, and config in one response (optionally a job's history
+  via `?history=<name>`). Additive: the per-resource endpoints are
+  unchanged. The web UI now polls this single endpoint per 5s tick instead
+  of 4–5 separate requests, which used to exhaust the 100-requests-per-
+  minute rate limit with two dashboard tabs open.
+
+- **UI development mode.** When `OFELIA_UI_DEV_DIR` names a directory, the web
+  server serves UI assets from it on every request and re-parses the page
+  templates per request, so an edit is visible on the next browser reload
+  without rebuilding the binary. Unset in production; the embedded assets
+  remain the default.
+- **Build version in the footer.** Fetched once from the auth-exempt `/health`
+  endpoint; release builds show the goreleaser version, dev builds show `dev`.
+
+### Changed
+
+- **BREAKING (API behavior):** `POST /api/jobs/update` now returns
+  `403 Forbidden` for jobs that came from INI config or Docker labels,
+  mirroring the delete gate, where it previously answered `200 OK`.
+  Scripts that edited config-owned jobs through the API must edit the
+  source config (or the container labels) instead. Pre-fix an update
+  silently overrode such a job in memory until the next config sync —
+  and rewrote the job's origin, after which the delete gate could be
+  bypassed and a label job deleted. The UI shows edit and delete on
+  those jobs as disabled buttons with a tooltip naming the source.
+- **BREAKING (API behavior):** `POST /api/jobs/create` now returns
+  `403 Forbidden` for a name owned by INI config or Docker labels, where
+  it previously answered `201 Created`. The gate is on the name, not on a
+  registered job: a config job with an empty or malformed schedule holds
+  no cron entry, so nothing stopped a create from taking its name,
+  replacing it with a caller-chosen job and recording `origin: api` —
+  after which the update and delete gates no longer recognised it either.
+- **BREAKING (runtime behavior):** API-created exec, compose and local
+  jobs get the config decoder's struct-tag defaults. Only run jobs did.
+  Most importantly `HistoryLimit` was 0, which makes the job retain every
+  execution forever — each holding up to two 10 MB output buffers — so a
+  frequently-run API-created job exhausted daemon memory. The same gap
+  existed on the state-file loader, so the leak came back on the first
+  restart even for a job created after the fix; both boundaries apply the
+  defaults now. The other defaults come with it, and one of them changes
+  what an existing setup does: `AllowParallel` is true, so an
+  API-created job whose run outlasts its interval now overlaps itself
+  where the run used to be skipped — the same behavior INI-defined and
+  label-defined jobs have always had. Also `RetryDelayMs` 1000 and
+  `compose.yml` as a compose job's default file.
+- **The health report is served from a snapshot.** `GetHealth` called
+  `runtime.ReadMemStats` per request, which stops the world, and `/ready`
+  is exempt from rate limiting — an unauthenticated caller could force a
+  GC pause per request. The periodic system check already takes that
+  reading once per interval; the report now uses it. Same wire shape.
+- **Responses below 1 KiB are no longer compressed.** Below roughly a
+  packet's worth of payload the codec framing plus the CPU cost buys no
+  fewer bytes on the wire — `/live`'s two-byte `OK` is the clearest case.
+  gzhttp's default threshold applies instead of `MinSize(0)`.
+- **The embedded UI assets carry an ETag**, so a browser revalidating one
+  gets a 304 instead of a full, freshly compressed body. Embedded files
+  have no ModTime, so nothing could 304 before.
+- **The open job's history is sent only when it changes.** A response
+  carrying history also carries `historyFingerprint`; a client echoing it
+  as `&historyFp=` gets `history` omitted while it still matches, instead
+  of the full stdout and stderr of every retained run on every 5s tick.
+- **`/api/jobs/removed` no longer carries `recentRuns`.** Nothing in the
+  removed tab reads it.
+- **BREAKING (source-only, pre-1.0):** `core.DockerProvider` gains
+  `CopyContainerLogs`, needed to demux container output server-side.
+  Downstream Go code implementing the exported interface fails to
+  compile until it adds the method; permitted under
+  [SemVer §4](https://semver.org/#spec-item-4) for the current 0.y.z
+  line. Users of the provided implementations are unaffected.
+- **BREAKING (source-only, pre-1.0):** `Scheduler.UpdateJob` now updates
+  a disabled job instead of returning `ErrJobNotFound`, so editing a
+  paused job no longer resumes it. Callers that relied on the error to
+  detect "not scheduled" must check the disabled state explicitly.
+- **Only `/live` and `/ready` bypass the rate limiter.** A probe answered
+  429 reads as unhealthy and gets the daemon restarted, and both probes
+  are cheap — a constant string and a copy of the check map the
+  background loop maintains. `/health` and `/healthz` stay token-free but
+  counted: they answer with the full report — every check, the version
+  and the goroutine count — which is both more work per request and more
+  than a probe needs to know. Every other request is counted too, static
+  assets included. The UI stays inside the budget by polling one
+  aggregate endpoint per tick rather than by being exempted.
+  `/api/login` keeps its own stricter login limiter.
+- **The dashboard renders with site data blocked.** Both the pre-paint
+  script and `app.js` read `localStorage` at the top level, and a browser
+  that blocks site data throws on the property itself — the script
+  aborted before the first render and the page stayed blank. Reads and
+  writes are guarded now; without storage the UI falls back to the
+  defaults and keeps preferences for the page view only.
+- **A hidden browser tab stops polling** (Page Visibility API) and
+  refreshes immediately when it becomes visible again — n open dashboard
+  tabs cost one tab's request budget.
+- **Short pages pin the footer to the bottom edge** (min-height 100dvh
+  flex column).
+- **The web UI is assembled from templates and separate assets.** The former
+  single-file `static/ui/index.html` is split into `styles.css`, `app.js`, and
+  Go `html/template` partials (`templates/layout.html` plus one file per tab),
+  rendered server-side at `GET /`. No behavior or dependency change; still
+  vanilla CSS/JS with no build step.
+- **Job history opens in a modal dialog** instead of a panel under the jobs
+  table. Close via the header button, Esc, or a backdrop click. The dialog is
+  anchored to the top of the viewport so the 5s refresh does not make it jump,
+  and its padding follows the compact/comfortable density setting.
+- **Run output renders in a full-width subrow** of the history table instead
+  of inside the Output column. Expanding output no longer changes column
+  widths; long output wraps and scrolls in its own box; the run's row is
+  highlighted while open; expanded state still survives the 5s refresh, keyed
+  by execution timestamp and scoped to the shown job.
+- **The tab bar moved into the sticky nav**, left-aligned next to the brand;
+  the footer spans the full page width. Both bars share the same horizontal
+  padding via the `--layout-pad-x` CSS variable, and repeated separator
+  borders use `--border-thin`. The nav dropped its `<ul><li>` wrappers —
+  single-item lists carried no semantics, and Pico's `nav li` padding
+  ignored the density setting.
+- **Brand primary is teal `#2f99a4`** (was Pico blue), set via the
+  `--pico-primary*` token family for light, dark, and auto theme modes.
+- **The dark theme background is neutral graphite** (`#181b1e`, cards
+  `#22262a`) instead of Pico's blue-tinted default, so the teal primary is
+  the only cool hue on screen. Form inputs and dropdowns follow the same
+  graphite family (`--pico-form-element-*` tokens).
+- **Job-row action buttons are soft teal chips with SVG icons.** The emoji
+  glyphs (▶ ✎ ⏸ 🗑) became uniform inline stroke SVGs on a 24px grid,
+  colored via `currentColor`; delete is red-tinted at rest. Icon colors
+  come from `--action-fg`/`--action-del-fg` with per-theme shades.
+- **Deleting a job asks for confirmation**, and API failures are no longer
+  silent: a reusable bottom-right toast (`toast.success/error/info`) shows
+  the server's message — notably the 403 explaining that INI-owned jobs
+  must be deleted in the config file. Run, pause, resume, and delete show
+  success toasts.
+- **Job rows signal their clickability**: pointer cursor, hover tint, and
+  the job name is a link-styled button, so keyboard users can Tab to it
+  and open the history with Enter.
+- **Tables are striped.** Pico's `.striped` variant on all four tables,
+  with the stripe color raised to 6% of the contrast color (Pico's ~4%
+  alpha was invisible on the graphite dark background). The history table
+  stripes in pure CSS by run/subrow pairs — the output subrow is always
+  rendered, shares its parent run's background, aligns with the Date
+  column, and gets density-scaled padding when open. The status-dot
+  column has a fixed narrow width (`--dot-col`) so rows stay aligned.
+- **The rendered page and stylesheet pass the W3C Nu validator** (checked
+  locally via the `ghcr.io/validator/validator` Docker image).
+
+### Fixed
+
+- **A delete landing mid-update can no longer leave a ghost job.**
+  `RemoveJob` drops the cron entry before it takes the scheduler lock, so
+  it can complete inside `UpdateJob`'s window; the update then reinserted
+  the deleted name into the by-name map, where it had no cron entry, never
+  fired again, and was still reported as live by the API. The update also
+  performed its last fallible step after rewriting its state, so a
+  failure reported an update that had in fact taken effect.
+- **A failed UI render answers 500 instead of a half-rendered 200.** The
+  page was executed straight into the response, so a template failing
+  partway through — reachable under `OFELIA_UI_DEV_DIR` — committed a 200
+  and then appended the error text to the partial page.
+- **The dashboard job lists come from one snapshot.** Read through three
+  separate locks, a job disabled or removed between two of them appeared
+  in two lists at once and showed as two rows until the next tick.
+- **Server-time display keeps the zone offset.** It was sliced off, and
+  nothing else in the UI reveals the server's zone, so a timestamp
+  correlated against server logs read as local time.
+- **Tooltip text reaches screen readers and dismisses on Escape.** The
+  reason an edit or delete button is inert lived only in a data
+  attribute; the bubble now carries `role="tooltip"` and its anchor
+  `aria-describedby` (WCAG 2.2 SC 1.4.13 for the dismissal).
+
 ## [0.30.0] - 2026-08-26
 
 A maintenance release: Go 1.27, the whole dependency graph brought current,

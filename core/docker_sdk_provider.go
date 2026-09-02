@@ -253,6 +253,31 @@ func (p *SDKDockerProvider) GetContainerLogs(ctx context.Context, containerID st
 	return reader, nil
 }
 
+// CopyContainerLogs copies container logs into stdout/stderr, letting the
+// adapter demultiplex Docker's stream framing for non-TTY containers.
+func (p *SDKDockerProvider) CopyContainerLogs(
+	ctx context.Context, containerID string, stdout, stderr io.Writer, opts ContainerLogsOptions,
+) error {
+	p.recordOperation("copy_logs")
+
+	logsOpts := domain.LogOptions{
+		ShowStdout: opts.ShowStdout,
+		ShowStderr: opts.ShowStderr,
+		Tail:       opts.Tail,
+		Follow:     opts.Follow,
+	}
+
+	if !opts.Since.IsZero() {
+		logsOpts.Since = opts.Since.Format(time.RFC3339Nano)
+	}
+
+	if err := p.client.Containers().CopyLogs(ctx, containerID, stdout, stderr, logsOpts); err != nil {
+		p.recordError("copy_logs")
+		return WrapContainerError("copy_logs", containerID, err)
+	}
+	return nil
+}
+
 // CreateExec creates an exec instance.
 func (p *SDKDockerProvider) CreateExec(ctx context.Context, containerID string, config *domain.ExecConfig) (string, error) {
 	p.recordOperation("create_exec")

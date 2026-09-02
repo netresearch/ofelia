@@ -318,8 +318,9 @@ func TestContainerServiceAdapter_CopyLogs_DemuxesNonTTY(t *testing.T) {
 	t.Parallel()
 
 	adapter := stubDaemon(t, map[string]http.HandlerFunc{
-		// Inspect must report a container without a HostConfig so CopyLogs
-		// takes the demultiplexing path rather than the raw TTY copy.
+		// Inspect reports a non-TTY container (Config.Tty absent/false)
+		// so CopyLogs takes the demultiplexing path rather than the raw
+		// TTY copy.
 		"/json": func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(t, w, map[string]any{
 				"Id":    "abc123",

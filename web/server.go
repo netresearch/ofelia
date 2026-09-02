@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"reflect"
@@ -23,7 +22,6 @@ import (
 	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/persist"
-	"github.com/netresearch/ofelia/static"
 )
 
 // Server is the HTTP front end of a running scheduler: the JSON API under
@@ -72,7 +70,7 @@ func (s *Server) SetPersistStore(store *persist.Store) {
 // makes the "what does this string mean" question one-grep-away.
 const (
 	originAPI   = "api"   // POST /api/jobs/{create,update} without an X-Origin header
-	originWeb   = "web"   // X-Origin: web (sent by static/ui/index.html)
+	originWeb   = "web"   // X-Origin: web (sent by static/ui/app.js)
 	originINI   = "ini"   // job-run "name" / job-exec "name" / etc. in the INI file
 	originLabel = "label" // ofelia.job-run.<name>.* Docker labels
 )
@@ -85,6 +83,7 @@ const (
 	pathAPIJobsPrefix = "/api/jobs/"
 
 	headerContentType = "Content-Type"
+	headerETag        = "ETag"
 	contentTypeJSON   = "application/json"
 
 	msgMethodNotAllowed   = "method not allowed"
@@ -208,17 +207,9 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 		return nil
 	}
 
-	var handler http.Handler = server.newMux(nil, ui)
-	handler = securityHeaders(handler)
-	handler = server.rl.middleware(handler)
-
-	if server.authConfig != nil && server.authConfig.Enabled {
-		handler = server.authMiddleware(handler)
-	}
-
 	server.srv = &http.Server{
 		Addr:              addr,
-		Handler:           handler,
+		Handler:           server.wrapMiddleware(server.newMux(nil, ui)),
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -271,6 +262,7 @@ func (s *Server) routes(hc *HealthChecker, ui http.Handler) []route {
 		route{pathAPIJobsPrefix, http.HandlerFunc(s.historyHandler), false},
 		route{"/api/jobs", http.HandlerFunc(s.jobsHandler), false},
 		route{"/api/config", http.HandlerFunc(s.configHandler), false},
+		route{"/api/dashboard", http.HandlerFunc(s.dashboardHandler), false},
 	)
 
 	if hc != nil {
@@ -296,16 +288,6 @@ func (s *Server) newMux(hc *HealthChecker, ui http.Handler) *http.ServeMux {
 		mux.Handle(rt.pattern, rt.handler)
 	}
 	return mux
-}
-
-// uiHandler serves the embedded single-page UI. Returns an error when the
-// embedded assets cannot be opened.
-func uiHandler() (http.Handler, error) {
-	uiFS, err := fs.Sub(static.UI, "ui")
-	if err != nil {
-		return nil, fmt.Errorf("load UI subdirectory: %w", err)
-	}
-	return http.FileServer(http.FS(uiFS)), nil
 }
 
 // Start serves in a background goroutine and returns immediately, always with
@@ -359,15 +341,22 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 	}
 	s.rl = newRateLimiter(100, time.Minute)
 	s.rl.trustedProxies = s.trustedProxies
-	var handler http.Handler = mux
+	s.srv.Handler = s.wrapMiddleware(mux)
+}
+
+// wrapMiddleware layers the shared middleware chain around mux —
+// compression innermost, then security headers, then the rate limiter,
+// with auth outermost when enabled. Single source for both construction sites
+// (NewServerWithAuth and RegisterHealthEndpoints) so the chain cannot
+// drift between them.
+func (s *Server) wrapMiddleware(mux http.Handler) http.Handler {
+	handler := compressMiddleware(mux)
 	handler = securityHeaders(handler)
 	handler = s.rl.middleware(handler)
-
 	if s.authConfig != nil && s.authConfig.Enabled {
 		handler = s.authMiddleware(handler)
 	}
-
-	s.srv.Handler = handler
+	return handler
 }
 
 type apiExecution struct {
@@ -391,7 +380,23 @@ type apiJob struct {
 	PrevRuns []time.Time     `json:"prevRuns"`
 	Origin   string          `json:"origin"`
 	Config   json.RawMessage `json:"config"`
+	// RecentRuns is a light outcome summary of the job's newest
+	// executions (oldest first, at most recentRunCount entries) so list
+	// views can show a result sparkline without fetching each job's full
+	// history. Additive field; omitted when the job keeps no history.
+	RecentRuns []apiRecentRun `json:"recentRuns,omitempty"`
 }
+
+// apiRecentRun is one entry of apiJob.RecentRuns.
+type apiRecentRun struct {
+	Date     time.Time     `json:"date"`
+	Duration time.Duration `json:"duration"`
+	Failed   bool          `json:"failed"`
+	Skipped  bool          `json:"skipped"`
+}
+
+// recentRunCount caps apiJob.RecentRuns.
+const recentRunCount = 10
 
 // mapJobSource looks up name in the map field m and returns the
 // JobSource string for that entry, if any. Returns ("", false) when
@@ -447,6 +452,42 @@ func (s *Server) jobOrigin(name string) string {
 	return jobOrigin(s.config, name)
 }
 
+// guardConfigOwned answers 403 and reports true when the named job is
+// owned by the INI file or by Docker labels. #593: such jobs are changed
+// at their source, so create, update and delete all refuse them.
+//
+// The gate lives in one function because it was copy-pasted per handler
+// and create simply did not get a copy — with AddJob no backstop, since a
+// config job with an empty or malformed schedule holds no cron entry and
+// so never triggers ErrDuplicateName. A create under its name replaced it
+// with a caller-chosen job and recorded origin=api, after which update
+// and delete stopped recognizing it as config-owned as well.
+func (s *Server) guardConfigOwned(w http.ResponseWriter, name, verb string) bool {
+	origin := s.jobOrigin(name)
+	if !isConfigOwned(origin) {
+		return false
+	}
+	http.Error(w,
+		"job came from "+origin+" config; edit the source to "+verb+" it (or use /api/jobs/disable to suppress it)",
+		http.StatusForbidden)
+	return true
+}
+
+// requestOrigin returns the origin to record for an API mutation.
+//
+// Client-supplied X-Origin is untrusted metadata: "api"/"web" are taken
+// verbatim but any "ini"/"label" claim is forced to "api", so a caller
+// cannot mark its own job as config-owned (which would then block the
+// legitimate API delete). Every request reaching a mutation handler is an
+// API mutation regardless of what the header says.
+func requestOrigin(r *http.Request) string {
+	origin := r.Header.Get("X-Origin")
+	if origin == "" || isConfigOwned(origin) {
+		return originAPI
+	}
+	return origin
+}
+
 func jobType(j core.Job) string {
 	switch j.(type) {
 	case *core.RunJob:
@@ -499,8 +540,20 @@ func (s *Server) computeRunTimes(job core.Job, now time.Time) (next, prev []time
 	if s.scheduler.GetDisabledJob(job.GetName()) == nil {
 		entry := s.scheduler.EntryByName(job.GetName())
 		if entry.Valid() && entry.Schedule != nil && !cron.IsTriggered(entry.Schedule) {
-			next = cron.NextN(entry.Schedule, now, scheduleRunCount)
-			prev = cron.PrevN(entry.Schedule, now, scheduleRunCount)
+			// Anchor on the entry's own Next/Prev when the cron has them:
+			// for interval (@every) schedules, Next(t) is t+interval with
+			// no anchor, so projecting from `now` made the reported next
+			// run drift forward on every poll.
+			if !entry.Next.IsZero() {
+				next = append([]time.Time{entry.Next}, cron.NextN(entry.Schedule, entry.Next, scheduleRunCount-1)...)
+			} else {
+				next = cron.NextN(entry.Schedule, now, scheduleRunCount)
+			}
+			if !entry.Prev.IsZero() {
+				prev = append([]time.Time{entry.Prev}, cron.PrevN(entry.Schedule, entry.Prev, scheduleRunCount-1)...)
+			} else {
+				prev = cron.PrevN(entry.Schedule, now, scheduleRunCount)
+			}
 		}
 	}
 	if next == nil {
@@ -512,8 +565,23 @@ func (s *Server) computeRunTimes(job core.Job, now time.Time) (next, prev []time
 	return next, prev
 }
 
-// buildAPIJobs converts a slice of core.Job into apiJob payloads.
+// buildAPIJobs converts a slice of core.Job into apiJob payloads,
+// including the recent-run summary the jobs table's sparkline and
+// duration cell read.
 func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
+	return s.buildAPIJobList(list, true)
+}
+
+// buildAPIRemovedJobs is buildAPIJobs without the recent-run summary.
+// The removed tab shows a name, a type, a schedule and the last run;
+// nothing there reads recentRuns, so computing and marshaling the
+// newest runs of every removed job was work the 5s poll paid for on
+// every tick and threw away.
+func (s *Server) buildAPIRemovedJobs(list []core.Job) []apiJob {
+	return s.buildAPIJobList(list, false)
+}
+
+func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool) []apiJob {
 	now := time.Now()
 	jobs := make([]apiJob, 0, len(list))
 	for _, job := range list {
@@ -522,20 +590,33 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 			execInfo = newAPIExecution(lrGetter.GetLastRun())
 		}
 
+		var recent []apiRecentRun
+		if withRecentRuns {
+			hist := job.GetHistory()
+			start := 0
+			if len(hist) > recentRunCount {
+				start = len(hist) - recentRunCount
+			}
+			for _, e := range hist[start:] {
+				recent = append(recent, apiRecentRun{Date: e.Date, Duration: e.Duration, Failed: e.Failed, Skipped: e.Skipped})
+			}
+		}
+
 		nextRuns, prevRuns := s.computeRunTimes(job, now)
 		origin := s.jobOrigin(job.GetName())
 		cfgBytes, _ := json.Marshal(job)
 		jobs = append(jobs, apiJob{
-			Name:     job.GetName(),
-			Type:     jobType(job),
-			Schedule: job.GetSchedule(),
-			Command:  job.GetCommand(),
-			Running:  s.scheduler.IsJobRunning(job.GetName()),
-			LastRun:  execInfo,
-			NextRuns: nextRuns,
-			PrevRuns: prevRuns,
-			Origin:   origin,
-			Config:   cfgBytes,
+			Name:       job.GetName(),
+			Type:       jobType(job),
+			Schedule:   job.GetSchedule(),
+			Command:    job.GetCommand(),
+			Running:    s.scheduler.IsJobRunning(job.GetName()),
+			LastRun:    execInfo,
+			NextRuns:   nextRuns,
+			PrevRuns:   prevRuns,
+			Origin:     origin,
+			Config:     cfgBytes,
+			RecentRuns: recent,
 		})
 	}
 	return jobs
@@ -548,7 +629,7 @@ func (s *Server) jobsHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) removedJobsHandler(w http.ResponseWriter, _ *http.Request) {
-	jobs := s.buildAPIJobs(s.scheduler.GetRemovedJobs())
+	jobs := s.buildAPIRemovedJobs(s.scheduler.GetRemovedJobs())
 	w.Header().Set(headerContentType, contentTypeJSON)
 	_ = json.NewEncoder(w).Encode(jobs)
 }
@@ -735,6 +816,12 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Same policy as update and delete (#593): a name the config owns is
+	// not available to the API, whether or not the scheduler managed to
+	// register it.
+	if s.guardConfigOwned(w, req.Name, "create") {
+		return
+	}
 	job, err := s.jobFromRequest(&req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -745,21 +832,8 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to create job", http.StatusBadRequest)
 		return
 	}
-	origin := r.Header.Get("X-Origin")
-	if origin == "" {
-		origin = originAPI
-	}
-	// Client-supplied X-Origin is treated as untrusted metadata: we
-	// accept "api"/"web" verbatim but force any "ini"/"label" claim
-	// to "api" so a malicious client can't mark its own job as
-	// config-owned (which would later block legitimate API delete).
-	// All requests reaching this handler are API mutations regardless
-	// of what the header says.
-	if isConfigOwned(origin) {
-		origin = originAPI
-	}
 	s.originsMu.Lock()
-	s.origins[req.Name] = origin
+	s.origins[req.Name] = requestOrigin(r)
 	s.originsMu.Unlock()
 	// Persist (#593) any successful API mutation — origin only gates
 	// what the delete handler can later remove, not whether the
@@ -785,6 +859,14 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := validateJobName(req.Name); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// Same policy as delete (#593): config-owned jobs are changed at
+	// their source. Without this gate an update silently overrode the
+	// job in memory until the next config sync — and rewrote the job's
+	// origin to api/web, after which the delete gate no longer saw the
+	// job as config-owned: editing a label job unlocked deleting it.
+	if s.guardConfigOwned(w, req.Name, "change") {
 		return
 	}
 	job, err := s.jobFromRequest(&req)
@@ -813,15 +895,8 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 	}
 
-	origin := r.Header.Get("X-Origin")
-	if origin == "" {
-		origin = originAPI
-	}
-	if isConfigOwned(origin) {
-		origin = originAPI // see createJobHandler for the trust rationale
-	}
 	s.originsMu.Lock()
-	s.origins[req.Name] = origin
+	s.origins[req.Name] = requestOrigin(r)
 	s.originsMu.Unlock()
 	// Persist (#593) any successful API update — same rationale as create.
 	if err := s.persistJob(req.Name, &req); err != nil {
@@ -835,8 +910,6 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 		return nil, fmt.Errorf("docker provider unavailable for run job")
 	}
 	j := core.NewRunJob(s.provider)
-	// struct-tag defaults are only applied by the config decoder — apply them here too.
-	_ = defaults.Set(j)
 	j.Name = req.Name
 	j.Schedule = req.Schedule
 	j.Command = req.Command
@@ -903,18 +976,35 @@ func newLocalJobFromRequest(req *jobRequest) (core.Job, error) {
 }
 
 func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
+	var (
+		job core.Job
+		err error
+	)
 	switch req.Type {
 	case "run":
-		return s.newRunJobFromRequest(req)
+		job, err = s.newRunJobFromRequest(req)
 	case "exec":
-		return s.newExecJobFromRequest(req)
+		job, err = s.newExecJobFromRequest(req)
 	case "compose":
-		return newComposeJobFromRequest(req)
+		job, err = newComposeJobFromRequest(req)
 	case "", "local":
-		return newLocalJobFromRequest(req)
+		job, err = newLocalJobFromRequest(req)
 	default:
 		return nil, fmt.Errorf("unknown job type %q", req.Type)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// Struct-tag defaults are applied by the config decoder, not by the
+	// constructors, so an API-built job used to keep every zero value —
+	// most damagingly HistoryLimit 0, which makes BareJob.GetHistory
+	// retain every Execution (up to 2×10 MB of output buffers each) for
+	// the lifetime of the daemon. Only the run-job constructor applied
+	// them; doing it here covers every type and every future one.
+	// creasty/defaults fills initial values only, so the fields the
+	// request set above are left alone.
+	_ = defaults.Set(job)
+	return job, nil
 }
 
 func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
@@ -943,10 +1033,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	// reject explicitly so the operator sees the right error path.
 	// Operators wanting to suppress an INI/label job temporarily
 	// should use POST /api/jobs/disable instead, which now persists.
-	if origin := s.jobOrigin(req.Name); isConfigOwned(origin) {
-		http.Error(w,
-			"job came from "+origin+" config; edit the source to delete it (or use /api/jobs/disable to suppress it)",
-			http.StatusForbidden)
+	if s.guardConfigOwned(w, req.Name, "delete") {
 		return
 	}
 	_ = s.scheduler.RemoveJob(j)
@@ -967,6 +1054,29 @@ func (s *Server) configHandler(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(cfg)
 }
 
+// isJobCollection reports whether t has the shape of a job collection: a map
+// keyed by job name whose values are job-config structs. Every collection in
+// cli.Config is map[string]*XxxJobConfig and no other field shares that shape.
+//
+// Matching on shape rather than on a list of field names is what keeps a newly
+// added collection stripped: the name list this replaced had already drifted
+// (it carried a field that no longer existed and missed ComposeJobs), and a
+// drifted list ships every job's full definition to any /api/config reader.
+func isJobCollection(t reflect.Type) bool {
+	if t.Kind() != reflect.Map || t.Key().Kind() != reflect.String {
+		return false
+	}
+	elem := t.Elem()
+	if elem.Kind() == reflect.Pointer {
+		elem = elem.Elem()
+	}
+	return elem.Kind() == reflect.Struct
+}
+
+// stripJobs returns a copy of cfg with every job collection zeroed. Job
+// definitions carry commands and credential-bearing fields, and the jobs API
+// already exposes what the UI needs, so they must not ride along in the config
+// payload of /api/config and /api/dashboard.
 func stripJobs(cfg any) any {
 	if cfg == nil {
 		return nil
@@ -982,9 +1092,8 @@ func stripJobs(cfg any) any {
 	}
 	out := reflect.New(v.Type()).Elem()
 	out.Set(v)
-	fields := []string{"RunJobs", "ExecJobs", "ServiceJobs", "LocalJobs", "ComposeJobs"}
-	for _, f := range fields {
-		if fv := out.FieldByName(f); fv.IsValid() && fv.CanSet() {
+	for i := range out.NumField() {
+		if fv := out.Field(i); fv.CanSet() && isJobCollection(fv.Type()) {
 			fv.Set(reflect.Zero(fv.Type()))
 		}
 	}
@@ -996,42 +1105,34 @@ func stripJobs(cfg any) any {
 	return out.Interface()
 }
 
+// buildAPIHistory converts the named job's execution history into API
+// payloads. ok is false when the job does not exist. Shared by the
+// per-job history endpoint and the dashboard aggregate.
+func (s *Server) buildAPIHistory(name string) (out []apiExecution, ok bool) {
+	target := s.scheduler.GetAnyJob(name)
+	if target == nil {
+		return nil, false
+	}
+	hist := target.GetHistory()
+	out = make([]apiExecution, 0, len(hist))
+	for _, e := range hist {
+		if a := newAPIExecution(e); a != nil {
+			out = append(out, *a)
+		}
+	}
+	return out, true
+}
+
 func (s *Server) historyHandler(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasSuffix(r.URL.Path, "/history") {
 		http.NotFound(w, r)
 		return
 	}
 	name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, pathAPIJobsPrefix), "/history")
-	target := s.scheduler.GetAnyJob(name)
-	if target == nil {
-		http.NotFound(w, r)
-		return
-	}
-	hJob, ok := target.(interface{ GetHistory() []*core.Execution })
+	out, ok := s.buildAPIHistory(name)
 	if !ok {
 		http.NotFound(w, r)
 		return
-	}
-	hist := hJob.GetHistory()
-	out := make([]apiExecution, 0, len(hist))
-	for _, e := range hist {
-		errStr := ""
-		if e.Error != nil {
-			errStr = e.Error.Error()
-		}
-		// Get output streams using execution methods
-		stdout := e.GetStdout()
-		stderr := e.GetStderr()
-
-		out = append(out, apiExecution{
-			Date:     e.Date,
-			Duration: e.Duration,
-			Failed:   e.Failed,
-			Skipped:  e.Skipped,
-			Error:    errStr,
-			Stdout:   stdout,
-			Stderr:   stderr,
-		})
 	}
 	w.Header().Set(headerContentType, contentTypeJSON)
 	_ = json.NewEncoder(w).Encode(out)
@@ -1061,6 +1162,13 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 	})
 
+	// Explicit Content-Type before WriteHeader: the compression wrapper
+	// can only sniff a missing type on the first body write, which the
+	// explicit WriteHeader here skips — without this the sniff runs on
+	// the compressed bytes and answers with the codec's own type
+	// (application/x-gzip, application/zstd) instead of JSON. See
+	// health.go's LivenessHandler for the same trap.
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
 }

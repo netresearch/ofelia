@@ -161,12 +161,44 @@ func ParseTrustedProxies(cidrs []string) ([]*net.IPNet, error) {
 	return nets, nil
 }
 
+// isOrchestratorProbePath reports whether path is one of the two probe
+// endpoints an orchestrator polls: /live and /ready. They bypass rate
+// limiting — a probe answered 429 reads as "unhealthy" and gets the
+// daemon restarted — and both are cheap: a constant string, and a copy
+// of the check map the background loop maintains. Keeping /ready cheap
+// is what makes the exemption safe: it used to call
+// runtime.ReadMemStats through GetHealth, so an unauthenticated caller
+// could force one stop-the-world pause per request on an endpoint with
+// no rate limit at all. GetHealth now reports the snapshot the periodic
+// system check takes (web/health.go).
+//
+// /health and /healthz are deliberately NOT exempt. They are token-free
+// like the probes, but they answer with the full report — every check,
+// the version and the goroutine count — which is both more work per
+// request and more than a probe needs to know. They stay inside the
+// per-IP budget; the UI's single footer-version fetch fits in it easily.
+func isOrchestratorProbePath(path string) bool {
+	return path == "/live" || path == "/ready"
+}
+
 // middleware wraps an http.Handler with per-IP rate limiting. The client IP
 // is determined from X-Forwarded-For or X-Real-IP headers only when the direct
 // connection comes from a trusted proxy (loopback or configured CIDRs).
 // For untrusted connections, forwarded headers are ignored to prevent IP spoofing.
 func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The limiter counts every request — API, rendered page, and
+		// static assets alike. Static assets are not free: each response
+		// is compressed per request (embedded files carry no ModTime, so
+		// conditional requests never 304), which is exactly the work an
+		// unauthenticated flood would target. Only the orchestrator
+		// probes (/live, /ready) are exempt: an orchestrator must never
+		// see 429 on its probes. /health stays counted — see
+		// isOrchestratorProbePath.
+		if isOrchestratorProbePath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		ip := extractRemoteIP(r.RemoteAddr)
 		// Only trust forwarded headers from trusted proxies (loopback or configured CIDRs)
 		if isTrustedProxy(ip, rl.trustedProxies) {

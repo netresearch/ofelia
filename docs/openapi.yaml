@@ -4,7 +4,7 @@ info:
   description: >-
     REST API of the Ofelia web server (--enable-web). Paths mirror the route
     table in web/server.go; docs/API.md carries the narrative version.
-  version: 1.2.0
+  version: 1.3.0
   contact:
     name: Ofelia Support
     url: https://github.com/netresearch/ofelia
@@ -166,6 +166,11 @@ paths:
       responses:
         "201": {description: Job created}
         "400": {$ref: "#/components/responses/PlainError"}
+        "403":
+          description: >-
+            The name is owned by INI/label config; edit the source or use
+            /api/jobs/disable. Gated on the name, not on a registered job: a
+            config job with an empty or malformed schedule holds no cron entry.
         "405": {$ref: "#/components/responses/PlainError"}
   /api/jobs/update:
     post:
@@ -176,6 +181,8 @@ paths:
         "200": {description: Job updated}
         "201": {description: Job did not exist and was created}
         "400": {$ref: "#/components/responses/PlainError"}
+        "403":
+          description: Job is owned by INI/label config; edit the source or use /api/jobs/disable
         "405": {$ref: "#/components/responses/PlainError"}
         "500": {$ref: "#/components/responses/PlainError"}
   /api/jobs/delete:
@@ -190,6 +197,37 @@ paths:
           description: Job is owned by INI/label config; edit the source or use /api/jobs/disable
         "404": {$ref: "#/components/responses/PlainError"}
         "405": {$ref: "#/components/responses/PlainError"}
+
+  /api/dashboard:
+    get:
+      summary: Aggregate snapshot for polling clients
+      description: >-
+        The three job lists, the stripped configuration and — with the history
+        parameter — that job's executions, from a single moment in time.
+        Additive: the per-resource endpoints are unchanged. Exists so a polling
+        client (the bundled web UI polls every five seconds) spends one request
+        per tick instead of four or five.
+      tags: [Jobs]
+      parameters:
+        - name: history
+          in: query
+          required: false
+          description: Include this job's executions in the history field
+          schema: {type: string}
+        - name: historyFp
+          in: query
+          required: false
+          description: >-
+            The historyFingerprint from a previous response. When it still
+            matches, history is omitted from this one — the client already holds
+            those runs. Omit the parameter to always receive the full history.
+          schema: {type: string}
+      responses:
+        "200":
+          description: Dashboard snapshot
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Dashboard"}
 
   /api/config:
     get:
@@ -291,6 +329,48 @@ components:
           items: {type: string, format: date-time}
         origin: {type: string, enum: [ini, label, api, web]}
         config: {type: object, description: full job configuration}
+        recentRuns:
+          type: array
+          description: >-
+            Up to the ten newest executions, oldest first, without output — a
+            list view can render outcome history without one history request per
+            job. Omitted for job types that keep no history.
+          items: {$ref: "#/components/schemas/RecentRun"}
+    RecentRun:
+      type: object
+      properties:
+        date: {type: string, format: date-time}
+        duration: {type: integer, description: nanoseconds}
+        failed: {type: boolean}
+        skipped: {type: boolean}
+    Dashboard:
+      type: object
+      description: Aggregate snapshot of the job lists, the configuration and one job's history
+      properties:
+        jobs:
+          type: array
+          items: {$ref: "#/components/schemas/Job"}
+        disabled:
+          type: array
+          items: {$ref: "#/components/schemas/Job"}
+        removed:
+          type: array
+          items: {$ref: "#/components/schemas/Job"}
+        config: {type: object, description: same payload as GET /api/config}
+        history:
+          type: array
+          nullable: true
+          description: >-
+            Executions of the job named in the history query parameter. Null
+            when the parameter is absent or names no job; an empty array for an
+            existing job without executions.
+          items: {$ref: "#/components/schemas/Execution"}
+        historyFingerprint:
+          type: string
+          description: >-
+            Identity of the requested job's executions. Echo it as the historyFp
+            query parameter to have an unchanged history omitted. Absent when no
+            history was requested or the job does not exist.
     Execution:
       type: object
       properties:

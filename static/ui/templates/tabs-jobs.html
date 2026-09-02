@@ -1,0 +1,59 @@
+<!-- JOBS TAB -->
+<div id="tab-jobs" class="tab-panel active" role="tabpanel" aria-labelledby="btn-jobs">
+  <div class="stats" aria-label="Job statistics">
+    <div class="stat-card" id="statActive">
+      <strong class="stat-value">–</strong>
+      <small class="stat-label">Active</small>
+    </div>
+    <button type="button" class="stat-card" id="statFailing" aria-pressed="false"
+      data-custom-tooltip="Show only failing jobs">
+      <strong class="stat-value">–</strong>
+      <small class="stat-label">Failing</small>
+    </button>
+    <div class="stat-card" id="statNext">
+      <strong class="stat-value">–</strong>
+      <small class="stat-label">Next run</small>
+    </div>
+  </div>
+  <input type="search" id="jobSearch" class="table-search" placeholder="Search jobs…"
+    aria-label="Search jobs by name, command, or schedule">
+  <div class="overflow-auto">
+    <table id="jobs" class="striped">
+      <thead>
+        <tr>
+          <th scope="col"></th>
+          <th scope="col" data-sort="name" aria-sort="none"><button type="button" class="th-sort">Name</button></th>
+          <th scope="col" data-sort="schedule" aria-sort="none"><button type="button" class="th-sort">Schedule</button></th>
+          <th scope="col" data-sort="command" aria-sort="none"><button type="button" class="th-sort">Command</button></th>
+          <th scope="col" data-sort="lastRun" aria-sort="none"><button type="button" class="th-sort">Last Run</button></th>
+          <th scope="col" data-sort="duration" aria-sort="none"><button type="button" class="th-sort">Duration</button></th>
+          <th scope="col">Last runs</th>
+          <th scope="col">Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <dialog id="historyModal">
+    <article>
+      <header>
+        <button class="close-btn" id="closeHistoryBtn" aria-label="Close history" data-custom-tooltip="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg></button>
+        <h2>History: <span id="historyJob"></span></h2>
+      </header>
+      <div class="overflow-auto">
+        <table id="history" class="striped">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col" data-sort="date" aria-sort="none"><button type="button" class="th-sort">Date</button></th>
+              <th scope="col" data-sort="duration" aria-sort="none"><button type="button" class="th-sort">Duration</button></th>
+              <th scope="col" data-sort="error" aria-sort="none"><button type="button" class="th-sort">Error</button></th>
+              <th scope="col">Output</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </article>
+  </dialog>
+</div>

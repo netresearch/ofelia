@@ -55,6 +55,10 @@ func (m *mockDockerProvider) WaitContainer(ctx context.Context, containerID stri
 	return 0, nil
 }
 
+func (m *mockDockerProvider) CopyContainerLogs(ctx context.Context, containerID string, stdout, stderr io.Writer, opts core.ContainerLogsOptions) error {
+	return nil
+}
+
 func (m *mockDockerProvider) GetContainerLogs(ctx context.Context, containerID string, opts core.ContainerLogsOptions) (io.ReadCloser, error) {
 	return nil, nil
 }

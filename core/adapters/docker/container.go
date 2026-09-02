@@ -226,8 +226,9 @@ func (s *ContainerServiceAdapter) CopyLogs(
 	}
 	defer reader.Close()
 
-	if info.Config != nil && info.Config.HostConfig != nil {
-		// For TTY containers, copy directly
+	if info.Config != nil && info.Config.Tty {
+		// TTY containers emit a raw stream with no frame headers —
+		// copy directly.
 		if stdout != nil {
 			if _, err = io.Copy(stdout, reader); err != nil {
 				return fmt.Errorf("copying container output: %w", err)

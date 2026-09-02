@@ -653,6 +653,32 @@ func (s *Scheduler) GetActiveJobs() []Job {
 	return jobs
 }
 
+// GetJobSnapshot returns the active, disabled and removed job lists as they
+// stood at one instant.
+//
+// Calling GetActiveJobs, GetDisabledJobs and GetRemovedJobs in sequence takes
+// three separate read locks, so a job disabled or removed between two of them
+// appears in both lists or in neither. The dashboard renders the lists without
+// deduplicating by name, so such a job showed as two rows until the next poll
+// healed it.
+func (s *Scheduler) GetJobSnapshot() (active, disabled, removed []Job) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	active = make([]Job, 0, len(s.Jobs))
+	disabled = make([]Job, 0, len(s.disabledNames))
+	for _, j := range s.Jobs {
+		if _, off := s.disabledNames[j.GetName()]; off {
+			disabled = append(disabled, j)
+		} else {
+			active = append(active, j)
+		}
+	}
+	removed = make([]Job, len(s.Removed))
+	copy(removed, s.Removed)
+	return active, disabled, removed
+}
+
 // recordUnschedulable notes that a job was refused, so the health report can
 // say a configured job is not running rather than leaving it to whoever reads
 // the startup log.
@@ -724,16 +750,18 @@ func (s *Scheduler) lookupJob(name string) Job {
 // in-flight invocations complete before the new schedule takes effect (because
 // go-cron serializes entry mutations through the scheduler goroutine).
 //
-// Returns ErrJobNotFound if no active job with the given name exists.
+// Disabled jobs are updated in place and stay disabled: refusing them would
+// force callers into remove+add, which resumes the job and files the old copy
+// under Removed.
+//
+// Returns ErrJobNotFound if no job with the given name exists.
 func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error {
 	s.mu.RLock()
 	oldJob, _ := getJob(s.Jobs, name)
-	_, disabled := s.disabledNames[name]
-	if oldJob == nil || disabled {
-		s.mu.RUnlock()
+	s.mu.RUnlock()
+	if oldJob == nil {
 		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
 	}
-	s.mu.RUnlock()
 
 	newJob.Use(s.Middlewares()...)
 
@@ -741,8 +769,51 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 		return fmt.Errorf("update job: %w", err)
 	}
 
-	// Update internal state
+	if err := s.applyUpdatedJob(name, newJob); err != nil {
+		return err
+	}
+
+	s.Logger.Info(fmt.Sprintf("Job updated %q - %q", name, newSchedule))
+	return nil
+}
+
+// applyUpdatedJob records newJob as the live job for name. It runs after
+// the cron entry has already been replaced, so it must tolerate the job
+// having vanished in between: RemoveJob drops the cron entry and waits
+// for in-flight runs BEFORE it takes s.mu, so a delete that began after
+// UpdateJob's pre-check can complete entirely inside that window.
+//
+// Two orderings matter here, and both used to be wrong:
+//
+// The existence re-check comes first. Writing s.jobsByName
+// unconditionally resurrected a deleted name as a ghost — present in the
+// map, absent from s.Jobs (the replace loop finds nothing) and holding no
+// cron entry, so it never fired again while the API kept reporting it.
+//
+// The re-pause comes before the maps change, because it is the last step
+// that can fail. go-cron v0.16.0's updateSchedule mutates the entry in
+// place and never clears Paused, so the call is a no-op today and exists
+// to keep the invariant should that contract change — but its one
+// reachable error, ErrEntryNotFound, used to arrive after s.Jobs and
+// s.jobsByName had been rewritten, leaving the caller a 500 for an update
+// that had already taken effect. Failing here leaves the scheduler
+// exactly as it was.
+//
+// Lock safety while calling PauseEntryByName: see DisableJob's doc comment.
+func (s *Scheduler) applyUpdatedJob(name string, newJob Job) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, live := s.jobsByName[name]; !live {
+		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
+	}
+
+	if _, disabled := s.disabledNames[name]; disabled {
+		if err := s.cron.PauseEntryByName(name); err != nil {
+			return fmt.Errorf("re-pause updated job: %w", err)
+		}
+	}
+
 	for i, j := range s.Jobs {
 		if j.GetName() == name {
 			s.Jobs[i] = newJob
@@ -750,9 +821,6 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 		}
 	}
 	s.jobsByName[name] = newJob
-	s.mu.Unlock()
-
-	s.Logger.Info(fmt.Sprintf("Job updated %q - %q", name, newSchedule))
 	return nil
 }
 

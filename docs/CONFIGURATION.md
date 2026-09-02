@@ -235,6 +235,7 @@ services:
 | `OFELIA_ENABLE_PPROF` | Enable pprof profiling | false |
 | `OFELIA_PPROF_ADDRESS` | pprof bind address | 127.0.0.1:8080 |
 | `OFELIA_STATE_FILE` | JSON file persisting API-mutated jobs and disable flags across restarts (#593) | (none, disabled) |
+| `OFELIA_UI_DEV_DIR` | Serve the web UI from this directory instead of the embedded assets, re-parsing templates on every request. Development only; leave unset in production | (none, embedded assets) |
 
 **Limitations of Labels-Only Configuration**:
 - No environment variable substitution in label values (`${VAR}` won't expand)
