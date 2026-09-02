@@ -218,6 +218,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value, so a changed global reaches restored jobs at the next start the
   way it reaches INI ones. `"0s"` still means the same as omitting the
   field ([#806](https://github.com/netresearch/ofelia/issues/806)).
+- **The OpenAPI job-request schema is now held to what the handler
+  accepts.** Nothing validated `docs/openapi.yaml`, so it drifted: it
+  advertised a job type `service-run` that `jobFromRequest` rejects and
+  `jobType` never emits, and it marked `type` as required although an
+  omitted type is a valid request that yields a local job. Both were
+  found by reading the diff, which is not a mechanism. A test now
+  compares the documented `type` enum against the tokens the real handler
+  dispatches on, and fails rather than skips when it cannot find the enum
+  ([#816](https://github.com/netresearch/ofelia/issues/816)).
 - **A delete landing mid-update can no longer leave a ghost job.**
   `RemoveJob` drops the cron entry before it takes the scheduler lock, so
   it can complete inside `UpdateJob`'s window; the update then reinserted
