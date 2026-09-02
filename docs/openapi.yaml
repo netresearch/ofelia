@@ -301,7 +301,7 @@ components:
   schemas:
     JobRequest:
       type: object
-      required: [name, type]
+      required: [name]
       properties:
         name: {type: string, maxLength: 256}
         type: {type: string, enum: [run, exec, local, compose], description: "omitted means local; anything else is rejected"}
