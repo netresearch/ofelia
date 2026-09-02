@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   remain the default.
 - **Build version in the footer.** Fetched once from the auth-exempt `/health`
   endpoint; release builds show the goreleaser version, dev builds show `dev`.
+- **`POST /api/jobs/create`/`update` accept `maxRuntime` for `type=run` jobs.** Previously the only way to bound how long an API-created run-job could execute was the scheduler's fixed 24h default (`defaultJobMaxRuntime`, issue #638) — `config.ini`/label jobs could already set a per-job `max-runtime`, but the API had no field for it. `maxRuntime` takes a Go duration string (e.g. `"30m"`), mirrors the `[job-run] max-runtime` syntax, and round-trips through the state file so a persisted job keeps its override across daemon restarts ([#789](https://github.com/netresearch/ofelia/pull/789)). `"0s"` is equivalent to omitting the field: it falls back to the 24h default rather than meaning "unlimited".
 
 ### Changed
 
@@ -248,7 +249,6 @@ A security release. Jobs defined through Docker container labels could carry pri
 ### Security
 
 - **Label-sourced jobs can no longer smuggle `privileged`, `env-file` or `env-from` past the host-escalation policy.** `allow-host-jobs-from-labels` stripped host bind mounts from `job-run` / `job-service-run` ([#462](https://github.com/netresearch/ofelia/issues/462)) but never covered these three keys, and `job-exec` was not routed through the policy at all. So a container labelling itself could run a `privileged` `docker exec` (a container-escape primitive), read a file from ofelia's own filesystem view into the job environment (`env-file`), or copy another container's entire environment (`env-from`) — all with the policy in its default, off state. These keys are now stripped from every label-sourced job, matched by normalized key so casing and separator variants are caught, unless `allow-host-jobs-from-labels=true`; the strip runs on both the initial-load and the live container-reconcile paths and logs a `SECURITY POLICY VIOLATION` per stripped key. INI configuration is trusted and unaffected ([GHSA-h7m7-v83x-vfp3](https://github.com/netresearch/ofelia/security/advisories/GHSA-h7m7-v83x-vfp3), [#791](https://github.com/netresearch/ofelia/pull/791)).
-- **`POST /api/jobs/create`/`update` accept `maxRuntime` for `type=run` jobs.** Previously the only way to bound how long an API-created run-job could execute was the scheduler's fixed 24h default (`defaultJobMaxRuntime`, issue #638) — `config.ini`/label jobs could already set a per-job `max-runtime`, but the API had no field for it. `maxRuntime` takes a Go duration string (e.g. `"30m"`), mirrors the `[job-run] max-runtime` syntax, and round-trips through the state file so a persisted job keeps its override across daemon restarts ([#789](https://github.com/netresearch/ofelia/pull/789)).
 
 ## [0.29.0] - 2026-08-03
 
