@@ -304,13 +304,13 @@ components:
       required: [name, type]
       properties:
         name: {type: string, maxLength: 256}
-        type: {type: string, enum: [run, exec, local, service-run, compose]}
+        type: {type: string, enum: [run, exec, local, compose], description: "omitted means local; anything else is rejected"}
         schedule: {type: string}
         command: {type: string}
         image: {type: string, description: run jobs}
         container: {type: string, description: exec jobs}
         file: {type: string, description: compose jobs}
-        service: {type: string, description: service-run jobs}
+        service: {type: string, description: "compose jobs: the service to run or exec"}
         exec: {type: boolean, description: "compose jobs: exec in a running service"}
         maxRuntime:
           type: string

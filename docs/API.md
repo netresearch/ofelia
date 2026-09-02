@@ -176,13 +176,13 @@ The request body (`jobRequest`) accepts:
 | Field | Type | Notes |
 |---|---|---|
 | `name` | string | required; ≤256 chars, no control characters |
-| `type` | string | `run`, `exec`, `local`, `service-run`, `compose` |
+| `type` | string | `run`, `exec`, `local`, `compose`; omitted means `local`. Anything else is rejected with `unknown job type`. Service jobs cannot be created over the API — see [#816](https://github.com/netresearch/ofelia/issues/816) |
 | `schedule` | string | cron expression or `@shortcut` |
 | `command` | string | |
 | `image` | string | `run` jobs |
 | `container` | string | `exec` jobs |
 | `file` | string | `compose` jobs |
-| `service` | string | `service-run` jobs |
+| `service` | string | `compose` jobs: the service to run or exec |
 | `exec` | bool | `compose` jobs: exec in a running service |
 | `maxRuntime` | string | `run` jobs; Go duration, e.g. `30m`. Omitted means the scheduler's 24h default; `"0s"` means the same and is not a way to ask for no bound. Unlike an INI `[job-run]` section, an API-created job does not inherit `[global] max-runtime` — see [#806](https://github.com/netresearch/ofelia/issues/806) |
 
