@@ -840,6 +840,14 @@ function renderHistory() {
       ? Array.from(tbody.querySelectorAll('tr.output-row.open')).map(r => r.dataset.key)
       : []
   );
+  // Preserve where the user had scrolled inside each expanded output. The
+  // rebuild below replaces every <pre>, and a fresh element starts at
+  // scrollTop 0 — so a job that keeps producing runs yanked the reader
+  // back to the top of the log on every 5s tick, which made a long log
+  // impossible to read (#808). Same keying as openOutputs, plus the index
+  // of the block within the subrow, because stdout and stderr each get
+  // their own scroller.
+  const openScroll = tbody.dataset.job === name ? captureOutputScroll(tbody) : new Map();
   tbody.dataset.job = name;
   tbody.innerHTML = '';
   if (historyCache.length === 0) {
@@ -877,6 +885,35 @@ function renderHistory() {
     frag.appendChild(sub);
   });
   tbody.appendChild(frag);
+  restoreOutputScroll(tbody, openScroll);
+}
+
+/* Where each expanded output block is scrolled to, keyed by run and by
+   position within the subrow. A reader sitting at the bottom is recorded
+   as such rather than by offset: for a run that is still growing, the
+   offset that was the bottom a tick ago is no longer the bottom, and
+   pinning it there would drift away from the newest output. */
+function captureOutputScroll(tbody) {
+  const scroll = new Map();
+  tbody.querySelectorAll('tr.output-row.open').forEach(row => {
+    row.querySelectorAll('pre').forEach((pre, i) => {
+      if (pre.scrollTop === 0) return;
+      const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight <= 2;
+      scroll.set(`${row.dataset.key}\u0000${i}`, atBottom ? 'bottom' : pre.scrollTop);
+    });
+  });
+  return scroll;
+}
+
+function restoreOutputScroll(tbody, scroll) {
+  if (scroll.size === 0) return;
+  tbody.querySelectorAll('tr.output-row.open').forEach(row => {
+    row.querySelectorAll('pre').forEach((pre, i) => {
+      const at = scroll.get(`${row.dataset.key}\u0000${i}`);
+      if (at === undefined) return;
+      pre.scrollTop = at === 'bottom' ? pre.scrollHeight : at;
+    });
+  });
 }
 
 /* Toggle an output subrow open/closed; the run's own row is highlighted
