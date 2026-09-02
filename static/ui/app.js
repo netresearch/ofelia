@@ -600,90 +600,99 @@ function renderJobs() {
     tr.dataset.jobName = j.name;
     if (j.name === selectedJob) tr.classList.add('selected');
 
-    let dot, lastRun, dur;
-    if (j.running) {
-      dot = dotSpan('running', 'Running now');
-    } else if (j._disabled) {
-      dot = dotSpan('disabled', 'Disabled');
-    } else if (j.lastRun) {
-      dot = statusDot(j.lastRun.failed, j.lastRun.skipped);
-    } else {
-      dot = dotSpan('none', 'Never run');
-    }
-    if (!j._disabled && j.lastRun) {
-      const parts = formatTimeParts(j.lastRun.date);
-      lastRun = parts
-        ? `<span class="lr-date">${escapeHtml(parts.date)}</span><span class="lr-time">${escapeHtml(parts.time)}</span>`
-        : '';
-      dur = formatDuration(j.lastRun.duration);
-    } else {
-      lastRun = ''; dur = '';
-    }
-
     const eName = escapeHtml(j.name);
-    // The name is a real button (not just a clickable row) so keyboard
-    // users can Tab to it and open the history with Enter. Its tooltip
-    // names the job's origin — and for config-owned jobs (which have no
-    // delete button) where deletion actually happens.
     const configOwned = j.origin === 'ini' || j.origin === 'label';
-    const originTitle = originTooltip(j.origin, configOwned);
-    const nameText = j._disabled ? `<s class="disabled-text">${eName}</s>` : eName;
-    const name = `<button type="button" class="job-name" data-action="history" data-job="${eName}"${originTitle ? ` data-custom-tooltip="${escapeHtml(originTitle)}"` : ''}>${nameText}</button>`;
+    const { lastRun, dur } = lastRunCells(j);
     const eSched = escapeHtml(j.schedule);
     const sched = j._disabled ? `<s class="disabled-text">${eSched}</s>` : eSched;
-    const eCmd = escapeHtml(j.command);
 
-    // Result sparkline: one square per recent run, oldest first.
-    const spark = (j.recentRuns || []).map(r => {
-      const state = runState(r);
-      return `<i class="${SPARK_CLASS[state]}" data-custom-tooltip="${escapeHtml(formatTime(r.date))} · ${state}"></i>`;
-    }).join('');
-    const sparkCell = spark ? `<span class="spark">${spark}</span>` : '';
-
-    // Action tooltips use the shared data-custom-tooltip bubble (styled,
-    // unlike the browser default). Config-owned (ini/label) jobs keep edit and
-    // delete visible but inert via aria-disabled — a truly `disabled`
-    // control swallows hover events, so its tooltip would never show.
-    // The API refuses both anyway (403; the update gate mirrors delete).
-    // Short — the bubble near the table's right edge must not clip.
-    const ownedTitle = j.origin === 'ini' ? 'Managed by the INI config' : 'Managed by Docker labels';
-    const btn = (action, label, icon, inert) =>
-      `<button data-action="${action}" data-job="${eName}" aria-label="${label} ${eName}"` +
-      ` data-custom-tooltip="${escapeHtml(inert ? ownedTitle : label)}"` +
-      (inert ? ' aria-disabled="true"' : '') + `>${icon}</button>`;
-    let actions;
-    if (j._disabled) {
-      actions = `<div class="actions">` +
-        btn('enable', 'Enable', ICONS.enable, false) +
-        btn('edit', 'Edit', ICONS.edit, configOwned) +
-        `</div>`;
-    } else {
-      actions = `<div class="actions">` +
-        btn('run', 'Run', ICONS.run, false) +
-        btn('edit', 'Edit', ICONS.edit, configOwned) +
-        btn('disable', 'Disable', ICONS.pause, false) +
-        btn('delete', 'Delete', ICONS.trash, configOwned) +
-        `</div>`;
-    }
-
-    // Duration cell: last / avg / max over the recent completed runs
-    // (skipped excluded) — a slowing job shows up at a glance.
-    const durs = (j.recentRuns || []).filter(r => !r.skipped).map(r => r.duration);
-    let durCell = dur;
-    if (dur && durs.length > 1) {
-      const avg = formatDuration(durs.reduce((a, b) => a + b, 0) / durs.length);
-      const max = formatDuration(Math.max(...durs));
-      durCell =
-        `<span class="dur-line"><small>last</small>${dur}</span>` +
-        `<span class="dur-line"><small>avg</small>${avg}</span>` +
-        `<span class="dur-line"><small>max</small>${max}</span>`;
-    }
-
-    tr.innerHTML = `<td>${dot}</td><td>${name}</td><td class="mono">${sched}</td><td class="mono wrap">${eCmd}</td>` +
-      `<td>${lastRun}</td><td class="dur-cell">${durCell}</td><td>${sparkCell}</td><td>${actions}</td>`;
+    tr.innerHTML =
+      `<td>${jobStatusDot(j)}</td><td>${jobNameCell(j, eName, configOwned)}</td>` +
+      `<td class="mono">${sched}</td><td class="mono wrap">${escapeHtml(j.command)}</td>` +
+      `<td>${lastRun}</td><td class="dur-cell">${durationCell(j, dur)}</td>` +
+      `<td>${sparkCell(j)}</td><td>${actionsCell(j, eName, configOwned)}</td>`;
     frag.appendChild(tr);
   });
   tbody.appendChild(frag);
+}
+
+/* ── Job row cells ──
+   One function per cell, so renderJobs stays a loop that assembles a row
+   rather than a loop that also decides what every cell contains. Each
+   returns ready-to-insert HTML with its dynamic parts already escaped. */
+
+/* Status dot. Running beats disabled beats the last run's outcome. */
+function jobStatusDot(j) {
+  if (j.running) return dotSpan('running', 'Running now');
+  if (j._disabled) return dotSpan('disabled', 'Disabled');
+  if (j.lastRun) return statusDot(j.lastRun.failed, j.lastRun.skipped);
+  return dotSpan('none', 'Never run');
+}
+
+/* The Last Run cell and the raw duration the Duration cell builds on. A
+   disabled job shows neither: its last run says nothing about what it
+   will do next. */
+function lastRunCells(j) {
+  if (j._disabled || !j.lastRun) return { lastRun: '', dur: '' };
+  const parts = formatTimeParts(j.lastRun.date);
+  const lastRun = parts
+    ? `<span class="lr-date">${escapeHtml(parts.date)}</span><span class="lr-time">${escapeHtml(parts.time)}</span>`
+    : '';
+  return { lastRun, dur: formatDuration(j.lastRun.duration) };
+}
+
+/* The job name. A real button, not just a clickable row, so keyboard
+   users can Tab to it and open the history with Enter. Its tooltip names
+   the job's origin — and for config-owned jobs (which have no delete
+   button) where deletion actually happens. */
+function jobNameCell(j, eName, configOwned) {
+  const originTitle = originTooltip(j.origin, configOwned);
+  const tooltipAttr = originTitle ? ` data-custom-tooltip="${escapeHtml(originTitle)}"` : '';
+  const nameText = j._disabled ? `<s class="disabled-text">${eName}</s>` : eName;
+  return `<button type="button" class="job-name" data-action="history" data-job="${eName}"${tooltipAttr}>${nameText}</button>`;
+}
+
+/* Result sparkline: one square per recent run, oldest first. */
+function sparkCell(j) {
+  const spark = (j.recentRuns || []).map(r => {
+    const state = runState(r);
+    return `<i class="${SPARK_CLASS[state]}" data-custom-tooltip="${escapeHtml(formatTime(r.date))} · ${state}"></i>`;
+  }).join('');
+  return spark ? `<span class="spark">${spark}</span>` : '';
+}
+
+/* Last / avg / max over the recent completed runs (skipped excluded) — a
+   slowing job shows up at a glance. Falls back to the bare last duration
+   when there is not enough history to average. */
+function durationCell(j, dur) {
+  const durs = (j.recentRuns || []).filter(r => !r.skipped).map(r => r.duration);
+  if (!dur || durs.length <= 1) return dur;
+  const avg = formatDuration(durs.reduce((a, b) => a + b, 0) / durs.length);
+  const max = formatDuration(Math.max(...durs));
+  return `<span class="dur-line"><small>last</small>${dur}</span>` +
+    `<span class="dur-line"><small>avg</small>${avg}</span>` +
+    `<span class="dur-line"><small>max</small>${max}</span>`;
+}
+
+/* Row actions. Config-owned (ini/label) jobs keep edit and delete visible
+   but inert via aria-disabled — a truly `disabled` control swallows hover
+   events, so its tooltip would never show, and the API refuses both
+   anyway (403; the update gate mirrors delete). Tooltips are kept short:
+   the bubble near the table's right edge must not clip. */
+function actionsCell(j, eName, configOwned) {
+  const ownedTitle = j.origin === 'ini' ? 'Managed by the INI config' : 'Managed by Docker labels';
+  const btn = (action, label, icon, inert) =>
+    `<button data-action="${action}" data-job="${eName}" aria-label="${label} ${eName}"` +
+    ` data-custom-tooltip="${escapeHtml(inert ? ownedTitle : label)}"` +
+    (inert ? ' aria-disabled="true"' : '') + `>${icon}</button>`;
+  const buttons = j._disabled
+    ? [btn('enable', 'Enable', ICONS.enable, false),
+       btn('edit', 'Edit', ICONS.edit, configOwned)]
+    : [btn('run', 'Run', ICONS.run, false),
+       btn('edit', 'Edit', ICONS.edit, configOwned),
+       btn('disable', 'Disable', ICONS.pause, false),
+       btn('delete', 'Delete', ICONS.trash, configOwned)];
+  return `<div class="actions">${buttons.join('')}</div>`;
 }
 
 /* Failing filter, toggled by the Failing stat card — a real button in
