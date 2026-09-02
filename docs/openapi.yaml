@@ -312,6 +312,14 @@ components:
         file: {type: string, description: compose jobs}
         service: {type: string, description: service-run jobs}
         exec: {type: boolean, description: "compose jobs: exec in a running service"}
+        maxRuntime:
+          type: string
+          description: >-
+            run jobs; a Go duration such as "30m". Omitting it means the
+            scheduler's 24h default, and "0s" means the same — it is not a way
+            to ask for no bound. An API-created job does not inherit
+            [global] max-runtime the way an INI [job-run] section does.
+          example: 30m
     Job:
       type: object
       properties:

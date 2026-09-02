@@ -184,6 +184,7 @@ The request body (`jobRequest`) accepts:
 | `file` | string | `compose` jobs |
 | `service` | string | `service-run` jobs |
 | `exec` | bool | `compose` jobs: exec in a running service |
+| `maxRuntime` | string | `run` jobs; Go duration, e.g. `30m`. Omitted means the scheduler's 24h default; `"0s"` means the same and is not a way to ask for no bound. Unlike an INI `[job-run]` section, an API-created job does not inherit `[global] max-runtime` — see [#806](https://github.com/netresearch/ofelia/issues/806) |
 
 Returns `201 Created`. Validation failures return `400 Bad Request`.
 API-created jobs are persisted and survive restarts.
