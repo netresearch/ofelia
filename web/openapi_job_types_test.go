@@ -25,9 +25,12 @@ const openAPIRelPath = "../docs/openapi.yaml"
 
 // unknownTypeMarker is the substring of the error jobFromRequest's default
 // arm returns. It is the only signal that separates "the switch refused this
-// token" from "the switch dispatched and construction failed later", so a
-// reworded error must be reflected here or this test silently accepts
-// everything.
+// token" from "the switch dispatched and construction failed later".
+//
+// Rewording that error does not quietly weaken the test: every candidate
+// then counts as accepted, and the assertion fails naming "nonesuch" and
+// "service-run" among them — a result wrong on sight, which is what the
+// sentinel in candidateJobTypes is for. Reflect the new wording here.
 const unknownTypeMarker = "unknown job type"
 
 // candidateJobTypes is the population offered to the handler. It deliberately
