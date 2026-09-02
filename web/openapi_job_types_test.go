@@ -59,7 +59,7 @@ type openAPIJobRequest struct {
 						Enum []string `yaml:"enum"`
 					} `yaml:"type"`
 				} `yaml:"properties"`
-			} `yaml:"JobRequest"`
+			} `yaml:"JobRequest"` //nolint:tagliatelle // schema key is spelled by the OpenAPI document, must match exactly
 		} `yaml:"schemas"`
 	} `yaml:"components"`
 }
