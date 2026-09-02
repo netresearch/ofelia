@@ -604,6 +604,17 @@ func (c *Config) registerJob(name string, j core.Job) bool {
 	return true
 }
 
+// registerAllJobs materializes every configured job and hands it to the
+// scheduler. The kinds are processed in the order below; within a kind
+// the order is Go's map iteration order, i.e. unspecified — nothing here
+// depends on it.
+//
+// The five loops stay in one function on purpose. Their prologues really
+// do differ (only the Docker-backed kinds take a provider and initialize
+// runtime fields; only run and service inherit the global max-runtime),
+// and the config types embed different core jobs, so splitting them into
+// five methods only relocates the similarity into five signatures. What
+// they genuinely share is the tail, and that now lives in finishJob.
 func (c *Config) registerAllJobs() {
 	provider := c.dockerHandler.GetDockerProvider()
 	rejected := 0
@@ -616,12 +627,8 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares(c.logger, wm)
-		if !c.registerJob(name, j) {
-			rejected++
-		}
+		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
+			func() { j.buildMiddlewares(c.logger, wm) })
 	}
 	for name, j := range c.RunJobs {
 		_ = defaults.Set(j)
@@ -632,22 +639,14 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares(c.logger, wm)
-		if !c.registerJob(name, j) {
-			rejected++
-		}
+		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
+			func() { j.buildMiddlewares(c.logger, wm) })
 	}
 	for name, j := range c.LocalJobs {
 		_ = defaults.Set(j)
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares(c.logger, wm)
-		if !c.registerJob(name, j) {
-			rejected++
-		}
+		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
+			func() { j.buildMiddlewares(c.logger, wm) })
 	}
 	for name, j := range c.ServiceJobs {
 		_ = defaults.Set(j)
@@ -658,22 +657,14 @@ func (c *Config) registerAllJobs() {
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares(c.logger, wm)
-		if !c.registerJob(name, j) {
-			rejected++
-		}
+		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
+			func() { j.buildMiddlewares(c.logger, wm) })
 	}
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
 		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-		j.buildMiddlewares(c.logger, wm)
-		if !c.registerJob(name, j) {
-			rejected++
-		}
+		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
+			func() { j.buildMiddlewares(c.logger, wm) })
 	}
 
 	// One line an operator can act on. Without it the only trace of a rejected
@@ -681,8 +672,30 @@ func (c *Config) registerAllJobs() {
 	// itself healthy.
 	if rejected > 0 {
 		c.logger.Error("some jobs were not scheduled and will never run",
-			"rejected", rejected, "scheduled", len(c.sh.GetActiveJobs()))
+			"rejected", rejected, "scheduled", registeredJobCount(c.sh))
 	}
+}
+
+// finishJob applies the settings every job kind shares — the notification
+// defaults, the dedup hook, the middleware chain — registers the job, and
+// reports 1 when the scheduler refused it so callers can accumulate
+// without a branch of their own.
+//
+// The notification configs come in as pointers and the middleware wiring
+// as a closure because the five *JobConfig types embed different core
+// jobs and share no interface. Inventing one to pass them implicitly
+// would be more machinery than this saves.
+func (c *Config) finishJob(name string, j core.Job,
+	slack *middlewares.SlackConfig, mail *middlewares.MailConfig, save *middlewares.SaveConfig,
+	buildMiddlewares func(),
+) int {
+	c.mergeNotificationDefaults(slack, mail, save)
+	c.injectDedup(slack, mail)
+	buildMiddlewares()
+	if c.registerJob(name, j) {
+		return 0
+	}
+	return 1
 }
 
 func (c *Config) injectDedup(slack *middlewares.SlackConfig, mail *middlewares.MailConfig) {
