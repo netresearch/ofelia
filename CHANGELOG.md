@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`default-user` and a job's own `user` are documented as the distinct
+  states they have.** The setting had half a sentence per job type, and
+  an empty value means something different at the two levels — which the
+  documentation did not say and is the easy mistake. For
+  `[global] default-user`: absent yields `nobody`, empty and `default`
+  both yield the container's own user, anything else is taken literally.
+  For a job's own `user`: absent or empty *inherits* whatever the global
+  resolved to, and only `default` bypasses it. Both are now tables in
+  `docs/CONFIGURATION.md`, and the three per-job descriptions in
+  `docs/jobs.md` say which of the two they are.
+
+  The reservation of `default` is written down for the first time: a
+  container user of that name cannot be selected at either level. The
+  global has a second spelling that avoids the collision — an empty
+  value — while a job's `user` has none, since empty already means
+  inherit ([#718](https://github.com/netresearch/ofelia/issues/718)).
+
 - **The minimum Go version is 1.27.** The toolchain moved to go1.27.0 in
   [v0.30.0](https://github.com/netresearch/ofelia/releases/tag/v0.30.0)
   while `go.mod` kept a `go 1.26` directive, which is what the

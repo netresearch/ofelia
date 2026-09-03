@@ -363,7 +363,9 @@ command = pg_dump ${DB_NAME:-mydb}
 
 [job-TYPE "NAME"]
 # Job-specific configuration
-# TYPE: exec, run, local, service, compose
+# TYPE: exec, run, local, service-run, compose
+#       (so the sections are [job-exec], [job-run], [job-local],
+#        [job-service-run] and [job-compose])
 # NAME: Unique job identifier
 ```
 
@@ -377,7 +379,7 @@ command = pg_dump ${DB_NAME:-mydb}
 # Event/polling settings (events, docker-poll-interval, ...) belong in the
 # [docker] section — see "Docker label configurations" in the README.
 allow-host-jobs-from-labels = false
-default-user = nobody        # Default for exec/run/service; empty uses container default
+default-user = nobody        # For job-exec, job-run and job-service-run; see "The default-user setting" below
 
 # How label-defined job-exec names are scoped (see "Cross-Container Job
 # References" below). Default `service` is collision-prone when one daemon
@@ -456,6 +458,40 @@ pprof-address = :6060
 # Security
 enable-strict-validation = false
 ```
+
+#### The default-user setting
+
+`default-user` supplies the user for `job-exec`, `job-run` and `job-service-run`
+jobs that do not name one themselves. Four spellings resolve to three
+outcomes — an empty value and `default` mean the same thing:
+
+| `[global] default-user` | A job without its own `user` runs as |
+|---|---|
+| absent | `nobody` — the built-in default |
+| empty (`default-user =`) | the container's own default user |
+| `default` | the container's own default user |
+| any other value | that user |
+
+A job can set `user` itself, and the empty value means something different at
+that level — this is the easy mistake:
+
+| A job's own `user` | Result |
+|---|---|
+| absent or empty | inherit whatever the table above resolves the global to |
+| `default` | the container's own default user, whatever the global says |
+| any other value | that user |
+
+So an empty `user` on a job is "inherit", not "container default". Only
+`user = default` bypasses the global.
+
+**`default` is reserved for that meaning.** A container user literally named
+`default` cannot be selected at either level, because the value is always read
+as the sentinel ([#718](https://github.com/netresearch/ofelia/issues/718)).
+
+For `[global] default-user` there is a second spelling that avoids the
+collision — an empty value means the same thing — and it is the one to prefer.
+A job's own `user` has no such alternative: empty means inherit, so `default`
+is the only way to ask for the container's user there.
 
 ## Job Types
 
@@ -1107,7 +1143,7 @@ This is a **daemon-wide** setting configured in the Ofelia `[global]` section (I
 
 1. **Circular dependencies are detected** - Ofelia will reject configurations with circular dependency chains
 2. **Dependencies must exist** - Referenced jobs must be defined in the configuration
-3. **All job types supported** - Dependencies work across all job types (exec, run, local, service, compose)
+3. **All job types supported** - Dependencies work across all job types (exec, run, local, service-run, compose)
 4. **Multiple dependencies** - Use multiple `depends-on` lines in INI format to specify multiple dependencies
 5. **Service name precedence** - Docker Compose service names take precedence over container names for job naming
 
