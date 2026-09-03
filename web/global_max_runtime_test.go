@@ -32,6 +32,11 @@ type ptrGlobalConfig struct{ d time.Duration }
 
 func (p *ptrGlobalConfig) GlobalMaxRuntime() time.Duration { return p.d }
 
+// funcGlobalConfig is nil-capable without being a pointer.
+type funcGlobalConfig func() time.Duration
+
+func (f funcGlobalConfig) GlobalMaxRuntime() time.Duration { return f() }
+
 func runJobFor(t *testing.T, cfg any, requested string) *core.RunJob {
 	t.Helper()
 
@@ -93,7 +98,10 @@ func TestRunJob_WithoutGlobalStaysZero(t *testing.T) {
 		// A nil pointer stored in an `any` satisfies the interface and
 		// panics on the call. NewServer takes `any` and is exported, so
 		// this arrives from outside the repo, not from the daemon.
-		"typed-nil provider": (*ptrGlobalConfig)(nil),
+		"typed-nil pointer provider": (*ptrGlobalConfig)(nil),
+		// The same hazard in a kind that is not a pointer: calling a nil
+		// func panics exactly as dereferencing a nil pointer does.
+		"typed-nil func provider": funcGlobalConfig(nil),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

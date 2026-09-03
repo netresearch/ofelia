@@ -967,17 +967,26 @@ type GlobalMaxRuntimeProvider interface {
 // caller who has no configuration meant.
 func (s *Server) globalMaxRuntime() time.Duration {
 	p, ok := s.config.(GlobalMaxRuntimeProvider)
-	if !ok || isNilPointer(p) {
+	if !ok || isNilValue(p) {
 		return 0
 	}
 	return p.GlobalMaxRuntime()
 }
 
-// isNilPointer reports whether v holds a nil pointer, which a plain
-// `v == nil` misses once the value carries a type.
-func isNilPointer(v any) bool {
+// isNilValue reports whether v holds a nil of any kind that can be nil,
+// which a plain `v == nil` misses once the value carries a type. Limiting
+// it to pointers would be arbitrary: a nil func-backed implementor panics
+// on the call just as a nil *cli.Config does.
+func isNilValue(v any) bool {
 	rv := reflect.ValueOf(v)
-	return rv.Kind() == reflect.Pointer && rv.IsNil()
+	//nolint:exhaustive // reflect.Kind has many values; only the nil-capable ones matter here
+	switch rv.Kind() {
+	case reflect.Pointer, reflect.Func, reflect.Map, reflect.Chan,
+		reflect.Slice, reflect.Interface, reflect.UnsafePointer:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }
 
 func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
