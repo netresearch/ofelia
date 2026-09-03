@@ -363,7 +363,9 @@ command = pg_dump ${DB_NAME:-mydb}
 
 [job-TYPE "NAME"]
 # Job-specific configuration
-# TYPE: exec, run, local, service, compose
+# TYPE: exec, run, local, service-run, compose
+#       (so the sections are [job-exec], [job-run], [job-local],
+#        [job-service-run] and [job-compose])
 # NAME: Unique job identifier
 ```
 
@@ -1140,7 +1142,7 @@ This is a **daemon-wide** setting configured in the Ofelia `[global]` section (I
 
 1. **Circular dependencies are detected** - Ofelia will reject configurations with circular dependency chains
 2. **Dependencies must exist** - Referenced jobs must be defined in the configuration
-3. **All job types supported** - Dependencies work across all job types (exec, run, local, service, compose)
+3. **All job types supported** - Dependencies work across all job types (exec, run, local, service-run, compose)
 4. **Multiple dependencies** - Use multiple `depends-on` lines in INI format to specify multiple dependencies
 5. **Service name precedence** - Docker Compose service names take precedence over container names for job naming
 
