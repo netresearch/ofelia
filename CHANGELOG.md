@@ -94,6 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where the run used to be skipped — the same behavior INI-defined and
   label-defined jobs have always had. Also `RetryDelayMs` 1000 and
   `compose.yml` as a compose job's default file.
+- **The deprecation window for `slack-webhook`, `poll-interval` and `no-poll` runs to v2.0.0.** All three were scheduled for removal in v1.0.0 and still work. The window was extended rather than the options dropped, so upgrading to 1.0.0 does not require a configuration change. `poll-interval` and `no-poll` are migrated automatically to `config-poll-interval` / `docker-poll-interval` and the polling defaults; `slack-webhook` is not, and a `[webhook "name"]` section with `preset = slack` replaces it. The removal target in the warning text moved with the window, so a 1.0.0 daemon no longer reports that an option "will be removed in v1.0.0" while running it.
 - **The health report is served from a snapshot.** `GetHealth` called
   `runtime.ReadMemStats` per request, which stops the world, and `/ready`
   is exempt from rate limiting — an unauthenticated caller could force a
