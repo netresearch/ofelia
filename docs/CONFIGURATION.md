@@ -377,7 +377,7 @@ command = pg_dump ${DB_NAME:-mydb}
 # Event/polling settings (events, docker-poll-interval, ...) belong in the
 # [docker] section — see "Docker label configurations" in the README.
 allow-host-jobs-from-labels = false
-default-user = nobody        # Default for exec/run/service; see "The default-user setting" below
+default-user = nobody        # For job-exec, job-run and job-service-run; see "The default-user setting" below
 
 # How label-defined job-exec names are scoped (see "Cross-Container Job
 # References" below). Default `service` is collision-prone when one daemon
@@ -469,16 +469,26 @@ jobs that do not name one themselves. It has four distinct outcomes:
 | `default` | the container's own default user |
 | any other value | that user |
 
-A job can set `user` itself to override the global, and the same two spellings
-apply there: an empty `user` inherits the global, `user = default` asks for the
-container's own default regardless of what the global says.
+A job can set `user` itself, and the empty value means something different at
+that level — this is the easy mistake:
+
+| A job's own `user` | Result |
+|---|---|
+| absent or empty | inherit whatever the table above resolves the global to |
+| `default` | the container's own default user, whatever the global says |
+| any other value | that user |
+
+So an empty `user` on a job is "inherit", not "container default". Only
+`user = default` bypasses the global.
 
 **`default` is reserved for that meaning.** A container user literally named
-`default` cannot be selected, because the value is always read as the sentinel
-([#718](https://github.com/netresearch/ofelia/issues/718)). Leaving the value
-empty expresses the same intent without the collision, and is the spelling to
-prefer.
+`default` cannot be selected at either level, because the value is always read
+as the sentinel ([#718](https://github.com/netresearch/ofelia/issues/718)).
 
+For `[global] default-user` there is a second spelling that avoids the
+collision — an empty value means the same thing — and it is the one to prefer.
+A job's own `user` has no such alternative: empty means inherit, so `default`
+is the only way to ask for the container's user there.
 
 ## Job Types
 
