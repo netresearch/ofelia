@@ -135,8 +135,11 @@ allow-host-jobs-from-labels = false  # Restrict LocalJobs
 
 **Best Practices**:
 ```bash
-# Generate bcrypt password hash
-python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+# Generate bcrypt password hash (prompts twice, prints ready-made config snippets)
+ofelia hash-password
+
+# Without the binary at hand:
+python3 -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass('Password: ').encode(), bcrypt.gensalt(12)).decode())"
 
 # Generate secret key
 openssl rand -base64 48
@@ -406,7 +409,10 @@ webhook-allowed-hosts = hooks.slack.com, discord.com, ntfy.internal, 192.168.1.2
 **Password Hashing**:
 ```bash
 # Generate bcrypt hash for configuration
-python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+ofelia hash-password            # --cost accepts 4-31; 10-14 recommended, 12 default
+
+# Without the binary at hand:
+python3 -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass('Password: ').encode(), bcrypt.gensalt(12)).decode())"
 ```
 
 **Usage**:

@@ -274,6 +274,43 @@ You can enable `include-stopped` via the env var **`OFELIA_DOCKER_INCLUDE_STOPPE
 - Avoid defining the same job-run name on multiple stopped containers if you need a predictable result.
 - Prefer specifying a **Docker filter** (`--docker-filter` or `[docker]` `filters`) to limit which containers Ofelia inspects; this reduces the set of running and stopped containers considered.
 
+#### Retry the Docker connection at startup (OFELIA_DOCKER_STARTUP_RETRY_*, --docker-startup-retry-*)
+
+Ofelia pings Docker once at startup and exits when that ping fails. On a TCP-based Docker host — a socket proxy, a remote daemon, Docker-in-Docker — the daemon is often not reachable yet in the first seconds after the stack comes up, and Ofelia exits before it becomes reachable ([#522](https://github.com/netresearch/ofelia/issues/522)).
+
+Two settings make it wait instead. Both are available as an environment variable, a flag, and a key under `[docker]`:
+
+| Setting | Env var | Flag | `[docker]` key | Default |
+|---|---|---|---|---|
+| Extra attempts | `OFELIA_DOCKER_STARTUP_RETRY_COUNT` | `--docker-startup-retry-count` | `startup-retry-count` | `0` |
+| Base interval | `OFELIA_DOCKER_STARTUP_RETRY_INTERVAL` | `--docker-startup-retry-interval` | `startup-retry-interval` | `1s` |
+
+**Behaviour**
+
+- The count is **extra attempts beyond the initial ping**, so the total budget is `count + 1`. The default `0` keeps the original behaviour of a single ping.
+- Backoff is exponential: the wait before attempt *n* is `interval × 2^(n-1)`. With the count at `5` and the default interval that is 1s → 2s → 4s → 8s → 16s — 31s of sleeping.
+- Each individual attempt is additionally bounded by a 10s ping timeout, so a wedged daemon cannot hang startup. Those timeouts are not part of the 31s: if all six pings run into them, startup takes about 91s before it gives up.
+- Accepted ranges are `0`–`20` for the count and `0`–`5m` for the interval; a larger interval is rejected when the configuration is validated, not silently reduced. An interval of `0` retries immediately, without sleeping between attempts.
+- The 5-minute cap applies to each *computed* backoff step, which the exponent can push past the interval itself — with `1m` and a count of `20`, the later waits sit at the cap rather than doubling on.
+- Each failed attempt that still has a retry left is logged at `WARN` with the wait before the next one; the final failure becomes the startup error instead. Connecting after one or more retries logs how many it took at `INFO`.
+
+**Example**
+
+```ini
+[docker]
+startup-retry-count = 5
+startup-retry-interval = 1s
+```
+
+```bash
+ofelia daemon --docker-startup-retry-count=5 --docker-startup-retry-interval=1s
+```
+
+**Recommendations**
+
+- Prefer `depends_on` with `condition: service_healthy` in Docker Compose where you control the stack; it removes the wait entirely rather than absorbing it.
+- Reach for these settings when the ordering is not yours to control — an external socket proxy, a remote daemon, a host that restarts both at once.
+
 ## INI Configuration
 
 ### Environment Variable Substitution
@@ -1106,12 +1143,20 @@ web-max-login-attempts = 5          # Per minute per IP
 
 **Generating a password hash:**
 
+Ofelia generates it itself. `hash-password` prompts twice with the input masked, refuses anything under eight characters, and prints the hash together with ready-made `config.ini` and environment-variable snippets:
+
+```bash
+ofelia hash-password            # cost 12; --cost accepts 4-31, 10-14 recommended
+```
+
+On a machine without the binary — writing a Compose file elsewhere, for instance — either of these produces the same kind of hash:
+
 ```bash
 # Using htpasswd (Apache utils)
-htpasswd -bnBC 12 "" 'your-password' | tr -d ':\n'
+htpasswd -nBC 12 "" | tr -d ':\n'
 
 # Using Python
-python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+python3 -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass('Password: ').encode(), bcrypt.gensalt(12)).decode())"
 ```
 
 **Authentication flow:**
