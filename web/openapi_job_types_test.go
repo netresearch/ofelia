@@ -142,9 +142,10 @@ func literalString(expr ast.Expr) (string, bool) {
 }
 
 // candidateJobTypes is the population offered to the handler: everything the
-// handler dispatches on, everything the document claims, and two tokens that
-// must come back rejected -- jobTypeService, which is documented as not
-// creatable, and one no code path knows.
+// handler dispatches on, everything the document claims, and three tokens
+// that must come back rejected -- jobTypeService and "service-run", the two
+// spellings of the type that is documented as not creatable over the API
+// (#816), and "nonesuch", which no code path knows.
 func candidateJobTypes(t *testing.T, documented []string) []string {
 	t.Helper()
 
