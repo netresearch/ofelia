@@ -812,7 +812,7 @@ command = /run-task.sh
 webhooks = slack
 ```
 
-The deprecated `slack-webhook` option keeps working and prints a deprecation warning naming its removal version. That version is `v2.0.0`: removal was scheduled for `v1.0.0` and the window was extended when 1.0.0 was cut, so upgrading to 1.0.0 does not force this migration.
+The deprecated `slack-webhook` option keeps working and prints a deprecation warning naming its removal version. That version is `v2.0.0`: removal was scheduled for `v1.0.0` and the window was extended when `v1.0.0` was cut, so upgrading to `v1.0.0` does not force this migration.
 
 ## Troubleshooting
 

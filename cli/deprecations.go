@@ -12,7 +12,7 @@ import (
 )
 
 // deprecationRemovalVersion is the release in which the options listed in
-// Deprecations stop being accepted. Moved from v1.0.0 to v2.0.0 when 1.0.0
+// Deprecations stop being accepted. Moved from v1.0.0 to v2.0.0 when v1.0.0
 // was cut: the window was deliberately extended rather than the options
 // dropped, and leaving the constant behind would have made a v1.0.0 daemon
 // print "will be removed in v1.0.0" at every start.
