@@ -288,9 +288,10 @@ Two settings make it wait instead. Both are available as an environment variable
 **Behaviour**
 
 - The count is **extra attempts beyond the initial ping**, so the total budget is `count + 1`. The default `0` keeps the original behaviour of a single ping.
-- Backoff is exponential: the wait before attempt *n* is `interval × 2^(n-1)`. With the count at `5` and the default interval, that is 1s → 2s → 4s → 8s → 16s, about 31s in total.
-- Each individual attempt is bounded by a 10s ping timeout, so a wedged daemon cannot hang startup.
-- Accepted range is `0`–`20` for the count; each backoff step is capped at 5 minutes. An interval of `0` retries immediately, without sleeping between attempts.
+- Backoff is exponential: the wait before attempt *n* is `interval × 2^(n-1)`. With the count at `5` and the default interval that is 1s → 2s → 4s → 8s → 16s — 31s of sleeping.
+- Each individual attempt is additionally bounded by a 10s ping timeout, so a wedged daemon cannot hang startup. Those timeouts are not part of the 31s: if all six pings run into them, startup takes about 91s before it gives up.
+- Accepted ranges are `0`–`20` for the count and `0`–`5m` for the interval; a larger interval is rejected when the configuration is validated, not silently reduced. An interval of `0` retries immediately, without sleeping between attempts.
+- The 5-minute cap applies to each *computed* backoff step, which the exponent can push past the interval itself — with `1m` and a count of `20`, the later waits sit at the cap rather than doubling on.
 - Each failed attempt that still has a retry left is logged at `WARN` with the wait before the next one; the final failure becomes the startup error instead. Connecting after one or more retries logs how many it took at `INFO`.
 
 **Example**
@@ -1152,10 +1153,10 @@ On a machine without the binary — writing a Compose file elsewhere, for instan
 
 ```bash
 # Using htpasswd (Apache utils)
-htpasswd -bnBC 12 "" 'your-password' | tr -d ':\n'
+htpasswd -nBC 12 "" | tr -d ':\n'
 
 # Using Python
-python3 -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt(12)).decode())"
+python3 -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass('Password: ').encode(), bcrypt.gensalt(12)).decode())"
 ```
 
 **Authentication flow:**
