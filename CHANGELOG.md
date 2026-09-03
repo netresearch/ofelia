@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-03
+
+The first stable release. The number is the commitment it implies: from here, a
+breaking change to the documented HTTP API or to the INI and label
+configuration takes a major bump, and the "pre-1.0" allowance the two
+source-only breaks below were taken under no longer applies.
+
+Most of the surface is the rebuilt dashboard and the API it runs on — an
+aggregate `/api/dashboard` endpoint, response compression, ETagged assets,
+per-job sparklines and duration stats, search and sorting. The API grew a gate:
+jobs owned by the INI file or by Docker labels can no longer be created,
+updated or deleted through it, and jobs it does own now survive a restart.
+
+Upgrading needs no configuration change. `slack-webhook`, `poll-interval` and
+`no-poll` were scheduled for removal here and still work; that window now runs
+to v2.0.0.
+
 ### Added
 
 - **Origin badges and honest delete buttons.** Config-owned jobs (INI or
