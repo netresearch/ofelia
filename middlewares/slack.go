@@ -31,7 +31,7 @@ type SlackConfig struct {
 
 // NewSlack returns a Slack middleware if the given configuration is not empty
 //
-// Deprecated: The Slack middleware is deprecated and will be removed in v1.0.0.
+// Deprecated: The Slack middleware is deprecated and will be removed in v2.0.0.
 // Please migrate to the generic webhook notification system with the "slack" preset:
 //
 //	[webhook "slack-alerts"]
