@@ -274,7 +274,7 @@ You can enable `include-stopped` via the env var **`OFELIA_DOCKER_INCLUDE_STOPPE
 - Avoid defining the same job-run name on multiple stopped containers if you need a predictable result.
 - Prefer specifying a **Docker filter** (`--docker-filter` or `[docker]` `filters`) to limit which containers Ofelia inspects; this reduces the set of running and stopped containers considered.
 
-#### Retry the Docker connection at startup (OFELIA_DOCKER_STARTUP_RETRY_COUNT, --docker-startup-retry-count)
+#### Retry the Docker connection at startup (OFELIA_DOCKER_STARTUP_RETRY_*, --docker-startup-retry-*)
 
 Ofelia pings Docker once at startup and exits when that ping fails. On a TCP-based Docker host — a socket proxy, a remote daemon, Docker-in-Docker — the daemon is often not reachable yet in the first seconds after the stack comes up, and Ofelia exits before it becomes reachable ([#522](https://github.com/netresearch/ofelia/issues/522)).
 
