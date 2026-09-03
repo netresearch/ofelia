@@ -46,10 +46,21 @@ This file explains repo‑wide conventions and where to find scoped rules.
 - Reusable workflows pinned `@main` are intentional (own org, post-trivy-action-incident policy) — the related hotspots are accepted, not third-party actions.
 
 ## Release process
-- Releases trigger on `release: published` event via `release-slsa.yml`
-- Create signed tags locally, then create a GitHub release: `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file notes.md --verify-tag`
-- The Release workflow builds SLSA Level 3 provenance, container images, and binary artifacts
-- Follow the narrative release notes style from previous releases (user-facing highlights first, then categorized changes)
+- **Pushing the tag is the release.** `release.yml` triggers on `push` of a
+  `v*` tag and calls `netresearch/.github/.github/workflows/release-go-app.yml@main`,
+  which creates the GitHub release, the binaries, the SLSA provenance, the
+  SBOMs and the `ghcr.io/netresearch/ofelia` image tags. `verify-release.yml`
+  runs afterwards against the published result.
+- **Never run `gh release create`.** CI owns creation, and under immutable
+  releases a lightweight tag from that command burns the version name
+  permanently. The order is: cut the release PR, merge it, tag `main`'s merge
+  commit with `git tag -s vX.Y.Z`, push the tag, wait.
+- `gh release edit vX.Y.Z --notes-file notes.md` afterwards is the supported
+  way to replace CI's generated notes, and the only `gh release edit` flag to
+  use.
+- Follow the narrative release notes style from previous releases: user-facing
+  highlights first, then categorized changes, contributors `@mentioned` inline
+  at the change they touched rather than in a section of their own.
 
 ## Dependencies
 - `github.com/netresearch/go-cron` — maintained fork of robfig/cron with DAG engine, pause/resume, @triggered schedules
