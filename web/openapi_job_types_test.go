@@ -1,13 +1,19 @@
 package web
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/netresearch/ofelia/core"
 )
 
 // The published OpenAPI description of a job-create request and the switch
@@ -23,6 +29,9 @@ import (
 
 const openAPIRelPath = "../docs/openapi.yaml"
 
+// handlerFile is read from the package directory the test runs in.
+const handlerFile = "server.go"
+
 // unknownTypeMarker is the substring of the error jobFromRequest's default
 // arm returns. It is the only signal that separates "the switch refused this
 // token" from "the switch dispatched and construction failed later".
@@ -33,22 +42,122 @@ const openAPIRelPath = "../docs/openapi.yaml"
 // sentinel in candidateJobTypes is for. Reflect the new wording here.
 const unknownTypeMarker = "unknown job type"
 
-// candidateJobTypes is the population offered to the handler. It deliberately
-// includes jobTypeService, which is documented as not creatable and must come
-// back rejected, and a token no code path knows.
+// handlerJobTypes reads the tokens jobFromRequest dispatches on straight out
+// of its type switch, resolving the jobType* constants from the same file.
 //
-// This slice is the one hand-kept part of the test: a new jobType* constant
-// has to be added here, or it goes unexercised.
-func candidateJobTypes() []string {
-	return []string{
-		jobTypeRun,
-		jobTypeExec,
-		jobTypeLocal,
-		jobTypeService,
-		jobTypeCompose,
-		"service-run",
-		"nonesuch",
+// A hand-kept list would have left the guard's main case open: a new arm in
+// the handler that nobody documents is exactly the drift this test exists to
+// catch, and a list that has to be remembered would not have contained it.
+//
+// The empty string is dropped. `case "", jobTypeLocal` makes an omitted type
+// valid, but "omitted" is not an enum value -- TestOpenAPI_JobTypeNotRequired
+// covers that half.
+func handlerJobTypes(t *testing.T) []string {
+	t.Helper()
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, handlerFile, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", handlerFile, err)
 	}
+
+	consts := stringConsts(file)
+
+	var found []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		fn, ok := n.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "jobFromRequest" {
+			return true
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			clause, ok := n.(*ast.CaseClause)
+			if !ok {
+				return true
+			}
+			for _, expr := range clause.List { // nil for `default`
+				if tok, ok := caseToken(expr, consts); ok && tok != "" {
+					found = append(found, tok)
+				}
+			}
+			return true
+		})
+		return false
+	})
+
+	if len(found) == 0 {
+		t.Fatalf("no case tokens found in jobFromRequest in %s — the handler "+
+			"was restructured and this test no longer reads it", handlerFile)
+	}
+	sort.Strings(found)
+	return found
+}
+
+// stringConsts maps every top-level string constant in the file to its value,
+// so a case written as jobTypeRun resolves to "run".
+func stringConsts(file *ast.File) map[string]string {
+	out := map[string]string{}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range vs.Names {
+				if i >= len(vs.Values) {
+					continue
+				}
+				if lit, ok := literalString(vs.Values[i]); ok {
+					out[name.Name] = lit
+				}
+			}
+		}
+	}
+	return out
+}
+
+func caseToken(expr ast.Expr, consts map[string]string) (string, bool) {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		v, ok := consts[e.Name]
+		return v, ok
+	default:
+		return literalString(expr)
+	}
+}
+
+func literalString(expr ast.Expr) (string, bool) {
+	lit, ok := expr.(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	v, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return "", false
+	}
+	return v, true
+}
+
+// candidateJobTypes is the population offered to the handler: everything the
+// handler dispatches on, everything the document claims, and two tokens that
+// must come back rejected -- jobTypeService, which is documented as not
+// creatable, and one no code path knows.
+func candidateJobTypes(t *testing.T, documented []string) []string {
+	t.Helper()
+
+	seen := map[string]bool{}
+	var out []string
+	for _, tok := range append(append(handlerJobTypes(t), documented...),
+		jobTypeService, "service-run", "nonesuch") {
+		if tok != "" && !seen[tok] {
+			seen[tok] = true
+			out = append(out, tok)
+		}
+	}
+	return out
 }
 
 // openAPIJobRequest is the slice of the spec this test reads.
@@ -92,12 +201,12 @@ func readOpenAPIJobRequest(t *testing.T) openAPIJobRequest {
 //
 // A nil provider makes the run and exec constructors fail, which is what we
 // want: it proves the switch reached them without needing Docker.
-func acceptedJobTypes(t *testing.T) []string {
+func acceptedJobTypes(t *testing.T, documented []string) []string {
 	t.Helper()
 
 	s := &Server{}
 	var accepted []string
-	for _, typ := range candidateJobTypes() {
+	for _, typ := range candidateJobTypes(t, documented) {
 		_, err := s.jobFromRequest(&jobRequest{Name: "guard", Type: typ})
 		if err != nil && strings.Contains(err.Error(), unknownTypeMarker) {
 			continue
@@ -113,7 +222,7 @@ func TestOpenAPI_JobTypeEnumMatchesHandler(t *testing.T) {
 	documented := append([]string(nil), spec.Components.Schemas.JobRequest.Properties.Type.Enum...)
 	sort.Strings(documented)
 
-	accepted := acceptedJobTypes(t)
+	accepted := acceptedJobTypes(t, documented)
 
 	if strings.Join(documented, ",") != strings.Join(accepted, ",") {
 		t.Errorf("docs/openapi.yaml documents job types %v, jobFromRequest accepts %v.\n"+
@@ -135,9 +244,16 @@ func TestOpenAPI_JobTypeNotRequired(t *testing.T) {
 		}
 	}
 
-	if _, err := (&Server{}).jobFromRequest(&jobRequest{Name: "guard"}); err != nil &&
-		strings.Contains(err.Error(), unknownTypeMarker) {
-		t.Errorf("an empty type is rejected by the switch; the spec's "+
-			"%q description no longer holds", "omitted means local")
+	// Not just "the switch did not refuse it" — the request has to succeed
+	// and yield a local job, which is what "omitted means local" claims. The
+	// weaker form accepted any failure that was not `unknown job type`, so a
+	// local constructor that started erroring would have passed it.
+	job, err := (&Server{}).jobFromRequest(&jobRequest{Name: "guard"})
+	if err != nil {
+		t.Fatalf("an empty type is not accepted: %v — the spec's "+
+			"%q description no longer holds", err, "omitted means local")
+	}
+	if _, ok := job.(*core.LocalJob); !ok {
+		t.Errorf("an empty type produced %T, want *core.LocalJob", job)
 	}
 }
