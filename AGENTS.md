@@ -56,8 +56,12 @@ This file explains repo‑wide conventions and where to find scoped rules.
   permanently. The order is: cut the release PR, merge it, tag `main`'s merge
   commit with `git tag -s vX.Y.Z`, push the tag, wait.
 - `gh release edit vX.Y.Z --notes-file notes.md` afterwards is the supported
-  way to replace CI's generated notes, and the only `gh release edit` flag to
-  use.
+  way to replace CI's generated notes. `--notes-file` and `--repo` are the
+  flags to use; the rest of that command's flags are blocked.
+- `scripts/update-release-notes.sh` appends an "Included in this release"
+  index linking the `released:vX.Y.Z` label filter. It exists and the labels
+  are maintained, but no release currently carries that section — treat it as
+  available, not as a step the flow depends on.
 - Follow the narrative release notes style from previous releases: user-facing
   highlights first, then categorized changes, contributors `@mentioned` inline
   at the change they touched rather than in a section of their own.
