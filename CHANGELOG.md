@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`default-user` is documented as the four states it actually has.**
+  The setting was described in half a sentence per job type, and the
+  reservation of the value `default` was not written down anywhere: a
+  container user of that name cannot be selected, because the value is
+  always read as the sentinel for "the container's own default user".
+  `docs/CONFIGURATION.md` now carries the state table — absent yields
+  `nobody`, empty and `default` both yield the container's own user,
+  anything else is taken literally — and names the reservation, with an
+  empty value recommended as the spelling that expresses the same intent
+  without the collision
+  ([#718](https://github.com/netresearch/ofelia/issues/718)).
+
 - **The minimum Go version is 1.27.** The toolchain moved to go1.27.0 in
   [v0.30.0](https://github.com/netresearch/ofelia/releases/tag/v0.30.0)
   while `go.mod` kept a `go 1.26` directive, which is what the
