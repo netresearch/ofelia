@@ -75,6 +75,15 @@ func (s *EventService) Subscribe(ctx context.Context, filter domain.EventFilter)
 }
 
 // SubscribeWithCallback subscribes to events with a callback.
+//
+// A pending error is reported even when the event channel has already been
+// closed. Subscribe's goroutine buffers a configured subscribe error and
+// then closes both channels, so once it has run to completion the error and
+// the closed event channel are ready in the same instant — and a select
+// picks between ready cases at random, which made the error reported or
+// silently swallowed on a coin flip. Measured at 89 losses in 200 runs once
+// the goroutine got there first, which is what a loaded CI runner arranges
+// (#820).
 func (s *EventService) SubscribeWithCallback(ctx context.Context, filter domain.EventFilter, callback ports.EventCallback) error {
 	events, errs := s.Subscribe(ctx, filter)
 
@@ -82,13 +91,37 @@ func (s *EventService) SubscribeWithCallback(ctx context.Context, filter domain.
 		select {
 		case <-ctx.Done():
 			return nil
-		case err := <-errs:
+		case err, ok := <-errs:
+			if !ok {
+				// Closed and carrying nothing. Left in the select it would
+				// stay permanently ready and keep competing with buffered
+				// events for the random pick, ending the stream before they
+				// were delivered. A nil channel blocks forever, which takes
+				// this arm out for good.
+				errs = nil
+				continue
+			}
 			if err != nil {
 				return err
 			}
 			return nil
 		case event, ok := <-events:
 			if !ok {
+				// The stream ended -- but Subscribe closes both channels in
+				// one breath after buffering the error, so this arm and the
+				// error arm are ready together and the pick between them is
+				// random. Reporting success without looking is how the
+				// configured error went missing on roughly half the
+				// schedules that got here (#820). Checking here rather than
+				// before the select leaves no window: this is the only path
+				// that turns "no more events" into a nil return.
+				select {
+				case err := <-errs:
+					if err != nil {
+						return err
+					}
+				default:
+				}
 				return nil
 			}
 			if err := callback(event); err != nil {

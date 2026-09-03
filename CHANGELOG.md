@@ -193,6 +193,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A flaky mock made unrelated pull requests fail.**
+  `mock.EventService.Subscribe` buffers a configured subscribe error and
+  then closes both channels, so once its goroutine had run the pending
+  error and the closed event channel were ready in the same instant —
+  and `SubscribeWithCallback` selected between them at random, returning
+  `nil` whenever the closed-channel arm won. Measured at 89 losses in
+  200 runs with the goroutine given a head start, which is what a loaded
+  runner arranges; `TestEventService_SubscribeWithCallback_SubscribeError`
+  failed that way on a PR touching no part of that package. The end of
+  the stream is now only reported as success once no error is pending,
+  and an error channel that closed without carrying one is dropped from
+  the select instead of competing with events still buffered behind it
+  ([#820](https://github.com/netresearch/ofelia/issues/820)).
 - **Unauthenticated `/api/*` requests are counted by the rate limiter.**
   The limiter sat inside the auth middleware, so a request answered with
   `401` never reached it: token guessing against `/api/*` was the one
