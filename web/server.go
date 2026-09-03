@@ -359,17 +359,29 @@ func (s *Server) RegisterHealthEndpoints(hc *HealthChecker) {
 }
 
 // wrapMiddleware layers the shared middleware chain around mux —
-// compression innermost, then security headers, then the rate limiter,
-// with auth outermost when enabled. Single source for both construction sites
+// compression innermost, then security headers, then auth when enabled,
+// with the rate limiter outermost so a request rejected with 401 has
+// still been counted (#804). Single source for both construction sites
 // (NewServerWithAuth and RegisterHealthEndpoints) so the chain cannot
 // drift between them.
 func (s *Server) wrapMiddleware(mux http.Handler) http.Handler {
 	handler := compressMiddleware(mux)
 	handler = securityHeaders(handler)
-	handler = s.rl.middleware(handler)
 	if s.authConfig != nil && s.authConfig.Enabled {
 		handler = s.authMiddleware(handler)
 	}
+	// The limiter goes outside auth, so a request rejected with 401 has
+	// still been counted. With the order reversed, /api/* token guessing
+	// was the one traffic the limiter never saw: authMiddleware answers
+	// it and returns, so a caller could try tokens without limit while
+	// the same IP was being metered on every static asset it fetched.
+	//
+	// Nothing else changes. authMiddleware only guards /api/*, so the
+	// rendered page and the static assets already passed through it and
+	// were already counted; /live and /ready were exempt before the move
+	// and stay exempt, because isOrchestratorProbePath returns early in
+	// the limiter itself and does so from either position. See #804.
+	handler = s.rl.middleware(handler)
 	return handler
 }
 

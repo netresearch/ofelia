@@ -193,6 +193,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Unauthenticated `/api/*` requests are counted by the rate limiter.**
+  The limiter sat inside the auth middleware, so a request answered with
+  `401` never reached it: token guessing against `/api/*` was the one
+  kind of traffic it never saw, while the same address was metered on
+  every static asset it fetched. Measured before the fix, 400
+  unauthenticated requests to `/api/jobs` from one address produced 400
+  `401`s and no `429` at any point. The limiter now wraps auth from
+  outside. Nothing else changes: auth only guards `/api/*`, so the
+  rendered page and the static assets were already counted, and the
+  orchestrator probes `/live` and `/ready` were exempt before the move
+  and stay exempt
+  ([#804](https://github.com/netresearch/ofelia/issues/804)).
 - **A delete landing mid-update can no longer leave a ghost job.**
   `RemoveJob` drops the cron entry before it takes the scheduler lock, so
   it can complete inside `UpdateJob`'s window; the update then reinserted
