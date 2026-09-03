@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-03
+
+The first stable release. The number is the commitment it implies: from here, a
+breaking change to the documented HTTP API or to the INI and label
+configuration takes a major bump, and the "pre-1.0" allowance the two
+source-only breaks below were taken under no longer applies.
+
+Most of the surface is the rebuilt dashboard and the API it runs on — an
+aggregate `/api/dashboard` endpoint, response compression, ETagged assets,
+per-job sparklines and duration stats, search and sorting. The API grew a gate:
+jobs owned by the INI file or by Docker labels can no longer be created,
+updated or deleted through it, and jobs it does own now survive a restart.
+
+Upgrading needs no configuration change. `slack-webhook`, `poll-interval` and
+`no-poll` were scheduled for removal here and still work; that window now runs
+to v2.0.0.
+
 ### Added
 
 - **Origin badges and honest delete buttons.** Config-owned jobs (INI or
@@ -94,6 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where the run used to be skipped — the same behavior INI-defined and
   label-defined jobs have always had. Also `RetryDelayMs` 1000 and
   `compose.yml` as a compose job's default file.
+- **The deprecation window for `slack-webhook`, `poll-interval` and `no-poll` runs to v2.0.0.** All three were scheduled for removal in v1.0.0 and still work. The window was extended rather than the options dropped, so upgrading to `v1.0.0` does not require a configuration change. `poll-interval` and `no-poll` are migrated automatically to `config-poll-interval` / `docker-poll-interval` and the polling defaults; `slack-webhook` is not, and a `[webhook "name"]` section with `preset = slack` replaces it. The removal target in the warning text moved with the window, so a `v1.0.0` daemon no longer reports that an option "will be removed in v1.0.0" while running it.
 - **The health report is served from a snapshot.** `GetHealth` called
   `runtime.ReadMemStats` per request, which stops the world, and `/ready`
   is exempt from rate limiting — an unauthenticated caller could force a
