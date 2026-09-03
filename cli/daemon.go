@@ -131,6 +131,13 @@ func (c *DaemonCommand) boot() (err error) {
 	config.levelVar = c.LevelVar
 	c.applyOptions(config)
 	c.applyConfigDefaults(config)
+	// Held from here rather than after the scheduler and docker handler are
+	// wired up: config is a pointer, so everything those steps add stays
+	// visible, and nothing in between reads c.config. The later assignment
+	// left a window in which a restore path that consults the config would
+	// silently see nil -- review read the source as already having that bug,
+	// which is reason enough not to leave the window there (#806).
+	c.config = config
 
 	c.pprofServer = &http.Server{
 		Addr:              c.PprofAddr,
@@ -156,7 +163,6 @@ func (c *DaemonCommand) boot() (err error) {
 	// Restore job history from saved files if configured
 	c.restoreJobHistory(config)
 	c.dockerHandler = config.dockerHandler
-	c.config = config
 
 	// Initialize health checker with Docker provider
 	var dockerProvider core.DockerProvider
