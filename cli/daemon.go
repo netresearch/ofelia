@@ -131,6 +131,13 @@ func (c *DaemonCommand) boot() (err error) {
 	config.levelVar = c.LevelVar
 	c.applyOptions(config)
 	c.applyConfigDefaults(config)
+	// Held from here rather than after the scheduler and docker handler are
+	// wired up: config is a pointer, so everything those steps add stays
+	// visible, and nothing in between reads c.config. The later assignment
+	// left a window in which a restore path that consults the config would
+	// silently see nil -- review read the source as already having that bug,
+	// which is reason enough not to leave the window there (#806).
+	c.config = config
 
 	c.pprofServer = &http.Server{
 		Addr:              c.PprofAddr,
@@ -156,7 +163,6 @@ func (c *DaemonCommand) boot() (err error) {
 	// Restore job history from saved files if configured
 	c.restoreJobHistory(config)
 	c.dockerHandler = config.dockerHandler
-	c.config = config
 
 	// Initialize health checker with Docker provider
 	var dockerProvider core.DockerProvider
@@ -678,6 +684,16 @@ func (c *DaemonCommand) buildPersistedRunJob(name string, j *persist.Job, provid
 	maxRuntime, err := core.ParseMaxRuntime(j.MaxRuntime)
 	if err != nil {
 		return nil, fmt.Errorf("job %q: %w", name, err)
+	}
+	// The same inheritance web.Server.newRunJobFromRequest applies when
+	// the job is created. It has to be repeated here rather than resolved
+	// once and persisted: the state file keeps what the caller asked for,
+	// so a job that named no bound picks up whatever the global says at
+	// the next start, exactly as an INI job does. Without this, the first
+	// restart would silently move every such job back to the 24h constant
+	// (#806).
+	if maxRuntime == 0 && c.config != nil {
+		maxRuntime = c.config.GlobalMaxRuntime()
 	}
 	rj.MaxRuntime = maxRuntime
 	return rj, nil

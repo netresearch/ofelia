@@ -315,10 +315,11 @@ components:
         maxRuntime:
           type: string
           description: >-
-            run jobs; a Go duration such as "30m". Omitting it means the
-            scheduler's 24h default, and "0s" means the same — it is not a way
-            to ask for no bound. An API-created job does not inherit
-            [global] max-runtime the way an INI [job-run] section does.
+            run jobs; a Go duration such as "30m". Omitting it inherits
+            [global] max-runtime, and reaches the scheduler's 24h default only
+            when no global is set; "0s" means the same as omitting it — it is
+            not a way to ask for no bound. Same fallback an INI [job-run]
+            section gets.
           example: 30m
     Job:
       type: object
