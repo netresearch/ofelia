@@ -304,7 +304,7 @@ func TestDeprecations_RemovalVersionFormat(t *testing.T) {
 	t.Parallel()
 
 	// Asserted against the constant rather than a literal. The window moves
-	// -- it went from v1.0.0 to v2.0.0 when 1.0.0 was cut -- and a literal
+	// -- it went from v1.0.0 to v2.0.0 when v1.0.0 was cut -- and a literal
 	// only has to be edited in step, catching nothing on the way. What is
 	// worth pinning is that every entry shares one target, so a hand-written
 	// version on a single deprecation cannot slip in unnoticed.
