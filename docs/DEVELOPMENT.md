@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.27+
 - Docker and Docker Compose
 - Git
 - **Recommended**: [direnv](https://direnv.net/) for automatic environment setup
@@ -30,7 +30,7 @@ direnv allow
 ```
 
 The `.envrc` file automatically:
-- ✅ Verifies Go 1.26+ installation
+- ✅ Verifies Go 1.27+ installation
 - ✅ Checks required tools (golangci-lint, gosec, docker)
 - ✅ **Enforces Git hooks setup** - prevents commits without hooks
 - ✅ Sets up development aliases and environment variables

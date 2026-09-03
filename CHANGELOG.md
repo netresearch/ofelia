@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The minimum Go version is 1.27.** The toolchain moved to go1.27.0 in
+  [v0.30.0](https://github.com/netresearch/ofelia/releases/tag/v0.30.0)
+  while `go.mod` kept a `go 1.26` directive, which is what the
+  Go-version badge reads. That directive is not just a floor for who can
+  build: Go compiles a module declaring an older version with that
+  version's compatibility defaults, so the released binary carried
+  `DefaultGODEBUG=tracebacklabels=0,x509sslcertoverrideplatform=0` — the
+  two behaviours Go 1.27 changed, pinned back — despite being built by
+  go1.27.0. Raising the directive drops those pins and makes the 1.27
+  language features available. Building from source now needs a 1.27
+  toolchain, which `toolchain go1.27.0` already fetches unless
+  `GOTOOLCHAIN=local` forbids it; nothing imports this module as a
+  library, and the published images and binaries are unaffected either
+  way.
+
 ## [1.0.0] - 2026-09-03
 
 The first stable release. The number is the commitment it implies: from here, a
