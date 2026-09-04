@@ -45,6 +45,21 @@ This file explains repo‑wide conventions and where to find scoped rules.
 - Extracting a route constant named `*Token` (e.g. `pathAPICSRFToken`) trips gosec G101 (hardcoded credentials) in the GHAS code-scanning gate — suppress with `// #nosec G101 -- reason`. The standalone `go-check / gosec` and the GHAS `gosec` check are separate.
 - Reusable workflows pinned `@main` are intentional (own org, post-trivy-action-incident policy) — the related hotspots are accepted, not third-party actions.
 
+## Backlog — picking the next issue
+- There are no priority labels. The signals that exist: **`upstream`** (12 of 24 open issues) marks work inherited from `mcuadros/ofelia` — such an issue describes that project's behaviour and is not automatically a defect here, so check the code before treating it as one. `bug` separates a defect from `feature`/`enhancement`; `security` outranks both.
+- **Read the body, not the title, before proposing an issue as work.** Two of sixty issues state their own impact, and where one does, that grading is the answer rather than context: [#718](https://github.com/netresearch/ofelia/issues/718) rates itself "low/theoretical in practice … Filing for the record" and lists *document the reservation* as its first option — which is what closed it. Recommending such an issue as a real defect contradicts its reporter and needs a stated reason.
+- An issue's **proposed solution** is the reporter's hypothesis from the day they wrote it; re-derive it from the code. Its **scope claims** ("affects X and Y") are a reading of the call graph, not a measurement.
+
+## Deprecation policy
+- Deprecated options keep working until a **major** release. The single source of truth is `deprecationRemovalVersion` in `cli/deprecations.go` (currently `v2.0.0`); the warning text is generated from it, and `cli/deprecations_test.go` asserts every entry uses it rather than a literal.
+- **Extending the window beats dropping options in a non-major.** For [v1.0.0](https://github.com/netresearch/ofelia/releases/tag/v1.0.0) the three options `slack-webhook`, `poll-interval` and `no-poll` were scheduled for removal; the window moved to `v2.0.0` instead, so upgrading required no configuration change.
+- Changing that constant is a **declared-value sweep**, and the prose surfaces do not follow automatically: `middlewares/slack.go`'s `// Deprecated:` doc comment (pkg.go.dev renders it), `CHANGELOG.md`, and `docs/`. Grep **without** an extension filter — the enforcing surfaces include dotfiles.
+
+## What earns a major bump
+- Removing a deprecated option, changing what an existing configuration key means, or dropping a supported input form. These are the changes that make a working config stop working.
+- **Raising the minimum Go version is not one of them.** Users consume binaries and the `ghcr.io` image, not the module; the floor binds whoever compiles the source. [#824](https://github.com/netresearch/ofelia/pull/824) raised it to 1.27 without a major being proposed.
+- New options, new job types and new endpoints are minors. Fixes that keep every documented input working are patches.
+
 ## Release process
 - **Pushing the tag is the release.** `release.yml` triggers on `push` of a
   `v*` tag and calls `netresearch/.github/.github/workflows/release-go-app.yml@main`,
