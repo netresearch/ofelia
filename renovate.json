@@ -1,8 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base"
+    "config:recommended"
   ],
+  "forkProcessing": "enabled",
   "automerge": true,
   "automergeType": "pr",
   "platformAutomerge": true
