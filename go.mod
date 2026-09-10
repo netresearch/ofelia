@@ -14,7 +14,7 @@ require (
 	github.com/docker/go-connections v0.8.1
 	github.com/emersion/go-smtp v0.25.0
 	github.com/go-mail/mail/v2 v2.3.0
-	github.com/go-playground/validator/v10 v10.30.3
+	github.com/go-playground/validator/v10 v10.30.4
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gobs/args v0.0.0-20210311043657-b8c0b223be93
 	github.com/jessevdk/go-flags v1.6.1
