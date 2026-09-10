@@ -20,7 +20,7 @@ require (
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/klauspost/compress v1.20.0
 	github.com/manifoldco/promptui v0.9.0
-	github.com/moby/moby/api v1.55.0
+	github.com/moby/moby/api v1.56.0
 	github.com/moby/moby/client v0.5.1
 	github.com/netresearch/go-cron v0.16.0
 	github.com/opencontainers/image-spec v1.1.1
