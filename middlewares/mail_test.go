@@ -335,7 +335,7 @@ func TestMailDefaultEmailSubject(t *testing.T) {
 func TestMailFromWithHostnameFormat(t *testing.T) {
 	t.Parallel()
 
-	m := &Mail{MailConfig: MailConfig{EmailFrom: "ofelia@%s"}}
+	m := &Mail{EmailFrom: "ofelia@%s"}
 	from := m.from()
 	assert.NotContains(t, from, "%s", "hostname placeholder should be replaced")
 	assert.NotEmpty(t, from)
@@ -344,7 +344,7 @@ func TestMailFromWithHostnameFormat(t *testing.T) {
 func TestMailFromWithoutFormat(t *testing.T) {
 	t.Parallel()
 
-	m := &Mail{MailConfig: MailConfig{EmailFrom: "plain@example.com"}}
+	m := &Mail{EmailFrom: "plain@example.com"}
 	from := m.from()
 	assert.Equal(t, "plain@example.com", from)
 }

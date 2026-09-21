@@ -34,7 +34,7 @@ func TestGetHashNested(t *testing.T) {
 	type Outer struct {
 		Inner
 	}
-	val := Outer{Inner: Inner{X: "bar"}}
+	val := Outer{X: "bar"}
 	var h string
 	if err := GetHash(reflect.TypeFor[Outer](), reflect.ValueOf(val), &h); err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -108,10 +108,8 @@ func TestRunServiceJob_Run(t *testing.T) {
 	h := setupRunServiceJobTest(t)
 
 	job := &RunServiceJob{
-		BareJob: BareJob{
-			Name:    "test-service",
-			Command: `echo -a foo bar`,
-		},
+		Name:    "test-service",
+		Command: `echo -a foo bar`,
 		Image:   ServiceImageFixture,
 		User:    "foo",
 		TTY:     true,

@@ -102,10 +102,8 @@ func TestRetryExecutor_MaxRetriesBoundary(t *testing.T) {
 	t.Run("MaxRetries_Zero_RunsOnce", func(t *testing.T) {
 		t.Parallel()
 		job := &testRetryJob{
-			BareJob: BareJob{
-				Name:       "boundary-zero",
-				MaxRetries: 0,
-			},
+			Name:       "boundary-zero",
+			MaxRetries: 0,
 		}
 		ctx := &Context{Execution: &Execution{}}
 
@@ -127,10 +125,8 @@ func TestRetryExecutor_MaxRetriesBoundary(t *testing.T) {
 	t.Run("MaxRetries_Negative_RunsOnce", func(t *testing.T) {
 		t.Parallel()
 		job := &testRetryJob{
-			BareJob: BareJob{
-				Name:       "boundary-neg",
-				MaxRetries: -1,
-			},
+			Name:       "boundary-neg",
+			MaxRetries: -1,
 		}
 		ctx := &Context{Execution: &Execution{}}
 
@@ -152,11 +148,9 @@ func TestRetryExecutor_MaxRetriesBoundary(t *testing.T) {
 	t.Run("MaxRetries_One_RunsTwice", func(t *testing.T) {
 		t.Parallel()
 		job := &testRetryJob{
-			BareJob: BareJob{
-				Name:         "boundary-one",
-				MaxRetries:   1,
-				RetryDelayMs: 1,
-			},
+			Name:         "boundary-one",
+			MaxRetries:   1,
+			RetryDelayMs: 1,
 		}
 		ctx := &Context{Execution: &Execution{}}
 
@@ -197,11 +191,9 @@ func TestRetryExecutor_SuccessNoticeAfterRetry(t *testing.T) {
 		executor.SetMetricsRecorder(metrics)
 
 		job := &testRetryJob{
-			BareJob: BareJob{
-				Name:         "notice-first",
-				MaxRetries:   3,
-				RetryDelayMs: 1,
-			},
+			Name:         "notice-first",
+			MaxRetries:   3,
+			RetryDelayMs: 1,
 		}
 		ctx := &Context{Execution: &Execution{}}
 
@@ -230,11 +222,9 @@ func TestRetryExecutor_SuccessNoticeAfterRetry(t *testing.T) {
 		executor.SetMetricsRecorder(metrics)
 
 		job := &testRetryJob{
-			BareJob: BareJob{
-				Name:         "notice-second",
-				MaxRetries:   3,
-				RetryDelayMs: 1,
-			},
+			Name:         "notice-second",
+			MaxRetries:   3,
+			RetryDelayMs: 1,
 		}
 		ctx := &Context{Execution: &Execution{}}
 
@@ -282,11 +272,9 @@ func TestRetryExecutor_AttemptBoundary(t *testing.T) {
 	_ = handler
 
 	job := &testRetryJob{
-		BareJob: BareJob{
-			Name:         "boundary-attempts",
-			MaxRetries:   2,
-			RetryDelayMs: 1,
-		},
+		Name:         "boundary-attempts",
+		MaxRetries:   2,
+		RetryDelayMs: 1,
 	}
 	ctx := &Context{Execution: &Execution{}}
 
@@ -324,11 +312,9 @@ func TestRetryExecutor_WarningLogFormat(t *testing.T) {
 	executor.SetMetricsRecorder(metrics)
 
 	job := &testRetryJob{
-		BareJob: BareJob{
-			Name:         "log-format-test",
-			MaxRetries:   3,
-			RetryDelayMs: 1,
-		},
+		Name:         "log-format-test",
+		MaxRetries:   3,
+		RetryDelayMs: 1,
 	}
 	ctx := &Context{Execution: &Execution{}}
 
@@ -392,11 +378,9 @@ func TestRetryExecutor_ErrorLogFormat(t *testing.T) {
 	executor.SetMetricsRecorder(metrics)
 
 	job := &testRetryJob{
-		BareJob: BareJob{
-			Name:         "error-log-test",
-			MaxRetries:   2,
-			RetryDelayMs: 1,
-		},
+		Name:         "error-log-test",
+		MaxRetries:   2,
+		RetryDelayMs: 1,
 	}
 	ctx := &Context{Execution: &Execution{}}
 
@@ -437,11 +421,9 @@ func TestRetryExecutor_ReturnErrorFormat(t *testing.T) {
 	_ = handler
 
 	job := &testRetryJob{
-		BareJob: BareJob{
-			Name:         "return-error-test",
-			MaxRetries:   2,
-			RetryDelayMs: 1,
-		},
+		Name:         "return-error-test",
+		MaxRetries:   2,
+		RetryDelayMs: 1,
 	}
 	ctx := &Context{Execution: &Execution{}}
 
@@ -610,11 +592,9 @@ func TestRetryExecutor_MetricsAttemptValues(t *testing.T) {
 	executor.SetMetricsRecorder(metrics)
 
 	job := &testRetryJob{
-		BareJob: BareJob{
-			Name:         "metrics-test",
-			MaxRetries:   3,
-			RetryDelayMs: 1,
-		},
+		Name:         "metrics-test",
+		MaxRetries:   3,
+		RetryDelayMs: 1,
 	}
 	ctx := &Context{Execution: &Execution{}}
 

@@ -4,7 +4,6 @@
 package core
 
 import (
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -124,9 +123,9 @@ func TestEnhancedBufferPoolMetrics(t *testing.T) {
 	ebp := NewEnhancedBufferPool(config, nil)
 
 	// Reset metrics to start fresh
-	atomic.StoreInt64(&ebp.totalGets, 0)
-	atomic.StoreInt64(&ebp.totalPuts, 0)
-	atomic.StoreInt64(&ebp.totalMisses, 0)
+	ebp.totalGets.Store(0)
+	ebp.totalPuts.Store(0)
+	ebp.totalMisses.Store(0)
 
 	// Perform some operations
 	buf1, _ := ebp.Get()

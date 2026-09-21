@@ -340,7 +340,7 @@ func TestWatchConfigInvalidInterval(t *testing.T) {
 func TestDockerContainersUpdateKeepsIniRunJobs(t *testing.T) {
 	cfg := newBaseConfig()
 
-	cfg.RunJobs["ini-job"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}
+	cfg.RunJobs["ini-job"] = &RunJobConfig{Schedule: "@hourly", Command: "echo", JobSource: JobSourceINI}
 
 	addRunJobsToScheduler(cfg)
 
@@ -352,7 +352,7 @@ func TestDockerContainersUpdateKeepsIniRunJobs(t *testing.T) {
 func TestDockerContainersUpdateKeepsIniExecJobs(t *testing.T) {
 	cfg := newBaseConfig()
 
-	cfg.ExecJobs["ini-exec"] = &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@hourly", Command: "echo"}}, JobSource: JobSourceINI}
+	cfg.ExecJobs["ini-exec"] = &ExecJobConfig{Schedule: "@hourly", Command: "echo", JobSource: JobSourceINI}
 
 	addExecJobsToScheduler(cfg)
 

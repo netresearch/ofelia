@@ -4,7 +4,6 @@
 package core
 
 import (
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -497,7 +496,7 @@ func TestRecordConcurrentJobs_BoundaryEqual(t *testing.T) {
 
 	// Set peak to 5
 	pm.RecordConcurrentJobs(5)
-	peak1 := atomic.LoadInt64(&pm.maxConcurrentJobs)
+	peak1 := pm.maxConcurrentJobs.Load()
 	if peak1 != 5 {
 		t.Errorf("Expected peak=5, got %d", peak1)
 	}
@@ -508,21 +507,21 @@ func TestRecordConcurrentJobs_BoundaryEqual(t *testing.T) {
 	// Actually, the key test: record count=5 again, then record count=4.
 	// Peak should remain 5.
 	pm.RecordConcurrentJobs(5)
-	peak2 := atomic.LoadInt64(&pm.maxConcurrentJobs)
+	peak2 := pm.maxConcurrentJobs.Load()
 	if peak2 != 5 {
 		t.Errorf("Expected peak to remain 5, got %d", peak2)
 	}
 
 	// Record lower value
 	pm.RecordConcurrentJobs(3)
-	peak3 := atomic.LoadInt64(&pm.maxConcurrentJobs)
+	peak3 := pm.maxConcurrentJobs.Load()
 	if peak3 != 5 {
 		t.Errorf("Expected peak to remain 5 after lower value, got %d", peak3)
 	}
 
 	// Record higher value
 	pm.RecordConcurrentJobs(10)
-	peak4 := atomic.LoadInt64(&pm.maxConcurrentJobs)
+	peak4 := pm.maxConcurrentJobs.Load()
 	if peak4 != 10 {
 		t.Errorf("Expected peak=10 after higher value, got %d", peak4)
 	}
@@ -534,28 +533,28 @@ func TestRecordMemoryUsage_BoundaryEqual(t *testing.T) {
 
 	// Set peak to 1MB
 	pm.RecordMemoryUsage(1024 * 1024)
-	peak1 := atomic.LoadInt64(&pm.peakMemoryUsage)
+	peak1 := pm.peakMemoryUsage.Load()
 	if peak1 != 1024*1024 {
 		t.Errorf("Expected peak=1MB, got %d", peak1)
 	}
 
 	// Record same value -- peak should not change
 	pm.RecordMemoryUsage(1024 * 1024)
-	peak2 := atomic.LoadInt64(&pm.peakMemoryUsage)
+	peak2 := pm.peakMemoryUsage.Load()
 	if peak2 != 1024*1024 {
 		t.Errorf("Expected peak to remain 1MB, got %d", peak2)
 	}
 
 	// Record lower value -- peak should not change
 	pm.RecordMemoryUsage(512 * 1024)
-	peak3 := atomic.LoadInt64(&pm.peakMemoryUsage)
+	peak3 := pm.peakMemoryUsage.Load()
 	if peak3 != 1024*1024 {
 		t.Errorf("Expected peak to remain 1MB after lower value, got %d", peak3)
 	}
 
 	// Record higher value -- peak should update
 	pm.RecordMemoryUsage(2 * 1024 * 1024)
-	peak4 := atomic.LoadInt64(&pm.peakMemoryUsage)
+	peak4 := pm.peakMemoryUsage.Load()
 	if peak4 != 2*1024*1024 {
 		t.Errorf("Expected peak=2MB after higher value, got %d", peak4)
 	}
@@ -866,21 +865,21 @@ func TestRecordConcurrentJobs_EqualToPeak(t *testing.T) {
 
 	// Set peak to exactly 1
 	pm.RecordConcurrentJobs(1)
-	peak := atomic.LoadInt64(&pm.maxConcurrentJobs)
+	peak := pm.maxConcurrentJobs.Load()
 	if peak != 1 {
 		t.Fatalf("Expected peak=1, got %d", peak)
 	}
 
 	// Record 1 again (equal to peak). Both original and mutant yield same peak.
 	pm.RecordConcurrentJobs(1)
-	peak = atomic.LoadInt64(&pm.maxConcurrentJobs)
+	peak = pm.maxConcurrentJobs.Load()
 	if peak != 1 {
 		t.Errorf("Expected peak still 1 after recording equal, got %d", peak)
 	}
 
 	// Record 0 (less than peak). Should NOT change peak.
 	pm.RecordConcurrentJobs(0)
-	peak = atomic.LoadInt64(&pm.maxConcurrentJobs)
+	peak = pm.maxConcurrentJobs.Load()
 	if peak != 1 {
 		t.Errorf("Expected peak still 1 after recording 0, got %d", peak)
 	}
@@ -896,19 +895,19 @@ func TestRecordMemoryUsage_EqualToPeak(t *testing.T) {
 	pm := NewPerformanceMetrics()
 
 	pm.RecordMemoryUsage(100)
-	peak := atomic.LoadInt64(&pm.peakMemoryUsage)
+	peak := pm.peakMemoryUsage.Load()
 	if peak != 100 {
 		t.Fatalf("Expected peak=100, got %d", peak)
 	}
 
 	pm.RecordMemoryUsage(100)
-	peak = atomic.LoadInt64(&pm.peakMemoryUsage)
+	peak = pm.peakMemoryUsage.Load()
 	if peak != 100 {
 		t.Errorf("Expected peak still 100 after recording equal, got %d", peak)
 	}
 
 	pm.RecordMemoryUsage(50)
-	peak = atomic.LoadInt64(&pm.peakMemoryUsage)
+	peak = pm.peakMemoryUsage.Load()
 	if peak != 100 {
 		t.Errorf("Expected peak still 100 after recording lower, got %d", peak)
 	}

@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/test"
 )
 
@@ -95,15 +94,11 @@ func TestExecJobConfig_dockerOpsInitialization(t *testing.T) {
 	// This test verifies the fix at the config layer
 	// Create an ExecJobConfig directly (as mapstructure would)
 	job := &ExecJobConfig{
-		ExecJob: core.ExecJob{
-			BareJob: core.BareJob{
-				Name:     "direct-job",
-				Command:  "echo test",
-				Schedule: "@hourly",
-			},
-			Container: "test",
-			User:      "nobody",
-		},
+		Name:      "direct-job",
+		Command:   "echo test",
+		Schedule:  "@hourly",
+		Container: "test",
+		User:      "nobody",
 	}
 
 	// Before setting client, dockerOps should be nil

@@ -154,10 +154,8 @@ func TestRunJob_Annotations_Integration(t *testing.T) {
 
 			// Create RunJob with Annotations
 			job := &RunJob{
-				BareJob: BareJob{
-					Name:    "test-annotations-job",
-					Command: "echo 'Testing annotations'",
-				},
+				Name:        "test-annotations-job",
+				Command:     "echo 'Testing annotations'",
 				Image:       "alpine:latest",
 				Delete:      "true",
 				Annotations: tc.userAnnotations,
@@ -293,12 +291,10 @@ func TestRunJob_Annotations_EndToEnd_Integration(t *testing.T) {
 	t.Run("full_job_run_with_annotations", func(t *testing.T) {
 		// Create RunJob with comprehensive annotations
 		job := &RunJob{
-			BareJob: BareJob{
-				Name:    "annotation-end-to-end-test",
-				Command: "echo 'Job with annotations completed'",
-			},
-			Image:  "alpine:latest",
-			Delete: "true",
+			Name:    "annotation-end-to-end-test",
+			Command: "echo 'Job with annotations completed'",
+			Image:   "alpine:latest",
+			Delete:  "true",
 			Annotations: []string{
 				"test-case=end-to-end",
 				"team=qa",

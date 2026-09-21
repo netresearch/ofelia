@@ -22,19 +22,11 @@ const testNameFoo = "foo"
 func setupSaveTestContext(t *testing.T) (*core.Context, *TestJob) {
 	t.Helper()
 	job := &TestJobConfig{
-		TestJob: TestJob{
-			BareJob: core.BareJob{
-				Name: "test-job-save",
-			},
-		},
-		MailConfig: MailConfig{
-			SMTPHost:     "test-host",
-			SMTPPassword: "secret-password",
-			SMTPUser:     "secret-user",
-		},
-		SlackConfig: SlackConfig{
-			SlackWebhook: "secret-url",
-		},
+		Name:         "test-job-save",
+		SMTPHost:     "test-host",
+		SMTPPassword: "secret-password",
+		SMTPUser:     "secret-user",
+		SlackWebhook: "secret-url",
 	}
 
 	sh := core.NewScheduler(newDiscardLogger())

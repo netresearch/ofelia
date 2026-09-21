@@ -241,10 +241,8 @@ func TestJobRunDuringShutdown(t *testing.T) {
 
 	// Create a test job
 	job := &LocalJob{
-		BareJob: BareJob{
-			Name:    "test-job",
-			Command: "echo test",
-		},
+		Name:    "test-job",
+		Command: "echo test",
 	}
 
 	exec, _ := NewExecution()

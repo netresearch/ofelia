@@ -251,10 +251,8 @@ func TestGracefulSchedulerUnit_RunJobWithTracking_Success(t *testing.T) {
 	gs := NewGracefulScheduler(scheduler, sm)
 
 	job := &LocalJob{
-		BareJob: BareJob{
-			Name:    "track-job",
-			Command: "echo ok",
-		},
+		Name:    "track-job",
+		Command: "echo ok",
 	}
 	exec, _ := NewExecution()
 	exec.Start()

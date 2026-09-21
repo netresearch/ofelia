@@ -48,7 +48,7 @@ func newResilientTestContext(t *testing.T, job Job) *Context {
 func TestResilientJobExecutor_Execute_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &mockRunJob{BareJob: BareJob{Name: "success-job"}}
+	job := &mockRunJob{Name: "success-job"}
 	rje := NewResilientJobExecutor(job)
 	ctx := newResilientTestContext(t, job)
 
@@ -65,7 +65,7 @@ func TestResilientJobExecutor_Execute_JobFailure(t *testing.T) {
 	t.Parallel()
 
 	job := &mockRunJob{
-		BareJob: BareJob{Name: "fail-job"},
+		Name:    "fail-job",
 		runFunc: func(*Context) error { return errors.New("boom") },
 	}
 	rje := NewResilientJobExecutor(job)
@@ -94,7 +94,7 @@ func TestResilientJobExecutor_Execute_JobFailure(t *testing.T) {
 func TestResilientJobExecutor_Execute_RateLimited(t *testing.T) {
 	t.Parallel()
 
-	job := &mockRunJob{BareJob: BareJob{Name: "rl-job"}}
+	job := &mockRunJob{Name: "rl-job"}
 	rje := NewResilientJobExecutor(job)
 	// Exhaust rate limiter
 	rje.SetRateLimiter(NewRateLimiter(0.001, 0)) // 0 burst means no tokens available
@@ -113,7 +113,7 @@ func TestResilientJobExecutor_Execute_NonRetryableError(t *testing.T) {
 	t.Parallel()
 
 	job := &mockRunJob{
-		BareJob: BareJob{Name: "nonretry-job"},
+		Name:    "nonretry-job",
 		runFunc: func(*Context) error { return fmt.Errorf("404 not found") },
 	}
 	rje := NewResilientJobExecutor(job)
@@ -150,7 +150,7 @@ func TestResilientJobExecutor_ExecuteJob_LogsDuration(t *testing.T) {
 	logger := test.NewTestLogger()
 	scheduler := NewScheduler(logger)
 
-	job := &mockRunJob{BareJob: BareJob{Name: "log-dur"}}
+	job := &mockRunJob{Name: "log-dur"}
 	rje := NewResilientJobExecutor(job)
 
 	exec, err := NewExecution()
@@ -174,7 +174,7 @@ func TestResilientJobExecutor_ExecuteJob_FailureWrapsError(t *testing.T) {
 
 	origErr := errors.New("docker timeout")
 	job := &mockRunJob{
-		BareJob: BareJob{Name: "wrap-err"},
+		Name:    "wrap-err",
 		runFunc: func(*Context) error { return origErr },
 	}
 	rje := NewResilientJobExecutor(job)
@@ -196,7 +196,7 @@ func TestResilientJobExecutor_ExecuteJob_FailureWrapsError(t *testing.T) {
 func TestResilientJobExecutor_RecordMetrics_NilRecorder(t *testing.T) {
 	t.Parallel()
 
-	job := &mockRunJob{BareJob: BareJob{Name: "no-metrics"}}
+	job := &mockRunJob{Name: "no-metrics"}
 	rje := NewResilientJobExecutor(job)
 	// metrics is nil by default
 	// Should not panic
@@ -207,7 +207,7 @@ func TestResilientJobExecutor_RecordMetrics_NilRecorder(t *testing.T) {
 func TestResilientJobExecutor_RecordMetrics_WithRecorder(t *testing.T) {
 	t.Parallel()
 
-	job := &mockRunJob{BareJob: BareJob{Name: "with-metrics"}}
+	job := &mockRunJob{Name: "with-metrics"}
 	rje := NewResilientJobExecutor(job)
 
 	recorder := NewSimpleMetricsRecorder()
@@ -243,7 +243,7 @@ func TestResilientJobExecutor_RecordMetrics_WithRecorder(t *testing.T) {
 func TestResilientJobExecutor_RecordMetrics_FailurePath(t *testing.T) {
 	t.Parallel()
 
-	job := &mockRunJob{BareJob: BareJob{Name: "fail-metrics"}}
+	job := &mockRunJob{Name: "fail-metrics"}
 	rje := NewResilientJobExecutor(job)
 
 	recorder := NewSimpleMetricsRecorder()
@@ -269,7 +269,7 @@ func TestResilientJobExecutor_RecordMetrics_FailurePath(t *testing.T) {
 func TestResilientJobExecutor_Execute_RecordsMetricsOnSuccess(t *testing.T) {
 	t.Parallel()
 
-	job := &mockRunJob{BareJob: BareJob{Name: "exec-metrics-ok"}}
+	job := &mockRunJob{Name: "exec-metrics-ok"}
 	rje := NewResilientJobExecutor(job)
 	recorder := NewSimpleMetricsRecorder()
 	rje.SetMetricsRecorder(recorder)
@@ -289,7 +289,7 @@ func TestResilientJobExecutor_Execute_RecordsMetricsOnFailure(t *testing.T) {
 	t.Parallel()
 
 	job := &mockRunJob{
-		BareJob: BareJob{Name: "exec-metrics-fail"},
+		Name:    "exec-metrics-fail",
 		runFunc: func(*Context) error { return errors.New("permanent failure") },
 	}
 	rje := NewResilientJobExecutor(job)

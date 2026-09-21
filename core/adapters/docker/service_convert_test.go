@@ -271,12 +271,10 @@ func TestConvertFromSwarmService(t *testing.T) {
 		{
 			name: "basic service with container spec",
 			input: &swarm.Service{
-				ID: "svc-123",
-				Meta: swarm.Meta{
-					Version:   swarm.Version{Index: 42},
-					CreatedAt: now,
-					UpdatedAt: now.Add(time.Hour),
-				},
+				ID:        "svc-123",
+				Version:   swarm.Version{Index: 42},
+				CreatedAt: now,
+				UpdatedAt: now.Add(time.Hour),
 				Spec: swarm.ServiceSpec{
 					Annotations: swarm.Annotations{
 						Name:   "my-service",
@@ -367,10 +365,8 @@ func TestConvertFromSwarmTask(t *testing.T) {
 				ServiceID:    "svc-123",
 				NodeID:       "node-xyz",
 				DesiredState: swarm.TaskStateRunning,
-				Meta: swarm.Meta{
-					CreatedAt: now,
-					UpdatedAt: now.Add(time.Minute),
-				},
+				CreatedAt:    now,
+				UpdatedAt:    now.Add(time.Minute),
 				Status: swarm.TaskStatus{
 					Timestamp: now.Add(30 * time.Second),
 					State:     swarm.TaskStateRunning,

@@ -217,12 +217,10 @@ func TestConvertFromNetworkInspect_IPAMConditions(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			input := &networktypes.Inspect{
-				Network: networktypes.Network{
-					Name:    "test-network",
-					ID:      "abc123",
-					Created: time.Now(),
-					IPAM:    tc.ipam,
-				},
+				Name:    "test-network",
+				ID:      "abc123",
+				Created: time.Now(),
+				IPAM:    tc.ipam,
 			}
 
 			result := convertFromNetworkInspect(input)
@@ -288,11 +286,9 @@ func TestConvertFromNetworkInspect_ContainersCondition(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			input := &networktypes.Inspect{
-				Network: networktypes.Network{
-					Name:    "test-network",
-					ID:      "abc123",
-					Created: time.Now(),
-				},
+				Name:       "test-network",
+				ID:         "abc123",
+				Created:    time.Now(),
 				Containers: tc.containers,
 			}
 

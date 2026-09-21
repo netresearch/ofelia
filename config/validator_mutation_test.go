@@ -802,7 +802,7 @@ func TestMut_Line243_NestedStructSquash(t *testing.T) {
 		}
 		cv := &Validator2{sanitizer: NewSanitizer()}
 		v := NewValidator()
-		cv.validateStruct(v, Outer{Inner: Inner{Schedule: ""}}, "")
+		cv.validateStruct(v, Outer{Schedule: ""}, "")
 
 		// Inner "schedule" should NOT be recursively validated
 		for _, e := range v.Errors() {

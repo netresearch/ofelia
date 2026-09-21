@@ -75,10 +75,8 @@ func TestExecJob_WorkingDir_Integration(t *testing.T) {
 
 			// Create ExecJob with WorkingDir
 			job := &ExecJob{
-				BareJob: BareJob{
-					Name:    "test-workdir-" + tc.name,
-					Command: "pwd",
-				},
+				Name:       "test-workdir-" + tc.name,
+				Command:    "pwd",
 				Container:  "test-container",
 				WorkingDir: tc.workingDir,
 			}
@@ -147,10 +145,8 @@ func TestExecJob_WorkingDir_WithCommands_Integration(t *testing.T) {
 
 		// Create a file
 		job1 := &ExecJob{
-			BareJob: BareJob{
-				Name:    "test-create-file",
-				Command: "touch test-workdir.txt",
-			},
+			Name:       "test-create-file",
+			Command:    "touch test-workdir.txt",
 			Container:  "test-container",
 			WorkingDir: "/tmp",
 		}
@@ -171,10 +167,8 @@ func TestExecJob_WorkingDir_WithCommands_Integration(t *testing.T) {
 
 		// Verify file exists in /tmp
 		job2 := &ExecJob{
-			BareJob: BareJob{
-				Name:    "test-list-file",
-				Command: "ls test-workdir.txt",
-			},
+			Name:       "test-list-file",
+			Command:    "ls test-workdir.txt",
 			Container:  "test-container",
 			WorkingDir: "/tmp",
 		}

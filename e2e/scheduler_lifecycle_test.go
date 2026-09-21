@@ -1,5 +1,4 @@
 //go:build e2e && unix
-// +build e2e,unix
 
 // Copyright (c) 2025-2026 Netresearch DTT GmbH
 // SPDX-License-Identifier: MIT
@@ -203,11 +202,9 @@ func TestScheduler_BasicLifecycle(t *testing.T) {
 
 	// Create and add job using mock provider
 	job := &core.ExecJob{
-		BareJob: core.BareJob{
-			Name:     "test-exec-job",
-			Schedule: "@every 1h", // Use longer interval since we control time
-			Command:  "echo E2E test executed",
-		},
+		Name:      "test-exec-job",
+		Schedule:  "@every 1h", // Use longer interval since we control time
+		Command:   "echo E2E test executed",
 		Container: containerID,
 	}
 	job.Provider = e2eProvider
@@ -290,31 +287,25 @@ func TestScheduler_MultipleJobsConcurrent(t *testing.T) {
 
 	jobs := []*core.ExecJob{
 		{
-			BareJob: core.BareJob{
-				Name:          "job-1",
-				Schedule:      "@every 1h",
-				Command:       "echo job1",
-				AllowParallel: true,
-			},
-			Container: containerID,
+			Name:          "job-1",
+			Schedule:      "@every 1h",
+			Command:       "echo job1",
+			AllowParallel: true,
+			Container:     containerID,
 		},
 		{
-			BareJob: core.BareJob{
-				Name:          "job-2",
-				Schedule:      "@every 1h",
-				Command:       "echo job2",
-				AllowParallel: true,
-			},
-			Container: containerID,
+			Name:          "job-2",
+			Schedule:      "@every 1h",
+			Command:       "echo job2",
+			AllowParallel: true,
+			Container:     containerID,
 		},
 		{
-			BareJob: core.BareJob{
-				Name:          "job-3",
-				Schedule:      "@every 1h",
-				Command:       "echo job3",
-				AllowParallel: true,
-			},
-			Container: containerID,
+			Name:          "job-3",
+			Schedule:      "@every 1h",
+			Command:       "echo job3",
+			AllowParallel: true,
+			Container:     containerID,
 		},
 	}
 
@@ -386,11 +377,9 @@ func TestScheduler_JobFailureHandling(t *testing.T) {
 	failingProvider := &failingDockerProvider{mockDockerProviderForE2E: e2eProvider}
 
 	failingJob := &core.ExecJob{
-		BareJob: core.BareJob{
-			Name:     "failing-job",
-			Schedule: "@every 1h",
-			Command:  "false",
-		},
+		Name:      "failing-job",
+		Schedule:  "@every 1h",
+		Command:   "false",
 		Container: containerID,
 	}
 	failingJob.Provider = failingProvider

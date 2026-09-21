@@ -340,7 +340,7 @@ func TestIniConfigUpdateLabelConflict(t *testing.T) {
 	cfg.sh = core.NewScheduler(test.NewTestLogger())
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
-	cfg.RunJobs["foo"] = &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo lbl"}}, JobSource: JobSourceLabel}
+	cfg.RunJobs["foo"] = &RunJobConfig{Schedule: "@every 5s", Command: "echo lbl", JobSource: JobSourceLabel}
 	for name, j := range cfg.RunJobs {
 		_ = defaults.Set(j)
 		j.Provider = cfg.dockerHandler.GetDockerProvider()

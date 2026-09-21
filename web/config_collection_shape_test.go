@@ -49,8 +49,7 @@ func TestConfigJobCollectionsMatchTheClientRule(t *testing.T) {
 
 	cfgType := reflect.TypeFor[cli.Config]()
 	seen := map[string]bool{}
-	for i := range cfgType.NumField() {
-		f := cfgType.Field(i)
+	for f := range cfgType.Fields() {
 		if !isCollectionShaped(f.Type) {
 			if strings.HasSuffix(f.Name, "Jobs") {
 				t.Errorf("%s is named like a job collection but is %s: "+

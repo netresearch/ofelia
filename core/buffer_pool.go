@@ -52,12 +52,12 @@ type EnhancedBufferPool struct {
 	poolsMutex sync.RWMutex         // Protect pools map
 
 	// Metrics
-	totalGets     int64
-	totalPuts     int64
-	totalMisses   int64 // When we had to create new buffer instead of reusing
-	totalShrinks  int64 // Number of times we shrunk the pool
-	totalGrows    int64 // Number of times we grew the pool
-	customBuffers int64 // Buffers created outside standard sizes
+	totalGets     atomic.Int64
+	totalPuts     atomic.Int64
+	totalMisses   atomic.Int64 // When we had to create new buffer instead of reusing
+	totalShrinks  atomic.Int64 // Number of times we shrunk the pool
+	totalGrows    atomic.Int64 // Number of times we grew the pool
+	customBuffers atomic.Int64 // Buffers created outside standard sizes
 
 	// Adaptive management
 	usageTracking map[int64]int64 // Track usage per size
@@ -118,7 +118,7 @@ func (ebp *EnhancedBufferPool) Get() (*circbuf.Buffer, error) {
 
 // GetSized retrieves a buffer with a specific size requirement, with intelligent size selection
 func (ebp *EnhancedBufferPool) GetSized(requestedSize int64) (*circbuf.Buffer, error) {
-	atomic.AddInt64(&ebp.totalGets, 1)
+	ebp.totalGets.Add(1)
 
 	// Find the best matching size
 	targetSize := ebp.selectOptimalSize(requestedSize)
@@ -130,7 +130,7 @@ func (ebp *EnhancedBufferPool) GetSized(requestedSize int64) (*circbuf.Buffer, e
 	pool := ebp.getPoolForSize(targetSize)
 	if pool == nil {
 		// Create custom buffer
-		atomic.AddInt64(&ebp.customBuffers, 1)
+		ebp.customBuffers.Add(1)
 		buf, err := circbuf.NewBuffer(targetSize)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create buffer of size %d: %w", targetSize, err)
@@ -146,7 +146,7 @@ func (ebp *EnhancedBufferPool) GetSized(requestedSize int64) (*circbuf.Buffer, e
 	}
 
 	// Pool miss - create new buffer
-	atomic.AddInt64(&ebp.totalMisses, 1)
+	ebp.totalMisses.Add(1)
 	buf, err := circbuf.NewBuffer(targetSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create buffer of size %d: %w", targetSize, err)
@@ -160,7 +160,7 @@ func (ebp *EnhancedBufferPool) Put(buf *circbuf.Buffer) {
 		return
 	}
 
-	atomic.AddInt64(&ebp.totalPuts, 1)
+	ebp.totalPuts.Add(1)
 
 	// Reset the buffer
 	buf.Reset()
@@ -381,8 +381,8 @@ func (ebp *EnhancedBufferPool) GetStats() map[string]any {
 	maps.Copy(currentUsage, ebp.usageTracking)
 	ebp.usageMutex.RUnlock()
 
-	totalGets := atomic.LoadInt64(&ebp.totalGets)
-	totalMisses := atomic.LoadInt64(&ebp.totalMisses)
+	totalGets := ebp.totalGets.Load()
+	totalMisses := ebp.totalMisses.Load()
 
 	hitRate := float64(0)
 	if totalGets > 0 {
@@ -391,12 +391,12 @@ func (ebp *EnhancedBufferPool) GetStats() map[string]any {
 
 	return map[string]any{
 		"total_gets":       totalGets,
-		"total_puts":       atomic.LoadInt64(&ebp.totalPuts),
+		"total_puts":       ebp.totalPuts.Load(),
 		"total_misses":     totalMisses,
 		"hit_rate_percent": hitRate,
-		"custom_buffers":   atomic.LoadInt64(&ebp.customBuffers),
-		"total_shrinks":    atomic.LoadInt64(&ebp.totalShrinks),
-		"total_grows":      atomic.LoadInt64(&ebp.totalGrows),
+		"custom_buffers":   ebp.customBuffers.Load(),
+		"total_shrinks":    ebp.totalShrinks.Load(),
+		"total_grows":      ebp.totalGrows.Load(),
 		"pool_count":       poolCount,
 		"pool_sizes":       poolSizes,
 		"current_usage":    currentUsage,

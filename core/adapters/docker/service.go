@@ -204,10 +204,8 @@ func convertToSwarmSpec(spec *domain.ServiceSpec) swarm.ServiceSpec {
 	}
 
 	swarmSpec := swarm.ServiceSpec{
-		Annotations: swarm.Annotations{
-			Name:   spec.Name,
-			Labels: spec.Labels,
-		},
+		Name:   spec.Name,
+		Labels: spec.Labels,
 	}
 
 	convertTaskTemplateToSwarm(&spec.TaskTemplate, &swarmSpec.TaskTemplate)

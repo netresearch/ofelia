@@ -49,16 +49,16 @@ type PerformanceMetrics struct {
 	// Job metrics
 	jobExecutions      map[string]*JobMetrics
 	jobMutex           sync.RWMutex
-	totalJobsScheduled int64
-	totalJobsExecuted  int64
-	totalJobsSkipped   int64
-	totalJobsFailed    int64
+	totalJobsScheduled atomic.Int64
+	totalJobsExecuted  atomic.Int64
+	totalJobsSkipped   atomic.Int64
+	totalJobsFailed    atomic.Int64
 
 	// System metrics
-	maxConcurrentJobs  int64
-	currentJobs        int64
-	peakMemoryUsage    int64
-	currentMemoryUsage int64
+	maxConcurrentJobs  atomic.Int64
+	currentJobs        atomic.Int64
+	peakMemoryUsage    atomic.Int64
+	currentMemoryUsage atomic.Int64
 
 	// Buffer pool metrics
 	bufferPoolStats map[string]any
@@ -73,8 +73,8 @@ type PerformanceMetrics struct {
 	retryMutex   sync.RWMutex
 
 	// Container metrics (to satisfy existing MetricsRecorder interface)
-	containerEvents           int64
-	containerMonitorFallbacks int64
+	containerEvents           atomic.Int64
+	containerMonitorFallbacks atomic.Int64
 	containerWaitDurations    []float64
 	containerMutex            sync.RWMutex
 
@@ -154,12 +154,12 @@ func (pm *PerformanceMetrics) RecordJobRetry(jobName string, attempt int, succes
 
 // RecordContainerEvent records container events
 func (pm *PerformanceMetrics) RecordContainerEvent() {
-	atomic.AddInt64(&pm.containerEvents, 1)
+	pm.containerEvents.Add(1)
 }
 
 // RecordContainerMonitorFallback records container monitor fallbacks
 func (pm *PerformanceMetrics) RecordContainerMonitorFallback() {
-	atomic.AddInt64(&pm.containerMonitorFallbacks, 1)
+	pm.containerMonitorFallbacks.Add(1)
 }
 
 // RecordContainerMonitorMethod records container monitor method usage
@@ -226,9 +226,9 @@ func (pm *PerformanceMetrics) RecordDockerLatency(operation string, duration tim
 
 // RecordJobExecution records a job execution with timing and success status
 func (pm *PerformanceMetrics) RecordJobExecution(jobName string, duration time.Duration, success bool) {
-	atomic.AddInt64(&pm.totalJobsExecuted, 1)
+	pm.totalJobsExecuted.Add(1)
 	if !success {
-		atomic.AddInt64(&pm.totalJobsFailed, 1)
+		pm.totalJobsFailed.Add(1)
 	}
 
 	pm.jobMutex.Lock()
@@ -268,7 +268,7 @@ func (pm *PerformanceMetrics) RecordJobExecution(jobName string, duration time.D
 
 // RecordJobScheduled records when a job is scheduled
 func (pm *PerformanceMetrics) RecordJobScheduled(jobName string) {
-	atomic.AddInt64(&pm.totalJobsScheduled, 1)
+	pm.totalJobsScheduled.Add(1)
 }
 
 // RecordWorkflowComplete records a workflow completion event.
@@ -286,7 +286,7 @@ func (pm *PerformanceMetrics) RecordWorkflowJobResult(jobName, result string) {
 // RecordJobStart records a job start (from go-cron ObservabilityHooks)
 func (pm *PerformanceMetrics) RecordJobStart(jobName string) {
 	// Track concurrent jobs
-	count := atomic.AddInt64(&pm.currentJobs, 1)
+	count := pm.currentJobs.Add(1)
 	pm.RecordConcurrentJobs(count)
 }
 
@@ -297,12 +297,12 @@ func (pm *PerformanceMetrics) RecordJobComplete(jobName string, durationSeconds 
 	pm.RecordJobExecution(jobName, duration, success)
 
 	// Decrement concurrent jobs
-	atomic.AddInt64(&pm.currentJobs, -1)
+	pm.currentJobs.Add(-1)
 }
 
 // RecordJobSkipped records when a job is skipped
 func (pm *PerformanceMetrics) RecordJobSkipped(jobName, reason string) {
-	atomic.AddInt64(&pm.totalJobsSkipped, 1)
+	pm.totalJobsSkipped.Add(1)
 
 	pm.customMutex.Lock()
 	skipReasons := pm.customMetrics["job_skip_reasons"]
@@ -318,15 +318,15 @@ func (pm *PerformanceMetrics) RecordJobSkipped(jobName, reason string) {
 
 // RecordConcurrentJobs tracks the number of concurrent jobs
 func (pm *PerformanceMetrics) RecordConcurrentJobs(count int64) {
-	atomic.StoreInt64(&pm.currentJobs, count)
+	pm.currentJobs.Store(count)
 
 	// Track peak
 	for {
-		peak := atomic.LoadInt64(&pm.maxConcurrentJobs)
+		peak := pm.maxConcurrentJobs.Load()
 		if count <= peak {
 			break
 		}
-		if atomic.CompareAndSwapInt64(&pm.maxConcurrentJobs, peak, count) {
+		if pm.maxConcurrentJobs.CompareAndSwap(peak, count) {
 			break
 		}
 	}
@@ -334,15 +334,15 @@ func (pm *PerformanceMetrics) RecordConcurrentJobs(count int64) {
 
 // RecordMemoryUsage tracks memory usage
 func (pm *PerformanceMetrics) RecordMemoryUsage(bytes int64) {
-	atomic.StoreInt64(&pm.currentMemoryUsage, bytes)
+	pm.currentMemoryUsage.Store(bytes)
 
 	// Track peak
 	for {
-		peak := atomic.LoadInt64(&pm.peakMemoryUsage)
+		peak := pm.peakMemoryUsage.Load()
 		if bytes <= peak {
 			break
 		}
-		if atomic.CompareAndSwapInt64(&pm.peakMemoryUsage, peak, bytes) {
+		if pm.peakMemoryUsage.CompareAndSwap(peak, bytes) {
 			break
 		}
 	}
@@ -432,10 +432,10 @@ func (pm *PerformanceMetrics) GetJobMetrics() map[string]any {
 	pm.jobMutex.RLock()
 	defer pm.jobMutex.RUnlock()
 
-	totalScheduled := atomic.LoadInt64(&pm.totalJobsScheduled)
-	totalExecuted := atomic.LoadInt64(&pm.totalJobsExecuted)
-	totalSkipped := atomic.LoadInt64(&pm.totalJobsSkipped)
-	totalFailed := atomic.LoadInt64(&pm.totalJobsFailed)
+	totalScheduled := pm.totalJobsScheduled.Load()
+	totalExecuted := pm.totalJobsExecuted.Load()
+	totalSkipped := pm.totalJobsSkipped.Load()
+	totalFailed := pm.totalJobsFailed.Load()
 
 	successRate := float64(0)
 	if totalExecuted > 0 {
@@ -477,10 +477,10 @@ func (pm *PerformanceMetrics) GetJobMetrics() map[string]any {
 // getSystemMetrics returns system performance metrics
 func (pm *PerformanceMetrics) getSystemMetrics() map[string]any {
 	return map[string]any{
-		"concurrent_jobs":      atomic.LoadInt64(&pm.currentJobs),
-		"max_concurrent_jobs":  atomic.LoadInt64(&pm.maxConcurrentJobs),
-		"current_memory_usage": atomic.LoadInt64(&pm.currentMemoryUsage),
-		"peak_memory_usage":    atomic.LoadInt64(&pm.peakMemoryUsage),
+		"concurrent_jobs":      pm.currentJobs.Load(),
+		"max_concurrent_jobs":  pm.maxConcurrentJobs.Load(),
+		"current_memory_usage": pm.currentMemoryUsage.Load(),
+		"peak_memory_usage":    pm.peakMemoryUsage.Load(),
 		"uptime_seconds":       time.Since(pm.startTime).Seconds(),
 	}
 }
@@ -537,8 +537,8 @@ func (pm *PerformanceMetrics) getContainerMetrics() map[string]any {
 	}
 
 	return map[string]any{
-		"total_events":          atomic.LoadInt64(&pm.containerEvents),
-		"monitor_fallbacks":     atomic.LoadInt64(&pm.containerMonitorFallbacks),
+		"total_events":          pm.containerEvents.Load(),
+		"monitor_fallbacks":     pm.containerMonitorFallbacks.Load(),
 		"avg_wait_duration":     avgWaitDuration,
 		"wait_duration_samples": len(durations),
 	}
@@ -575,16 +575,16 @@ func (pm *PerformanceMetrics) Reset() {
 	pm.containerWaitDurations = make([]float64, 0)
 	pm.containerMutex.Unlock()
 
-	atomic.StoreInt64(&pm.totalJobsScheduled, 0)
-	atomic.StoreInt64(&pm.totalJobsExecuted, 0)
-	atomic.StoreInt64(&pm.totalJobsSkipped, 0)
-	atomic.StoreInt64(&pm.totalJobsFailed, 0)
-	atomic.StoreInt64(&pm.maxConcurrentJobs, 0)
-	atomic.StoreInt64(&pm.currentJobs, 0)
-	atomic.StoreInt64(&pm.peakMemoryUsage, 0)
-	atomic.StoreInt64(&pm.currentMemoryUsage, 0)
-	atomic.StoreInt64(&pm.containerEvents, 0)
-	atomic.StoreInt64(&pm.containerMonitorFallbacks, 0)
+	pm.totalJobsScheduled.Store(0)
+	pm.totalJobsExecuted.Store(0)
+	pm.totalJobsSkipped.Store(0)
+	pm.totalJobsFailed.Store(0)
+	pm.maxConcurrentJobs.Store(0)
+	pm.currentJobs.Store(0)
+	pm.peakMemoryUsage.Store(0)
+	pm.currentMemoryUsage.Store(0)
+	pm.containerEvents.Store(0)
+	pm.containerMonitorFallbacks.Store(0)
 
 	pm.bufferMutex.Lock()
 	pm.bufferPoolStats = make(map[string]any)

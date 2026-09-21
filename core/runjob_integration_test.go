@@ -123,10 +123,8 @@ func TestRunJob_Run(t *testing.T) {
 	h := setupRunJobTest(t)
 
 	job := &RunJob{
-		BareJob: BareJob{
-			Name:    "test",
-			Command: `echo -a "foo bar"`,
-		},
+		Name:        "test",
+		Command:     `echo -a "foo bar"`,
 		Image:       ImageFixture,
 		User:        "foo",
 		TTY:         true,
@@ -167,12 +165,10 @@ func TestRunJob_RunFailed(t *testing.T) {
 	}
 
 	job := &RunJob{
-		BareJob: BareJob{
-			Name:    "fail",
-			Command: "echo fail",
-		},
-		Image:  ImageFixture,
-		Delete: "true",
+		Name:    "fail",
+		Command: "echo fail",
+		Image:   ImageFixture,
+		Delete:  "true",
 	}
 	job.Provider = h.provider
 
@@ -195,10 +191,8 @@ func TestRunJob_RunWithEntrypoint(t *testing.T) {
 
 	ep := ""
 	job := &RunJob{
-		BareJob: BareJob{
-			Name:    "test-ep",
-			Command: `echo -a "foo bar"`,
-		},
+		Name:       "test-ep",
+		Command:    `echo -a "foo bar"`,
 		Image:      ImageFixture,
 		Entrypoint: &ep,
 		Delete:     "true",
