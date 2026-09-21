@@ -28,9 +28,7 @@ func TestGetJobSnapshotIsConsistentUnderConcurrentDisable(t *testing.T) {
 
 	stop := make(chan struct{})
 	var flipper sync.WaitGroup
-	flipper.Add(1)
-	go func() {
-		defer flipper.Done()
+	flipper.Go(func() {
 		for {
 			select {
 			case <-stop:
@@ -40,7 +38,7 @@ func TestGetJobSnapshotIsConsistentUnderConcurrentDisable(t *testing.T) {
 			_ = sched.DisableJob("flip")
 			_ = sched.EnableJob("flip")
 		}
-	}()
+	})
 
 	for range 2000 {
 		active, disabled, removed := sched.GetJobSnapshot()

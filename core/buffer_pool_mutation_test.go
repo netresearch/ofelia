@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -197,7 +196,7 @@ func TestGetSizedCustomBufferWhenPoolNil(t *testing.T) {
 	ebp := NewEnhancedBufferPool(config, nil)
 	defer ebp.Shutdown()
 
-	atomic.StoreInt64(&ebp.customBuffers, 0)
+	ebp.customBuffers.Store(0)
 
 	// Request 12001: selectOptimalSize rounds to DefaultSize*8 = 24000
 	// 24000 is NOT in isStandardSize -> pool is nil -> custom buffer
@@ -212,7 +211,7 @@ func TestGetSizedCustomBufferWhenPoolNil(t *testing.T) {
 		t.Errorf("expected buffer size 24000, got %d", buf.Size())
 	}
 
-	custom := atomic.LoadInt64(&ebp.customBuffers)
+	custom := ebp.customBuffers.Load()
 	if custom != 1 {
 		t.Errorf("expected customBuffers=1 when pool is nil, got %d", custom)
 	}
@@ -236,8 +235,8 @@ func TestPutReturnsToPools(t *testing.T) {
 	}
 
 	// Reset counters
-	atomic.StoreInt64(&ebp.totalGets, 0)
-	atomic.StoreInt64(&ebp.totalMisses, 0)
+	ebp.totalGets.Store(0)
+	ebp.totalMisses.Store(0)
 
 	// Put it back
 	ebp.Put(buf)
@@ -251,7 +250,7 @@ func TestPutReturnsToPools(t *testing.T) {
 		t.Fatal("expected non-nil buffer from pool")
 	}
 
-	misses := atomic.LoadInt64(&ebp.totalMisses)
+	misses := ebp.totalMisses.Load()
 	if misses != 0 {
 		t.Errorf("expected 0 misses after Put+Get cycle, got %d", misses)
 	}
@@ -262,9 +261,9 @@ func TestPutNilBuffer(t *testing.T) {
 	ebp := newTestPool(nil)
 	defer ebp.Shutdown()
 
-	putsBefore := atomic.LoadInt64(&ebp.totalPuts)
+	putsBefore := ebp.totalPuts.Load()
 	ebp.Put(nil)
-	putsAfter := atomic.LoadInt64(&ebp.totalPuts)
+	putsAfter := ebp.totalPuts.Load()
 
 	if putsAfter != putsBefore {
 		t.Error("Put(nil) should not increment totalPuts")
@@ -527,8 +526,8 @@ func TestPrewarmPoolsPopulatesBuffers(t *testing.T) {
 	}
 
 	// Reset counters to check misses
-	atomic.StoreInt64(&ebp.totalGets, 0)
-	atomic.StoreInt64(&ebp.totalMisses, 0)
+	ebp.totalGets.Store(0)
+	ebp.totalMisses.Store(0)
 
 	// Get a buffer at default size - should come from pre-warmed pool
 	buf, err := ebp.GetSized(ebp.config.DefaultSize)
@@ -539,7 +538,7 @@ func TestPrewarmPoolsPopulatesBuffers(t *testing.T) {
 		t.Fatal("expected non-nil buffer")
 	}
 
-	misses := atomic.LoadInt64(&ebp.totalMisses)
+	misses := ebp.totalMisses.Load()
 	if misses != 0 {
 		t.Errorf("expected 0 misses after prewarming, got %d", misses)
 	}
@@ -570,8 +569,8 @@ func TestPrewarmPoolsSuccessfulBufferCount(t *testing.T) {
 
 	// After prewarming with PoolSize=5, we should be able to get 5 buffers
 	// from the default size pool without any misses.
-	atomic.StoreInt64(&ebp.totalGets, 0)
-	atomic.StoreInt64(&ebp.totalMisses, 0)
+	ebp.totalGets.Store(0)
+	ebp.totalMisses.Store(0)
 
 	buffers := make([]*circbuf.Buffer, 0, 5)
 	for i := range 5 {
@@ -582,7 +581,7 @@ func TestPrewarmPoolsSuccessfulBufferCount(t *testing.T) {
 		buffers = append(buffers, buf)
 	}
 
-	misses := atomic.LoadInt64(&ebp.totalMisses)
+	misses := ebp.totalMisses.Load()
 	if misses > 0 {
 		t.Errorf("expected 0 misses for first %d gets after prewarming, got %d", 5, misses)
 	}
@@ -646,8 +645,8 @@ func TestGetStatsHitRateAllHits(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// Simulate: 10 gets, 0 misses -> hitRate = (10-0)/10 * 100 = 100
-	atomic.StoreInt64(&ebp.totalGets, 10)
-	atomic.StoreInt64(&ebp.totalMisses, 0)
+	ebp.totalGets.Store(10)
+	ebp.totalMisses.Store(0)
 
 	stats := ebp.GetStats()
 	hitRate := stats["hit_rate_percent"].(float64)
@@ -662,8 +661,8 @@ func TestGetStatsHitRatePartialHits(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// Simulate: 10 gets, 3 misses -> hitRate = (10-3)/10 * 100 = 70
-	atomic.StoreInt64(&ebp.totalGets, 10)
-	atomic.StoreInt64(&ebp.totalMisses, 3)
+	ebp.totalGets.Store(10)
+	ebp.totalMisses.Store(3)
 
 	stats := ebp.GetStats()
 	hitRate := stats["hit_rate_percent"].(float64)
@@ -678,8 +677,8 @@ func TestGetStatsHitRateAllMisses(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// 5 gets, 5 misses -> hitRate = (5-5)/5 * 100 = 0
-	atomic.StoreInt64(&ebp.totalGets, 5)
-	atomic.StoreInt64(&ebp.totalMisses, 5)
+	ebp.totalGets.Store(5)
+	ebp.totalMisses.Store(5)
 
 	stats := ebp.GetStats()
 	hitRate := stats["hit_rate_percent"].(float64)
@@ -694,8 +693,8 @@ func TestGetStatsHitRateOneGet(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// Boundary: exactly 1 get, 0 misses -> hitRate = 100
-	atomic.StoreInt64(&ebp.totalGets, 1)
-	atomic.StoreInt64(&ebp.totalMisses, 0)
+	ebp.totalGets.Store(1)
+	ebp.totalMisses.Store(0)
 
 	stats := ebp.GetStats()
 	hitRate := stats["hit_rate_percent"].(float64)
@@ -711,8 +710,8 @@ func TestGetStatsHitRateArithmetic(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// 4 gets, 1 miss -> (4-1)/4*100 = 75
-	atomic.StoreInt64(&ebp.totalGets, 4)
-	atomic.StoreInt64(&ebp.totalMisses, 1)
+	ebp.totalGets.Store(4)
+	ebp.totalMisses.Store(1)
 
 	stats := ebp.GetStats()
 	hitRate := stats["hit_rate_percent"].(float64)
@@ -821,8 +820,8 @@ func TestPrewarmSuccessfulBuffersIncrement(t *testing.T) {
 
 	// After prewarming with PoolSize=3, we should be able to get 3 buffers
 	// without misses from the MinSize pool.
-	atomic.StoreInt64(&ebp.totalGets, 0)
-	atomic.StoreInt64(&ebp.totalMisses, 0)
+	ebp.totalGets.Store(0)
+	ebp.totalMisses.Store(0)
 
 	// Get 3 buffers from the MinSize pool
 	buffers := make([]*circbuf.Buffer, 0, 3)
@@ -834,7 +833,7 @@ func TestPrewarmSuccessfulBuffersIncrement(t *testing.T) {
 		buffers = append(buffers, buf)
 	}
 
-	misses := atomic.LoadInt64(&ebp.totalMisses)
+	misses := ebp.totalMisses.Load()
 	if misses > 0 {
 		t.Errorf("expected 0 misses for first 3 gets of MinSize after prewarming, got %d", misses)
 	}
@@ -939,12 +938,12 @@ func TestGetStatsFieldValues(t *testing.T) {
 	defer ebp.Shutdown()
 
 	// Set known values
-	atomic.StoreInt64(&ebp.totalGets, 20)
-	atomic.StoreInt64(&ebp.totalPuts, 15)
-	atomic.StoreInt64(&ebp.totalMisses, 5)
-	atomic.StoreInt64(&ebp.customBuffers, 2)
-	atomic.StoreInt64(&ebp.totalShrinks, 1)
-	atomic.StoreInt64(&ebp.totalGrows, 3)
+	ebp.totalGets.Store(20)
+	ebp.totalPuts.Store(15)
+	ebp.totalMisses.Store(5)
+	ebp.customBuffers.Store(2)
+	ebp.totalShrinks.Store(1)
+	ebp.totalGrows.Store(3)
 
 	stats := ebp.GetStats()
 

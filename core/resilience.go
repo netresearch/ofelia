@@ -133,9 +133,9 @@ type CircuitBreaker struct {
 	halfOpenCalls   uint32
 
 	// Metrics
-	totalCalls     uint64
-	totalFailures  uint64
-	totalSuccesses uint64
+	totalCalls     atomic.Uint64
+	totalFailures  atomic.Uint64
+	totalSuccesses atomic.Uint64
 	lastOpenedAt   time.Time
 	openDuration   time.Duration
 
@@ -178,7 +178,7 @@ func (cb *CircuitBreaker) beforeCall() error {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	atomic.AddUint64(&cb.totalCalls, 1)
+	cb.totalCalls.Add(1)
 
 	switch cb.state {
 	case StateClosed:
@@ -220,7 +220,7 @@ func (cb *CircuitBreaker) afterCall(success bool) {
 
 // onSuccess handles successful calls
 func (cb *CircuitBreaker) onSuccess() {
-	atomic.AddUint64(&cb.totalSuccesses, 1)
+	cb.totalSuccesses.Add(1)
 
 	switch cb.state {
 	case StateClosed:
@@ -242,7 +242,7 @@ func (cb *CircuitBreaker) onSuccess() {
 
 // onFailure handles failed calls
 func (cb *CircuitBreaker) onFailure() {
-	atomic.AddUint64(&cb.totalFailures, 1)
+	cb.totalFailures.Add(1)
 
 	cb.failures++
 	cb.lastFailureTime = cb.now()
@@ -306,9 +306,9 @@ func (cb *CircuitBreaker) GetMetrics() map[string]any {
 	return map[string]any{
 		"name":             cb.name,
 		"state":            cb.state.String(),
-		"total_calls":      atomic.LoadUint64(&cb.totalCalls),
-		"total_successes":  atomic.LoadUint64(&cb.totalSuccesses),
-		"total_failures":   atomic.LoadUint64(&cb.totalFailures),
+		"total_calls":      cb.totalCalls.Load(),
+		"total_successes":  cb.totalSuccesses.Load(),
+		"total_failures":   cb.totalFailures.Load(),
 		"current_failures": cb.failures,
 		"open_duration":    cb.openDuration.Seconds(),
 	}
@@ -402,9 +402,9 @@ type Bulkhead struct {
 	name          string
 	maxConcurrent int
 	semaphore     chan struct{}
-	active        int32
-	rejected      uint64
-	completed     uint64
+	active        atomic.Int32
+	rejected      atomic.Uint64
+	completed     atomic.Uint64
 }
 
 // NewBulkhead creates a new bulkhead
@@ -421,21 +421,21 @@ func (b *Bulkhead) Execute(ctx context.Context, fn func() error) error {
 	select {
 	case b.semaphore <- struct{}{}:
 		// Acquired a slot
-		atomic.AddInt32(&b.active, 1)
+		b.active.Add(1)
 		defer func() {
 			<-b.semaphore
-			atomic.AddInt32(&b.active, -1)
-			atomic.AddUint64(&b.completed, 1)
+			b.active.Add(-1)
+			b.completed.Add(1)
 		}()
 
 		return fn()
 
 	case <-ctx.Done():
-		atomic.AddUint64(&b.rejected, 1)
+		b.rejected.Add(1)
 		return fmt.Errorf("bulkhead '%s' context canceled: %w", b.name, ctx.Err())
 
 	default:
-		atomic.AddUint64(&b.rejected, 1)
+		b.rejected.Add(1)
 		return fmt.Errorf("%w: %s (%d/%d)", ErrBulkheadFull, b.name, b.maxConcurrent, b.maxConcurrent)
 	}
 }
@@ -445,8 +445,8 @@ func (b *Bulkhead) GetMetrics() map[string]any {
 	return map[string]any{
 		"name":           b.name,
 		"max_concurrent": b.maxConcurrent,
-		"active":         atomic.LoadInt32(&b.active),
-		"rejected":       atomic.LoadUint64(&b.rejected),
-		"completed":      atomic.LoadUint64(&b.completed),
+		"active":         b.active.Load(),
+		"rejected":       b.rejected.Load(),
+		"completed":      b.completed.Load(),
 	}
 }

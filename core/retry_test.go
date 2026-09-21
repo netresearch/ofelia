@@ -18,10 +18,8 @@ func TestRetryExecutor(t *testing.T) {
 	t.Run("SuccessOnFirstTry", func(t *testing.T) {
 		attempts := 0
 		job := &testRetryJob{
-			BareJob: BareJob{
-				Name:       "test-job",
-				MaxRetries: 3,
-			},
+			Name:       "test-job",
+			MaxRetries: 3,
 		}
 
 		ctx := &Context{
@@ -74,11 +72,9 @@ func TestRetryExecutor(t *testing.T) {
 	t.Run("MaxRetriesExceeded", func(t *testing.T) {
 		attempts := 0
 		job := &testRetryJob{
-			BareJob: BareJob{
-				Name:         "test-job",
-				MaxRetries:   2,
-				RetryDelayMs: 10,
-			},
+			Name:         "test-job",
+			MaxRetries:   2,
+			RetryDelayMs: 10,
 		}
 
 		ctx := &Context{
@@ -102,13 +98,11 @@ func TestRetryExecutor(t *testing.T) {
 
 	t.Run("ExponentialBackoff", func(t *testing.T) {
 		job := &testRetryJob{
-			BareJob: BareJob{
-				Name:             "test-job",
-				MaxRetries:       3,
-				RetryDelayMs:     100,
-				RetryExponential: true,
-				RetryMaxDelayMs:  500,
-			},
+			Name:             "test-job",
+			MaxRetries:       3,
+			RetryDelayMs:     100,
+			RetryExponential: true,
+			RetryMaxDelayMs:  500,
 		}
 
 		config := job.GetRetryConfig()
@@ -225,11 +219,9 @@ func TestExecuteWithRetry_HonorsContextCancellation(t *testing.T) {
 	// well past its deadline.
 	const retryDelay = 30 * time.Second
 	job := &testRetryJob{
-		BareJob: BareJob{
-			Name:         "test-ctx-cancel",
-			MaxRetries:   5,
-			RetryDelayMs: int(retryDelay / time.Millisecond),
-		},
+		Name:         "test-ctx-cancel",
+		MaxRetries:   5,
+		RetryDelayMs: int(retryDelay / time.Millisecond),
 	}
 
 	cancelCtx, cancel := context.WithCancel(context.Background())

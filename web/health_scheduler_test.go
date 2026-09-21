@@ -29,7 +29,7 @@ func newSchedulerWithJobs(t *testing.T, jobs ...core.Job) *core.Scheduler {
 }
 
 func localJob(name, schedule string) core.Job {
-	return &core.LocalJob{BareJob: core.BareJob{Name: name, Schedule: schedule, Command: "true"}}
+	return &core.LocalJob{Name: name, Schedule: schedule, Command: "true"}
 }
 
 // checkSchedulerNow runs the check once and returns what it recorded, without

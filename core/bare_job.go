@@ -38,7 +38,7 @@ type BareJob struct {
 	AllowParallel    bool     `default:"true"`                               // Allow job to run in parallel with others
 
 	middlewareContainer
-	running int32
+	running atomic.Int32
 	lock    sync.Mutex
 	history []*Execution
 	lastRun *Execution
@@ -90,20 +90,20 @@ func (j *BareJob) ShouldRunOnStartup() bool {
 // Running returns the number of invocations currently in flight, as maintained
 // by NotifyStart and NotifyStop. Safe for concurrent use.
 func (j *BareJob) Running() int32 {
-	return atomic.LoadInt32(&j.running)
+	return j.running.Load()
 }
 
 // NotifyStart increments the in-flight counter. Context.Start calls it when an
 // execution begins; every call must be paired with a NotifyStop or Running will
 // never return to zero. Safe for concurrent use.
 func (j *BareJob) NotifyStart() {
-	atomic.AddInt32(&j.running, 1)
+	j.running.Add(1)
 }
 
 // NotifyStop decrements the in-flight counter. Context.Stop calls it once the
 // execution has finished. Safe for concurrent use.
 func (j *BareJob) NotifyStop() {
-	atomic.AddInt32(&j.running, -1)
+	j.running.Add(-1)
 }
 
 // GetCronJobID returns the go-cron entry ID assigned when the job was

@@ -15,7 +15,7 @@ import (
 // SimpleControlledJob is a lightweight job for benchmarking concurrency
 type SimpleControlledJob struct {
 	BareJob
-	executionCount    int64
+	executionCount    atomic.Int64
 	executionDuration time.Duration
 }
 
@@ -30,7 +30,7 @@ func NewSimpleControlledJob(name, schedule string, duration time.Duration) *Simp
 }
 
 func (j *SimpleControlledJob) Run(ctx *Context) error {
-	atomic.AddInt64(&j.executionCount, 1)
+	j.executionCount.Add(1)
 	if j.executionDuration > 0 {
 		time.Sleep(j.executionDuration)
 	}
@@ -38,7 +38,7 @@ func (j *SimpleControlledJob) Run(ctx *Context) error {
 }
 
 func (j *SimpleControlledJob) GetExecutionCount() int64 {
-	return atomic.LoadInt64(&j.executionCount)
+	return j.executionCount.Load()
 }
 
 // BenchmarkSchedulerConcurrency benchmarks scheduler concurrency with various job loads

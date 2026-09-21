@@ -157,10 +157,8 @@ func TestRunServiceJob_Annotations_Integration(t *testing.T) {
 			capturedSpecs = nil
 
 			job := &RunServiceJob{
-				BareJob: BareJob{
-					Name:    "test-service-job",
-					Command: "echo 'test'",
-				},
+				Name:        "test-service-job",
+				Command:     "echo 'test'",
 				Image:       "alpine:latest",
 				Annotations: tc.annotations,
 				Delete:      "true",
@@ -263,11 +261,9 @@ func TestRunServiceJob_Annotations_EmptyValues(t *testing.T) {
 	}
 
 	job := &RunServiceJob{
-		BareJob: BareJob{
-			Name:    "test-empty-value",
-			Command: "echo 'test'",
-		},
-		Image: "alpine:latest",
+		Name:    "test-empty-value",
+		Command: "echo 'test'",
+		Image:   "alpine:latest",
 		Annotations: []string{
 			"empty-key=",
 			"normal-key=normal-value",
@@ -342,11 +338,9 @@ func TestRunServiceJob_Annotations_InvalidFormat(t *testing.T) {
 	}
 
 	job := &RunServiceJob{
-		BareJob: BareJob{
-			Name:    "test-invalid-format",
-			Command: "echo 'test'",
-		},
-		Image: "alpine:latest",
+		Name:    "test-invalid-format",
+		Command: "echo 'test'",
+		Image:   "alpine:latest",
 		Annotations: []string{
 			"valid=value",
 			"invalid-no-equals",

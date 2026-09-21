@@ -553,7 +553,7 @@ func TestValidator2ValidateStruct(t *testing.T) {
 		cv := &Validator2{sanitizer: NewSanitizer()}
 		v := NewValidator()
 
-		obj := &TestStruct{Embedded: Embedded{Inner: "value"}}
+		obj := &TestStruct{Inner: "value"}
 		cv.validateStruct(v, obj, "")
 
 		// Squashed struct should be handled differently

@@ -5,8 +5,6 @@ package cli
 
 import (
 	"testing"
-
-	"github.com/netresearch/ofelia/core"
 )
 
 // TestComposeJobConfig_GetSetJobSource tests GetJobSource and SetJobSource for ComposeJobConfig
@@ -100,30 +98,18 @@ func TestJobSourceString(t *testing.T) {
 func TestRunJobConfig_Hash(t *testing.T) {
 	t.Parallel()
 	job1 := &RunJobConfig{
-		RunJob: core.RunJob{
-			BareJob: core.BareJob{
-				Schedule: "@every 10s",
-				Command:  "echo test",
-			},
-		},
+		Schedule: "@every 10s",
+		Command:  "echo test",
 	}
 
 	job2 := &RunJobConfig{
-		RunJob: core.RunJob{
-			BareJob: core.BareJob{
-				Schedule: "@every 10s",
-				Command:  "echo test",
-			},
-		},
+		Schedule: "@every 10s",
+		Command:  "echo test",
 	}
 
 	job3 := &RunJobConfig{
-		RunJob: core.RunJob{
-			BareJob: core.BareJob{
-				Schedule: "@every 20s",
-				Command:  "echo test",
-			},
-		},
+		Schedule: "@every 20s",
+		Command:  "echo test",
 	}
 
 	hash1, err1 := job1.Hash()

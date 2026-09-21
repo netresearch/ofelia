@@ -88,14 +88,12 @@ func TestRunJob_ContainerConfiguration(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			job := &RunJob{
-				BareJob: BareJob{
-					Command: "echo test",
-					Name:    "test-job",
-				},
-				User:   "nobody", // Default
-				TTY:    false,    // Default
-				Delete: "true",   // Default
-				Pull:   "true",   // Default
+				Command: "echo test",
+				Name:    "test-job",
+				User:    "nobody", // Default
+				TTY:     false,    // Default
+				Delete:  "true",   // Default
+				Pull:    "true",   // Default
 			}
 
 			tc.setupJob(job)
@@ -138,9 +136,7 @@ func TestRunJob_ContainerNameLogic(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			job := &RunJob{
-				BareJob: BareJob{
-					Name: tc.jobName,
-				},
+				Name:          tc.jobName,
 				ContainerName: tc.containerName,
 			}
 

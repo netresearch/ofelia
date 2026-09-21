@@ -99,13 +99,13 @@ func TestMailRun_SendMailError(t *testing.T) {
 func TestMailSendMail_TLSSkipVerify(t *testing.T) {
 	t.Parallel()
 
-	m := &Mail{MailConfig: MailConfig{
+	m := &Mail{
 		SMTPHost:          "invalid-host-that-does-not-exist",
 		SMTPPort:          12345,
 		EmailTo:           "foo@foo.com",
 		EmailFrom:         "qux@qux.com",
 		SMTPTLSSkipVerify: true,
-	}}
+	}
 
 	ctx, _ := setupTestContext(t)
 	ctx.Start()
@@ -966,7 +966,7 @@ func TestSave_Run_ErrorDuringSave(t *testing.T) {
 func TestSave_SaveToDisk_InvalidSaveFolder(t *testing.T) {
 	t.Parallel()
 
-	s := &Save{SaveConfig: SaveConfig{SaveFolder: "../../etc/dangerous"}}
+	s := &Save{SaveFolder: "../../etc/dangerous"}
 
 	ctx, _ := setupTestContext(t)
 	ctx.Start()
@@ -984,7 +984,7 @@ func TestSave_SaveToDisk_MkdirError(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "afile")
 	require.NoError(t, os.WriteFile(tmpFile, []byte("data"), 0o600))
 
-	s := &Save{SaveConfig: SaveConfig{SaveFolder: filepath.Join(tmpFile, "sub")}}
+	s := &Save{SaveFolder: filepath.Join(tmpFile, "sub")}
 
 	ctx, _ := setupTestContext(t)
 	ctx.Start()
@@ -1021,7 +1021,7 @@ func TestSave_SaveToDisk_StderrWriteError(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	s := &Save{SaveConfig: SaveConfig{SaveFolder: dir}}
+	s := &Save{SaveFolder: dir}
 
 	ctx, job := setupSaveTestContext(t)
 	job.Name = "test-stderr-err"
@@ -1045,8 +1045,8 @@ func TestSlackPushMessage_InvalidURL(t *testing.T) {
 	t.Parallel()
 
 	m := &Slack{
-		SlackConfig: SlackConfig{SlackWebhook: "not-a-valid-url"},
-		Client:      &http.Client{Timeout: 1 * time.Second},
+		SlackWebhook: "not-a-valid-url",
+		Client:       &http.Client{Timeout: 1 * time.Second},
 	}
 
 	ctx, _ := setupTestContext(t)
@@ -1063,8 +1063,8 @@ func TestSlackPushMessage_EmptySchemeURL(t *testing.T) {
 	t.Parallel()
 
 	m := &Slack{
-		SlackConfig: SlackConfig{SlackWebhook: "://missing-scheme"},
-		Client:      &http.Client{Timeout: 1 * time.Second},
+		SlackWebhook: "://missing-scheme",
+		Client:       &http.Client{Timeout: 1 * time.Second},
 	}
 
 	ctx, _ := setupTestContext(t)
@@ -1690,7 +1690,7 @@ func TestSave_SaveToDisk_StdoutWriteError(t *testing.T) {
 	ctx.Stop(nil)
 	ctx.Execution.Date = time.Time{}
 
-	s := &Save{SaveConfig: SaveConfig{SaveFolder: dir}}
+	s := &Save{SaveFolder: dir}
 
 	// Write stderr first manually (to simulate it succeeding),
 	// then make the dir read-only so stdout write fails
@@ -1720,7 +1720,7 @@ func TestSave_SaveToDisk_ContextWriteError(t *testing.T) {
 	ctx.Stop(nil)
 	ctx.Execution.Date = time.Time{}
 
-	s := &Save{SaveConfig: SaveConfig{SaveFolder: dir}}
+	s := &Save{SaveFolder: dir}
 
 	// Pre-create stderr and stdout files, then make dir read-only
 	root := filepath.Join(dir, "00010101_000000_ctx-err-job")

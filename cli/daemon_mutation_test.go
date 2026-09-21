@@ -713,16 +713,16 @@ func TestRegisteredJobCount_CountsWhatTheSchedulerHolds(t *testing.T) {
 
 	sched := core.NewScheduler(test.NewTestLogger())
 
-	good := &core.LocalJob{BareJob: core.BareJob{Name: "good", Schedule: "@every 1h", Command: "true"}}
+	good := &core.LocalJob{Name: "good", Schedule: "@every 1h", Command: "true"}
 	require.NoError(t, sched.AddJob(good))
 
-	disabled := &core.LocalJob{BareJob: core.BareJob{Name: "disabled", Schedule: "@every 1h", Command: "true"}}
+	disabled := &core.LocalJob{Name: "disabled", Schedule: "@every 1h", Command: "true"}
 	require.NoError(t, sched.AddJob(disabled))
 	require.NoError(t, sched.DisableJob("disabled"))
 
 	// A job the scheduler refuses is not held at all, so it must not be
 	// counted — that mismatch is what made a job that never runs look present.
-	rejected := &core.LocalJob{BareJob: core.BareJob{Name: "rejected", Schedule: "not-a-schedule", Command: "true"}}
+	rejected := &core.LocalJob{Name: "rejected", Schedule: "not-a-schedule", Command: "true"}
 	require.Error(t, sched.AddJob(rejected))
 
 	assert.Equal(t, 2, registeredJobCount(sched),

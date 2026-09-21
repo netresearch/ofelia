@@ -108,10 +108,8 @@ func TestExecJob_Run(t *testing.T) {
 	h := setupExecJobTest(t)
 
 	job := &ExecJob{
-		BareJob: BareJob{
-			Name:    "test-exec",
-			Command: `echo -a "foo bar"`,
-		},
+		Name:        "test-exec",
+		Command:     `echo -a "foo bar"`,
 		Container:   ContainerFixture,
 		User:        "foo",
 		TTY:         true,
@@ -143,10 +141,8 @@ func TestExecJob_RunStartExecError(t *testing.T) {
 	}
 
 	job := &ExecJob{
-		BareJob: BareJob{
-			Name:    "fail-exec",
-			Command: "echo foo",
-		},
+		Name:      "fail-exec",
+		Command:   "echo foo",
 		Container: ContainerFixture,
 	}
 	job.Provider = h.provider

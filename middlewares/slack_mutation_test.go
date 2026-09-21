@@ -35,8 +35,8 @@ func TestSlackPushMessage_NilClient(t *testing.T) {
 
 	// Create Slack middleware with nil Client
 	m := &Slack{
-		SlackConfig: SlackConfig{SlackWebhook: ts.URL},
-		Client:      nil, // explicitly nil
+		SlackWebhook: ts.URL,
+		Client:       nil, // explicitly nil
 	}
 
 	job := &TestJob{}
@@ -75,8 +75,8 @@ func TestSlackPushMessage_ExistingClient(t *testing.T) {
 	customClient.Timeout = 42 * time.Second
 
 	m := &Slack{
-		SlackConfig: SlackConfig{SlackWebhook: ts.URL},
-		Client:      customClient,
+		SlackWebhook: ts.URL,
+		Client:       customClient,
 	}
 
 	job := &TestJob{}
@@ -111,8 +111,8 @@ func TestSlackPushMessage_HTTPError(t *testing.T) {
 	ts.Close() // Close immediately to force connection error
 
 	m := &Slack{
-		SlackConfig: SlackConfig{SlackWebhook: closedURL},
-		Client:      &http.Client{Timeout: 1 * time.Second},
+		SlackWebhook: closedURL,
+		Client:       &http.Client{Timeout: 1 * time.Second},
 	}
 
 	job := &TestJob{}
@@ -150,8 +150,8 @@ func TestSlackPushMessage_Non200Status(t *testing.T) {
 	logger, handler := test.NewTestLoggerWithHandler()
 
 	m := &Slack{
-		SlackConfig: SlackConfig{SlackWebhook: ts.URL},
-		Client:      &http.Client{Timeout: 5 * time.Second},
+		SlackWebhook: ts.URL,
+		Client:       &http.Client{Timeout: 5 * time.Second},
 	}
 
 	job := &TestJob{}
@@ -183,8 +183,8 @@ func TestSlackPushMessage_200StatusNoError(t *testing.T) {
 	logger, handler := test.NewTestLoggerWithHandler()
 
 	m := &Slack{
-		SlackConfig: SlackConfig{SlackWebhook: ts.URL},
-		Client:      &http.Client{Timeout: 5 * time.Second},
+		SlackWebhook: ts.URL,
+		Client:       &http.Client{Timeout: 5 * time.Second},
 	}
 
 	job := &TestJob{}
@@ -219,8 +219,8 @@ func TestSlackBuildMessage_FailedExecution(t *testing.T) {
 	defer ts.Close()
 
 	m := &Slack{
-		SlackConfig: SlackConfig{SlackWebhook: ts.URL},
-		Client:      ts.Client(),
+		SlackWebhook: ts.URL,
+		Client:       ts.Client(),
 	}
 
 	job := &TestJob{}
@@ -251,8 +251,8 @@ func TestSlackBuildMessage_SkippedExecution(t *testing.T) {
 	defer ts.Close()
 
 	m := &Slack{
-		SlackConfig: SlackConfig{SlackWebhook: ts.URL},
-		Client:      ts.Client(),
+		SlackWebhook: ts.URL,
+		Client:       ts.Client(),
 	}
 
 	job := &TestJob{}

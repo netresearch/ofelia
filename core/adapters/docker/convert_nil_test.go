@@ -267,12 +267,10 @@ func TestConvertFromNetworkResource_ValidInput(t *testing.T) {
 	t.Parallel()
 
 	in := &networktypes.Summary{
-		Network: networktypes.Network{
-			ID:     "net-1",
-			Name:   "bridge",
-			Driver: "bridge",
-			Scope:  "local",
-		},
+		ID:     "net-1",
+		Name:   "bridge",
+		Driver: "bridge",
+		Scope:  "local",
 	}
 
 	got := convertFromNetworkResource(in)
@@ -311,12 +309,10 @@ func TestConvertFromNetworkInspect_ValidInput(t *testing.T) {
 	t.Parallel()
 
 	in := &networktypes.Inspect{
-		Network: networktypes.Network{
-			ID:     "net-2",
-			Name:   "custom",
-			Driver: "overlay",
-			Scope:  "swarm",
-		},
+		ID:     "net-2",
+		Name:   "custom",
+		Driver: "overlay",
+		Scope:  "swarm",
 	}
 
 	got := convertFromNetworkInspect(in)

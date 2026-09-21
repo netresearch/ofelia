@@ -1190,8 +1190,8 @@ func stripJobs(cfg any) any {
 	}
 	out := reflect.New(v.Type()).Elem()
 	out.Set(v)
-	for i := range out.NumField() {
-		if fv := out.Field(i); fv.CanSet() && isJobCollection(fv.Type()) {
+	for _, fv := range out.Fields() {
+		if fv.CanSet() && isJobCollection(fv.Type()) {
 			fv.Set(reflect.Zero(fv.Type()))
 		}
 	}

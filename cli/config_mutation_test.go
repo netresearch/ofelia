@@ -114,14 +114,14 @@ func TestReplaceIfChanged_DifferentHash(t *testing.T) {
 	cfg.sh = core.NewScheduler(logger)
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
-	oldJob := &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo old"}}}
+	oldJob := &ExecJobConfig{Schedule: "@every 5s", Command: "echo old"}
 	_ = defaults.Set(oldJob)
 	oldJob.Name = "testjob"
 	oldJob.buildMiddlewares(nil, nil)
 	_ = cfg.sh.AddJob(oldJob)
 	assert.Len(t, cfg.sh.Entries(), 1)
 
-	newJob := &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@every 10s", Command: "echo new"}}}
+	newJob := &ExecJobConfig{Schedule: "@every 10s", Command: "echo new"}
 
 	prep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
@@ -144,13 +144,13 @@ func TestReplaceIfChanged_SameHash(t *testing.T) {
 	cfg.sh = core.NewScheduler(logger)
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
-	oldJob := &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo test"}}}
+	oldJob := &ExecJobConfig{Schedule: "@every 5s", Command: "echo test"}
 	_ = defaults.Set(oldJob)
 	oldJob.Name = "testjob"
 	oldJob.buildMiddlewares(nil, nil)
 	_ = cfg.sh.AddJob(oldJob)
 
-	newJob := &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo test"}}}
+	newJob := &ExecJobConfig{Schedule: "@every 5s", Command: "echo test"}
 
 	prep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
@@ -176,7 +176,7 @@ func TestAddNewJob_WithSource(t *testing.T) {
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	current := make(map[string]*ExecJobConfig)
-	newJob := &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo test"}}}
+	newJob := &ExecJobConfig{Schedule: "@every 5s", Command: "echo test"}
 
 	prep := func(name string, j *ExecJobConfig) {
 		_ = defaults.Set(j)
@@ -201,7 +201,7 @@ func TestAddNewJob_EmptySource(t *testing.T) {
 
 	current := make(map[string]*ExecJobConfig)
 	newJob := &ExecJobConfig{
-		ExecJob:   core.ExecJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo test"}},
+		Schedule: "@every 5s", Command: "echo test",
 		JobSource: JobSourceLabel, // pre-set source
 	}
 
@@ -231,7 +231,7 @@ func TestSyncJobMap_RemovesStaleLabelJobs(t *testing.T) {
 
 	// Register an existing label job
 	existingJob := &ExecJobConfig{
-		ExecJob:   core.ExecJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo old"}},
+		Schedule: "@every 5s", Command: "echo old",
 		JobSource: JobSourceLabel,
 	}
 	_ = defaults.Set(existingJob)
@@ -265,7 +265,7 @@ func TestSyncJobMap_SkipsINIJobsWhenSyncingLabels(t *testing.T) {
 
 	// INI job already exists
 	iniJob := &ExecJobConfig{
-		ExecJob:   core.ExecJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo ini"}},
+		Schedule: "@every 5s", Command: "echo ini",
 		JobSource: JobSourceINI,
 	}
 	_ = defaults.Set(iniJob)
@@ -297,7 +297,7 @@ func TestSyncJobMap_INIOverridesLabel(t *testing.T) {
 
 	// Existing label job
 	labelJob := &ExecJobConfig{
-		ExecJob:   core.ExecJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo label"}},
+		Schedule: "@every 5s", Command: "echo label",
 		JobSource: JobSourceLabel,
 	}
 	_ = defaults.Set(labelJob)
@@ -338,7 +338,7 @@ func TestSyncJobMap_LabelIgnoredWhenINIExists(t *testing.T) {
 
 	// Existing INI job
 	iniJob := &ExecJobConfig{
-		ExecJob:   core.ExecJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo ini"}},
+		Schedule: "@every 5s", Command: "echo ini",
 		JobSource: JobSourceINI,
 	}
 	_ = defaults.Set(iniJob)
@@ -484,7 +484,7 @@ func TestReplaceIfChanged_ValidationFailReturnsEarlyFalse(t *testing.T) {
 	cfg.buildSchedulerMiddlewares(cfg.sh)
 
 	oldJob := &RunJobConfig{
-		RunJob:    core.RunJob{BareJob: core.BareJob{Schedule: "@every 5s", Command: "echo old"}, Image: "alpine"},
+		Schedule: "@every 5s", Command: "echo old", Image: "alpine",
 		JobSource: JobSourceINI,
 	}
 	_ = defaults.Set(oldJob)
@@ -494,7 +494,7 @@ func TestReplaceIfChanged_ValidationFailReturnsEarlyFalse(t *testing.T) {
 
 	// New job with invalid config (RunJob without image should fail validation)
 	newJob := &RunJobConfig{
-		RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@every 10s", Command: "echo new"}},
+		Schedule: "@every 10s", Command: "echo new",
 		// No Image set - Validate() should fail
 	}
 
@@ -724,7 +724,7 @@ func TestBuildMiddlewares_NilWebhookManager(t *testing.T) {
 
 	t.Run("RunJobConfig", func(t *testing.T) {
 		t.Parallel()
-		j := &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@daily", Command: "echo test"}}}
+		j := &RunJobConfig{Schedule: "@daily", Command: "echo test"}
 		_ = defaults.Set(j)
 		j.Name = "test-run"
 		j.buildMiddlewares(nil, nil) // wm is nil
@@ -733,7 +733,7 @@ func TestBuildMiddlewares_NilWebhookManager(t *testing.T) {
 
 	t.Run("LocalJobConfig", func(t *testing.T) {
 		t.Parallel()
-		j := &LocalJobConfig{LocalJob: core.LocalJob{BareJob: core.BareJob{Schedule: "@daily", Command: "echo test"}}}
+		j := &LocalJobConfig{Schedule: "@daily", Command: "echo test"}
 		_ = defaults.Set(j)
 		j.Name = "test-local"
 		j.buildMiddlewares(nil, nil)
@@ -741,7 +741,7 @@ func TestBuildMiddlewares_NilWebhookManager(t *testing.T) {
 
 	t.Run("ComposeJobConfig", func(t *testing.T) {
 		t.Parallel()
-		j := &ComposeJobConfig{ComposeJob: core.ComposeJob{BareJob: core.BareJob{Schedule: "@daily", Command: "echo test"}}}
+		j := &ComposeJobConfig{Schedule: "@daily", Command: "echo test"}
 		_ = defaults.Set(j)
 		j.Name = "test-compose"
 		j.buildMiddlewares(nil, nil)
@@ -749,7 +749,7 @@ func TestBuildMiddlewares_NilWebhookManager(t *testing.T) {
 
 	t.Run("ExecJobConfig", func(t *testing.T) {
 		t.Parallel()
-		j := &ExecJobConfig{ExecJob: core.ExecJob{BareJob: core.BareJob{Schedule: "@daily", Command: "echo test"}}}
+		j := &ExecJobConfig{Schedule: "@daily", Command: "echo test"}
 		_ = defaults.Set(j)
 		j.Name = "test-exec"
 		j.buildMiddlewares(nil, nil)
@@ -765,7 +765,7 @@ func TestBuildMiddlewares_WithEmptyWebhookManager(t *testing.T) {
 
 	t.Run("RunJobConfig_with_wm", func(t *testing.T) {
 		t.Parallel()
-		j := &RunJobConfig{RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@daily", Command: "echo test"}}}
+		j := &RunJobConfig{Schedule: "@daily", Command: "echo test"}
 		_ = defaults.Set(j)
 		j.Name = "test"
 		j.buildMiddlewares(nil, wm)
@@ -773,7 +773,7 @@ func TestBuildMiddlewares_WithEmptyWebhookManager(t *testing.T) {
 
 	t.Run("LocalJobConfig_with_wm", func(t *testing.T) {
 		t.Parallel()
-		j := &LocalJobConfig{LocalJob: core.LocalJob{BareJob: core.BareJob{Schedule: "@daily", Command: "echo test"}}}
+		j := &LocalJobConfig{Schedule: "@daily", Command: "echo test"}
 		_ = defaults.Set(j)
 		j.Name = "test"
 		j.buildMiddlewares(nil, wm)
@@ -781,7 +781,7 @@ func TestBuildMiddlewares_WithEmptyWebhookManager(t *testing.T) {
 
 	t.Run("ComposeJobConfig_with_wm", func(t *testing.T) {
 		t.Parallel()
-		j := &ComposeJobConfig{ComposeJob: core.ComposeJob{BareJob: core.BareJob{Schedule: "@daily", Command: "echo test"}}}
+		j := &ComposeJobConfig{Schedule: "@daily", Command: "echo test"}
 		_ = defaults.Set(j)
 		j.Name = "test"
 		j.buildMiddlewares(nil, wm)
@@ -803,7 +803,7 @@ func TestMaxRuntime_Inheritance(t *testing.T) {
 	t.Run("RunJob_zero_inherits", func(t *testing.T) {
 		t.Parallel()
 		j := &RunJobConfig{
-			RunJob: core.RunJob{BareJob: core.BareJob{Schedule: "@daily", Command: "echo test"}},
+			Schedule: "@daily", Command: "echo test",
 		}
 		// Simulate the condition at line 398: if j.MaxRuntime == 0
 		assert.Equal(t, time.Duration(0), j.MaxRuntime)
@@ -817,10 +817,8 @@ func TestMaxRuntime_Inheritance(t *testing.T) {
 	t.Run("RunJob_nonzero_preserved", func(t *testing.T) {
 		t.Parallel()
 		j := &RunJobConfig{
-			RunJob: core.RunJob{
-				BareJob:    core.BareJob{Schedule: "@daily", Command: "echo test"},
-				MaxRuntime: 10 * time.Minute,
-			},
+			Schedule: "@daily", Command: "echo test",
+			MaxRuntime: 10 * time.Minute,
 		}
 		originalRuntime := j.MaxRuntime
 		if j.MaxRuntime == 0 {
@@ -835,7 +833,7 @@ func TestMaxRuntime_Inheritance(t *testing.T) {
 	t.Run("ServiceJob_zero_inherits", func(t *testing.T) {
 		t.Parallel()
 		j := &RunServiceConfig{
-			RunServiceJob: core.RunServiceJob{BareJob: core.BareJob{Schedule: "@daily", Command: "echo test"}},
+			Schedule: "@daily", Command: "echo test",
 		}
 		assert.Equal(t, time.Duration(0), j.MaxRuntime)
 		if j.MaxRuntime == 0 {
@@ -848,10 +846,8 @@ func TestMaxRuntime_Inheritance(t *testing.T) {
 	t.Run("ServiceJob_nonzero_preserved", func(t *testing.T) {
 		t.Parallel()
 		j := &RunServiceConfig{
-			RunServiceJob: core.RunServiceJob{
-				BareJob:    core.BareJob{Schedule: "@daily", Command: "echo test"},
-				MaxRuntime: 15 * time.Minute,
-			},
+			Schedule: "@daily", Command: "echo test",
+			MaxRuntime: 15 * time.Minute,
 		}
 		originalRuntime := j.MaxRuntime
 		if j.MaxRuntime == 0 {

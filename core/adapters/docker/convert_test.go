@@ -623,19 +623,17 @@ func TestConvertFromNetworkResource(t *testing.T) {
 		{
 			name: "basic network",
 			input: &networktypes.Summary{
-				Network: networktypes.Network{
-					Name:       "my-network",
-					ID:         "net123",
-					Created:    validTime,
-					Scope:      "local",
-					Driver:     "bridge",
-					EnableIPv6: false,
-					Internal:   false,
-					Attachable: true,
-					Ingress:    false,
-					Options:    map[string]string{"com.docker.network.bridge.name": "docker0"},
-					Labels:     map[string]string{"env": "test"},
-				},
+				Name:       "my-network",
+				ID:         "net123",
+				Created:    validTime,
+				Scope:      "local",
+				Driver:     "bridge",
+				EnableIPv6: false,
+				Internal:   false,
+				Attachable: true,
+				Ingress:    false,
+				Options:    map[string]string{"com.docker.network.bridge.name": "docker0"},
+				Labels:     map[string]string{"env": "test"},
 			},
 			check: func(t *testing.T, result domain.Network) {
 				if result.Name != "my-network" {
@@ -661,24 +659,22 @@ func TestConvertFromNetworkResource(t *testing.T) {
 		{
 			name: "network with IPAM",
 			input: &networktypes.Summary{
-				Network: networktypes.Network{
-					Name:    "ipam-network",
-					ID:      "net456",
-					Created: validTime,
-					Driver:  "bridge",
-					IPAM: networktypes.IPAM{
-						Driver: "default",
-						Options: map[string]string{
-							"option1": "value1",
-						},
-						Config: []networktypes.IPAMConfig{
-							{
-								Subnet:  netip.MustParsePrefix("172.20.0.0/16"),
-								IPRange: netip.MustParsePrefix("172.20.10.0/24"),
-								Gateway: netip.MustParseAddr("172.20.0.1"),
-								AuxAddress: map[string]netip.Addr{
-									"host1": netip.MustParseAddr("172.20.0.2"),
-								},
+				Name:    "ipam-network",
+				ID:      "net456",
+				Created: validTime,
+				Driver:  "bridge",
+				IPAM: networktypes.IPAM{
+					Driver: "default",
+					Options: map[string]string{
+						"option1": "value1",
+					},
+					Config: []networktypes.IPAMConfig{
+						{
+							Subnet:  netip.MustParsePrefix("172.20.0.0/16"),
+							IPRange: netip.MustParsePrefix("172.20.10.0/24"),
+							Gateway: netip.MustParseAddr("172.20.0.1"),
+							AuxAddress: map[string]netip.Addr{
+								"host1": netip.MustParseAddr("172.20.0.2"),
 							},
 						},
 					},
@@ -702,15 +698,13 @@ func TestConvertFromNetworkResource(t *testing.T) {
 		{
 			name: "network with empty IPAM",
 			input: &networktypes.Summary{
-				Network: networktypes.Network{
-					Name:    "no-ipam",
-					ID:      "net012",
-					Created: validTime,
-					Driver:  "bridge",
-					IPAM: networktypes.IPAM{
-						Driver: "",
-						Config: []networktypes.IPAMConfig{},
-					},
+				Name:    "no-ipam",
+				ID:      "net012",
+				Created: validTime,
+				Driver:  "bridge",
+				IPAM: networktypes.IPAM{
+					Driver: "",
+					Config: []networktypes.IPAMConfig{},
 				},
 			},
 			check: func(t *testing.T, result domain.Network) {
@@ -743,19 +737,17 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "basic network",
 			input: &networktypes.Inspect{
-				Network: networktypes.Network{
-					Name:       "inspect-network",
-					ID:         "net123",
-					Created:    validTime,
-					Scope:      "local",
-					Driver:     "bridge",
-					EnableIPv6: true,
-					Internal:   false,
-					Attachable: true,
-					Ingress:    false,
-					Options:    map[string]string{"mtu": "1500"},
-					Labels:     map[string]string{"owner": "admin"},
-				},
+				Name:       "inspect-network",
+				ID:         "net123",
+				Created:    validTime,
+				Scope:      "local",
+				Driver:     "bridge",
+				EnableIPv6: true,
+				Internal:   false,
+				Attachable: true,
+				Ingress:    false,
+				Options:    map[string]string{"mtu": "1500"},
+				Labels:     map[string]string{"owner": "admin"},
 			},
 			check: func(t *testing.T, result *domain.Network) {
 				if result == nil {
@@ -775,26 +767,24 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "network with IPAM",
 			input: &networktypes.Inspect{
-				Network: networktypes.Network{
-					Name:    "ipam-inspect",
-					ID:      "net456",
-					Created: validTime,
-					Driver:  "overlay",
-					IPAM: networktypes.IPAM{
-						Driver: "default",
-						Options: map[string]string{
-							"subnet": "custom",
+				Name:    "ipam-inspect",
+				ID:      "net456",
+				Created: validTime,
+				Driver:  "overlay",
+				IPAM: networktypes.IPAM{
+					Driver: "default",
+					Options: map[string]string{
+						"subnet": "custom",
+					},
+					Config: []networktypes.IPAMConfig{
+						{
+							Subnet:  netip.MustParsePrefix("10.0.0.0/8"),
+							IPRange: netip.MustParsePrefix("10.0.1.0/24"),
+							Gateway: netip.MustParseAddr("10.0.0.1"),
 						},
-						Config: []networktypes.IPAMConfig{
-							{
-								Subnet:  netip.MustParsePrefix("10.0.0.0/8"),
-								IPRange: netip.MustParsePrefix("10.0.1.0/24"),
-								Gateway: netip.MustParseAddr("10.0.0.1"),
-							},
-							{
-								Subnet:  netip.MustParsePrefix("fd00::/64"),
-								Gateway: netip.MustParseAddr("fd00::1"),
-							},
+						{
+							Subnet:  netip.MustParsePrefix("fd00::/64"),
+							Gateway: netip.MustParseAddr("fd00::1"),
 						},
 					},
 				},
@@ -817,12 +807,10 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "network with containers",
 			input: &networktypes.Inspect{
-				Network: networktypes.Network{
-					Name:    "inspect-containers",
-					ID:      "net789",
-					Created: validTime,
-					Driver:  "bridge",
-				},
+				Name:    "inspect-containers",
+				ID:      "net789",
+				Created: validTime,
+				Driver:  "bridge",
 				Containers: map[string]networktypes.EndpointResource{
 					"c1": {
 						Name:        "app",
@@ -871,15 +859,13 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "network with only driver in IPAM",
 			input: &networktypes.Inspect{
-				Network: networktypes.Network{
-					Name:    "driver-only-ipam",
-					ID:      "net012",
-					Created: validTime,
-					Driver:  "bridge",
-					IPAM: networktypes.IPAM{
-						Driver: "custom-driver",
-						Config: []networktypes.IPAMConfig{},
-					},
+				Name:    "driver-only-ipam",
+				ID:      "net012",
+				Created: validTime,
+				Driver:  "bridge",
+				IPAM: networktypes.IPAM{
+					Driver: "custom-driver",
+					Config: []networktypes.IPAMConfig{},
 				},
 			},
 			check: func(t *testing.T, result *domain.Network) {
@@ -897,17 +883,15 @@ func TestConvertFromNetworkInspect(t *testing.T) {
 		{
 			name: "network with only config in IPAM",
 			input: &networktypes.Inspect{
-				Network: networktypes.Network{
-					Name:    "config-only-ipam",
-					ID:      "net345",
-					Created: validTime,
-					Driver:  "bridge",
-					IPAM: networktypes.IPAM{
-						Driver: "",
-						Config: []networktypes.IPAMConfig{
-							{
-								Subnet: netip.MustParsePrefix("172.30.0.0/16"),
-							},
+				Name:    "config-only-ipam",
+				ID:      "net345",
+				Created: validTime,
+				Driver:  "bridge",
+				IPAM: networktypes.IPAM{
+					Driver: "",
+					Config: []networktypes.IPAMConfig{
+						{
+							Subnet: netip.MustParsePrefix("172.30.0.0/16"),
 						},
 					},
 				},

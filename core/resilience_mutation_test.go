@@ -8,7 +8,6 @@ import (
 	"errors"
 	"math"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -621,7 +620,7 @@ func TestBulkhead_ActiveCounterSign(t *testing.T) {
 	// Execute a function
 	err := b.Execute(ctx, func() error {
 		// During execution, active should be 1
-		active := atomic.LoadInt32(&b.active)
+		active := b.active.Load()
 		if active != 1 {
 			t.Errorf("expected active=1 during execution, got %d", active)
 		}
@@ -632,13 +631,13 @@ func TestBulkhead_ActiveCounterSign(t *testing.T) {
 	}
 
 	// After execution, active should be back to 0
-	active := atomic.LoadInt32(&b.active)
+	active := b.active.Load()
 	if active != 0 {
 		t.Errorf("expected active=0 after execution, got %d", active)
 	}
 
 	// Verify completed counter
-	completed := atomic.LoadUint64(&b.completed)
+	completed := b.completed.Load()
 	if completed != 1 {
 		t.Errorf("expected completed=1, got %d", completed)
 	}
@@ -666,7 +665,7 @@ func TestBulkhead_ActiveCounterConcurrent(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 
 	// Active should be 3
-	active := atomic.LoadInt32(&b.active)
+	active := b.active.Load()
 	if active != 3 {
 		t.Errorf("expected active=3, got %d", active)
 	}
@@ -674,12 +673,12 @@ func TestBulkhead_ActiveCounterConcurrent(t *testing.T) {
 	wg.Wait()
 
 	// After all complete, active should be 0
-	active = atomic.LoadInt32(&b.active)
+	active = b.active.Load()
 	if active != 0 {
 		t.Errorf("expected active=0 after all complete, got %d", active)
 	}
 
-	completed := atomic.LoadUint64(&b.completed)
+	completed := b.completed.Load()
 	if completed != 3 {
 		t.Errorf("expected completed=3, got %d", completed)
 	}
@@ -700,7 +699,7 @@ func TestBulkhead_ActiveCounterAfterMultipleExecutions(t *testing.T) {
 		}
 	}
 
-	active := atomic.LoadInt32(&b.active)
+	active := b.active.Load()
 	if active != 0 {
 		t.Errorf("expected active=0 after 5 sequential executions, got %d", active)
 	}

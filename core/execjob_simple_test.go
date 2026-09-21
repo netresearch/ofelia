@@ -61,10 +61,8 @@ func TestExecJob_BuildExec_ArgumentParsing(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create a job but don't try to execute Docker operations
 			job := &ExecJob{
-				BareJob: BareJob{
-					Command: tc.command,
-					Name:    "test-job",
-				},
+				Command:     tc.command,
+				Name:        "test-job",
 				Container:   "test-container",
 				User:        "testuser",
 				TTY:         false,
@@ -257,12 +255,10 @@ func TestExecJob_OptionsConfiguration(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			job := &ExecJob{
-				BareJob: BareJob{
-					Command: "echo test",
-					Name:    "test-job",
-				},
-				User: "nobody", // Default
-				TTY:  false,    // Default
+				Command: "echo test",
+				Name:    "test-job",
+				User:    "nobody", // Default
+				TTY:     false,    // Default
 			}
 
 			tc.setupJob(job)
@@ -313,10 +309,8 @@ func TestExecJob_FieldValidation(t *testing.T) {
 			name: "valid_job",
 			setupJob: func() *ExecJob {
 				return &ExecJob{
-					BareJob: BareJob{
-						Command: "echo test",
-						Name:    "test-job",
-					},
+					Command:   "echo test",
+					Name:      "test-job",
 					Container: "test-container",
 				}
 			},
@@ -326,10 +320,8 @@ func TestExecJob_FieldValidation(t *testing.T) {
 			name: "missing_container",
 			setupJob: func() *ExecJob {
 				return &ExecJob{
-					BareJob: BareJob{
-						Command: "echo test",
-						Name:    "test-job",
-					},
+					Command:   "echo test",
+					Name:      "test-job",
 					Container: "",
 				}
 			},
@@ -340,10 +332,8 @@ func TestExecJob_FieldValidation(t *testing.T) {
 			name: "empty_command_allowed",
 			setupJob: func() *ExecJob {
 				return &ExecJob{
-					BareJob: BareJob{
-						Command: "",
-						Name:    "test-job",
-					},
+					Command:   "",
+					Name:      "test-job",
 					Container: "test-container",
 				}
 			},
