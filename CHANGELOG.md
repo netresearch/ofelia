@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-22
+
+A maintenance release: the `go` directive raised to 1.27, the dependency graph
+brought current, and the codebase modernized to what Go 1.27's `go fix`
+produces. No configuration, endpoint or documented behaviour changes, so an
+upgrade needs nothing from the operator.
+
 ### Changed
 
 - **`default-user` and a job's own `user` are documented as the distinct
@@ -40,6 +47,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GOTOOLCHAIN=local` forbids it; nothing imports this module as a
   library, and the published images and binaries are unaffected either
   way.
+
+- All Go dependencies updated across the module graph — creasty/defaults 1.11.0,
+  docker/cli 29.8.1, go-playground/validator/v10 10.30.5, klauspost/compress
+  1.20.0, moby/moby/api 1.56.0, moby/moby/client 0.6.0, golang.org/x/crypto
+  0.57.0, x/term 0.46.0, x/text 0.42.0, x/time 0.16.0, and the alpine base image
+  to 3.24.2.
+
+- Toolchain updated to go1.27.1 ([#831](https://github.com/netresearch/ofelia/pull/831)).
+
+### Internal
+
+- **Codebase modernized via `go fix` from Go 1.27.1, 56 files**
+  ([#850](https://github.com/netresearch/ofelia/pull/850)). In production code
+  this is 23 counters becoming `atomic.Int32`/`Int64`/`Uint64` instead of plain
+  integers reached through `atomic.LoadInt64(&x)` (same memory semantics, and
+  the atomic types carry their own 64-bit alignment), two Docker struct literals
+  losing their embedded-type wrapper now that Go 1.27 accepts any field selector
+  as a literal key, and one reflection loop becoming `reflect.Value.Fields()`.
+  The rest is tests. No behaviour changes.
+
+  Two things were measured rather than assumed. `BareJob.running` became
+  `atomic.Int32`, and `BareJob.Hash` walks the struct by reflection, recursing
+  into any field of kind Struct before checking its `hashme` tag — that hash
+  decides whether a config reload treats a job as changed. The same job hashes
+  byte-identically before and after. The two flattened literals were compared
+  with `reflect.DeepEqual` against the wrapped form and are equal.
+
+  The run was repeated with `-tags=integration,e2e`: a file behind a build tag is
+  invisible to a plain `go fix ./...`, and 25 of the 56 files appear only in the
+  tagged run.
+
+- 30 superseded `go.sum` checksums removed. They had accumulated because a
+  dependency bump adds the new checksum without removing the old one, which left
+  `go mod tidy -diff` failing on `main` and the repository's own `go-mod-tidy`
+  pre-commit hook rejecting every commit
+  ([#850](https://github.com/netresearch/ofelia/pull/850)).
+
+### CI
+
+- Renovate processes this fork again; it had been skipping the repository
+  because the Mend app runs in autodiscover mode and passes over forks that do
+  not set `forkProcessing`
+  ([#830](https://github.com/netresearch/ofelia/pull/830)).
+- The Dependabot configuration is removed; Renovate is the only updater
+  ([#835](https://github.com/netresearch/ofelia/pull/835)).
+- `step-security/harden-runner` updated to v2.21.1
+  ([#832](https://github.com/netresearch/ofelia/pull/832)).
+
+### Documentation
+
+- AGENTS.md records the release process that exists, the backlog signals, the
+  deprecation policy and what earns a major bump
+  ([#827](https://github.com/netresearch/ofelia/pull/827),
+  [#828](https://github.com/netresearch/ofelia/pull/828)).
 
 ## [1.0.0] - 2026-09-03
 
