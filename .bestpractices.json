@@ -11,7 +11,7 @@
   "license_location_status": "Met",
   "license_location_justification": "The licence is in the repository root: https://github.com/netresearch/ofelia/blob/main/LICENSE",
   "release_notes_status": "Met",
-  "release_notes_justification": "Release notes summarising the changes of each version are kept in https://github.com/netresearch/ofelia/blob/main/CHANGELOG.md",
+  "release_notes_justification": "Human-readable release notes per version are kept in https://github.com/netresearch/ofelia/blob/main/CHANGELOG.md; it covers the latest release, v1.0.1.",
   "repo_distributed_status": "Met",
   "repo_distributed_justification": "The repository uses git, hosted at https://github.com/netresearch/ofelia",
   "repo_public_status": "Met",
