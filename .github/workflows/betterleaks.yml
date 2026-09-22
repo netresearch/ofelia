@@ -1,0 +1,16 @@
+name: Betterleaks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  betterleaks:
+    uses: netresearch/.github/.github/workflows/betterleaks.yml@main
+    permissions:
+      contents: read
+      security-events: write
