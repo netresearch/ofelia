@@ -11,8 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 A maintenance release: the `go` directive raised to 1.27, the dependency graph
 brought current, and the codebase modernized to what Go 1.27's `go fix`
-produces. No configuration, endpoint or documented behaviour changes, so an
-upgrade needs nothing from the operator.
+produces. No configuration key, endpoint or job semantics change, so no config
+file needs editing.
+
+Raising the `go` directive does change two runtime defaults, because Go compiles
+a module declaring an older version with that version's compatibility settings
+and the binary carried them until now:
+
+- `tracebacklabels` moves from 0 to 1, so goroutine labels appear in tracebacks.
+- `x509sslcertoverrideplatform` moves from 0 to 1. On **Windows and darwin**
+  builds, `crypto/x509` now loads roots from disk when `SSL_CERT_FILE` or
+  `SSL_CERT_DIR` is set, instead of always using the platform certificate store.
+  An operator who sets either variable on those platforms and relies on the
+  platform store winning should set `GODEBUG=x509sslcertoverrideplatform=0`.
+  Linux builds and the `ghcr.io` image are unaffected — the setting exists only
+  for those two platforms.
 
 ### Changed
 
@@ -45,8 +58,9 @@ upgrade needs nothing from the operator.
   language features available. Building from source now needs a 1.27
   toolchain, which `toolchain go1.27.0` already fetches unless
   `GOTOOLCHAIN=local` forbids it; nothing imports this module as a
-  library, and the published images and binaries are unaffected either
-  way.
+  library. The published images and binaries are built the same way as
+  before — what changes is the two defaults they now carry, which the
+  summary above states.
 
 - All Go dependencies updated across the module graph — creasty/defaults 1.11.0,
   docker/cli 29.8.1, go-playground/validator/v10 10.30.5, klauspost/compress
