@@ -52,7 +52,7 @@ This project implements several security measures:
 ### Code Security
 
 - **Static analysis** via CodeQL and gosec
-- **Secret scanning** via gitleaks
+- **Secret scanning** via betterleaks
 - **Vulnerability scanning** via govulncheck
 - **License compliance** checks
 
