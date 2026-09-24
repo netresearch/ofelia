@@ -99,6 +99,8 @@ github.com/moby/moby/client v0.6.0 h1:AJjEB21QPbXSXjDsZorFBoDZPhMrfbpaPLgSMAW9Bg
 github.com/moby/moby/client v0.6.0/go.mod h1:OCo00wNRyA3m4lmJ228W3JbyCN4ZNNYjpOXiJydBdcQ=
 github.com/netresearch/go-cron v0.16.0 h1:b14Vnfobzm8pyBuyqbVvyV4xAi3DDREJz+5mzWil8Ew=
 github.com/netresearch/go-cron v0.16.0/go.mod h1:IADGFX1B9VxD6hc1WdmXjhRwe2g3SKIAEbEZQ/ON8Oo=
+github.com/netresearch/go-cron v0.16.1 h1:X34Uohtmz99eYlDdZRpTyatJZRmhMD9GSVzYZ96z3PE=
+github.com/netresearch/go-cron v0.16.1/go.mod h1:MGZe9ZJsjwqb+ahm//Xjzz4C8RkD1RwGTx9km7TTOOE=
 github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
