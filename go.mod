@@ -6,7 +6,7 @@ toolchain go1.27.1
 
 require (
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2
-	github.com/chromedp/chromedp v0.16.0
+	github.com/chromedp/chromedp v0.20.1
 	github.com/containerd/errdefs v1.0.0
 	github.com/creasty/defaults v1.11.0
 	github.com/distribution/reference v0.6.0
@@ -36,7 +36,7 @@ require (
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/chromedp/cdproto v0.0.0-20260804232424-e85f50dbfd32 // indirect
+	github.com/chromedp/cdproto v0.157.8 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
