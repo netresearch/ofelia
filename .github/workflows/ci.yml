@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
     tags: ['**']
   pull_request:
-    branches: [main]
+    branches: [main, master]
   merge_group:
   workflow_dispatch:
   schedule:
