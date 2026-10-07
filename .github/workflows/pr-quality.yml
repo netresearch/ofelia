@@ -2,7 +2,7 @@ name: PR Quality Gates
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, master]
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions: {}
