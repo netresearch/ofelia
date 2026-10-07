@@ -129,6 +129,34 @@ func TestSDKDockerProvider_WaitContainer_RespChannelClosed(t *testing.T) {
 	assert.Equal(t, int64(-1), exitCode)
 }
 
+// ContainerServiceAdapter.Wait sends a failure on the error channel and then
+// closes both channels, so when the consumer looks, the closed response
+// channel and the buffered error are both ready and select picks either. The
+// error has to win every time, or the daemon's message is replaced by the
+// bare channel closure.
+func TestSDKDockerProvider_WaitContainer_ErrorBeforeClosedChannels(t *testing.T) {
+	t.Parallel()
+	mc := mock.NewDockerClient()
+	cs := mc.Containers().(*mock.ContainerService)
+	cs.OnWait = func(_ context.Context, _ string) (<-chan domain.WaitResponse, <-chan error) {
+		respCh := make(chan domain.WaitResponse, 1)
+		errCh := make(chan error, 1)
+		errCh <- errors.New("daemon connection lost")
+		close(errCh)
+		close(respCh)
+		return respCh, errCh
+	}
+	provider := NewSDKDockerProviderFromClient(mc, test.NewTestLogger(), NewPerformanceMetrics())
+
+	for i := range 200 {
+		exitCode, err := provider.WaitContainer(context.Background(), "c1")
+		require.Error(t, err)
+		assert.Equal(t, int64(-1), exitCode)
+		require.ErrorContains(t, err, "daemon connection lost", "run %d", i)
+		assert.NotErrorIs(t, err, ErrResponseChannelClosed, "run %d", i)
+	}
+}
+
 func TestSDKDockerProvider_WaitContainer_ResponseWithError(t *testing.T) {
 	t.Parallel()
 	mc := mock.NewDockerClient()
