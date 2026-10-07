@@ -66,6 +66,8 @@
         </select>
         <button id="themeBtn" class="nav-btn" aria-label="Toggle theme"></button>
         <button id="densityBtn" class="nav-btn" aria-label="Toggle density"></button>
+        <!-- Shown by app.js only when web auth is enabled and a session exists. -->
+        <button id="logoutBtn" class="nav-btn" type="button" hidden>Log out</button>
       </div>
     </div>
   </nav>
@@ -76,6 +78,24 @@
     {{template "tabs-removed.html" .}}
     {{template "tabs-config.html" .}}
   </main>
+
+  <!-- Login for web-auth-enabled. app.js opens it when /api/auth/status
+       reports no session or any API call answers 401. -->
+  <dialog id="loginDialog" aria-labelledby="loginTitle">
+    <article>
+      <h2 id="loginTitle">Sign in to Ofelia</h2>
+      <form id="loginForm">
+        <label for="loginUser">Username
+          <input id="loginUser" name="username" autocomplete="username" required>
+        </label>
+        <label for="loginPass">Password
+          <input id="loginPass" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="loginError" class="login-error" role="alert" hidden></p>
+        <button type="submit" id="loginSubmit">Sign in</button>
+      </form>
+    </article>
+  </dialog>
 
   <footer class="app-footer">
     <div class="footer-inner">

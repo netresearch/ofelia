@@ -271,6 +271,11 @@ td.wrap { white-space: normal; word-break: break-all; }
 #historyModal .close-btn svg { width: var(--icon-size); height: var(--icon-size); }
 #historyModal .close-btn:hover { color: var(--pico-contrast); }
 
+/* Login dialog (web-auth-enabled) */
+#loginDialog article { width: min(24rem, 95vw); }
+#loginDialog h2 { margin-bottom: var(--pico-spacing); }
+#loginDialog .login-error { color: var(--pico-del-color); font-size: var(--fs-sm); }
+
 /* History output subrow: full-width row under a run, so expanding output
    never changes the column widths of the table above it. */
 #history .toggle-output { margin: 0; padding: .15rem .5rem; font-size: var(--fs-xs); line-height: 1.2; width: auto;

@@ -1081,6 +1081,103 @@ const toast = (() => {
   };
 })();
 
+/* ── Authentication ── */
+/* With web-auth-enabled, every /api/ route except login, auth/status and
+   csrf-token answers 401 without a session. The login dialog is the way
+   in: it fetches a one-time CSRF token, posts the credentials with it,
+   and the server sets the HttpOnly auth_token cookie that every later
+   same-origin fetch carries. With auth disabled none of this shows. */
+const loginDialog = document.getElementById('loginDialog');
+const loginForm = document.getElementById('loginForm');
+const loginError = document.getElementById('loginError');
+const loginSubmit = document.getElementById('loginSubmit');
+const logoutBtn = document.getElementById('logoutBtn');
+
+function showLogin(message) {
+  loginError.textContent = message || '';
+  loginError.hidden = !message;
+  // Idempotent: every poll and action that hits a 401 lands here.
+  if (!loginDialog.open) {
+    loginDialog.showModal();
+    loginForm.username.focus();
+  }
+}
+// Esc must not dismiss the dialog: behind it every API request fails.
+loginDialog.addEventListener('cancel', (e) => e.preventDefault());
+
+function setSignedIn(username) {
+  logoutBtn.hidden = !username;
+  logoutBtn.dataset.customTooltip = username ? `Signed in as ${username}` : '';
+}
+
+// A plain promise chain, not an async function: app.js is a classic
+// script, so its top-level call cannot await, and the chain handles its
+// own rejection.
+function checkAuth() {
+  fetch('/api/auth/status')
+    .then((resp) => (resp.ok ? resp.json() : null))
+    .then((s) => {
+      if (!s?.authEnabled) return;
+      if (s.authenticated) setSignedIn(s.username);
+      else showLogin();
+    })
+    .catch(() => {
+      // Network drop: the next poll runs into the same state and reports it.
+    });
+}
+
+const loginFailures = {
+  401: 'Invalid username or password.',
+  429: 'Too many sign-in attempts. Wait a minute, then try again.'
+};
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  loginSubmit.disabled = true;
+  loginSubmit.setAttribute('aria-busy', 'true');
+  try {
+    // The CSRF token is single-use, so every attempt fetches a new one.
+    const tokenResp = await fetch('/api/csrf-token');
+    if (!tokenResp.ok) {
+      showLogin(`Sign-in failed (${tokenResp.status}).`);
+      return;
+    }
+    const {csrf_token: csrfToken} = await tokenResp.json();
+    const username = loginForm.username.value;
+    const resp = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken},
+      body: JSON.stringify({username, password: loginForm.password.value})
+    });
+    if (!resp.ok) {
+      showLogin(loginFailures[resp.status] || `Sign-in failed (${resp.status}).`);
+      return;
+    }
+    loginForm.password.value = '';
+    loginDialog.close();
+    setSignedIn(username);
+    // Fire and forget, like the poll timer's calls: refresh() handles
+    // network and HTTP failures itself.
+    void refresh();
+  } catch {
+    showLogin('Network error. Sign-in failed.');
+  } finally {
+    loginSubmit.disabled = false;
+    loginSubmit.removeAttribute('aria-busy');
+  }
+});
+
+logoutBtn.addEventListener('click', async () => {
+  try {
+    await fetch('/api/logout', {method: 'POST'});
+  } catch {
+    // Reload regardless: the page then asks the server whether a session remains.
+  }
+  // A reload drops the rendered job data, so nothing of the previous
+  // session stays on screen behind the login dialog.
+  location.reload();
+});
+
 /* ── Actions ── */
 async function apiPost(url, body) {
   let resp;
@@ -1095,6 +1192,10 @@ async function apiPost(url, body) {
     // this the rejection escapes every caller unhandled and the user
     // gets no feedback at all.
     toast.error('Network error — request failed.');
+    return false;
+  }
+  if (resp.status === 401) {
+    showLogin('Your session has expired. Sign in again.');
     return false;
   }
   // The body read can also reject (connection dropped mid-response) —
@@ -1327,8 +1428,11 @@ let dashboardCache = null;
 // would starve forever — blank on first load, frozen afterwards.
 let refreshSeq = 0;
 let adoptedSeq = 0;
-let authWarned = false;
 async function refresh() {
+  // No session: every poll would answer 401 until the user signs in, and
+  // each one would count against the per-IP rate limit. A successful
+  // sign-in calls refresh() itself.
+  if (loginDialog.open) return;
   // Bind the history parameter to this request: a slow response must
   // only ever fill the modal of the job it was asked about.
   const historyFor = selectedJob;
@@ -1341,17 +1445,14 @@ async function refresh() {
   let text;
   try {
     const resp = await fetch(url);
-    // Ordering check sits before ANY state change or toast: a slow,
-    // already-outpaced response (e.g. a 401 from before the user
-    // re-authenticated) must neither warn nor latch authWarned.
+    // Ordering check sits before ANY state change: a slow, already-outpaced
+    // response (e.g. a 401 from before the user signed in) must not reopen
+    // the login dialog.
     if (seq <= adoptedSeq) return;
     if (resp.status === 401) {
       // Not transient: without a valid session every poll fails the
       // same way and the dashboard would silently freeze on stale data.
-      if (!authWarned) {
-        authWarned = true;
-        toast.error('Authentication required — dashboard data cannot load.');
-      }
+      showLogin();
       return;
     }
     if (!resp.ok) return; // transient failure: keep showing the last state
@@ -1361,7 +1462,6 @@ async function refresh() {
     return;
   }
   if (seq <= adoptedSeq) return; // outpaced while the body streamed
-  authWarned = false;
   // Identical payload: nothing changed server-side, skip the DOM rebuild.
   // Still adopted: an older in-flight response must not later repaint a
   // transient state on top of this confirmation.
@@ -1405,6 +1505,7 @@ async function refresh() {
   // that section stale for every future identical tick.
   lastDashboardPayload = text;
 }
+checkAuth();
 refresh();
 /* A hidden tab stops polling entirely; coming back refreshes at once
    and resumes the interval, so returning users never see stale data. */

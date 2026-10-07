@@ -1195,11 +1195,14 @@ htpasswd -nBC 12 "" | tr -d ':\n'
 python3 -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass('Password: ').encode(), bcrypt.gensalt(12)).decode())"
 ```
 
-**Authentication flow:**
-1. POST `/api/login` with `{"username":"...", "password":"..."}`
-2. Receive token in response and `auth_token` cookie
-3. Include token as `Authorization: Bearer <token>` or cookie for subsequent requests
-4. POST `/api/logout` to invalidate token
+**In the web UI:** with authentication enabled, the UI opens a sign-in dialog when no session exists or when the session has expired. After sign-in, the session lives in an HttpOnly `auth_token` cookie, so it survives a page reload. The **Log out** button in the top bar ends the session.
+
+**Authentication flow for API clients:**
+1. GET `/api/csrf-token` to receive a single-use `csrf_token`
+2. POST `/api/login` with `{"username":"...", "password":"..."}` and the header `X-CSRF-Token: <csrf_token>`
+3. Receive token in response and `auth_token` cookie
+4. Include token as `Authorization: Bearer <token>` or cookie for subsequent requests
+5. POST `/api/logout` to invalidate token
 
 **Security features:**
 - bcrypt password hashing (cost 12)
