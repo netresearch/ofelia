@@ -195,7 +195,7 @@ func (p *SDKDockerProvider) WaitContainer(ctx context.Context, containerID strin
 				errCh = newErrCh
 			}
 		case resp, ok := <-respCh:
-			exitCode, err := p.handleWaitRespCh(containerID, resp, ok)
+			exitCode, err := p.handleWaitRespCh(containerID, errCh, resp, ok)
 			return exitCode, err
 		}
 	}
@@ -217,8 +217,20 @@ func (p *SDKDockerProvider) handleWaitErrCh(containerID string, errCh <-chan err
 }
 
 // handleWaitRespCh processes one receive from the response channel of WaitContainer.
-func (p *SDKDockerProvider) handleWaitRespCh(containerID string, resp domain.WaitResponse, ok bool) (int64, error) {
+func (p *SDKDockerProvider) handleWaitRespCh(containerID string, errCh <-chan error, resp domain.WaitResponse, ok bool) (int64, error) {
 	if !ok {
+		// Wait sends a failure on errCh and then closes both channels, so a
+		// closed respCh can be ready at the same time as the error that caused
+		// it, and select picks either. The error is already buffered when
+		// respCh is seen closed; report it instead of the bare closure.
+		select {
+		case err, errOK := <-errCh:
+			if errOK && err != nil {
+				p.recordError("wait_container")
+				return -1, WrapContainerError("wait", containerID, err)
+			}
+		default:
+		}
 		// respCh closed without response, unexpected
 		return -1, WrapContainerError("wait", containerID, ErrResponseChannelClosed)
 	}
