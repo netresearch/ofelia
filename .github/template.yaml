@@ -9,5 +9,3 @@ intentional-drift:
     \ ./e2e/..., -tags=e2e, one of them browser-driven) that run in CI. Plus\
     \ enable-test-results: true, which routes the unit tests through gotestsum so\
     \ Codecov Test Analytics has data (netresearch/.github#333)."
-- path: .github/dependabot.yml
-  reason: "Opt-in devcontainers ecosystem. The trimmed go-app template (netresearch/.github#166) declares only gomod/github-actions/docker; this repo has a .devcontainer so it self-manages dependabot.yml to keep devcontainers updates. Core blocks are kept in step with the template manually."
