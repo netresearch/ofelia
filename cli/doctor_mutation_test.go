@@ -733,7 +733,7 @@ web-auth-enabled = true
 	// Should have failures for missing username and password hash
 	usernameFail := false
 	passwordFail := false
-	secretSkip := false
+	secretReported := false
 	for _, check := range report.Checks {
 		if strings.Contains(check.Name, "Username") && check.Status == statusFail {
 			usernameFail = true
@@ -741,13 +741,14 @@ web-auth-enabled = true
 		if strings.Contains(check.Name, "Password") && check.Status == statusFail {
 			passwordFail = true
 		}
-		if strings.Contains(check.Name, "Secret Key") && check.Status == statusSkip {
-			secretSkip = true
+		if strings.Contains(check.Name, "Secret Key") {
+			secretReported = true
 		}
 	}
 	assert.True(t, usernameFail, "missing username should fail")
 	assert.True(t, passwordFail, "missing password hash should fail")
-	assert.True(t, secretSkip, "missing secret key should be skip/warning")
+	// web-secret-key has no effect on sessions, so its absence is not reported.
+	assert.False(t, secretReported, "a missing secret key must not be reported")
 }
 
 // TestCheckWebAuth_Disabled targets the !conf.Global.WebAuthEnabled check.

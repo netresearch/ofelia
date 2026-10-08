@@ -344,15 +344,47 @@ command = echo test
 	report := &DoctorReport{Healthy: true, Checks: []CheckResult{}}
 	cmd.checkWebAuth(report)
 
-	// Should have a skip for missing secret key
-	skipFound := false
+	// A missing key is not worth a line: the key has no effect on sessions.
 	for _, check := range report.Checks {
-		if check.Name == "Web Auth Secret Key" && check.Status == statusSkip {
-			skipFound = true
-			break
+		assert.NotEqual(t, "Web Auth Secret Key", check.Name,
+			"a missing web-secret-key must not be reported; it changes nothing")
+	}
+}
+
+func TestCheckWebAuth_SecretKeyHasNoEffect(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.ini")
+	require.NoError(t, os.WriteFile(configPath, []byte(`[global]
+web-auth-enabled = true
+web-username = admin
+web-password-hash = $2a$12$abcdefghijklmnopqrstuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu
+web-secret-key = a-secret-key-that-is-at-least-32-characters
+[job-local "test"]
+schedule = @daily
+command = echo test
+`), 0o644))
+
+	cmd := &DoctorCommand{
+		ConfigFile: configPath,
+		Logger:     test.NewTestLogger(),
+		LevelVar:   &slog.LevelVar{},
+	}
+
+	report := &DoctorReport{Healthy: true, Checks: []CheckResult{}}
+	cmd.checkWebAuth(report)
+
+	var found *CheckResult
+	for i := range report.Checks {
+		if report.Checks[i].Name == "Web Auth Secret Key" {
+			found = &report.Checks[i]
 		}
 	}
-	assert.True(t, skipFound, "should skip check for missing secret key")
+	require.NotNil(t, found, "a set web-secret-key must be reported as having no effect")
+	assert.Equal(t, statusSkip, found.Status)
+	assert.Contains(t, found.Message, "no effect")
+	assert.True(t, report.Healthy, "an ineffective key is not a failure")
 }
 
 func TestCheckWebAuth_ConfigError(t *testing.T) {

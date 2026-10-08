@@ -226,6 +226,8 @@ func (c *DaemonCommand) setupWebServer() error {
 		if err != nil {
 			return err
 		}
+	} else {
+		c.warnUnauthenticatedWeb()
 	}
 
 	c.webServer = web.NewServerWithAuth(c.WebAddr, c.scheduler, c.config, provider, authCfg)
@@ -258,6 +260,36 @@ func (c *DaemonCommand) setupWebServer() error {
 	return nil
 }
 
+// warnUnauthenticatedWeb logs that the web UI and API run without
+// authentication. The API can create and run jobs, local jobs included, which
+// execute commands on this host. On an address other than loopback that is
+// open to everyone who can reach the port.
+func (c *DaemonCommand) warnUnauthenticatedWeb() {
+	if webAddrIsLoopback(c.WebAddr) {
+		c.Logger.Warn("Web UI and API run without authentication on " + c.WebAddr +
+			"; every local process can create and run jobs. Set web-auth-enabled to require a login.")
+		return
+	}
+	c.Logger.Warn("Web UI and API run without authentication on " + c.WebAddr +
+		", which is reachable from other hosts: anyone who can reach it can create and run jobs, " +
+		"including commands on this host. Set web-auth-enabled, or bind web-address to 127.0.0.1.")
+}
+
+// webAddrIsLoopback reports whether addr ("host:port") binds only to a
+// loopback address. An empty host or an unspecified address (0.0.0.0, ::)
+// binds every interface.
+func webAddrIsLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // buildWebAuthConfig builds the web authentication configuration from the
 // daemon's web-auth flags. Only called when web auth is enabled; it returns
 // an error when a required credential is missing.
@@ -268,10 +300,9 @@ func (c *DaemonCommand) buildWebAuthConfig() (*web.SecureAuthConfig, error) {
 	if c.WebPasswordHash == "" {
 		return nil, ErrWebAuthPassword
 	}
-	if c.WebSecretKey == "" {
-		c.Logger.Warn("No web-secret-key provided. " +
-			"Auth tokens will not survive daemon restarts. " +
-			"Set OFELIA_WEB_SECRET_KEY for persistent sessions.")
+	if c.WebSecretKey != "" {
+		c.Logger.Info("web-secret-key is set but has no effect: " +
+			"sessions are kept in memory and end when the daemon restarts")
 	}
 	return &web.SecureAuthConfig{
 		Enabled:        true,

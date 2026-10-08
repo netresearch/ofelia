@@ -8,10 +8,10 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -101,6 +101,27 @@ func (rl *RateLimiter) Allow(key string) bool {
 	return limiter.Allow()
 }
 
+// StartCleanup runs CleanupOldLimiters(maxAge) every interval in a background
+// goroutine until the returned stop function is called. Stop is safe to call
+// more than once.
+func (rl *RateLimiter) StartCleanup(interval, maxAge time.Duration) (stop func()) {
+	done := make(chan struct{})
+	var once sync.Once
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				rl.CleanupOldLimiters(maxAge)
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() { once.Do(func() { close(done) }) }
+}
+
 // CleanupOldLimiters removes limiters that haven't been accessed for the given maxAge.
 func (rl *RateLimiter) CleanupOldLimiters(maxAge time.Duration) {
 	rl.mu.Lock()
@@ -128,7 +149,7 @@ type SecureTokenManager struct {
 }
 
 // NewSecureTokenManager returns a manager that issues and tracks auth tokens
-// (valid for expiryHours) and one-time CSRF tokens (valid for one hour). Both
+// (valid for expiryHours) and one-time CSRF tokens (valid for csrfTokenTTL). Both
 // kinds are random values kept in memory and validated by lookup: they do not
 // survive a restart and are not shared between instances. secretKey is stored
 // on the manager but is not currently used to sign or derive anything, so
@@ -162,7 +183,21 @@ func NewSecureTokenManager(secretKey string, expiryHours int) (*SecureTokenManag
 	return tm, nil
 }
 
-// GenerateCSRFToken creates a new CSRF token
+const (
+	// csrfTokenTTL is how long a CSRF token stays redeemable. The web UI
+	// fetches one right before it posts the login, so minutes are plenty.
+	csrfTokenTTL = 10 * time.Minute
+	// maxCSRFTokens bounds the outstanding tokens. /api/csrf-token answers
+	// without authentication, so without a bound the store grows with
+	// whatever request rate the per-IP limiter admits.
+	maxCSRFTokens = 10000
+)
+
+// GenerateCSRFToken creates a new single-use CSRF token valid for
+// csrfTokenTTL. When maxCSRFTokens are outstanding, expired tokens are swept
+// first and, if the store is still full, the oldest token is evicted: the
+// token a user just asked for is the newest, so a flood of requests cannot
+// keep a real login from getting one.
 func (tm *SecureTokenManager) GenerateCSRFToken() (string, error) {
 	tm.csrfMu.Lock()
 	defer tm.csrfMu.Unlock()
@@ -172,10 +207,34 @@ func (tm *SecureTokenManager) GenerateCSRFToken() (string, error) {
 		return "", fmt.Errorf("failed to generate CSRF token: %w", err)
 	}
 
+	now := time.Now()
+	if len(tm.csrfTokens) >= maxCSRFTokens {
+		tm.evictCSRFTokensLocked(now)
+	}
+
 	token := base64.URLEncoding.EncodeToString(b)
-	tm.csrfTokens[token] = time.Now().Add(1 * time.Hour)
+	tm.csrfTokens[token] = now.Add(csrfTokenTTL)
 
 	return token, nil
+}
+
+// evictCSRFTokensLocked drops expired tokens and, if the store is still at
+// maxCSRFTokens, the one closest to expiry. Callers hold csrfMu.
+func (tm *SecureTokenManager) evictCSRFTokensLocked(now time.Time) {
+	var oldest string
+	var oldestExpiry time.Time
+	for token, expiry := range tm.csrfTokens {
+		if now.After(expiry) {
+			delete(tm.csrfTokens, token)
+			continue
+		}
+		if oldest == "" || expiry.Before(oldestExpiry) {
+			oldest, oldestExpiry = token, expiry
+		}
+	}
+	if len(tm.csrfTokens) >= maxCSRFTokens && oldest != "" {
+		delete(tm.csrfTokens, oldest)
+	}
 }
 
 // ValidateCSRFToken checks if a CSRF token is valid
@@ -353,7 +412,14 @@ func (h *SecureLoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 
+	// The endpoint is reachable without a token, so its body gets a much
+	// tighter cap than the server-wide one.
+	r.Body = http.MaxBytesReader(w, r.Body, maxLoginBodyBytes)
 	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+		if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -402,8 +468,11 @@ func (h *SecureLoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   int(h.tokenManager.tokenExpiry.Seconds()),
 	})
 
-	// Return tokens in response
+	// Return tokens in response. The body carries the auth token for API
+	// clients that send it as a Bearer header; browsers use the cookie. No
+	// cache may keep a copy of either.
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"token":      token,
 		"csrf_token": csrfToken,
@@ -411,28 +480,12 @@ func (h *SecureLoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getClientIP extracts the client IP address from the request.
-// Forwarded headers (X-Forwarded-For, X-Real-IP) are only trusted when the
-// direct connection comes from a trusted proxy (loopback by default, or any
-// CIDR in trustedProxies). For other connections, the headers are ignored to
-// prevent IP spoofing.
+// getClientIP returns the address the login rate limit is keyed on. It is
+// resolveClientIP: forwarded headers count only behind a trusted proxy
+// (loopback, or a CIDR in trustedProxies), and X-Forwarded-For is read from
+// the right so a client cannot pick its own key.
 func getClientIP(r *http.Request, trustedProxies ...*net.IPNet) string {
-	remoteIP := extractRemoteIP(r.RemoteAddr)
-
-	// Only trust forwarded headers from trusted proxies
-	if isTrustedProxy(remoteIP, trustedProxies) {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			ips := strings.Split(xff, ",")
-			if len(ips) > 0 {
-				return strings.TrimSpace(ips[0])
-			}
-		}
-		if xri := r.Header.Get("X-Real-IP"); xri != "" {
-			return xri
-		}
-	}
-
-	return remoteIP
+	return resolveClientIP(r, trustedProxies)
 }
 
 // HashPassword generates a bcrypt hash of the password
