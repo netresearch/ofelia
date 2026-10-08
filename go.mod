@@ -11,7 +11,7 @@ require (
 	github.com/creasty/defaults v1.11.0
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.8.1+incompatible
-	github.com/docker/go-connections v0.8.1
+	github.com/docker/go-connections v0.8.2
 	github.com/emersion/go-smtp v0.25.0
 	github.com/go-mail/mail/v2 v2.3.0
 	github.com/go-playground/validator/v10 v10.30.5
