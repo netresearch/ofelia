@@ -126,11 +126,11 @@
 
 ## Security
 
-### JWT Authentication
-- **Manager**: [`web/jwt_auth.go`](../web/jwt_auth.go)
-- **Handlers**: [`web/jwt_handlers.go`](../web/jwt_handlers.go)
-- **Tests**: [`web/jwt_auth_test.go`](../web/jwt_auth_test.go)
-- **Middleware**: [`web/jwt_auth.go#L113-L150`](../web/jwt_auth.go)
+### Token Authentication
+- **Token manager, login handler, login rate limiter**: [`web/auth_secure.go`](../web/auth_secure.go)
+- **Auth middleware, route table**: [`web/server.go`](../web/server.go) (`authMiddleware`, `routes`)
+- **Client IP, body limit, rate limiter**: [`web/middleware.go`](../web/middleware.go) (`resolveClientIP`, `limitRequestBody`)
+- **Tests**: [`web/auth_hardening_test.go`](../web/auth_hardening_test.go), [`web/route_auth_test.go`](../web/route_auth_test.go)
 
 ### Input Validation
 - **Command Sanitization**: [`config/sanitizer.go#L58-L85`](../config/sanitizer.go)
@@ -228,9 +228,9 @@
 4. **Job Update**: [`core/scheduler.go#L180`](../core/scheduler.go)
 
 ### Authentication Flow
-1. **Login Request**: [`web/jwt_handlers.go#L20`](../web/jwt_handlers.go)
-2. **Token Generation**: [`web/jwt_auth.go#L51`](../web/jwt_auth.go)
-3. **Middleware Validation**: [`web/jwt_auth.go#L113`](../web/jwt_auth.go)
+1. **Login Request**: [`web/auth_secure.go`](../web/auth_secure.go) (`SecureLoginHandler.ServeHTTP`)
+2. **Token Generation**: [`web/auth_secure.go`](../web/auth_secure.go) (`SecureTokenManager.GenerateToken`)
+3. **Middleware Validation**: [`web/server.go`](../web/server.go) (`authMiddleware`)
 4. **Request Processing**: [`web/server.go#L200`](../web/server.go)
 
 ---

@@ -27,11 +27,28 @@ When enabled, all `/api/` routes except `/api/login`, `/api/auth/status` and
   request arrived over TLS or with `X-Forwarded-Proto: https`), or
 - an `Authorization: Bearer <token>` header carrying the token returned by login.
 
+A session is a random token kept in the daemon's memory. It ends at logout, at expiry
+(`web-token-expiry`, default 24 hours) and whenever the daemon restarts.
+
+### Cross-origin requests
+
+State-changing requests (`POST` and the other non-safe methods) that a browser sends from
+another origin are rejected with `403 Forbidden`, whether authentication is enabled or not.
+The check reads `Sec-Fetch-Site` and falls back to comparing `Origin` with `Host`. Clients
+that send neither header, such as `curl` or scripts, are not affected.
+
+### Request size
+
+Request bodies are limited to 1 MiB. The login body is limited to 4 KiB and answers
+`413 Request Entity Too Large` beyond that; other endpoints that read a body answer `400`
+for an oversized one.
+
 ### Login
 
 ```http
 POST /api/login
 Content-Type: application/json
+X-CSRF-Token: <csrf-token from GET /api/csrf-token>
 
 {"username": "admin", "password": "secret"}
 ```
@@ -42,7 +59,11 @@ Response `200 OK` (and the `auth_token` cookie):
 {"token": "<token>", "csrf_token": "<csrf-token>", "expires_in": 86400}
 ```
 
-Failed credentials return `401 Unauthorized`; repeated failures are rate limited per client IP.
+Failed credentials return `401 Unauthorized`; a missing or used CSRF token returns
+`403 Forbidden`; repeated attempts are rate limited per client IP (`429`). Behind a proxy
+listed in `web-trusted-proxies`, the client IP is the rightmost `X-Forwarded-For` entry that
+is not a trusted proxy. The response carries `Cache-Control: no-store`. The `token` in the
+body is for API clients that send it as a Bearer header; browsers use the cookie.
 There is no refresh endpoint — log in again when the token expires.
 
 ### Logout
@@ -51,7 +72,8 @@ There is no refresh endpoint — log in again when the token expires.
 POST /api/logout
 ```
 
-Clears the auth cookie. Returns `204 No Content`.
+Revokes the token and clears the auth cookie. Returns `200 OK` with
+`{"status": "logged out"}`.
 
 ### Auth status
 
@@ -67,7 +89,9 @@ Reports whether authentication is enabled and whether the caller is authenticate
 GET /api/csrf-token
 ```
 
-Returns the CSRF token for the session; the web UI sends it with the login form.
+Returns `{"csrf_token": "<token>"}`, a single-use token that `POST /api/login` requires in
+the `X-CSRF-Token` header. It is valid for 10 minutes; the web UI fetches one right before
+it sends the login form. The response carries `Cache-Control: no-store`.
 
 ## Jobs
 

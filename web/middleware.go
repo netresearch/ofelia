@@ -36,6 +36,18 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+// limitRequestBody caps the body of every request at maxBytes. A handler
+// reading past the cap gets an *http.MaxBytesError, and the server closes the
+// connection instead of draining the rest.
+func limitRequestBody(next http.Handler, maxBytes int64) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // rateLimiter provides basic rate limiting per IP
 type rateLimiter struct {
 	requests       map[string][]time.Time
@@ -208,19 +220,47 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP resolves the address the limiter counts against. Forwarded
-// headers are honored only when the direct peer is a trusted proxy —
-// otherwise any client could spoof itself a fresh budget per request by
-// sending its own X-Forwarded-For.
+// clientIP resolves the address the limiter counts against; see
+// resolveClientIP.
 func (rl *rateLimiter) clientIP(r *http.Request) string {
+	return resolveClientIP(r, rl.trustedProxies)
+}
+
+// resolveClientIP returns the address a request is accounted to. Forwarded
+// headers are honored only when the direct peer is a trusted proxy —
+// otherwise any client could give itself a fresh budget per request by
+// sending its own X-Forwarded-For.
+//
+// X-Forwarded-For is read from the right. Each proxy appends the address it
+// received the request from, so the entries to the left of the last trusted
+// hop were written by whoever sent the request to that proxy, the client
+// included. The rightmost entry that is not itself a trusted proxy is the
+// first address no trusted proxy can vouch for, and that is the client.
+// When every entry is a trusted proxy, the leftmost one is the best answer
+// the chain offers. All X-Forwarded-For header lines are read as one list,
+// in order.
+func resolveClientIP(r *http.Request, trustedProxies []*net.IPNet) string {
 	ip := extractRemoteIP(r.RemoteAddr)
-	if !isTrustedProxy(ip, rl.trustedProxies) {
+	if !isTrustedProxy(ip, trustedProxies) {
 		return ip
 	}
-	if xForwarded := r.Header.Get("X-Forwarded-For"); xForwarded != "" {
-		return strings.TrimSpace(strings.Split(xForwarded, ",")[0])
+	var hops []string
+	for _, line := range r.Header.Values("X-Forwarded-For") {
+		for hop := range strings.SplitSeq(line, ",") {
+			if hop = strings.TrimSpace(hop); hop != "" {
+				hops = append(hops, hop)
+			}
+		}
 	}
-	if xRealIP := r.Header.Get("X-Real-IP"); xRealIP != "" {
+	for i := len(hops) - 1; i >= 0; i-- {
+		if !isTrustedProxy(hops[i], trustedProxies) {
+			return hops[i]
+		}
+	}
+	if len(hops) > 0 {
+		return hops[0]
+	}
+	if xRealIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); xRealIP != "" {
 		return xRealIP
 	}
 	return ip

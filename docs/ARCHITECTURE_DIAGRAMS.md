@@ -409,25 +409,25 @@ stateDiagram-v2
 
 ## Web UI & API Flow
 
-HTTP request handling with JWT authentication and API endpoints.
+HTTP request handling with token authentication and API endpoints.
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Router
     participant AuthMW as Auth Middleware
-    participant JWT as JWT Manager
+    participant TM as Token Manager
     participant Handler
     participant Scheduler
     participant DB as Job Store
     
     rect rgb(240, 240, 255)
-        Note over Client,JWT: Authentication Flow
+        Note over Client,TM: Authentication Flow
         Client->>Router: POST /api/login
         Router->>Handler: Login handler
         Handler->>Handler: Verify credentials
-        Handler->>JWT: GenerateToken(user)
-        JWT-->>Handler: JWT token
+        Handler->>TM: GenerateToken(user)
+        TM-->>Handler: random session token
         Handler-->>Client: 200 {token, expires}
     end
     
@@ -435,8 +435,8 @@ sequenceDiagram
         Note over Client,DB: Protected API Request
         Client->>Router: GET /api/jobs<br/>Authorization: Bearer {token}
         Router->>AuthMW: Validate request
-        AuthMW->>JWT: VerifyToken(token)
-        JWT-->>AuthMW: Claims / Error
+        AuthMW->>TM: ValidateToken(token)
+        TM-->>AuthMW: user / invalid
         
         alt Invalid token
             AuthMW-->>Client: 401 Unauthorized
@@ -507,7 +507,7 @@ graph TB
     
     subgraph "Web Layer"
         WebServer[server.go<br/>HTTP Server]
-        JWTAuth[jwt_auth.go<br/>Authentication]
+        JWTAuth[auth_secure.go<br/>Authentication]
         HealthCheck[health.go<br/>Health Endpoints]
     end
     

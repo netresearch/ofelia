@@ -32,18 +32,20 @@ import (
 //
 // Build one with NewServer or NewServerWithAuth; the zero value is not usable.
 type Server struct {
-	addr           string
-	scheduler      *core.Scheduler
-	config         any
-	srv            *http.Server
-	origins        map[string]string
-	originsMu      sync.RWMutex
-	provider       core.DockerProvider
-	authConfig     *SecureAuthConfig
-	tokenManager   *SecureTokenManager
-	loginLimiter   *RateLimiter
-	rl             *rateLimiter
-	trustedProxies []*net.IPNet
+	addr         string
+	scheduler    *core.Scheduler
+	config       any
+	srv          *http.Server
+	origins      map[string]string
+	originsMu    sync.RWMutex
+	provider     core.DockerProvider
+	authConfig   *SecureAuthConfig
+	tokenManager *SecureTokenManager
+	loginLimiter *RateLimiter
+	// stopLoginCleanup ends loginLimiter's eviction loop; nil without auth.
+	stopLoginCleanup func()
+	rl               *rateLimiter
+	trustedProxies   []*net.IPNet
 	// persistStore optionally tracks API-mutated state across daemon
 	// restarts (#593). Nil-safe: methods on persist.Store are no-ops
 	// when the store wasn't constructed with a path, so handlers don't
@@ -89,6 +91,26 @@ const (
 	msgMethodNotAllowed   = "method not allowed"
 	msgInvalidRequestBody = "invalid request body"
 	msgJobNotFound        = "job not found"
+)
+
+// loginLimiterCleanupInterval is how often idle login buckets are evicted. A
+// variable only so a test can watch the eviction happen on a real server.
+var loginLimiterCleanupInterval = time.Minute
+
+// Resource bounds for request handling.
+const (
+	// loginLimiterMaxIdle is how long a client's login bucket may sit unused
+	// before it is evicted.
+	loginLimiterMaxIdle = 10 * time.Minute
+	// maxRequestBodyBytes caps every request body. The largest legitimate
+	// body is a job definition, which is a few KiB.
+	maxRequestBodyBytes = 1 << 20
+	// maxLoginBodyBytes caps the unauthenticated login body: a username and
+	// a password, of which bcrypt reads at most 72 bytes.
+	maxLoginBodyBytes = 4 << 10
+	// readTimeout bounds how long one request may take to arrive, body
+	// included, so a slow sender cannot hold a connection open indefinitely.
+	readTimeout = 30 * time.Second
 )
 
 // The job-type tokens the API speaks, in jobRequest.Type and in the type
@@ -169,6 +191,11 @@ func setupAuth(server *Server, authCfg *SecureAuthConfig) error {
 		maxAttempts = 5
 	}
 	server.loginLimiter = NewRateLimiter(maxAttempts, maxAttempts)
+	// One bucket per client address would otherwise accumulate for the life
+	// of the daemon. A bucket idle for loginLimiterMaxIdle has refilled
+	// completely (burst == rate per minute), so dropping it changes nothing
+	// for that client.
+	server.stopLoginCleanup = server.loginLimiter.StartCleanup(loginLimiterCleanupInterval, loginLimiterMaxIdle)
 
 	// Parse trusted proxy CIDRs for X-Forwarded-For handling
 	if len(authCfg.TrustedProxies) > 0 {
@@ -225,6 +252,7 @@ func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.Do
 		Addr:              addr,
 		Handler:           server.wrapMiddleware(server.newMux(nil, ui)),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       readTimeout,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
@@ -321,6 +349,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.tokenManager != nil {
 		s.tokenManager.Close()
 	}
+	if s.stopLoginCleanup != nil {
+		s.stopLoginCleanup()
+	}
 	if err := s.srv.Shutdown(ctx); err != nil {
 		return fmt.Errorf("shutdown http server: %w", err)
 	}
@@ -370,6 +401,14 @@ func (s *Server) wrapMiddleware(mux http.Handler) http.Handler {
 	if s.authConfig != nil && s.authConfig.Enabled {
 		handler = s.authMiddleware(handler)
 	}
+	// Cross-origin protection applies with auth on and off: the session
+	// cookie is SameSite=Strict, but "same site" includes every other port
+	// on the same host, and without auth there is no cookie to withhold at
+	// all. The check rejects state-changing browser requests from another
+	// origin (Sec-Fetch-Site, falling back to Origin vs Host) and lets
+	// same-origin and non-browser clients through.
+	handler = http.NewCrossOriginProtection().Handler(handler)
+	handler = limitRequestBody(handler, maxRequestBodyBytes)
 	// The limiter goes outside auth, so a request rejected with 401 has
 	// still been counted. With the order reversed, /api/* token guessing
 	// was the one traffic the limiter never saw: authMiddleware answers
@@ -1305,6 +1344,7 @@ func (s *Server) authStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) csrfTokenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(headerContentType, contentTypeJSON)
+	w.Header().Set("Cache-Control", "no-store")
 
 	if s.tokenManager == nil {
 		http.Error(w, "Auth not enabled", http.StatusNotFound)

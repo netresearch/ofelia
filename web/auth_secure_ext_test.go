@@ -263,10 +263,25 @@ func TestGetClientIP(t *testing.T) {
 			expected:   "203.0.113.1",
 		},
 		{
+			// The proxy on loopback appended 70.41.3.18, the address it
+			// received the request from; 203.0.113.1 is what the client
+			// sent itself and must not choose the rate-limit key.
 			name:       "X-Forwarded-For multiple IPs from loopback",
 			xff:        "203.0.113.1, 70.41.3.18",
 			remoteAddr: "127.0.0.1:1234",
-			expected:   "203.0.113.1",
+			expected:   "70.41.3.18",
+		},
+		{
+			name:       "X-Forwarded-For whose every hop is loopback",
+			xff:        "127.0.0.2, 127.0.0.3",
+			remoteAddr: "127.0.0.1:1234",
+			expected:   "127.0.0.2",
+		},
+		{
+			name:       "X-Forwarded-For with empty entries",
+			xff:        " , 70.41.3.18 ,",
+			remoteAddr: "127.0.0.1:1234",
+			expected:   "70.41.3.18",
 		},
 		{
 			name:       "X-Real-IP header from loopback",
@@ -434,6 +449,54 @@ func TestGetClientIP_TrustsXFFFromConfiguredProxy(t *testing.T) {
 	got := getClientIP(req, trusted...)
 	assert.Equal(t, "203.0.113.50", got,
 		"X-Forwarded-For should be trusted when RemoteAddr is in configured trusted proxy CIDR")
+}
+
+// TestGetClientIP_SkipsTrustedHopsFromTheRight pins the read direction behind
+// a chain of proxies: every entry a trusted proxy appended is skipped, and the
+// first untrusted one from the right is the client. Anything left of it was
+// written by the client and cannot select the rate-limit key.
+func TestGetClientIP_SkipsTrustedHopsFromTheRight(t *testing.T) {
+	t.Parallel()
+
+	trusted, err := ParseTrustedProxies([]string{"172.17.0.0/16"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "172.17.0.2:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7, 203.0.113.50, 172.17.0.3")
+
+	assert.Equal(t, "203.0.113.50", getClientIP(req, trusted...))
+}
+
+// TestGetClientIP_ReadsAllXFFLines covers a proxy that adds its own
+// X-Forwarded-For line instead of extending the existing one: the lines form
+// one list in order, so the appended line still decides.
+func TestGetClientIP_ReadsAllXFFLines(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Add("X-Forwarded-For", "198.51.100.7")
+	req.Header.Add("X-Forwarded-For", "203.0.113.50")
+
+	assert.Equal(t, "203.0.113.50", getClientIP(req))
+}
+
+// TestRateLimiterAndLoginKeyAgree pins that the request limiter and the login
+// limiter key a request the same way, so one cannot be fooled where the other
+// is not.
+func TestRateLimiterAndLoginKeyAgree(t *testing.T) {
+	t.Parallel()
+
+	rl := newRateLimiter(1, time.Minute)
+	t.Cleanup(rl.close)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7, 203.0.113.50")
+
+	assert.Equal(t, "203.0.113.50", rl.clientIP(req))
+	assert.Equal(t, rl.clientIP(req), getClientIP(req))
 }
 
 func TestGetClientIP_IgnoresXFFFromUntrustedProxy(t *testing.T) {

@@ -307,15 +307,18 @@ func (c *DoctorCommand) checkWebAuth(report *DoctorReport) {
 		})
 	}
 
-	if conf.Global.WebSecretKey == "" {
+	// Sessions are random tokens held in memory; the key signs nothing, so
+	// setting it changes nothing either way. Say so instead of suggesting it
+	// buys sessions that survive a restart.
+	if conf.Global.WebSecretKey != "" {
 		report.Checks = append(report.Checks, CheckResult{
 			Category: categoryConfiguration,
 			Name:     "Web Auth Secret Key",
 			Status:   statusSkip,
-			Message:  "web-secret-key not set - tokens will not survive daemon restarts",
+			Message: "web-secret-key is set but has no effect: sessions are kept in memory " +
+				"and end when the daemon restarts",
 			Hints: []string{
-				"Set OFELIA_WEB_SECRET_KEY for persistent sessions",
-				"Generate with: openssl rand -base64 32",
+				"The setting can be removed from the configuration",
 			},
 		})
 	}

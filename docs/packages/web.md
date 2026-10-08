@@ -2,11 +2,11 @@
 
 **Package**: `web`
 **Path**: `/web/`
-**Purpose**: HTTP server, API endpoints, JWT authentication, and health monitoring
+**Purpose**: HTTP server, API endpoints, token authentication, and health monitoring
 
 ## Overview
 
-The web package provides a comprehensive HTTP interface for Ofelia, including RESTful API endpoints, JWT-based authentication, health checks, and security middleware. It exposes job management functionality through a web UI and API, with built-in rate limiting, CSRF protection, and secure authentication.
+The web package provides a comprehensive HTTP interface for Ofelia, including RESTful API endpoints, token authentication, health checks, and security middleware. It exposes job management functionality through a web UI and API, with built-in rate limiting, cross-origin protection, and secure authentication.
 
 ![The Ofelia web UI, light theme on the left and dark on the right](../images/dashboard-light-dark.png)
 
@@ -44,54 +44,7 @@ server := web.NewServer(":8080", scheduler, config, dockerClient)
 
 ### 2. Authentication System
 
-#### JWT Authentication
-
-Industry-standard JWT-based authentication with secure token management.
-
-```go
-type JWTManager struct {
-    secretKey   []byte
-    tokenExpiry time.Duration
-}
-
-type Claims struct {
-    Username string `json:"username"`
-    jwt.RegisteredClaims
-}
-```
-
-**Features**:
-- HS256 signing algorithm
-- Configurable expiry (default: hours)
-- Token refresh capability
-- HTTP middleware integration
-- Cookie and header token support
-
-**Usage**:
-```go
-// Create JWT manager
-jwtManager, err := web.NewJWTManager(secretKey, 24) // 24 hour expiry
-if err != nil {
-    log.Fatal(err)
-}
-
-// Generate token
-token, err := jwtManager.GenerateToken("admin")
-
-// Validate token
-claims, err := jwtManager.ValidateToken(token)
-
-// Refresh token
-newToken, err := jwtManager.RefreshToken(oldToken)
-
-// Apply middleware
-protectedHandler := jwtManager.Middleware(apiHandler)
-```
-
-**Security Requirements**:
-- Secret key must be ≥32 characters
-- Tokens include standard JWT claims (exp, iat, nbf, iss, sub)
-- Automatic signing method validation
+Authentication is optional (`web-auth-enabled`). A session is an opaque 256-bit random token that the server keeps in memory together with the user name and expiry. Tokens carry no claims and are not signed, so they end when the daemon restarts, and logout revokes them at once.
 
 #### Secure Authentication
 
@@ -102,19 +55,21 @@ type SecureAuthConfig struct {
     Enabled      bool
     Username     string
     PasswordHash string // bcrypt hash
-    SecretKey    string
+    SecretKey    string // accepted, currently unused
     TokenExpiry  int    // hours
     MaxAttempts  int    // per minute
+    TrustedProxies []string
 }
 ```
 
 **Features**:
 - Bcrypt password hashing (cost 12)
 - Constant-time username comparison
-- Rate limiting per IP
-- CSRF token protection
+- Login rate limiting per client IP; idle buckets are evicted every minute
+- Single-use CSRF token on the login, valid for 10 minutes; at most 10,000 outstanding, the oldest is evicted first
+- Login body capped at 4 KiB (413), every other body at 1 MiB
 - Timing attack prevention
-- Secure HTTP-only cookies
+- Secure HTTP-only, SameSite=Strict cookies; token responses carry `Cache-Control: no-store`
 
 **Password Hashing**:
 ```go
@@ -272,7 +227,7 @@ rl := newRateLimiter(100, time.Minute)
 - Per-IP rate limiting
 - Sliding window algorithm
 - Automatic cleanup of old entries
-- X-Forwarded-For support (honored only from trusted proxies)
+- X-Forwarded-For support (honored only from trusted proxies, read from the right: the client is the rightmost entry that is not a trusted proxy)
 - Counts every request, static assets included. Only the orchestrator probes
   (`/ready`, `/live`) are exempt, so a probe is never answered with 429.
   `/health` and `/healthz` are token-free but counted: `GetHealth` calls
@@ -454,43 +409,16 @@ GET /api/jobs/backup-db/history
 
 ## Authentication Flow
 
-### JWT Authentication
+### Login with CSRF token
 
 ```bash
-# 1. Generate token
-POST /api/login
-Content-Type: application/json
-
-{
-  "username": "admin",
-  "password": "secure123"
-}
+# 1. Fetch a single-use CSRF token
+GET /api/csrf-token
 
 # Response:
-{
-  "token": "eyJhbGc...",
-  "expires_in": 86400
-}
+{"csrf_token": "abc123..."}
 
-# 2. Use token in requests
-GET /api/jobs
-Authorization: Bearer eyJhbGc...
-
-# 3. Refresh token before expiry
-POST /api/refresh
-Authorization: Bearer eyJhbGc...
-
-# Response:
-{
-  "token": "eyJhbGc...", // New token
-  "expires_in": 86400
-}
-```
-
-### Secure Authentication with CSRF
-
-```bash
-# 1. Login with CSRF protection
+# 2. Log in with it
 POST /api/login
 Content-Type: application/json
 X-CSRF-Token: abc123...
@@ -507,8 +435,14 @@ X-CSRF-Token: abc123...
   "expires_in": 86400
 }
 
-# Cookie set: auth_token (HttpOnly, Secure, SameSite=Strict)
+# Cookie set: auth_token (HttpOnly, SameSite=Strict; Secure over HTTPS)
+
+# 3. Use the token or the cookie
+GET /api/jobs
+Authorization: Bearer auth_token_here
 ```
+
+State-changing requests (POST and the like) that a browser sends from another origin are rejected with 403 by `http.CrossOriginProtection`, with and without authentication. Clients that send no `Sec-Fetch-Site` or `Origin` header, such as `curl`, are not affected.
 
 ## Server Configuration
 
@@ -548,41 +482,22 @@ func main() {
 }
 ```
 
-### With JWT Authentication
-
-```go
-// Create JWT manager
-jwtManager, err := web.NewJWTManager(os.Getenv("OFELIA_JWT_SECRET"), 24)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Create server with JWT middleware
-server := web.NewServer(":8080", scheduler, config, dockerClient)
-
-// Apply JWT authentication to API routes
-// (Implementation depends on routing strategy)
-```
-
 ### With Secure Authentication
 
 ```go
-// Create secure auth config
+// NewServerWithAuth wires the token manager, the login rate limiter and its
+// eviction loop, the login/logout/auth-status/csrf-token routes and the auth
+// middleware from one config.
 authConfig := &web.SecureAuthConfig{
     Enabled:      true,
     Username:     "admin",
     PasswordHash: hashedPassword, // bcrypt hash
-    SecretKey:    os.Getenv("OFELIA_SECRET_KEY"),
     TokenExpiry:  24,
     MaxAttempts:  5,
+    TrustedProxies: []string{"172.17.0.0/16"}, // only behind a reverse proxy
 }
 
-// Create token manager and rate limiter
-tokenManager, _ := web.NewSecureTokenManager(authConfig.SecretKey, authConfig.TokenExpiry)
-rateLimiter := web.NewRateLimiter(authConfig.MaxAttempts, authConfig.MaxAttempts)
-
-// Create login handler
-loginHandler := web.NewSecureLoginHandler(authConfig, tokenManager, rateLimiter)
+server := web.NewServerWithAuth(":8080", scheduler, config, dockerProvider, authConfig)
 ```
 
 ## Security Considerations
@@ -596,9 +511,10 @@ loginHandler := web.NewSecureLoginHandler(authConfig, tokenManager, rateLimiter)
 
 ### Token Security
 
-- **JWT secret key**: Must be ≥32 characters for HS256
+- **Session tokens**: 256-bit random values held in memory; not signed, so `web-secret-key` has no effect and sessions end on restart
 - **Token expiry**: Configurable (default: 24 hours)
-- **CSRF protection**: One-time use tokens for state-changing operations
+- **CSRF token**: single-use, required by the login, valid for 10 minutes
+- **Cross-origin protection**: state-changing browser requests from another origin get 403, with and without authentication
 - **Secure cookies**: HttpOnly, Secure (HTTPS), SameSite=Strict
 
 ### Network Security
@@ -606,7 +522,8 @@ loginHandler := web.NewSecureLoginHandler(authConfig, tokenManager, rateLimiter)
 - **HTTPS enforcement**: HSTS header when TLS detected
 - **Security headers**: XSS protection, frame denial, CSP
 - **Rate limiting**: 100 requests/minute per IP (configurable)
-- **Request timeouts**: ReadHeader 5s, Write 60s, Idle 120s
+- **Request timeouts**: ReadHeader 5s, Read 30s, Write 60s, Idle 120s
+- **Request body limits**: 1 MiB per request, 4 KiB for the login
 
 ### Input Validation
 
@@ -693,7 +610,7 @@ done
 curl -I http://localhost:8080/
 # Expected: X-Content-Type-Options, X-Frame-Options, etc.
 
-# Test JWT authentication
+# Test token authentication
 curl http://localhost:8080/api/jobs
 # Expected: 401 Unauthorized without token
 
@@ -706,18 +623,18 @@ curl -H "Authorization: Bearer <token>" http://localhost:8080/api/jobs
 ### Authentication Issues
 
 ```
-Error: "JWT secret key must be at least 32 characters long"
-Solution: Set OFELIA_JWT_SECRET environment variable with ≥32 chars
-```
-
-```
 Error: "Invalid or expired token"
-Solution: Generate new token via /api/login or refresh existing token
+Solution: Log in again via /api/login. Tokens expire after web-token-expiry hours and on every daemon restart
 ```
 
 ```
 Error: "Too many login attempts"
 Solution: Wait for rate limit window to reset (default: 1 minute)
+```
+
+```
+Error: 403 "cross-origin request detected"
+Solution: The request came from a browser page on another origin. Send it from the Ofelia UI's own origin, or from a non-browser client
 ```
 
 ### Health Check Issues

@@ -304,8 +304,8 @@ services:
 
 ```bash
 # Authentication
-POST   /api/login              # Login (get JWT)
-POST   /api/refresh            # Refresh token
+GET    /api/csrf-token         # Single-use token the login requires
+POST   /api/login              # Login (get session token)
 POST   /api/logout             # Logout
 
 # Jobs
@@ -329,18 +329,22 @@ GET    /metrics                # Prometheus metrics
 ### API Usage Examples
 
 ```bash
-# Login
+# Login (needs a single-use CSRF token)
+CSRF=$(curl -s http://localhost:8081/api/csrf-token | jq -r .csrf_token)
 curl -X POST http://localhost:8081/api/login \
   -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: $CSRF" \
   -d '{"username": "admin", "password": "secret"}'
 
-# List jobs (with JWT)
+# List jobs (with the session token)
 curl http://localhost:8081/api/jobs \
   -H "Authorization: Bearer <token>"
 
 # Trigger job
-curl -X POST http://localhost:8081/api/jobs/backup/run \
-  -H "Authorization: Bearer <token>"
+curl -X POST http://localhost:8081/api/jobs/run \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "backup"}'
 
 # Get job history
 curl http://localhost:8081/api/jobs/backup/history \
@@ -651,7 +655,7 @@ mail-only-on-error = false
 
 - [ ] Mount Docker socket as read-only (`:ro`)
 - [ ] Use environment variables for secrets (never hardcode)
-- [ ] Enable JWT authentication for web UI
+- [ ] Enable web UI authentication (`web-auth-enabled`)
 - [ ] Set appropriate user for exec/run jobs
 - [ ] Use read-only volume mounts where possible
 - [ ] Enable audit logging (`save-only-on-error = false`)

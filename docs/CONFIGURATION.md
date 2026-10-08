@@ -229,7 +229,7 @@ services:
 | `OFELIA_WEB_AUTH_ENABLED` | Enable web UI authentication | false |
 | `OFELIA_WEB_USERNAME` | Web UI username | (none) |
 | `OFELIA_WEB_PASSWORD_HASH` | bcrypt hash of password | (none) |
-| `OFELIA_WEB_SECRET_KEY` | Secret for token signing | (auto-generated) |
+| `OFELIA_WEB_SECRET_KEY` | Currently has no effect: sessions are kept in memory and end when the daemon restarts | (none) |
 | `OFELIA_WEB_TOKEN_EXPIRY` | Token expiry in hours | 24 |
 | `OFELIA_WEB_MAX_LOGIN_ATTEMPTS` | Max login attempts per minute | 5 |
 | `OFELIA_ENABLE_PPROF` | Enable pprof profiling | false |
@@ -439,12 +439,14 @@ web-address = 127.0.0.1:8080
 web-auth-enabled = true
 web-username = admin
 web-password-hash = $2a$12$...  # bcrypt hash - use 'ofelia hash-password' to generate
-web-secret-key = ${WEB_SECRET_KEY}  # Required for persistent sessions across restarts
 web-token-expiry = 24  # hours
 web-max-login-attempts = 5
 # Trusted proxy CIDRs (comma-separated). Only requests originating from these
 # networks will have their X-Forwarded-For / X-Real-IP headers honored when
 # determining the client IP for login rate-limiting and audit logs.
+# X-Forwarded-For is read from the right: the client is the rightmost entry
+# that is not itself a trusted proxy, so a client cannot choose its own IP by
+# sending the header. Loopback is always trusted.
 # SECURITY: leave empty if Ofelia is exposed directly (no reverse proxy) — any
 # entry here lets a request from that network spoof its source IP via headers.
 # Set to your reverse proxy's network only (e.g. Docker bridge, k8s pod CIDR,
@@ -828,7 +830,7 @@ Override configuration using environment variables:
 OFELIA_DOCKER_HOST=tcp://docker:2376
 OFELIA_DOCKER_POLL_INTERVAL=1m
 OFELIA_SLACK_URL=https://hooks.slack.com/...
-OFELIA_JWT_SECRET=my-secret-key
+OFELIA_WEB_PASSWORD_HASH='$2a$12$...'
 
 # Job-specific (format: OFELIA_JOB_TYPE_NAME_PROPERTY)
 OFELIA_JOB_EXEC_BACKUP_SCHEDULE=@hourly
@@ -1172,7 +1174,6 @@ web-username = admin
 web-password-hash = $2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.F3V7Y8GdDmz7hG
 
 # Token configuration
-web-secret-key = ${WEB_SECRET_KEY}  # Auto-generated if not set
 web-token-expiry = 24               # Hours
 web-max-login-attempts = 5          # Per minute per IP
 ```
@@ -1206,10 +1207,16 @@ python3 -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass('Passwor
 
 **Security features:**
 - bcrypt password hashing (cost 12)
-- Rate limiting per IP
-- CSRF token protection
-- Secure cookie settings (HttpOnly, SameSite=Strict)
+- Rate limiting per IP; behind a proxy listed in `web-trusted-proxies`, the client IP comes from the rightmost untrusted `X-Forwarded-For` entry
+- Single-use CSRF token on the login, valid for 10 minutes
+- Cross-origin protection: a state-changing request (POST and the like) that a browser sends from another origin is rejected with 403, with and without authentication. Requests without browser headers, such as `curl` or scripts, are not affected
+- Request bodies are capped at 1 MiB, the login body at 4 KiB (413 when exceeded)
+- Secure cookie settings (HttpOnly, SameSite=Strict); token responses carry `Cache-Control: no-store`
 - Constant-time credential comparison
+
+**Sessions:** a session is a random token held in the daemon's memory. It ends at logout, at expiry (`web-token-expiry`) or when the daemon restarts. `web-secret-key` is accepted but currently has no effect.
+
+**Without authentication:** the API can create and run jobs, including local jobs that execute commands on the host. The daemon logs a warning at startup when the web UI runs without authentication, and a stronger one when `web-address` is reachable from other hosts.
 
 ### Input Validation
 
@@ -1256,7 +1263,6 @@ When enabled, strict validation provides:
 1. **Use environment variables for secrets**
    ```ini
    smtp-password = ${SMTP_PASSWORD}
-   web-secret-key = ${WEB_SECRET_KEY}
    ```
 
 2. **Enable Docker events for real-time updates**

@@ -539,6 +539,9 @@ func (cv *Validator2) isOptionalField(path string) bool {
 		"environment", "secrets", "volumes", "working_dir",
 		"log-level", // Has default value "info"
 		"env-file", "env-from",
+		// Accepted for compatibility but currently unused: sessions are random
+		// tokens held in memory, so the key signs nothing and is never needed.
+		"web-secret-key",
 	}
 
 	for _, field := range optionalFields {
@@ -560,7 +563,6 @@ func (cv *Validator2) isOptionalField(path string) bool {
 // #nosec G101 -- these are INI key names the validator matches on, not values
 var requiredWhen = map[string]string{
 	"web-password-hash": "web-auth-enabled",
-	"web-secret-key":    "web-auth-enabled",
 }
 
 // gateIsOpen reports whether a conditionally-required field is currently

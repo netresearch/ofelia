@@ -38,13 +38,15 @@ func TestConditionalRequired_DemandedWhenFeatureIsOn(t *testing.T) {
 
 	err := NewConfigValidator(&gatedConfig{WebAuthEnabled: true}).Validate()
 	if err == nil {
-		t.Fatal("web auth is on with no password hash or secret key, expected an error")
+		t.Fatal("web auth is on with no password hash, expected an error")
 	}
 
-	for _, want := range []string{"web-password-hash", "web-secret-key"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention the missing %s", err, want)
-		}
+	if !strings.Contains(err.Error(), "web-password-hash") {
+		t.Errorf("error %q does not mention the missing web-password-hash", err)
+	}
+	// web-secret-key has no effect on sessions, so it is never demanded.
+	if strings.Contains(err.Error(), "web-secret-key") {
+		t.Errorf("error %q demands web-secret-key, which has no effect", err)
 	}
 }
 
@@ -71,7 +73,7 @@ func TestConditionalRequired_UnknownGateStaysRequired(t *testing.T) {
 
 	// No web-auth-enabled field at all, so the gate is unresolvable.
 	type noGate struct {
-		WebSecretKey string `gcfg:"web-secret-key" mapstructure:"web-secret-key"`
+		WebPasswordHash string `gcfg:"web-password-hash" mapstructure:"web-password-hash"`
 	}
 
 	if err := NewConfigValidator(&noGate{}).Validate(); err == nil {
@@ -87,7 +89,7 @@ func TestGateIsOpen_InvalidParentKeepsFieldRequired(t *testing.T) {
 	t.Parallel()
 
 	cv := NewConfigValidator(nil)
-	if !cv.gateIsOpen(reflect.Value{}, "web-secret-key") {
+	if !cv.gateIsOpen(reflect.Value{}, "web-password-hash") {
 		t.Error("with no parent to inspect the field should stay required")
 	}
 }
@@ -111,7 +113,7 @@ func TestGateIsOpen_IgnoresMismatchedFields(t *testing.T) {
 
 	// Neither decoy qualifies, so the search finds no gate and the field stays
 	// required rather than being switched on by the wrong field.
-	if !cv.gateIsOpen(parent, "web-secret-key") {
+	if !cv.gateIsOpen(parent, "web-password-hash") {
 		t.Error("a string field and an unrelated bool were treated as the gate")
 	}
 }

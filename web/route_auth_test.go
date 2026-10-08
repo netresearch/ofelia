@@ -57,6 +57,7 @@ func newAuthTestServer(t *testing.T) (*Server, *HealthChecker) {
 	t.Cleanup(func() {
 		srv.rl.close()
 		srv.tokenManager.Close()
+		srv.stopLoginCleanup()
 	})
 	return srv, hc
 }
