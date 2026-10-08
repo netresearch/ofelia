@@ -110,7 +110,6 @@ Understanding what security controls belong where is critical for proper deploym
 web-auth-enabled = true
 web-username = admin
 web-password-hash = $2a$12$...  # bcrypt hash
-web-secret-key = ${WEB_SECRET_KEY}
 web-token-expiry = 24  # hours
 allow-host-jobs-from-labels = false  # Restrict LocalJobs
 ```
@@ -124,9 +123,10 @@ allow-host-jobs-from-labels = false  # Restrict LocalJobs
   hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
   ```
 
-- ✅ **Token Signing**:
-  - HMAC-based token signing with minimum 32-byte secret
-  - Automatic token key validation on startup
+- ✅ **Session Tokens**:
+  - 256-bit values from `crypto/rand`, held server-side in memory; nothing is signed
+  - Sessions end at logout, at expiry and on daemon restart
+  - `web-secret-key` is accepted but currently has no effect
 
 - ✅ **Secure Storage**:
   - Credentials never logged
@@ -141,11 +141,8 @@ ofelia hash-password
 # Without the binary at hand:
 python3 -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass('Password: ').encode(), bcrypt.gensalt(12)).decode())"
 
-# Generate secret key
-openssl rand -base64 48
-
-# Store in environment
-export OFELIA_WEB_SECRET_KEY="your-generated-secret-here"
+# Store the hash in the environment instead of the config file
+export OFELIA_WEB_PASSWORD_HASH='$2a$12$...'
 ```
 
 ### A03:2021 - Injection Attacks
@@ -236,7 +233,7 @@ no-overlap = true
 - ✅ **Configuration Validation** ([config/validator.go](../config/validator.go)):
   ```go
   validator := config.NewValidator()
-  validator.ValidateRequired("web-secret-key", config.WebSecretKey)
+  validator.ValidateRequired("web-password-hash", config.WebPasswordHash)
   validator.ValidateCronExpression("schedule", job.Schedule)
   validator.ValidateEmail("email-to", config.EmailTo)
   ```
@@ -283,8 +280,10 @@ no-overlap = true
 
 - ✅ **Authentication Protections**:
   - Authentication tokens with configurable expiry
-  - CSRF tokens for state-changing operations
-  - Rate limiting prevents brute force
+  - Single-use CSRF token on the login, valid for 10 minutes
+  - Cross-origin protection: state-changing browser requests from another origin get 403, with and without authentication
+  - Rate limiting prevents brute force; behind a trusted proxy the client IP is the rightmost `X-Forwarded-For` entry that is not a trusted proxy
+  - Request bodies capped at 1 MiB, the login at 4 KiB
 
 - ✅ **Session Management** ([web/auth_secure.go](../web/auth_secure.go)):
   ```go
@@ -294,7 +293,7 @@ no-overlap = true
       Value:    token,
       Path:     "/",
       HttpOnly: true,           // Prevent JavaScript access
-      Secure:   true,           // HTTPS only
+      Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
       SameSite: http.SameSiteStrictMode,  // CSRF protection
       MaxAge:   int(h.tokenManager.tokenExpiry.Seconds()),
   }
@@ -402,7 +401,8 @@ webhook-allowed-hosts = hooks.slack.com, discord.com, ntfy.internal, 192.168.1.2
 - Cryptographically secure token generation
 - Constant-time username comparison
 - Rate limiting (5 attempts/minute)
-- CSRF token protection
+- Single-use CSRF token on the login
+- Cross-origin protection on state-changing requests
 - Timing attack prevention
 - Secure HTTP-only cookies
 
@@ -417,9 +417,11 @@ python3 -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass('Passwor
 
 **Usage**:
 ```bash
-# Login
+# Login (needs a single-use CSRF token)
+CSRF=$(curl -s http://localhost:8081/api/csrf-token | jq -r .csrf_token)
 curl -X POST http://localhost:8081/api/login \
   -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: $CSRF" \
   -d '{"username":"admin","password":"your-password"}'
 
 # Response
@@ -802,20 +804,15 @@ location /api/ {
 ### Environment Variables
 
 **Secret Management**:
-```bash
-# Use secret management (Docker Swarm)
-docker secret create web_secret_key web_secret_key.txt
-docker secret create smtp_password smtp_password.txt
 
-# Reference in compose file
+Ofelia reads secrets from the environment: `OFELIA_WEB_PASSWORD_HASH` for the web login, and `${VAR}` references in the config file for everything else (for example `smtp-password = ${SMTP_PASSWORD}`). It does not read `*_FILE` variables, so a secret store has to deliver the value as an environment variable.
+
+```yaml
+# docker compose, values from an .env file kept out of version control
 services:
   ofelia:
-    secrets:
-      - web_secret_key
-      - smtp_password
-    environment:
-      - OFELIA_WEB_SECRET_KEY_FILE=/run/secrets/web_secret_key
-      - OFELIA_SMTP_PASSWORD_FILE=/run/secrets/smtp_password
+    env_file:
+      - .env   # OFELIA_WEB_PASSWORD_HASH=..., SMTP_PASSWORD=...
 ```
 
 **Kubernetes Secrets**:
@@ -826,7 +823,7 @@ metadata:
   name: ofelia-secrets
 type: Opaque
 data:
-  web-secret-key: <base64-encoded>
+  web-password-hash: <base64-encoded>
   smtp-password: <base64-encoded>
 
 ---
@@ -838,11 +835,16 @@ spec:
       containers:
       - name: ofelia
         env:
-        - name: OFELIA_WEB_SECRET_KEY
+        - name: OFELIA_WEB_PASSWORD_HASH
           valueFrom:
             secretKeyRef:
               name: ofelia-secrets
-              key: web-secret-key
+              key: web-password-hash
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ofelia-secrets
+              key: smtp-password
 ```
 
 ### Least Privilege
@@ -959,8 +961,8 @@ Recent security enhancements implemented:
 - 100ms delay on authentication failure
 
 ### CSRF Protection
-- One-time use CSRF tokens
-- Token validation middleware
+- Single-use CSRF token on the login, valid for 10 minutes, at most 10,000 outstanding
+- Cross-origin protection (`http.CrossOriginProtection`) on every state-changing request
 - Secure cookie attributes
 - SameSite cookie protection
 
@@ -982,7 +984,7 @@ The web UI and API are **disabled by default**. If you enable them (`enable-web 
 
 - Token authentication configuration
 - Password hashing with bcrypt
-- Rate limiting and CSRF protection
+- Rate limiting, CSRF token and cross-origin protection
 - Security headers
 
 ## Vulnerability Reporting

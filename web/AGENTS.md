@@ -4,8 +4,8 @@
 
 ## Overview
 - HTTP server, REST API, and web interface for Ofelia
-- Main entry points: `server.go`, `auth.go`, `health.go`
-- JWT-based authentication with secure session management
+- Main entry points: `server.go`, `auth_secure.go`, `middleware.go`, `health.go`
+- Token authentication: random session tokens held in memory (no JWT, nothing signed; `web-secret-key` has no effect)
 - Health checks and monitoring endpoints
 
 ## Setup & environment
@@ -52,7 +52,9 @@
 - `img-src 'self' data:` — required for Pico CSS inline SVG data URIs
 
 ## Security & safety
-- JWT tokens: use secure signing, proper expiration, rotation
+- Session tokens: random, server-side, revoked on logout; state-changing requests pass `http.CrossOriginProtection` (wired in `wrapMiddleware`, auth on and off)
+- Client IP: `resolveClientIP` reads X-Forwarded-For from the right and only behind a trusted proxy; both rate limiters use it
+- Request bodies: capped by `limitRequestBody` (1 MiB) and in the login handler (4 KiB)
 - Authentication: never log credentials, use secure headers
 - CORS: configure appropriately for production
 - Rate limiting: implement to prevent abuse
@@ -69,14 +71,13 @@
 - [ ] No credentials in logs or responses
 
 ## Good vs. bad examples
-- Good: `auth.go` (secure JWT handling)
+- Good: `auth_secure.go` (token manager, login handler)
 - Good: `server.go` (proper middleware chaining)
 - Good: `health.go` (monitoring endpoint patterns)
 - Bad: Hardcoded secrets in source code
 - Bad: Missing input validation on endpoints
 
 ## When stuck
-- Review JWT patterns in `jwt_auth.go` and `jwt_handlers.go`
+- Review the token manager and login handler in `auth_secure.go`
 - Check middleware patterns in `middleware.go`
 - Look at health check implementation in `health.go`
-- Reference authentication migration in `auth_migration.go`

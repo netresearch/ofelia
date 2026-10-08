@@ -11,7 +11,7 @@
 - **Resilient Execution**: Built-in retry logic, circuit breakers, and rate limiting
 - **Comprehensive Monitoring**: Prometheus metrics, structured logging, and health checks
 - **Web UI & API**: Interactive dashboard for job management and monitoring
-- **Security-First Design**: Input validation, JWT authentication, and sanitization
+- **Security-First Design**: Input validation, token authentication, and sanitization
 
 ## 📁 Project Structure
 
@@ -58,7 +58,7 @@ ofelia/
 ### 3. Web Interface (`web/`)
 
 - **[Server](../web/server.go)**: HTTP server and routing
-- **[JWT Auth](../web/jwt_auth.go)**: JWT-based authentication
+- **[Auth](../web/auth_secure.go)**: token authentication, login rate limiting, CSRF token
 - **[Health Checks](../web/health.go)**: Liveness and readiness probes
 - **[Middleware](../web/middleware.go)**: HTTP request processing
 
@@ -105,7 +105,7 @@ graph TD
 - Cron expression validation
 
 ### Authentication & Authorization
-- JWT-based API authentication
+- Token-based API authentication
 - Secure token management
 - Session handling
 - CORS protection
@@ -146,8 +146,8 @@ ofelia_circuit_breaker_*       # Circuit breaker states
 - `DELETE /api/job/{name}`: Remove job
 
 ### Authentication
-- `POST /api/login`: Authenticate and receive JWT
-- `POST /api/refresh`: Refresh JWT token
+- `GET /api/csrf-token`: Single-use token the login requires
+- `POST /api/login`: Authenticate and receive a session token
 - `POST /api/logout`: Invalidate token
 
 ## 🚀 Configuration Examples

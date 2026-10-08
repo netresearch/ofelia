@@ -712,19 +712,15 @@ Error: Cron expression '0 */6 * *' is invalid: expected 5 or 6 fields
 
 ### Environment Variable Not Resolved
 
-**Symptoms**:
-```
-Error: JWT secret key must be at least 32 characters long
-Warning: Using placeholder value "${JWT_SECRET}"
-```
+**Symptoms**: a setting written as `${SMTP_PASSWORD}` takes effect as that literal text, for example a mail login fails. Ofelia substitutes `${VAR}` only when the variable is set and not empty; otherwise it keeps the text unchanged, or uses the default in `${VAR:-default}`.
 
 **Diagnosis**:
 ```bash
 # Check environment variable
-echo $JWT_SECRET
+echo $SMTP_PASSWORD
 
 # Check in container
-docker exec ofelia env | grep JWT_SECRET
+docker exec ofelia env | grep SMTP_PASSWORD
 ```
 
 **Solutions**:
@@ -732,7 +728,7 @@ docker exec ofelia env | grep JWT_SECRET
 1. **Environment variable not set**:
    ```bash
    # Set environment variable
-   export JWT_SECRET="your-secret-key-here-min-32-chars"
+   export SMTP_PASSWORD="your-smtp-password"
 
    # Restart Ofelia
    docker restart ofelia
@@ -743,7 +739,7 @@ docker exec ofelia env | grep JWT_SECRET
    services:
      ofelia:
        environment:
-         - JWT_SECRET=${JWT_SECRET}
+         - SMTP_PASSWORD=${SMTP_PASSWORD}
        # Or from .env file
        env_file:
          - .env
@@ -751,7 +747,7 @@ docker exec ofelia env | grep JWT_SECRET
 
 3. **Verify in container**:
    ```bash
-   docker exec ofelia env | grep JWT_SECRET
+   docker exec ofelia env | grep SMTP_PASSWORD
    ```
 
 ### Job-Run Labels Not Discovered
@@ -818,32 +814,6 @@ services:
 
 ## Authentication Issues
 
-### JWT Secret Too Short
-
-**Symptoms**:
-```
-Error: JWT secret key must be at least 32 characters long
-Fatal: Cannot start server: invalid JWT configuration
-```
-
-**Solutions**:
-
-1. **Generate proper secret**:
-   ```bash
-   # Generate 48-character base64 secret
-   openssl rand -base64 48
-
-   # Set in environment
-   export OFELIA_JWT_SECRET="generated-secret-here"
-   ```
-
-2. **Configuration**:
-   ```ini
-   [global]
-   web-secret-key = ${JWT_SECRET}  # Minimum 32 characters
-   web-token-expiry = 24
-   ```
-
 ### Invalid or Expired Token
 
 **Symptoms**:
@@ -860,22 +830,17 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/jobs
 
 **Solutions**:
 
-1. **Token expired**:
+1. **Token expired, or the daemon restarted**: sessions are kept in memory, so every restart ends them. Log in again; there is no refresh endpoint.
    ```bash
-   # Generate new token
+   # The login needs a single-use CSRF token
+   CSRF=$(curl -s http://localhost:8080/api/csrf-token | jq -r .csrf_token)
    curl -X POST http://localhost:8080/api/login \
      -H "Content-Type: application/json" \
+     -H "X-CSRF-Token: $CSRF" \
      -d '{"username":"admin","password":"your-password"}'
    ```
 
-2. **Token refresh**:
-   ```bash
-   # Refresh existing token
-   curl -X POST http://localhost:8080/api/refresh \
-     -H "Authorization: Bearer $OLD_TOKEN"
-   ```
-
-3. **Increase token expiry**:
+2. **Increase token expiry**:
    ```ini
    [global]
    web-token-expiry = 168  # 1 week instead of 24 hours
