@@ -232,6 +232,7 @@ services:
 | `OFELIA_WEB_SECRET_KEY` | Currently has no effect: sessions are kept in memory and end when the daemon restarts | (none) |
 | `OFELIA_WEB_TOKEN_EXPIRY` | Token expiry in hours | 24 |
 | `OFELIA_WEB_MAX_LOGIN_ATTEMPTS` | Max login attempts per minute | 5 |
+| `OFELIA_WEB_TRUSTED_PROXIES` | Comma-separated CIDRs or IPs of every reverse proxy in front of Ofelia | (none; loopback is always trusted) |
 | `OFELIA_ENABLE_PPROF` | Enable pprof profiling | false |
 | `OFELIA_PPROF_ADDRESS` | pprof bind address | 127.0.0.1:8080 |
 | `OFELIA_STATE_FILE` | JSON file persisting API-mutated jobs and disable flags across restarts (#593) | (none, disabled) |
@@ -447,6 +448,12 @@ web-max-login-attempts = 5
 # X-Forwarded-For is read from the right: the client is the rightmost entry
 # that is not itself a trusted proxy, so a client cannot choose its own IP by
 # sending the header. Loopback is always trusted.
+# List EVERY proxy stage between the client and Ofelia (e.g. a CDN in front of
+# nginx: both the nginx network and the CDN's published address ranges). An
+# untrusted stage in the middle becomes the "client", and all users behind it
+# share one rate-limit budget (100 requests/minute; each open UI tab polls
+# about 12 times a minute).
+# Also settable as --web-trusted-proxies or OFELIA_WEB_TRUSTED_PROXIES.
 # SECURITY: leave empty if Ofelia is exposed directly (no reverse proxy) — any
 # entry here lets a request from that network spoof its source IP via headers.
 # Set to your reverse proxy's network only (e.g. Docker bridge, k8s pod CIDR,
