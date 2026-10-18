@@ -94,7 +94,7 @@ func NewPresetCache(cacheDir string, ttl time.Duration) *PresetCache {
 		// os.MkdirAll does not tighten perms on pre-existing entries.
 		// Apply 0o700 explicitly so an upgrade from a prior loose-mode
 		// version of the cache also picks up the hardening.
-		if err := os.Chmod(cacheDir, defaultCacheDirPerm); err != nil {
+		if err := os.Chmod(cacheDir, defaultCacheDirPerm); err != nil { // #nosec G302 -- owner-only dir; dirs need the x bit
 			fmt.Fprintf(os.Stderr, "Warning: failed to chmod preset cache directory: %v\n", err)
 		}
 	}
