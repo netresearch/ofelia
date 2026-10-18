@@ -144,8 +144,12 @@ func TestPresetCache_Get_NotFound(t *testing.T) {
 func TestPresetCache_Expiration(t *testing.T) {
 	t.Parallel()
 
+	// The TTL must outlast Put plus the first Get on a loaded runner: at
+	// 10ms the first Get itself saw "cache expired" in CI. The cache reads
+	// time.Now() directly, so the margin is the only lever here.
+	const ttl = 200 * time.Millisecond
 	tempDir := t.TempDir()
-	cache := NewPresetCache(tempDir, 10*time.Millisecond)
+	cache := NewPresetCache(tempDir, ttl)
 
 	preset := &Preset{
 		Name:   "expiring-preset",
@@ -160,7 +164,7 @@ func TestPresetCache_Expiration(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, retrieved)
 
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(ttl + 100*time.Millisecond)
 
 	_, err = cache.Get(testURL)
 	assert.Error(t, err)
