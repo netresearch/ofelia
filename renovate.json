@@ -4,6 +4,9 @@
     "config:recommended"
   ],
   "forkProcessing": "enabled",
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
   "automerge": true,
   "automergeType": "pr",
   "platformAutomerge": true
