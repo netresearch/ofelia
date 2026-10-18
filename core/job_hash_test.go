@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// hashable is the method set a reload compares jobs by.
-type hashable interface{ Hash() (string, error) }
+// hasher is the method set a reload compares jobs by.
+type hasher interface{ Hash() (string, error) }
 
 // TestJobHashCoversEveryTaggedField pins issue #876: every `hash:"true"` field
 // of every job type, the embedded BareJob ones included, must change the key a
@@ -19,11 +19,11 @@ type hashable interface{ Hash() (string, error) }
 func TestJobHashCoversEveryTaggedField(t *testing.T) {
 	t.Parallel()
 
-	types := map[string]func() hashable{
-		"ExecJob":       func() hashable { return &ExecJob{} },
-		"LocalJob":      func() hashable { return &LocalJob{} },
-		"ComposeJob":    func() hashable { return &ComposeJob{} },
-		"RunServiceJob": func() hashable { return &RunServiceJob{} },
+	types := map[string]func() hasher{
+		"ExecJob":       func() hasher { return &ExecJob{} },
+		"LocalJob":      func() hasher { return &LocalJob{} },
+		"ComposeJob":    func() hasher { return &ComposeJob{} },
+		"RunServiceJob": func() hasher { return &RunServiceJob{} },
 	}
 
 	for typeName, newJob := range types {
