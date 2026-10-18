@@ -70,47 +70,54 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 		lastOpenPre = `(() => { const p = document.querySelectorAll('#history tbody tr.output-row.open pre'); return p[p.length - 1]; })()`
 	)
 
-	var scrolledTo, maxScroll, afterRefresh, bottomAfter float64
-	var newestKeyBefore string
-	if err := chromedp.Run(ctx,
+	if err := chromedp.Do(ctx,
 		chromedp.Navigate("http://"+addr+"/"),
-		chromedp.WaitVisible(jobRow, chromedp.ByQuery),
-		chromedp.Click(jobRow, chromedp.ByQuery),
-		chromedp.WaitVisible(historyToggle, chromedp.ByQuery),
+		chromedp.WaitVisible(chromedp.CSS(jobRow)),
+		chromedp.Click(chromedp.CSS(jobRow)),
+		chromedp.WaitVisible(chromedp.CSS(historyToggle)),
 
 		// Expand the NEWEST run, not the first: the history is capped, so
 		// the oldest row is the one about to be evicted, and picking it
 		// makes the test flaky on a slow runner for reasons that have
 		// nothing to do with scrolling. Same rationale as
 		// TestE2E_WebUI_ExpandedOutputSurvivesRefresh.
-		chromedp.Evaluate(`(() => {
+		chromedp.Evaluate[chromedp.Void](`(() => {
 			const all = document.querySelectorAll('`+historyToggle+`');
 			const btn = all[all.length - 1];
 			if (!btn) return false;
 			btn.click();
 			return true;
-		})()`, nil),
+		})()`),
 		chromedp.Sleep(500*time.Millisecond),
-		chromedp.Evaluate(`(() => {
-			const pre = `+lastOpenPre+`;
-			if (!pre) return -1;
-			pre.scrollTop = pre.scrollHeight;
-			return pre.scrollTop;
-		})()`, &scrolledTo),
-		chromedp.Evaluate(`(() => {
-			const pre = `+lastOpenPre+`;
-			return pre ? pre.scrollHeight - pre.clientHeight : -1;
-		})()`, &maxScroll),
-
-		// The newest run's key, so the wait below can tell a rebuilt table
-		// from a table nothing happened to.
-		chromedp.Evaluate(`(() => {
-			const all = document.querySelectorAll('`+historyToggle+`');
-			const b = all[all.length - 1];
-			return b ? String(b.dataset.key) : '';
-		})()`, &newestKeyBefore),
 	); err != nil {
 		t.Fatalf("driving the web UI failed: %v", err)
+	}
+	scrolledTo, err := chromedp.Run(ctx, chromedp.Evaluate[float64](`(() => {
+		const pre = `+lastOpenPre+`;
+		if (!pre) return -1;
+		pre.scrollTop = pre.scrollHeight;
+		return pre.scrollTop;
+	})()`))
+	if err != nil {
+		t.Fatalf("scrolling the output block failed: %v", err)
+	}
+	maxScroll, err := chromedp.Run(ctx, chromedp.Evaluate[float64](`(() => {
+		const pre = `+lastOpenPre+`;
+		return pre ? pre.scrollHeight - pre.clientHeight : -1;
+	})()`))
+	if err != nil {
+		t.Fatalf("reading the scroll range failed: %v", err)
+	}
+
+	// The newest run's key, so the wait below can tell a rebuilt table
+	// from a table nothing happened to.
+	newestKeyBefore, err := chromedp.Run(ctx, chromedp.Evaluate[string](`(() => {
+		const all = document.querySelectorAll('`+historyToggle+`');
+		const b = all[all.length - 1];
+		return b ? String(b.dataset.key) : '';
+	})()`))
+	if err != nil {
+		t.Fatalf("reading the newest run's key failed: %v", err)
 	}
 
 	// Wait for the table to actually be rebuilt rather than assuming it. A
@@ -123,21 +130,27 @@ func TestE2E_WebUI_LogScrollSurvivesRefresh(t *testing.T) {
 		const b = all[all.length - 1];
 		return !!b && String(b.dataset.key) !== ` + strconv.Quote(newestKeyBefore) + `;
 	})()`
-	if err := chromedp.Run(ctx,
-		chromedp.Poll(newestChanged, nil, chromedp.WithPollingTimeout(40*time.Second)),
-		chromedp.Evaluate(`(() => {
-			const pre = `+lastOpenPre+`;
-			return pre ? pre.scrollTop : -1;
-		})()`, &afterRefresh),
-		// The bottom as it stands AFTER the rebuild: comparing only against
-		// the old absolute offset would pass even if the block had grown
-		// and the reader were no longer at the end of it.
-		chromedp.Evaluate(`(() => {
-			const pre = `+lastOpenPre+`;
-			return pre ? pre.scrollHeight - pre.clientHeight : -1;
-		})()`, &bottomAfter),
+	if err := chromedp.Do(ctx,
+		chromedp.Poll[chromedp.Void](newestChanged, chromedp.WithPollingTimeout(40*time.Second)),
 	); err != nil {
 		t.Fatalf("waiting for the refresh failed: %v", err)
+	}
+	afterRefresh, err := chromedp.Run(ctx, chromedp.Evaluate[float64](`(() => {
+		const pre = `+lastOpenPre+`;
+		return pre ? pre.scrollTop : -1;
+	})()`))
+	if err != nil {
+		t.Fatalf("reading the scroll position after the refresh failed: %v", err)
+	}
+	// The bottom as it stands AFTER the rebuild: comparing only against
+	// the old absolute offset would pass even if the block had grown
+	// and the reader were no longer at the end of it.
+	bottomAfter, err := chromedp.Run(ctx, chromedp.Evaluate[float64](`(() => {
+		const pre = `+lastOpenPre+`;
+		return pre ? pre.scrollHeight - pre.clientHeight : -1;
+	})()`))
+	if err != nil {
+		t.Fatalf("reading the scroll range after the refresh failed: %v", err)
 	}
 
 	if maxScroll <= 0 {
