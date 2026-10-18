@@ -448,7 +448,8 @@ const hashmeTagEnabled = "true"
 // v must be the struct value matching t and hash must be non-nil; GetHash
 // appends to whatever is already there. It returns ErrUnsupportedFieldType for
 // a tagged field whose kind it cannot represent — supported kinds are string,
-// the signed integer kinds, bool, string slices, and pointer to string.
+// the signed and unsigned integer kinds, bool, string slices, and pointer to
+// string.
 func GetHash(t reflect.Type, v reflect.Value, hash *string) error {
 	for field := range t.Fields() {
 		fieldv := v.FieldByIndex(field.Index)
@@ -482,6 +483,10 @@ func appendFieldHash(field reflect.StructField, fieldv reflect.Value, hash *stri
 		*hash += fieldv.String()
 	case reflect.Int32, reflect.Int, reflect.Int64, reflect.Int16, reflect.Int8:
 		*hash += strconv.FormatInt(fieldv.Int(), 10)
+	// ExecJob's ConsoleHeight and ConsoleWidth are uint. Without this case
+	// ExecJob.Hash fails, and a reload then never applies any exec-job change.
+	case reflect.Uint, reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8:
+		*hash += strconv.FormatUint(fieldv.Uint(), 10)
 	case reflect.Bool:
 		*hash += strconv.FormatBool(fieldv.Bool())
 	case reflect.Slice:

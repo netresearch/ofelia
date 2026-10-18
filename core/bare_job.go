@@ -123,8 +123,9 @@ func (j *BareJob) SetCronJobID(id uint64) {
 // schedule, name, command and run-on-startup — so a reload can tell whether a
 // job definition actually changed. It is a plain concatenation produced by
 // GetHash, not a cryptographic digest, and returns an error if a tagged field
-// has a type GetHash cannot represent. Job types with extra significant fields
-// (RunJob) override this method.
+// has a type GetHash cannot represent. Every job type with fields of its own
+// overrides this method so those fields count too: ExecJob, LocalJob,
+// ComposeJob and RunServiceJob in job_hash.go, RunJob via RunJobConfig.Hash.
 func (j *BareJob) Hash() (string, error) {
 	var hash string
 	if err := GetHash(reflect.TypeFor[BareJob](), reflect.ValueOf(j).Elem(), &hash); err != nil {

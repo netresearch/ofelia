@@ -424,7 +424,11 @@ the INI configuration when the file has changed. The default interval is `10s`.
 Override it with `--docker-poll-interval` or the `poll-interval` option in the
 `[docker]` section of the config file. Set it to `0` to disable both polling and
 automatic reloads. Command-line values only override the configuration when the
-flags are explicitly provided.
+flags are explicitly provided. A reload re-registers a job when any of its
+settings changed (for example `user`, `container` or `environment`, not only
+`schedule` and `command`); jobs whose settings are unchanged keep running
+untouched. Label-defined jobs pass the same security policy on a reload as on
+first registration.
 
 Because the Docker image defines an `ENTRYPOINT`, pass the scheduler
 arguments as a list in `command:` so Compose does not treat them as a single
