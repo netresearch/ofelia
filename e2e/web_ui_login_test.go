@@ -70,59 +70,67 @@ func TestE2E_WebUI_LoginWithAuthEnabled(t *testing.T) {
 		dialogOpen = `document.getElementById('loginDialog').open`
 		jobRow     = `#jobs tbody tr`
 	)
-	var jobRowsBeforeLogin int
-	var errorText, logoutTooltip string
-
 	// Step 1: without a session the login dialog opens and no job data loads.
-	err = chromedp.Run(ctx,
+	err = chromedp.Do(ctx,
 		chromedp.Navigate("http://"+addr+"/"),
-		chromedp.Poll(dialogOpen, nil, chromedp.WithPollingTimeout(15*time.Second)),
-		chromedp.Evaluate(`document.querySelectorAll('`+jobRow+`').length`, &jobRowsBeforeLogin),
+		chromedp.Poll[chromedp.Void](dialogOpen, chromedp.WithPollingTimeout(15*time.Second)),
 	)
 	if err != nil {
 		t.Fatalf("login dialog did not open without a session (regression of issue #864): %v", err)
+	}
+	jobRowsBeforeLogin, err := chromedp.Run(ctx,
+		chromedp.Evaluate[int](`document.querySelectorAll('`+jobRow+`').length`))
+	if err != nil {
+		t.Fatalf("counting job rows before sign-in failed: %v", err)
 	}
 	if jobRowsBeforeLogin != 0 {
 		t.Fatalf("the job table shows %d rows before sign-in; the API must not have served data", jobRowsBeforeLogin)
 	}
 
 	// Step 2: a wrong password keeps the dialog open and says why.
-	err = chromedp.Run(ctx,
-		chromedp.SendKeys(`#loginUser`, username, chromedp.ByQuery),
-		chromedp.SendKeys(`#loginPass`, "wrong-password", chromedp.ByQuery),
-		chromedp.Click(`#loginSubmit`, chromedp.ByQuery),
-		chromedp.WaitVisible(`#loginError`, chromedp.ByQuery),
-		chromedp.Text(`#loginError`, &errorText, chromedp.ByQuery),
+	err = chromedp.Do(ctx,
+		chromedp.SendKeys(chromedp.CSS(`#loginUser`), username),
+		chromedp.SendKeys(chromedp.CSS(`#loginPass`), "wrong-password"),
+		chromedp.Click(chromedp.CSS(`#loginSubmit`)),
+		chromedp.WaitVisible(chromedp.CSS(`#loginError`)),
 	)
 	if err != nil {
 		t.Fatalf("a failed sign-in showed no error: %v", err)
+	}
+	errorText, err := chromedp.Run(ctx, chromedp.Text(chromedp.CSS(`#loginError`)))
+	if err != nil {
+		t.Fatalf("reading the sign-in error failed: %v", err)
 	}
 	if errorText != "Invalid username or password." {
 		t.Fatalf("failed sign-in error = %q, want the invalid-credentials message", errorText)
 	}
 
 	// Step 3: the right password closes the dialog and the dashboard loads.
-	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`document.getElementById('loginPass').value = ''`, nil),
-		chromedp.SendKeys(`#loginPass`, password, chromedp.ByQuery),
-		chromedp.Click(`#loginSubmit`, chromedp.ByQuery),
-		chromedp.Poll(`!`+dialogOpen, nil, chromedp.WithPollingTimeout(15*time.Second)),
-		chromedp.WaitVisible(jobRow, chromedp.ByQuery),
-		chromedp.WaitVisible(`#logoutBtn`, chromedp.ByQuery),
-		chromedp.Evaluate(`document.getElementById('logoutBtn').dataset.customTooltip`, &logoutTooltip),
+	err = chromedp.Do(ctx,
+		chromedp.Evaluate[chromedp.Void](`document.getElementById('loginPass').value = ''`),
+		chromedp.SendKeys(chromedp.CSS(`#loginPass`), password),
+		chromedp.Click(chromedp.CSS(`#loginSubmit`)),
+		chromedp.Poll[chromedp.Void](`!`+dialogOpen, chromedp.WithPollingTimeout(15*time.Second)),
+		chromedp.WaitVisible(chromedp.CSS(jobRow)),
+		chromedp.WaitVisible(chromedp.CSS(`#logoutBtn`)),
 	)
 	if err != nil {
 		t.Fatalf("sign-in with valid credentials did not load the dashboard: %v", err)
+	}
+	logoutTooltip, err := chromedp.Run(ctx,
+		chromedp.Evaluate[string](`document.getElementById('logoutBtn').dataset.customTooltip`))
+	if err != nil {
+		t.Fatalf("reading the logout tooltip failed: %v", err)
 	}
 	if logoutTooltip != "Signed in as "+username {
 		t.Fatalf("logout button tooltip = %q, want it to name the signed-in user", logoutTooltip)
 	}
 
 	// Step 4: the session survives a reload, because the cookie carries it.
-	err = chromedp.Run(ctx,
+	err = chromedp.Do(ctx,
 		chromedp.Reload(),
-		chromedp.WaitVisible(jobRow, chromedp.ByQuery),
-		chromedp.WaitVisible(`#logoutBtn`, chromedp.ByQuery),
+		chromedp.WaitVisible(chromedp.CSS(jobRow)),
+		chromedp.WaitVisible(chromedp.CSS(`#logoutBtn`)),
 	)
 	if err != nil {
 		t.Fatalf("the session did not survive a page reload: %v", err)
@@ -132,9 +140,9 @@ func TestE2E_WebUI_LoginWithAuthEnabled(t *testing.T) {
 	// Logout reloads the page, which destroys the JS context under any
 	// in-page poll. So the old page gets a marker, and the check retries
 	// until a page without the marker reports the dialog open.
-	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`globalThis.beforeLogout = true`, nil),
-		chromedp.Click(`#logoutBtn`, chromedp.ByQuery),
+	err = chromedp.Do(ctx,
+		chromedp.Evaluate[chromedp.Void](`globalThis.beforeLogout = true`),
+		chromedp.Click(chromedp.CSS(`#logoutBtn`)),
 	)
 	if err != nil {
 		t.Fatalf("clicking logout failed: %v", err)
@@ -158,8 +166,7 @@ func waitForLoginAfterReload(ctx context.Context, t *testing.T, jobRow string) i
 	})()`
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
-		var rows int
-		if err := chromedp.Run(ctx, chromedp.Evaluate(probe, &rows)); err == nil && rows >= 0 {
+		if rows, err := chromedp.Run(ctx, chromedp.Evaluate[int](probe)); err == nil && rows >= 0 {
 			return rows
 		}
 		time.Sleep(200 * time.Millisecond)

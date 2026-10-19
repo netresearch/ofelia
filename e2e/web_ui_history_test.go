@@ -121,30 +121,33 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 		return sub ? sub.classList.contains('open') : false;
 	})()`
 
-	var openAfterClick, openAfterRefresh, stillPresent bool
-	var keyAfterClick, keyAfterRefresh string
-
-	err := chromedp.Run(ctx,
+	err := chromedp.Do(ctx,
 		chromedp.Navigate("http://"+addr+"/"),
 
 		// Selecting the job opens the history panel and loads its runs.
-		chromedp.WaitVisible(jobRow, chromedp.ByQuery),
-		chromedp.Click(jobRow, chromedp.ByQuery),
-		chromedp.WaitVisible(historyToggle, chromedp.ByQuery),
+		chromedp.WaitVisible(chromedp.CSS(jobRow)),
+		chromedp.Click(chromedp.CSS(jobRow)),
+		chromedp.WaitVisible(chromedp.CSS(historyToggle)),
 
 		// Wait for several runs before interacting. A single-row history would
 		// make "oldest" and "newest" the same element and hide selector bugs
 		// locally that only surface on a slower runner.
-		chromedp.Poll(`document.querySelectorAll('`+historyToggle+`').length >= 3`,
-			nil, chromedp.WithPollingTimeout(30*time.Second)),
-
-		// Expand the newest run's output and note which execution it is, so we
-		// can find the same one after the refresh.
-		chromedp.Evaluate(expandNewest, &keyAfterClick),
-		chromedp.Evaluate(newestIsOpen, &openAfterClick),
+		chromedp.Poll[chromedp.Void](`document.querySelectorAll('`+historyToggle+`').length >= 3`,
+			chromedp.WithPollingTimeout(30*time.Second)),
 	)
 	if err != nil {
 		t.Fatalf("driving the web UI failed: %v", err)
+	}
+
+	// Expand the newest run's output and note which execution it is, so we
+	// can find the same one after the refresh.
+	keyAfterClick, err := chromedp.Run(ctx, chromedp.Evaluate[string](expandNewest))
+	if err != nil {
+		t.Fatalf("expanding the newest output failed: %v", err)
+	}
+	openAfterClick, err := chromedp.Run(ctx, chromedp.Evaluate[bool](newestIsOpen))
+	if err != nil {
+		t.Fatalf("reading the expanded state failed: %v", err)
 	}
 	if keyAfterClick == "" {
 		t.Fatalf("no run with output found in the history table; nothing to expand")
@@ -161,16 +164,24 @@ func TestE2E_WebUI_ExpandedOutputSurvivesRefresh(t *testing.T) {
 	// legitimately aged out of the capped history is indistinguishable from one
 	// the refresh collapsed - the two need different fixes, and conflating them
 	// once already sent this test chasing the wrong bug.
-	err = chromedp.Run(ctx,
-		chromedp.Sleep(uiRefreshInterval+2*time.Second),
-		chromedp.Evaluate(selectorForKey(keyAfterClick, historyToggle)+` !== null`, &stillPresent),
-		chromedp.Evaluate(selectorForKey(keyAfterClick, historyToggle)+`?.classList.contains('open') === true`, &openAfterRefresh),
-		chromedp.Evaluate(`(() => {
-			const all = document.querySelectorAll('`+historyToggle+`');
-			const btn = all[all.length - 1];
-			return btn ? (btn.dataset.key || '') : '';
-		})()`, &keyAfterRefresh),
-	)
+	if err := chromedp.Do(ctx, chromedp.Sleep(uiRefreshInterval+2*time.Second)); err != nil {
+		t.Fatalf("waiting out the refresh cycle failed: %v", err)
+	}
+	stillPresent, err := chromedp.Run(ctx,
+		chromedp.Evaluate[bool](selectorForKey(keyAfterClick, historyToggle)+` !== null`))
+	if err != nil {
+		t.Fatalf("re-reading the expanded output after a refresh failed: %v", err)
+	}
+	openAfterRefresh, err := chromedp.Run(ctx,
+		chromedp.Evaluate[bool](selectorForKey(keyAfterClick, historyToggle)+`?.classList.contains('open') === true`))
+	if err != nil {
+		t.Fatalf("re-reading the expanded output after a refresh failed: %v", err)
+	}
+	keyAfterRefresh, err := chromedp.Run(ctx, chromedp.Evaluate[string](`(() => {
+		const all = document.querySelectorAll('`+historyToggle+`');
+		const btn = all[all.length - 1];
+		return btn ? (btn.dataset.key || '') : '';
+	})()`))
 	if err != nil {
 		t.Fatalf("re-reading the expanded output after a refresh failed: %v", err)
 	}
