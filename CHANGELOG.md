@@ -15,8 +15,11 @@ eMudhra intermediate certificates (CVE-2026-111943,
 [golang/go#82345](https://github.com/golang/go/issues/82345)). This covers
 ofelia's own TLS connections: mail, Slack and webhook notifications, and a
 Docker daemon reached over TLS. 1.0.1 was built with Go 1.27.1 and accepts
-those chains. Programs that jobs run inside the image, such as `curl`, use
-the image's CA bundle and are not covered by this change.
+those chains. Programs that jobs run inside the image and that do not filter
+chains themselves, such as `curl`, rely on the image's CA bundle alone. The
+image ships `ca-certificates`
+20261020-r0, which no longer contains emSign ECC Root CA - G3 or Sectigo's
+AAA Certificate Services, the two roots those intermediates chain to.
 
 ### Fixed
 
