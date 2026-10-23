@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-23
+
+The binaries and the `ghcr.io` image are built with Go 1.27.3. Go 1.27.3
+makes `crypto/x509` reject certificate chains that contain the compromised
+eMudhra intermediate certificates (CVE-2026-111943,
+[golang/go#82345](https://github.com/golang/go/issues/82345)). This covers
+ofelia's own TLS connections: mail, Slack and webhook notifications, and a
+Docker daemon reached over TLS. 1.0.1 was built with Go 1.27.1 and accepts
+those chains. Programs that jobs run inside the image, such as `curl`, use
+the image's CA bundle and are not covered by this change.
+
+### Fixed
+
+- The web UI's authentication resists spoofed client IPs, oversized request
+  bodies and cross-origin writes
+  ([#866](https://github.com/netresearch/ofelia/pull/866)).
+- The web UI shows a login dialog when web authentication is enabled
+  ([#865](https://github.com/netresearch/ofelia/pull/865)).
+- A live reload detects changes to every job field
+  ([#877](https://github.com/netresearch/ofelia/pull/877)).
+- `WaitContainer` reports the Docker error when it sees the channel closed
+  first ([#863](https://github.com/netresearch/ofelia/pull/863)).
+
+### Changed
+
+- Go module dependencies are updated, among them `docker/cli` 29.9.2,
+  `moby/moby/client` 0.6.2, `golang.org/x/crypto` 0.58.0 and
+  `netresearch/go-cron` 0.16.1
+  ([#852](https://github.com/netresearch/ofelia/pull/852),
+  [#870](https://github.com/netresearch/ofelia/pull/870),
+  [#872](https://github.com/netresearch/ofelia/pull/872),
+  [#884](https://github.com/netresearch/ofelia/pull/884)).
+- `docs/CONFIGURATION.md` lists every proxy stage that
+  `web-trusted-proxies` has to name
+  ([#869](https://github.com/netresearch/ofelia/pull/869)).
+
 ## [1.0.1] - 2026-09-22
 
 A maintenance release: the `go` directive raised to 1.27, the dependency graph
