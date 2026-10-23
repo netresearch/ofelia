@@ -210,6 +210,7 @@ func (m *Mail) Run(ctx *core.Context) error {
 }
 
 func (m *Mail) sendMail(ctx *core.Context) error {
+	const contentTypeTextPlain = "text/plain"
 	msg := mail.NewMessage()
 	msg.SetHeader("From", m.from())
 	msg.SetHeader("To", strings.Split(m.EmailTo, ",")...)
@@ -218,14 +219,14 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 	if m.MailOutputInBody == 0 {
 		msg.SetBody("text/html", m.body(ctx))
 	} else if m.MailOutputInBody < 0 {
-		msg.SetBody("text/plain", ctx.Execution.OutputStream.String() + ctx.Execution.ErrorStream.String())
+		msg.SetBody(contentTypeTextPlain, ctx.Execution.OutputStream.String() + ctx.Execution.ErrorStream.String())
 	} else {
 		output := ctx.Execution.OutputStream.String() + ctx.Execution.ErrorStream.String()
 		outputss := strings.Split(output, "\n")
 		if len(outputss) > m.MailOutputInBody {
-			msg.SetBody("text/plain", strings.Join(outputss[len(outputss)-m.MailOutputInBody-1:], "\n"))
+			msg.SetBody(contentTypeTextPlain, strings.Join(outputss[len(outputss)-m.MailOutputInBody-1:], "\n"))
 		} else {
-			msg.SetBody("text/plain", output)
+			msg.SetBody(contentTypeTextPlain, output)
 		}
 	}
 
