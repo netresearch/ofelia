@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -145,7 +146,13 @@ func newSlowExecServer(t *testing.T, startHangs bool, inspectBody string) *httpt
 			_, _ = buf.WriteString("HTTP/1.1 101 UPGRADED\r\nContent-Type: application/vnd.docker.raw-stream\r\n" +
 				"Connection: Upgrade\r\nUpgrade: tcp\r\n\r\n")
 			_ = buf.Flush()
-			_ = conn.Close() // the stream ends at once
+			// End the stream with a half-close, as a daemon does when the
+			// process exits: a full close can reach the client as a reset.
+			if tc, ok := conn.(*net.TCPConn); ok {
+				_ = tc.CloseWrite()
+			}
+			<-release
+			_ = conn.Close()
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/exec/exec-123/json"):
 			if !startHangs && inspections.Add(1) == 1 {
 				<-release
