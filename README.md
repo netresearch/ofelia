@@ -268,6 +268,8 @@ You can configure four different kinds of jobs:
 - `job-service-run`: runs the command inside a new "run-once" service, for running inside a swarm
 - `job-compose`: runs a command using `docker compose run` or `docker compose exec` based on a compose file
 
+A `[compose-project]` section registers a Compose project instead: Ofelia then schedules the jobs defined in its top-level `jobs:` section (see [Compose projects](docs/jobs.md#compose-projects)).
+
 See [Jobs reference documentation](docs/jobs.md) for all available parameters.
 See [Architecture overview](docs/architecture.md) for details about the scheduler, job types and middleware.
 
