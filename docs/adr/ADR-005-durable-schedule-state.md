@@ -44,7 +44,7 @@ Advancing the cursor and recording what happened to that fire are **one atomic u
 
 A fire is identified by its scheduled time in UTC, not by the time it started.
 
-A manual run (`TriggerEntryByName`, the API, the web UI) does not advance the cursor. While it runs, it occupies the job like a scheduled run: `forbid` stops a scheduled fire and `queue` puts it into the pending slot.
+A manual run (`TriggerEntryByName`, the API, the web UI) does not advance the cursor. While it runs, it occupies the job like a scheduled run: `forbid` stops a scheduled fire and `queue` puts it into the pending slot. Its execution ID is recorded in the dispatch field like that of a scheduled run, so the crash rule below covers it too.
 
 ### When a catch-up runs
 
@@ -52,11 +52,11 @@ When an entry is registered, Ofelia compares the stored record with the configur
 
 | Situation | Effect |
 |-----------|--------|
-| No record | **First registration.** Activation time = now, no catch-up. Fires before activation are never missed. |
+| No record | **First registration.** The record is written durably with activation time = cursor = now, and no catch-up runs. Fires before activation are never missed; a fire after it that falls into a later downtime is caught up, because the cursor is set. |
 | Record, same schedule revision | **Downtime.** The entry is added with `WithPrev(cursor)` and `MissedRunOnce`. At most one catch-up runs, for the most recent missed time. |
-| Record, different schedule revision | **Schedule change.** Treated as first registration. A time that the old expression produced is not a missed fire of the new one. |
-| Job disabled | **Deliberate disable.** The entry is added paused and without a missed policy. Enabling the job sets the cursor to the enable time, so fires during the disabled period never count as missed. |
-| Job definition changed, schedule unchanged | The record is kept, because it is keyed by the schedule entry and not by the go-cron entry. The reload cancels a run in progress, as it does today; that occurrence ends with the outcome canceled. A pending occurrence stays in the record and starts on the new entry. A disabled job stays disabled. |
+| Record, different schedule revision | **Schedule change.** Treated as first registration. A time that the old expression produced is not a missed fire of the new one, so a pending or waiting occurrence of the old revision is dropped and logged. |
+| Job disabled | **Deliberate disable.** The entry is added paused and without a missed policy, and nothing of it starts while the job is disabled. Disabling drops a pending or waiting occurrence and logs it. Enabling the job sets the cursor to the enable time, so fires during the disabled period never count as missed. |
+| Job definition changed, schedule unchanged | The record is kept, because it is keyed by the schedule entry and not by the go-cron entry. The reload cancels a run in progress, as it does today; that occurrence ends with the outcome canceled. A pending occurrence, and a dispatch still waiting for a global slot, stay in the record and start on the new entry. A disabled job stays disabled. |
 
 This needs two changes to today's start-up and reload paths. The state file, with its disabled set and its records, is loaded **before** jobs are registered, so that each entry is added with the right previous run and pause state. A reload keeps the disabled state of a job it replaces.
 
@@ -75,6 +75,7 @@ For a schedule entry with `missed_fires: one` or `concurrency: queue`, Ofelia wr
 - For `run`-mode Compose jobs, the `ofelia.execution` label identifies that workload's container. While a container with the label of an unended dispatch still runs, the entry counts as busy: `forbid` skips the catch-up and later fires, `queue` holds them in the slot. For `exec` mode no such check exists, so the restarted daemon can start a second run beside a command that is still running.
 
 - A run that shutdown cancels ends with the outcome canceled. It counts as handled and is not started again after the restart.
+- A dispatch that is still waiting for a global slot has not started, so cancellation does not end it. On shutdown or reload the wait returns at once and the dispatch keeps the state "waiting"; it then starts as the catch-up or on the new entry, as after a crash. The wait must return on cancellation, because `RemoveJob` blocks until the entry's goroutines end.
 
 Running an occurrence twice would be the worse failure for jobs such as backups, rotations and migrations.
 
