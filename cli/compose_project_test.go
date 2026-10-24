@@ -383,3 +383,96 @@ func TestComposeProject_ReloadKeepsJobsOfRejectedProject(t *testing.T) {
 	require.NotNil(t, newBackup)
 	assert.Equal(t, "CRON_TZ=Europe/Berlin 0 6 * * *", newBackup.Schedule, "the fixed project is loaded")
 }
+
+// touchFile writes content to p and moves its modification time d ahead, so
+// the next poll sees the file as changed.
+func touchFile(t *testing.T, p, content string, d time.Duration) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(p, []byte(content), 0o600))
+	f := time.Now().Add(d)
+	require.NoError(t, os.Chtimes(p, f, f))
+}
+
+const brokenShopCompose = "name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 2 * * *\"\n"
+
+// Kept jobs must survive a second reload while the project is still rejected.
+func TestComposeProject_KeptJobsSurviveSecondReload(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml", shopCompose)
+	iniBody := "[compose-project \"shop\"]\nfile = " + composePath + "\n"
+	iniPath := writeFile(t, dir, "ofelia.ini", iniBody)
+	c := prepareReload(t, iniPath)
+	old := c.ComposeJobs["shop.backup"]
+	require.NotNil(t, old)
+
+	touchFile(t, composePath, brokenShopCompose, time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	require.Same(t, old, c.ComposeJobs["shop.backup"], "first reload keeps")
+
+	// an unrelated INI edit
+	touchFile(t, iniPath, "[job-local \"x\"]\nschedule = @daily\ncommand = true\n"+iniBody, 2*time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	assert.Same(t, old, c.ComposeJobs["shop.backup"], "second reload while still rejected must keep")
+}
+
+// Editing a registration in the INI must not leave a reload on every poll.
+func TestComposeProject_EditedRegistrationDoesNotLoop(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml", "name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    profiles: [a]\n    triggers:\n      schedule:\n        - cron: \"0 2 * * *\"\n          missed_fires: skip\n  other:\n    image: alpine:3.22\n    profiles: [b]\n    triggers:\n      schedule:\n        - cron: \"0 3 * * *\"\n          missed_fires: skip\n")
+	iniPath := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\nprofile = a\n")
+	c := prepareReload(t, iniPath)
+	require.Contains(t, c.ComposeJobs, "shop.backup")
+
+	touchFile(t, iniPath, "[compose-project \"shop\"]\nfile = "+composePath+"\nprofile = b\n", time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	require.Contains(t, c.ComposeJobs, "shop.other")
+	assert.False(t, c.composeProjectsChanged(), "after applying the edit, the next poll must not reload again")
+}
+
+// Removing one of two projects must not leave a reload on every poll.
+func TestComposeProject_RemovedProjectDoesNotLoop(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	a := writeFile(t, dir, "a.yaml", shopCompose)
+	b := writeFile(t, dir, "b.yaml", "name: other\n"+shopCompose[len("name: shop\n"):])
+	iniPath := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+a+"\n[compose-project \"other\"]\nfile = "+b+"\n")
+	c := prepareReload(t, iniPath)
+	touchFile(t, iniPath, "[compose-project \"shop\"]\nfile = "+a+"\n", time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	assert.NotContains(t, c.ComposeJobs, "other.backup")
+	assert.False(t, c.composeProjectsChanged(), "next poll must not reload again")
+}
+
+// A project added at runtime must reload on a default .env change.
+func TestComposeProject_AddedProjectDotEnvDetected(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	envPath := writeFile(t, dir, ".env", "HOUR=2\n")
+	composePath := writeFile(t, dir, "compose.yaml",
+		"name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n"+
+			"        - cron: \"0 ${HOUR} * * *\"\n          missed_fires: skip\n")
+	iniPath := writeFile(t, dir, "ofelia.ini", "[job-local \"x\"]\nschedule = @daily\ncommand = true\n")
+	c := prepareReload(t, iniPath)
+	touchFile(t, iniPath, "[job-local \"x\"]\nschedule = @daily\ncommand = true\n[compose-project \"shop\"]\nfile = "+composePath+"\n", time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	require.Equal(t, "0 2 * * *", c.ComposeJobs["shop.backup"].Schedule)
+	require.NoError(t, os.WriteFile(envPath, []byte("HOUR=6\n"), 0o600))
+	assert.True(t, c.composeProjectsChanged(), "a .env change of a project added at runtime must be detected")
+}
+
+// TestValidate_FailsOnRejectedComposeProject: the daemon runs without a
+// rejected project, so `ofelia validate` is where the rejection must surface.
+func TestValidate_FailsOnRejectedComposeProject(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml", brokenShopCompose)
+	iniPath := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n")
+	cmd := &ValidateCommand{ConfigFile: iniPath, Logger: test.NewTestLogger(), LevelVar: &slog.LevelVar{}}
+
+	err := cmd.Execute(nil)
+
+	require.ErrorIs(t, err, ErrComposeProjectRejected)
+	assert.Contains(t, err.Error(), "shop")
+}

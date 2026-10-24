@@ -1309,6 +1309,9 @@ func (c *Config) iniConfigUpdate() error {
 	c.composeFiles = parsed.composeFiles
 	c.composeRevisions = parsed.composeRevisions
 	c.composeRejected = parsed.composeRejected
+	// The registrations must match the revisions, or the poll compares a
+	// stale project with a new revision and reloads on every tick.
+	c.ComposeProjects = parsed.ComposeProjects
 	c.logger.Debug(fmt.Sprintf("applied config files from %s", strings.Join(files, ", ")))
 	if globalChanged {
 		c.Global = parsed.Global

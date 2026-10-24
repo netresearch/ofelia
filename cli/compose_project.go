@@ -30,6 +30,10 @@ const composeProjectLoadTimeout = 30 * time.Second
 // Compose project would replace a [job-compose] section of the same name.
 var ErrComposeJobNameTaken = errors.New("compose project job name already used by a [job-compose] section")
 
+// ErrComposeProjectRejected reports that at least one Compose project was
+// rejected; `ofelia validate` returns it, the daemon logs and continues.
+var ErrComposeProjectRejected = errors.New("compose projects rejected")
+
 // composeProjectLoader loads registered Compose projects. A variable so tests
 // can substitute a fixture.
 var composeProjectLoader composeproject.Loader = composeproject.ComposeGoLoader{}
@@ -134,10 +138,9 @@ func (c *Config) rejectComposeProject(name string, err error) {
 // logged when the project is expanded; the jobs are replaced once the project
 // loads again. At startup there is nothing to keep.
 func (c *Config) keepLastLoadedComposeJobs(parsed *Config) {
+	// Decided by the jobs that exist, not by an earlier rejection: a second
+	// reload while the project is still rejected must keep them too.
 	for name := range parsed.composeRejected {
-		if c.composeRejected[name] || c.composeRevisions[name] == "" {
-			continue // not loaded before either
-		}
 		kept := 0
 		for jobName, j := range c.ComposeJobs {
 			if len(j.Project.Files) > 0 && strings.HasPrefix(jobName, name+".") && parsed.ComposeJobs[jobName] == nil {
@@ -149,6 +152,17 @@ func (c *Config) keepLastLoadedComposeJobs(parsed *Config) {
 			c.logger.Warn(fmt.Sprintf("compose project %q: keeping its %d last loaded job(s) until it loads again", name, kept))
 		}
 	}
+}
+
+// rejectedComposeProjects returns the names of the projects the last load
+// rejected, sorted.
+func (c *Config) rejectedComposeProjects() []string {
+	names := make([]string, 0, len(c.composeRejected))
+	for name := range c.composeRejected {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // composeSpec turns a registration into the loader's input.
