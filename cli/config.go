@@ -1489,6 +1489,10 @@ type ComposeJobConfig struct {
 	middlewares.MailConfig    `mapstructure:",squash"`
 	JobWebhookConfig          `mapstructure:",squash"`
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
+	// composeRegistration names the [compose-project] a job was expanded
+	// from, or "" for a [job-compose]. Job names are "<registration>.<job>",
+	// and registrations may contain dots, so the name alone cannot tell.
+	composeRegistration string
 }
 
 // GetJobSource reports where this job was defined, INI or container labels.

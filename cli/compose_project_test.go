@@ -476,3 +476,95 @@ func TestValidate_FailsOnRejectedComposeProject(t *testing.T) {
 	require.ErrorIs(t, err, ErrComposeProjectRejected)
 	assert.Contains(t, err.Error(), "shop")
 }
+
+const shopProdCompose = "name: shopprod\njobs:\n  nightly:\n    image: alpine:3.22\n    triggers:\n      schedule:\n" +
+	"        - cron: \"0 4 * * *\"\n          missed_fires: skip\n"
+
+// Registrations may contain dots: shop is rejected (still broken), then
+// shop.prod is removed from the INI and must lose its jobs.
+func TestComposeProject_DottedRegistrationRemovedWhileOtherRejected(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	shop := writeFile(t, dir, "shop.yaml", shopCompose)
+	prod := writeFile(t, dir, "prod.yaml", shopProdCompose)
+	shopReg := "[compose-project \"shop\"]\nfile = " + shop + "\n"
+	prodReg := "[compose-project \"shop.prod\"]\nfile = " + prod + "\n"
+	iniPath := writeFile(t, dir, "ofelia.ini", shopReg+prodReg)
+	c := prepareReload(t, iniPath)
+	require.Contains(t, c.ComposeJobs, "shop.prod.nightly")
+
+	touchFile(t, shop, brokenShopCompose, time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	require.Contains(t, c.ComposeJobs, "shop.backup", "shop kept")
+
+	touchFile(t, iniPath, shopReg, 2*time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	assert.NotContains(t, c.ComposeJobs, "shop.prod.nightly", "shop.prod was removed from the INI")
+}
+
+// Both edited in one go: shop broken and shop.prod removed.
+func TestComposeProject_DottedRegistrationRemovedInSameReload(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	shop := writeFile(t, dir, "shop.yaml", shopCompose)
+	prod := writeFile(t, dir, "prod.yaml", shopProdCompose)
+	shopReg := "[compose-project \"shop\"]\nfile = " + shop + "\n"
+	prodReg := "[compose-project \"shop.prod\"]\nfile = " + prod + "\n"
+	iniPath := writeFile(t, dir, "ofelia.ini", shopReg+prodReg)
+	c := prepareReload(t, iniPath)
+
+	touchFile(t, shop, brokenShopCompose, time.Minute)
+	touchFile(t, iniPath, shopReg, time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	assert.NotContains(t, c.ComposeJobs, "shop.prod.nightly", "shop.prod was removed from the INI")
+}
+
+// shop rejected; shop.prod drops a job from its compose file.
+func TestComposeProject_DottedRegistrationDropsJobWhileOtherRejected(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	shop := writeFile(t, dir, "shop.yaml", shopCompose)
+	prod := writeFile(t, dir, "prod.yaml", shopProdCompose+"  weekly:\n    image: alpine:3.22\n    triggers:\n      schedule:\n"+
+		"        - cron: \"0 5 * * 0\"\n          missed_fires: skip\n")
+	iniPath := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+shop+
+		"\n[compose-project \"shop.prod\"]\nfile = "+prod+"\n")
+	c := prepareReload(t, iniPath)
+	require.Contains(t, c.ComposeJobs, "shop.prod.weekly")
+
+	touchFile(t, shop, brokenShopCompose, time.Minute)
+	touchFile(t, prod, shopProdCompose, time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	assert.NotContains(t, c.ComposeJobs, "shop.prod.weekly", "shop.prod dropped the job")
+}
+
+// Claim (a) control: one project, removed from the INI while rejected.
+func TestComposeProject_RemovedWhileRejected(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	shop := writeFile(t, dir, "shop.yaml", shopCompose)
+	iniPath := writeFile(t, dir, "ofelia.ini", "[job-local \"x\"]\nschedule = @daily\ncommand = true\n[compose-project \"shop\"]\nfile = "+shop+"\n")
+	c := prepareReload(t, iniPath)
+	touchFile(t, shop, brokenShopCompose, time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	require.Contains(t, c.ComposeJobs, "shop.backup")
+	touchFile(t, shop, brokenShopCompose+"# again\n", 2*time.Minute) // third reload, still rejected
+	require.NoError(t, c.iniConfigUpdate())
+	require.Contains(t, c.ComposeJobs, "shop.backup", "third reload keeps")
+	touchFile(t, iniPath, "[job-local \"x\"]\nschedule = @daily\ncommand = true\n", 3*time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	assert.Empty(t, c.ComposeJobs, "removed project loses its jobs")
+	assert.False(t, c.composeProjectsChanged())
+}
+
+// Never loaded project added at runtime keeps nothing; and no loop.
+func TestComposeProject_NeverLoadedKeepsNothing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	shop := writeFile(t, dir, "shop.yaml", brokenShopCompose)
+	iniPath := writeFile(t, dir, "ofelia.ini", "[job-local \"x\"]\nschedule = @daily\ncommand = true\n")
+	c := prepareReload(t, iniPath)
+	touchFile(t, iniPath, "[job-local \"x\"]\nschedule = @daily\ncommand = true\n[compose-project \"shop\"]\nfile = "+shop+"\n", time.Minute)
+	require.NoError(t, c.iniConfigUpdate())
+	assert.Empty(t, c.ComposeJobs)
+	assert.False(t, c.composeProjectsChanged(), "rejected new project must not loop")
+}

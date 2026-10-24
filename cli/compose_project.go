@@ -143,7 +143,7 @@ func (c *Config) keepLastLoadedComposeJobs(parsed *Config) {
 	for name := range parsed.composeRejected {
 		kept := 0
 		for jobName, j := range c.ComposeJobs {
-			if len(j.Project.Files) > 0 && strings.HasPrefix(jobName, name+".") && parsed.ComposeJobs[jobName] == nil {
+			if j.composeRegistration == name && parsed.ComposeJobs[jobName] == nil {
 				parsed.ComposeJobs[jobName] = j
 				kept++
 			}
@@ -229,6 +229,7 @@ func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) erro
 	for _, job := range project.Jobs {
 		jobName := name + "." + job.Name
 		c.ComposeJobs[jobName] = &ComposeJobConfig{
+			composeRegistration: name,
 			ComposeJob: core.ComposeJob{
 				BareJob: core.BareJob{Name: jobName, Schedule: job.Schedule},
 				Service: job.Name,

@@ -503,7 +503,9 @@ Jobs without a schedule are not scheduled by Ofelia; they stay manual-only and
 can be run with `docker compose run <job>`. When a job name is already used by
 a `[job-compose]` section, the project is rejected with a logged error and the
 `[job-compose]` keeps its name. `ofelia validate` exits with an error when any
-project is rejected.
+project is rejected. It runs the same Compose CLI check as the daemon, so run it
+where the Compose CLI 5.6.0 or later is installed, for example in the `-compose`
+image variant.
 
 On every configuration poll (`config-poll-interval`), Ofelia loads each
 registered project again and reloads the configuration when the resolved model
