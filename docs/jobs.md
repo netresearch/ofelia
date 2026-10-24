@@ -353,6 +353,47 @@ service = db
 command = pg_dumpall -U postgres
 ```
 
+### Image for compose jobs
+
+The default image contains no docker CLI, so `job-compose` fails in it. Each
+release also publishes a compose variant of the image, with the docker CLI and
+the Compose plugin from the image's Alpine release:
+
+| Tag | Points to |
+|---|---|
+| `X.Y.Z-compose` | that release |
+| `X.Y-compose`, `X-compose` | the latest release of that line |
+| `latest-compose` | the latest release |
+
+A prerelease gets only its `X.Y.Z-rc.N-compose` tag. The variant is otherwise
+the default image: same entrypoint, configuration and `ofelia.*` labels; only
+the title and description labels differ. It is built from the release's
+binaries after their checksums were verified against the release's signed
+`checksums.txt`.
+
+The compose CLI runs inside the Ofelia container, but the Docker daemon
+creates the containers. Paths in the compose file, such as relative bind
+mounts, resolve inside the Ofelia container and the daemon then reads them as
+host paths. Mount the project directory at the same path it has on the host:
+
+```yaml
+services:
+  ofelia:
+    image: ghcr.io/netresearch/ofelia:latest-compose
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ofelia.ini:/etc/ofelia/config.ini:ro
+      - /srv/myapp:/srv/myapp:ro   # same path as on the host
+```
+
+```ini
+[job-compose "backup"]
+schedule = @daily
+file = /srv/myapp/compose.yml
+service = db
+command = pg_dumpall -U postgres
+```
+
 ### Cancellation and maximum runtime
 
 In the default `run` mode, Ofelia starts `docker compose run --rm -T` and labels

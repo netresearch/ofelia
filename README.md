@@ -54,6 +54,9 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 **Docker Compose**: Version 2.0 or later
 - Required only if using `job-compose` type
 - Must be available in the container's PATH or host system
+- The default image does not contain it; use the `-compose` image tags
+  (e.g. `ghcr.io/netresearch/ofelia:latest-compose`), which add the docker CLI
+  and the Compose plugin — see [Job Types](docs/jobs.md#image-for-compose-jobs)
 
 ### For local jobs only (job-local)
 
