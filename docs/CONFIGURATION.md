@@ -26,6 +26,8 @@ Ofelia supports multiple configuration methods that can be used independently or
 
 Disable flags from the state file apply on top regardless of where the underlying job came from, so an INI/label job paused via the UI stays paused after restart.
 
+A running daemon keeps a job disabled when a config reload replaces it: a changed INI or label definition, or an INI job taking over a same-named label job, comes back paused. This holds with or without a state file.
+
 ## State File (`--state-file`)
 
 When the daemon runs with `--state-file=/path/to/state.json` (or `OFELIA_STATE_FILE=...`), Ofelia persists API-mutated state to disk so changes survive restarts ([#593](https://github.com/netresearch/ofelia/issues/593)):

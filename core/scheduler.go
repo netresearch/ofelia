@@ -629,6 +629,14 @@ func (s *Scheduler) GetDisabledJobs() []Job {
 	return jobs
 }
 
+// IsJobDisabled reports whether the named job is registered and disabled.
+func (s *Scheduler) IsJobDisabled(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, disabled := s.disabledNames[name]
+	return disabled
+}
+
 // GetAnyJob returns a job by name regardless of disabled state.
 func (s *Scheduler) GetAnyJob(name string) Job {
 	s.mu.RLock()

@@ -1013,8 +1013,13 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 
 	for name, j := range parsed {
 		cur, curOK := current[name]
+		// reconcileParsedJob may replace an existing job through RemoveJob,
+		// which forgets that the name was disabled.
+		wasDisabled := curOK && c.sh.IsJobDisabled(name)
 		if reconcileParsedJob(c, name, cur, curOK, source, jobKind) {
-			addNewJob(c, name, j, prep, source, current)
+			if addNewJob(c, name, j, prep, source, current) && wasDisabled {
+				c.disableReplacedJob(name)
+			}
 		}
 	}
 }
@@ -1044,13 +1049,27 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 	if newHash == oldHash {
 		return false
 	}
+	// RemoveJob forgets that the job was disabled, so read it first and
+	// disable the replacement again.
+	wasDisabled := c.sh.IsJobDisabled(name)
 	_ = c.sh.RemoveJob(oldJob)
 	newJob.buildMiddlewares(c.logger, c.getWebhookManager())
 	// A rejection here is worse than at boot: the old job has already been
 	// removed, so a job that was running stops and nothing takes its place.
-	c.registerJob(name, newJob)
+	if c.registerJob(name, newJob) && wasDisabled {
+		c.disableReplacedJob(name)
+	}
 	// caller updates current map entry
 	return true
+}
+
+// disableReplacedJob disables the job that replaced a disabled one of the same
+// name, so a reload does not quietly turn a disabled job back on.
+func (c *Config) disableReplacedJob(name string) {
+	if err := c.sh.DisableJob(name); err != nil {
+		c.logger.Error("replaced job could not be disabled again; it runs on schedule",
+			"job", name, "error", err)
+	}
 }
 
 // validatable is an optional interface for jobs that support validation
@@ -1058,7 +1077,7 @@ type validatable interface {
 	Validate() error
 }
 
-func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J) {
+func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J) bool {
 	if source != "" {
 		j.SetJobSource(source)
 	}
@@ -1068,13 +1087,14 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 	if v, ok := any(j).(validatable); ok {
 		if err := v.Validate(); err != nil {
 			c.logger.Error(fmt.Sprintf("Job %q configuration error: %v", name, err))
-			return
+			return false
 		}
 	}
 
 	j.buildMiddlewares(c.logger, c.getWebhookManager())
-	c.registerJob(name, j)
+	registered := c.registerJob(name, j)
 	current[name] = j
+	return registered
 }
 
 func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
