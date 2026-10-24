@@ -35,7 +35,7 @@ LABEL org.opencontainers.image.title="Ofelia" \
       org.opencontainers.image.vendor="Netresearch DTT GmbH" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.authors="Netresearch DTT GmbH <info@netresearch.de>" \
-      org.opencontainers.image.base.name="alpine:3.23"
+      org.opencontainers.image.base.name="alpine:3.24"
 
 # This label is required to identify container with ofelia running
 LABEL ofelia.service=true \
