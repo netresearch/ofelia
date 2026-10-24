@@ -95,10 +95,12 @@ func (c *Config) expandComposeProjects() {
 	sort.Strings(names)
 	c.composeFiles = nil
 	c.composeRevisions = nil
+	c.composeRejected = nil
 	if len(names) == 0 {
 		return
 	}
 	c.composeRevisions = make(map[string]string, len(names))
+	c.composeRejected = make(map[string]bool)
 	ctx, cancel := context.WithTimeout(context.Background(), composeProjectLoadTimeout)
 	defer cancel()
 	if err := composeCLICheck(ctx); err != nil {
@@ -117,12 +119,36 @@ func (c *Config) expandComposeProjects() {
 // rejectComposeProject logs why a project schedules no job and records the
 // error as its revision.
 func (c *Config) rejectComposeProject(name string, err error) {
+	c.composeRejected[name] = true
 	// A project that loaded and was rejected afterwards keeps its loaded
 	// revision, which is what currentComposeRevision compares against.
 	if _, loaded := c.composeRevisions[name]; !loaded {
 		c.composeRevisions[name] = rejectedRevisionPrefix + err.Error()
 	}
 	c.logger.Error(fmt.Sprintf("compose project %q rejected, its jobs are not scheduled: %v", name, err))
+}
+
+// keepLastLoadedComposeJobs carries the jobs of a project that loaded before
+// and is rejected by this reload into parsed, unchanged, so a broken edit to a
+// Compose file does not unschedule jobs that ran correctly. The rejection is
+// logged when the project is expanded; the jobs are replaced once the project
+// loads again. At startup there is nothing to keep.
+func (c *Config) keepLastLoadedComposeJobs(parsed *Config) {
+	for name := range parsed.composeRejected {
+		if c.composeRejected[name] || c.composeRevisions[name] == "" {
+			continue // not loaded before either
+		}
+		kept := 0
+		for jobName, j := range c.ComposeJobs {
+			if len(j.Project.Files) > 0 && strings.HasPrefix(jobName, name+".") && parsed.ComposeJobs[jobName] == nil {
+				parsed.ComposeJobs[jobName] = j
+				kept++
+			}
+		}
+		if kept > 0 {
+			c.logger.Warn(fmt.Sprintf("compose project %q: keeping its %d last loaded job(s) until it loads again", name, kept))
+		}
+	}
 }
 
 // composeSpec turns a registration into the loader's input.

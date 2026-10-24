@@ -108,7 +108,9 @@ type Config struct {
 	// composeRevisions are the revisions of the loaded projects by
 	// registration name; a poll that loads a different revision reloads the
 	// configuration, which covers files the registration does not name.
-	composeRevisions  map[string]string
+	composeRevisions map[string]string
+	// composeRejected names the projects rejected by the last load.
+	composeRejected   map[string]bool
 	Docker            DockerConfig
 	mu                sync.RWMutex // protects job map access
 	configPath        string
@@ -1300,11 +1302,13 @@ func (c *Config) iniConfigUpdate() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.keepLastLoadedComposeJobs(parsed)
 	globalChanged := !reflect.DeepEqual(parsed.Global, c.Global)
 	c.configFiles = files
 	c.configModTime = latest
 	c.composeFiles = parsed.composeFiles
 	c.composeRevisions = parsed.composeRevisions
+	c.composeRejected = parsed.composeRejected
 	c.logger.Debug(fmt.Sprintf("applied config files from %s", strings.Join(files, ", ")))
 	if globalChanged {
 		c.Global = parsed.Global

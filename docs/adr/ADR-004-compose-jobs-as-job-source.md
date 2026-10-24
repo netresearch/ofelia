@@ -42,7 +42,7 @@ Existing `job-compose` entries keep working unchanged.
 
 A Docker context name is an alias for an endpoint and is never part of an identity. Launch, observation and cleanup resolve to the same endpoint. While Ofelia talks to a single endpoint, the endpoint part is implicit and the job name is `<registration>.<job>`; it becomes explicit once more than one endpoint is supported.
 
-Each job carries the revision of its own resolved definition, and each execution records it. A reload replaces only the jobs whose definition changed, so a change to one job does not reset history or overlap state of the project's other jobs. The revision of the whole loaded project is logged when it loads. A reload affects later executions only.
+Each job carries the revision of its resolved definition and of the jobs and services in its `depends_on` closure, which `docker compose run` starts with it, and each execution records it. A reload replaces only the jobs whose definition changed, so a change to one job does not reset history or overlap state of the project's other jobs. The revision of the whole loaded project is logged when it loads. A reload affects later executions only.
 
 ### One scheduling owner per job
 

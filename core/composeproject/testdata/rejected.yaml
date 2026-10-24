@@ -59,3 +59,9 @@ jobs:
         - cron: "0 2 * * *"
           timezone: Mars/Olympus
           missed_fires: skip
+  bad_value:
+    image: alpine:3.22
+    triggers:
+      schedule:
+        - cron: "61 2 * * *"
+          missed_fires: skip

@@ -29,6 +29,7 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/netresearch/go-cron"
 )
 
 // Errors returned for job definitions outside the supported subset. Each
@@ -188,7 +189,7 @@ func Extract(registration string, project *types.Project) (*Project, error) {
 			out.Unscheduled = append(out.Unscheduled, name)
 			continue
 		}
-		j, jobErrs := extractJob(name, job, all)
+		j, jobErrs := extractJob(name, job, all, project.Services)
 		for _, e := range jobErrs {
 			errs = append(errs, fmt.Errorf("compose project %q, job %q: %w", registration, name, e))
 		}
@@ -203,7 +204,7 @@ func Extract(registration string, project *types.Project) (*Project, error) {
 }
 
 // extractJob checks one scheduled job against the supported subset.
-func extractJob(name string, job types.JobConfig, all types.Jobs) (Job, []error) {
+func extractJob(name string, job types.JobConfig, all types.Jobs, services types.Services) (Job, []error) {
 	var errs []error
 	if len(job.Triggers.Schedule) > 1 {
 		errs = append(errs, fmt.Errorf("%w: %d schedule entries; only one per job is supported", ErrUnsupportedTrigger,
@@ -221,22 +222,53 @@ func extractJob(name string, job types.JobConfig, all types.Jobs) (Job, []error)
 	sched := job.Triggers.Schedule[0]
 	schedule, zone, schedErrs := checkSchedule(sched)
 	errs = append(errs, schedErrs...)
-	revision, err := jobRevision(job)
+	revision, err := jobRevision(name, all, services)
 	if err != nil {
 		errs = append(errs, err)
 	}
 	return Job{Name: name, Schedule: schedule, TimeZone: zone, Revision: revision}, errs
 }
 
-// jobRevision returns a short hash of one job's definition.
-func jobRevision(job types.JobConfig) (string, error) {
-	data, err := json.Marshal(job)
+// jobRevision returns a short hash of a job's definition and of every job and
+// service in its depends_on closure, since `docker compose run` starts that
+// closure with it: a change to a dependency changes the job's revision.
+func jobRevision(name string, all types.Jobs, services types.Services) (string, error) {
+	closure := map[string]any{}
+	collectClosure(name, all, services, closure)
+	data, err := json.Marshal(closure) // map keys are marshaled in sorted order
 	if err != nil {
 		return "", fmt.Errorf("marshal job: %w", err)
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])[:revisionLength], nil
 }
+
+// collectClosure adds name and, recursively, every job and service it depends
+// on to closure, keyed by kind and name.
+func collectClosure(name string, all types.Jobs, services types.Services, closure map[string]any) {
+	if job, ok := all[name]; ok {
+		if _, seen := closure["job:"+name]; seen {
+			return
+		}
+		closure["job:"+name] = job
+		for dep := range job.DependsOn {
+			collectClosure(dep, all, services, closure)
+		}
+		return
+	}
+	if svc, ok := services[name]; ok {
+		if _, seen := closure["service:"+name]; seen {
+			return
+		}
+		closure["service:"+name] = svc
+		for dep := range svc.DependsOn {
+			collectClosure(dep, all, services, closure)
+		}
+	}
+}
+
+// cronParser is the parser Ofelia's scheduler uses (see core.NewScheduler).
+var cronParser = cron.FullParser()
 
 // checkSchedule validates one schedule entry and returns the expression for
 // Ofelia's scheduler and the zone it is evaluated in.
@@ -265,13 +297,22 @@ func checkSchedule(s types.ScheduleConfig) (string, string, []error) {
 		errs = append(errs, fmt.Errorf("%w: missed_fires: %q", ErrUnsupportedTrigger, s.MissedFires))
 	}
 	expr := strings.Join(strings.Fields(s.Cron), " ")
-	if s.Timezone == "" {
-		return expr, localZone(), errs
+	schedule, zone := expr, localZone()
+	if s.Timezone != "" {
+		schedule, zone = "CRON_TZ="+s.Timezone+" "+expr, s.Timezone
+		if _, err := time.LoadLocation(s.Timezone); err != nil {
+			errs = append(errs, fmt.Errorf("%w: timezone %q: %w", ErrUnsupportedTrigger, s.Timezone, err))
+			return schedule, zone, errs
+		}
 	}
-	if _, err := time.LoadLocation(s.Timezone); err != nil {
-		errs = append(errs, fmt.Errorf("%w: timezone %q: %w", ErrUnsupportedTrigger, s.Timezone, err))
+	// Parse with the scheduler's own parser, so a job that loads also
+	// registers; the field count is reported above instead.
+	if len(strings.Fields(s.Cron)) == 5 {
+		if _, err := cronParser.Parse(schedule); err != nil {
+			errs = append(errs, fmt.Errorf("%w: cron %q: %w", ErrUnsupportedTrigger, s.Cron, err))
+		}
 	}
-	return "CRON_TZ=" + s.Timezone + " " + expr, s.Timezone, errs
+	return schedule, zone, errs
 }
 
 // localZone describes the scheduler's local time zone, which the

@@ -507,11 +507,13 @@ On every configuration poll (`config-poll-interval`), Ofelia loads each
 registered project again and reloads the configuration when the resolved model
 differs. That covers the files the section names as well as the default `.env`,
 files pulled in through `include:` or `extends`, and interpolated values. A
-project that no longer loads fails the reload, and the running configuration
-stays in place. Each job carries a revision, a hash of its
-own definition: only jobs whose definition changed are replaced, and each
-execution logs the revision it ran with. A running execution keeps the
-definition it started with.
+project that loaded before and is rejected by a reload, for example after a
+broken edit, keeps its last loaded jobs and logs the error; the rest of the
+reload is applied, and the project's jobs are replaced once it loads again.
+Each job carries a revision, a hash of its own definition and of every job and
+service in its `depends_on` closure, which `docker compose run` starts with it:
+only jobs whose revision changed are replaced, and each execution logs the
+revision it ran with. A running execution keeps the definition it started with.
 
 ### Supported triggers
 

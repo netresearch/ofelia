@@ -30,7 +30,13 @@ func ComposeCLIVersion(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("compose docker endpoint: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, "docker", "compose", "version", "--short")
+	// Resolve the binary once, as buildCommand does for compose jobs, so the
+	// check runs the same docker the jobs will.
+	bin, err := exec.LookPath("docker")
+	if err != nil {
+		return "", fmt.Errorf("look path %q: %w", "docker", err)
+	}
+	cmd := exec.CommandContext(ctx, bin, "compose", "version", "--short")
 	cmd.Env = env
 	out, err := cmd.Output()
 	if err != nil {

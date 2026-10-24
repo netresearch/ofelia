@@ -6,6 +6,8 @@ package composeproject
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -117,6 +119,7 @@ func TestLoad_RejectsUnsupportedTriggers(t *testing.T) {
 		"dep_no_manual": `depends on job "locked", which sets triggers.manual: false`,
 		"six_fields":    "has 6 fields; a five-field expression is required",
 		"bad_zone":      `timezone "Mars/Olympus"`,
+		"bad_value":     `cron "61 2 * * *"`,
 	}
 	msgs := joinedMessages(err)
 	for job, want := range cases {
@@ -163,6 +166,45 @@ func TestLoad_TimeZoneIsEvaluated(t *testing.T) {
 	next := sched.Next(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
 	assert.Equal(t, time.Date(2026, 11, 11, 2, 0, 0, 0, berlin).UTC(), next.UTC(),
 		"0 2 * * * in Europe/Berlin fires at 02:00 Berlin time")
+}
+
+// TestLoad_RevisionCoversDependencyClosure changes a service the job depends
+// on, then one it does not: `docker compose run` starts the closure, so only
+// the first may change the job's revision.
+func TestLoad_RevisionCoversDependencyClosure(t *testing.T) {
+	const tmpl = `name: dep
+services:
+  db:
+    image: %s
+  web:
+    image: %s
+jobs:
+  prep:
+    image: alpine:3.22
+    depends_on: [db]
+    triggers:
+      manual: true
+  backup:
+    image: alpine:3.22
+    depends_on: [prep]
+    triggers:
+      schedule:
+        - cron: "0 2 * * *"
+          missed_fires: skip
+`
+	revision := func(dbImage, webImage string) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "compose.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(tmpl, dbImage, webImage)), 0o600))
+		p, err := ComposeGoLoader{}.Load(context.Background(), Spec{Name: "dep", Files: []string{path}})
+		require.NoError(t, err)
+		return jobByName(t, p, "backup").Revision
+	}
+	base := revision("postgres:16", "nginx:1")
+	assert.NotEqual(t, base, revision("postgres:17", "nginx:1"),
+		"a change to a service in the depends_on closure (through a job) changes the revision")
+	assert.Equal(t, base, revision("postgres:16", "nginx:2"),
+		"a change to a service outside the closure leaves the revision unchanged")
 }
 
 func TestLoad_RevisionIsPerJob(t *testing.T) {

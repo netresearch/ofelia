@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -347,4 +348,38 @@ func TestComposeProject_RunUsesResolvedContext(t *testing.T) {
 	assert.Equal(t, []string{"sched"}, j.Project.Profiles)
 	assert.Equal(t, "fromenv", j.Project.ProjectName)
 	assert.Equal(t, dir, j.Project.ProjectDirectory)
+}
+
+// TestComposeProject_ReloadKeepsJobsOfRejectedProject breaks a loaded
+// project's Compose file: the reload must keep its last loaded jobs, stay quiet
+// until the file changes again, and replace them once the project loads.
+func TestComposeProject_ReloadKeepsJobsOfRejectedProject(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml", shopCompose)
+	iniPath := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n")
+	c := prepareReload(t, iniPath)
+	oldBackup := c.ComposeJobs["shop.backup"]
+	require.NotNil(t, oldBackup)
+
+	touch := func(content string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(composePath, []byte(content), 0o600))
+		future := time.Now().Add(time.Minute)
+		require.NoError(t, os.Chtimes(composePath, future, future))
+	}
+	touch("name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 2 * * *\"\n")
+	require.NoError(t, c.iniConfigUpdate())
+	assert.Same(t, oldBackup, c.ComposeJobs["shop.backup"], "a rejected reload keeps the last loaded job")
+	assert.Contains(t, c.ComposeJobs, "shop.cleanup")
+	assert.False(t, c.composeProjectsChanged(), "the rejection is not reloaded on every poll")
+
+	fixed := strings.Replace(shopCompose, `cron: "0 2 * * *"`, `cron: "0 6 * * *"`, 1)
+	touch(fixed)
+	future := time.Now().Add(2 * time.Minute)
+	require.NoError(t, os.Chtimes(composePath, future, future))
+	require.NoError(t, c.iniConfigUpdate())
+	newBackup := c.ComposeJobs["shop.backup"]
+	require.NotNil(t, newBackup)
+	assert.Equal(t, "CRON_TZ=Europe/Berlin 0 6 * * *", newBackup.Schedule, "the fixed project is loaded")
 }
