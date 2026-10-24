@@ -366,7 +366,10 @@ the Compose plugin from the image's Alpine release:
 | `latest-compose` | the latest release |
 
 A prerelease gets only its `X.Y.Z-rc.N-compose` tag. The variant is otherwise
-the default image: same entrypoint, configuration and labels.
+the default image: same entrypoint, configuration and `ofelia.*` labels; only
+the title and description labels differ. It is built from the release's
+binaries after their checksums were verified against the release's signed
+`checksums.txt`.
 
 The compose CLI runs inside the Ofelia container, but the Docker daemon
 creates the containers. Paths in the compose file, such as relative bind
