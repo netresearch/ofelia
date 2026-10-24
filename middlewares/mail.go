@@ -150,6 +150,7 @@ type MailConfig struct {
 	EmailFrom       string        `gcfg:"email-from" mapstructure:"email-from"`
 	EmailSubject    string        `gcfg:"email-subject" mapstructure:"email-subject"`
 	MailOnlyOnError *bool         `gcfg:"mail-only-on-error" mapstructure:"mail-only-on-error"`
+	MailOutputInBody int          `gcfg:"mail-output-in-body" mapstructure:"mail-output-in-body"`
 	// Dedup is the notification deduplicator (set by config loader, not INI)
 	Dedup *NotificationDedup `mapstructure:"-" json:"-"`
 
@@ -209,16 +210,31 @@ func (m *Mail) Run(ctx *core.Context) error {
 }
 
 func (m *Mail) sendMail(ctx *core.Context) error {
+	const contentTypeTextPlain = "text/plain"
 	msg := mail.NewMessage()
 	msg.SetHeader("From", m.from())
 	msg.SetHeader("To", strings.Split(m.EmailTo, ",")...)
 	msg.SetHeader("Subject", m.subject(ctx))
-	msg.SetBody("text/html", m.body(ctx))
+
+	if m.MailOutputInBody == 0 {
+		msg.SetBody("text/html", m.body(ctx))
+	} else if m.MailOutputInBody < 0 {
+		msg.SetBody(contentTypeTextPlain, ctx.Execution.OutputStream.String() + ctx.Execution.ErrorStream.String())
+	} else {
+		output := ctx.Execution.OutputStream.String() + ctx.Execution.ErrorStream.String()
+		outputss := strings.Split(output, "\n")
+		if len(outputss) > m.MailOutputInBody {
+			msg.SetBody(contentTypeTextPlain, strings.Join(outputss[len(outputss)-m.MailOutputInBody-1:], "\n"))
+		} else {
+			msg.SetBody(contentTypeTextPlain, output)
+		}
+	}
 
 	base := fmt.Sprintf("%s_%s", ctx.Job.GetName(), ctx.Execution.ID)
 
+	// Only attach stdout if we are not printing it in the body and
 	// Only attach stdout if there's output (some SMTP servers reject zero-sized attachments)
-	if ctx.Execution.OutputStream.TotalWritten() > 0 {
+	if m.MailOutputInBody == 0 && ctx.Execution.OutputStream.TotalWritten() > 0 {
 		msg.Attach(base+".stdout.log", mail.SetCopyFunc(func(w io.Writer) error {
 			if _, err := w.Write(ctx.Execution.OutputStream.Bytes()); err != nil {
 				return fmt.Errorf("write stdout attachment: %w", err)
@@ -227,8 +243,9 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 		}))
 	}
 
+	// Only attach stderr if we are not printing it in the body and
 	// Only attach stderr if there's output (some SMTP servers reject zero-sized attachments)
-	if ctx.Execution.ErrorStream.TotalWritten() > 0 {
+	if m.MailOutputInBody == 0 && ctx.Execution.ErrorStream.TotalWritten() > 0 {
 		msg.Attach(base+".stderr.log", mail.SetCopyFunc(func(w io.Writer) error {
 			if _, err := w.Write(ctx.Execution.ErrorStream.Bytes()); err != nil {
 				return fmt.Errorf("write stderr attachment: %w", err)
