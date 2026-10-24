@@ -317,7 +317,7 @@ func ignoredDockerContext(base []string) string {
 		}
 		dir = filepath.Join(home, ".docker")
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "config.json")) //nolint:gosec // the docker CLI's own config file
+	data, err := os.ReadFile(filepath.Join(dir, "config.json")) // #nosec G304 -- the docker CLI's own config file
 	if err != nil {
 		return ""
 	}
