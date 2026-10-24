@@ -110,18 +110,23 @@ type Config struct {
 	// configuration, which covers files the registration does not name.
 	composeRevisions map[string]string
 	// composeRejected names the projects rejected by the last load.
-	composeRejected   map[string]bool
-	Docker            DockerConfig
-	mu                sync.RWMutex // protects job map access
-	configPath        string
-	configFiles       []string
-	configModTime     time.Time
-	sh                *core.Scheduler
-	dockerHandler     *DockerHandler
-	logger            *slog.Logger
-	levelVar          *slog.LevelVar
-	notificationDedup *middlewares.NotificationDedup
-	WebhookConfigs    *WebhookConfigs
+	composeRejected map[string]bool
+	Docker          DockerConfig
+	mu              sync.RWMutex // protects job map access
+	// disabledUnregistered holds names that were disabled when a reload
+	// removed their job and the scheduler rejected the replacement; the next
+	// definition that registers under such a name is registered disabled.
+	disabledUnregistered map[string]bool
+	disabledMu           sync.Mutex
+	configPath           string
+	configFiles          []string
+	configModTime        time.Time
+	sh                   *core.Scheduler
+	dockerHandler        *DockerHandler
+	logger               *slog.Logger
+	levelVar             *slog.LevelVar
+	notificationDedup    *middlewares.NotificationDedup
+	WebhookConfigs       *WebhookConfigs
 }
 
 // NewConfig returns a Config with empty job maps and every `default:` tag
@@ -643,11 +648,33 @@ func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind 
 // discarded with `_ =`, leaving only the scheduler's own warning behind while
 // startup continued and the job count still included it.
 func (c *Config) registerJob(name string, j core.Job) bool {
-	if err := c.sh.AddJob(j); err != nil {
+	return c.registerJobAs(name, j, false)
+}
+
+// registerJobAs is registerJob with the choice to register the job disabled,
+// used when a reload replaces a disabled job. Its cron entry is then added
+// paused, so it cannot start before the pause, not even for run-on-startup.
+// If the scheduler rejects a disabled job, the name is remembered, so that
+// the corrected definition of the next reload is registered disabled too.
+func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
+	add := c.sh.AddJob
+	if disabled {
+		add = c.sh.AddJobDisabled
+	}
+	if err := add(j); err != nil {
 		c.logger.Error("job will not run: the scheduler rejected it",
 			"job", name, "error", err)
+		if disabled {
+			c.disabledMu.Lock()
+			if c.disabledUnregistered == nil {
+				c.disabledUnregistered = make(map[string]bool)
+			}
+			c.disabledUnregistered[name] = true
+			c.disabledMu.Unlock()
+		}
 		return false
 	}
+	c.forgetDisabledName(name)
 	return true
 }
 
@@ -1004,6 +1031,7 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 		if !ok {
 			_ = c.sh.RemoveJob(j)
 			delete(current, name)
+			c.forgetDisabledName(name)
 			continue
 		}
 		if replaceIfChanged(c, name, j, newJob, prep, source) {
@@ -1015,11 +1043,9 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 		cur, curOK := current[name]
 		// reconcileParsedJob may replace an existing job through RemoveJob,
 		// which forgets that the name was disabled.
-		wasDisabled := curOK && c.sh.IsJobDisabled(name)
+		wasDisabled := curOK && c.wasDisabled(name)
 		if reconcileParsedJob(c, name, cur, curOK, source, jobKind) {
-			if addNewJob(c, name, j, prep, source, current) && wasDisabled {
-				c.disableReplacedJob(name)
-			}
+			addNewJob(c, name, j, prep, source, current, wasDisabled)
 		}
 	}
 }
@@ -1050,26 +1076,35 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 		return false
 	}
 	// RemoveJob forgets that the job was disabled, so read it first and
-	// disable the replacement again.
-	wasDisabled := c.sh.IsJobDisabled(name)
+	// register the replacement disabled.
+	wasDisabled := c.wasDisabled(name)
 	_ = c.sh.RemoveJob(oldJob)
 	newJob.buildMiddlewares(c.logger, c.getWebhookManager())
 	// A rejection here is worse than at boot: the old job has already been
 	// removed, so a job that was running stops and nothing takes its place.
-	if c.registerJob(name, newJob) && wasDisabled {
-		c.disableReplacedJob(name)
-	}
+	c.registerJobAs(name, newJob, wasDisabled)
 	// caller updates current map entry
 	return true
 }
 
-// disableReplacedJob disables the job that replaced a disabled one of the same
-// name, so a reload does not quietly turn a disabled job back on.
-func (c *Config) disableReplacedJob(name string) {
-	if err := c.sh.DisableJob(name); err != nil {
-		c.logger.Error("replaced job could not be disabled again; it runs on schedule",
-			"job", name, "error", err)
+// wasDisabled reports whether name is disabled in the scheduler, or was
+// disabled when a reload removed it and the scheduler rejected its replacement.
+func (c *Config) wasDisabled(name string) bool {
+	if c.sh.IsJobDisabled(name) {
+		return true
 	}
+	c.disabledMu.Lock()
+	defer c.disabledMu.Unlock()
+	_, ok := c.disabledUnregistered[name]
+	return ok
+}
+
+// forgetDisabledName drops a name remembered by registerJobAs, once the job is
+// registered again or removed from the configuration.
+func (c *Config) forgetDisabledName(name string) {
+	c.disabledMu.Lock()
+	defer c.disabledMu.Unlock()
+	delete(c.disabledUnregistered, name)
 }
 
 // validatable is an optional interface for jobs that support validation
@@ -1077,7 +1112,11 @@ type validatable interface {
 	Validate() error
 }
 
-func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J) bool {
+// addNewJob registers j and records it in current. disabled registers it
+// disabled, for a job that replaces a disabled one of the same name.
+func addNewJob[J jobConfig](
+	c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J, disabled bool,
+) {
 	if source != "" {
 		j.SetJobSource(source)
 	}
@@ -1087,14 +1126,13 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 	if v, ok := any(j).(validatable); ok {
 		if err := v.Validate(); err != nil {
 			c.logger.Error(fmt.Sprintf("Job %q configuration error: %v", name, err))
-			return false
+			return
 		}
 	}
 
 	j.buildMiddlewares(c.logger, c.getWebhookManager())
-	registered := c.registerJob(name, j)
+	c.registerJobAs(name, j, disabled)
 	current[name] = j
-	return registered
 }
 
 func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {

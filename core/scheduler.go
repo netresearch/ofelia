@@ -349,6 +349,17 @@ func (s *Scheduler) AddJob(j Job) error {
 // zero time, so the scheduler never fires them automatically. They can be executed
 // on demand via RunJob() which delegates to go-cron's TriggerEntryByName().
 func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
+	return s.addJob(j, false, tags...)
+}
+
+// AddJobDisabled registers j already disabled: its cron entry is added paused,
+// so go-cron never dispatches it, not even for run-on-startup. Adding the job
+// and then calling DisableJob would leave a window in which it can start.
+func (s *Scheduler) AddJobDisabled(j Job) error {
+	return s.addJob(j, true)
+}
+
+func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	if j.GetSchedule() == "" {
 		s.recordUnschedulable(j.GetName(), ErrEmptySchedule)
 		return ErrEmptySchedule
@@ -361,6 +372,9 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	}
 	if j.ShouldRunOnStartup() {
 		opts = append(opts, cron.WithRunImmediately())
+	}
+	if disabled {
+		opts = append(opts, cron.WithPaused())
 	}
 
 	// Apply global middlewares BEFORE adding to cron, because WithRunImmediately()
@@ -381,6 +395,9 @@ func (s *Scheduler) AddJobWithTags(j Job, tags ...string) error {
 	s.mu.Lock()
 	s.Jobs = append(s.Jobs, j)
 	s.jobsByName[j.GetName()] = j
+	if disabled {
+		s.disabledNames[j.GetName()] = struct{}{}
+	}
 	// A name that registers now is no longer unschedulable: a corrected config
 	// reloaded at runtime has to clear the old complaint, or the health report
 	// would stay degraded until a restart.
