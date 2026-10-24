@@ -94,11 +94,17 @@ type Config struct {
 		// container's jobs are named.
 		JobExecLabelScope string `gcfg:"job-exec-label-scope" mapstructure:"job-exec-label-scope" validate:"omitempty,oneof=service container container-service" default:"service"` //nolint:revive
 	}
-	ExecJobs          map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
-	RunJobs           map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
-	ServiceJobs       map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
-	LocalJobs         map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
-	ComposeJobs       map[string]*ComposeJobConfig `gcfg:"job-compose" mapstructure:"job-compose,squash"`
+	ExecJobs    map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
+	RunJobs     map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
+	ServiceJobs map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
+	LocalJobs   map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
+	ComposeJobs map[string]*ComposeJobConfig `gcfg:"job-compose" mapstructure:"job-compose,squash"`
+	// ComposeProjects are the registered Compose projects ([compose-project]
+	// sections, INI only). Their scheduled jobs are expanded into ComposeJobs.
+	ComposeProjects map[string]*ComposeProjectConfig `json:"-" mapstructure:"-"`
+	// composeFiles are the Compose and env files of the registered projects;
+	// a change to one of them reloads the configuration like an INI change.
+	composeFiles      []string
 	Docker            DockerConfig
 	mu                sync.RWMutex // protects job map access
 	configPath        string
@@ -120,13 +126,14 @@ type Config struct {
 // No scheduler and no Docker connection exist yet — InitializeApp creates those.
 func NewConfig(logger *slog.Logger) *Config {
 	c := &Config{
-		ExecJobs:       make(map[string]*ExecJobConfig),
-		RunJobs:        make(map[string]*RunJobConfig),
-		ServiceJobs:    make(map[string]*RunServiceConfig),
-		LocalJobs:      make(map[string]*LocalJobConfig),
-		ComposeJobs:    make(map[string]*ComposeJobConfig),
-		WebhookConfigs: NewWebhookConfigs(),
-		logger:         logger,
+		ExecJobs:        make(map[string]*ExecJobConfig),
+		RunJobs:         make(map[string]*RunJobConfig),
+		ServiceJobs:     make(map[string]*RunServiceConfig),
+		LocalJobs:       make(map[string]*LocalJobConfig),
+		ComposeJobs:     make(map[string]*ComposeJobConfig),
+		ComposeProjects: make(map[string]*ComposeProjectConfig),
+		WebhookConfigs:  NewWebhookConfigs(),
+		logger:          logger,
 	}
 
 	_ = defaults.Set(c)
@@ -247,6 +254,16 @@ func BuildFromFile(filename string, logger *slog.Logger) (*Config, error) {
 	for _, f := range files {
 		if err := loadConfigFile(f, c, logger, allUsedKeys, &latest); err != nil {
 			return nil, err
+		}
+	}
+	if err := c.expandComposeProjects(); err != nil {
+		return nil, err
+	}
+	// Compose files are watched with the INI files; count their mod times so
+	// the first poll does not see them as changed.
+	for _, f := range c.composeFiles {
+		if info, statErr := os.Stat(f); statErr == nil && info.ModTime().After(latest) {
+			latest = info.ModTime()
 		}
 	}
 	c.configPath = filename
@@ -378,6 +395,8 @@ func getKnownKeysForJobType(jobType string) []string {
 		return extractMapstructureKeys(LocalJobConfig{})
 	case jobCompose:
 		return extractMapstructureKeys(ComposeJobConfig{})
+	case composeProjectSection:
+		return extractMapstructureKeys(ComposeProjectConfig{})
 	default:
 		return nil
 	}
@@ -400,6 +419,9 @@ func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 	parseRes, parseErr := parseIni(cfg, c)
 	if parseErr != nil {
 		return nil, fmt.Errorf("parse ini from string: %w", parseErr)
+	}
+	if err := c.expandComposeProjects(); err != nil {
+		return nil, err
 	}
 
 	// Collect used keys for deprecation detection
@@ -1251,7 +1273,10 @@ func (c *Config) iniConfigUpdate() error {
 		return err
 	}
 
-	latest, changed, err := latestChanged(files, c.configModTime)
+	// The Compose files of registered projects count as configuration: a
+	// change to one reloads it, and changed jobs are replaced (ADR-004).
+	watched := append(append([]string{}, files...), c.composeFiles...)
+	latest, changed, err := latestChanged(watched, c.configModTime)
 	if err != nil {
 		return err
 	}
@@ -1274,6 +1299,7 @@ func (c *Config) iniConfigUpdate() error {
 	globalChanged := !reflect.DeepEqual(parsed.Global, c.Global)
 	c.configFiles = files
 	c.configModTime = latest
+	c.composeFiles = parsed.composeFiles
 	c.logger.Debug(fmt.Sprintf("applied config files from %s", strings.Join(files, ", ")))
 	if globalChanged {
 		c.Global = parsed.Global
@@ -1562,6 +1588,8 @@ func decodeJobSection(section *ini.Section, name string, c *Config, unknownJobs 
 	case strings.HasPrefix(name, jobCompose):
 		return decodeJob(section, &ComposeJobConfig{JobSource: JobSourceINI},
 			func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j }, jobCompose, unknownJobs)
+	case strings.HasPrefix(name, composeProjectSection):
+		return decodeComposeProjectSection(section, c, unknownJobs)
 	default:
 		return nil
 	}
