@@ -95,6 +95,14 @@ func TestPersist_CreateComposeJob_WritesMaxRuntime(t *testing.T) {
 	}
 }
 
+func TestComposeJob_APIRejectsInvalidMaxRuntime(t *testing.T) {
+	t.Parallel()
+	_, err := composeJobFor(t, nil, &jobRequest{MaxRuntime: "-5m"})
+	if !errors.Is(err, core.ErrMaxRuntimeNegative) {
+		t.Fatalf("err = %v, want ErrMaxRuntimeNegative", err)
+	}
+}
+
 func TestComposeJob_APIRejectsMaxRuntimeInExecMode(t *testing.T) {
 	t.Parallel()
 	_, err := composeJobFor(t, nil, &jobRequest{ExecFlag: true, MaxRuntime: "5m"})

@@ -49,4 +49,7 @@ func TestPersistedComposeJob_MaxRuntime(t *testing.T) {
 
 	_, err = build(t, &persist.Job{Exec: true, MaxRuntime: "5m"})
 	require.ErrorIs(t, err, core.ErrComposeExecMaxRuntime)
+
+	_, err = build(t, &persist.Job{MaxRuntime: "-5m"})
+	require.ErrorIs(t, err, core.ErrMaxRuntimeNegative, "a negative stored value is refused")
 }
