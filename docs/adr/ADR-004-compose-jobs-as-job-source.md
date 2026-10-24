@@ -11,14 +11,14 @@ Docker Compose 5.6.0 (released 2026-10-02) added a top-level `jobs:` section to 
 - `docker compose run <job>` runs a job. It refuses a job declared with `triggers.manual: false`, and it applies the same check to every job in the target's `depends_on` closure.
 - `docker compose up` fails before creating anything when an active job has a schedule (`scheduled jobs are not supported in this version`). A job behind an inactive profile does not count as active.
 
-Native scheduling is being built into Docker Engine ([moby/moby#53485](https://github.com/moby/moby/pull/53485), open and marked experimental) and into Compose ([docker/compose#14155](https://github.com/docker/compose/pull/14155), draft). Neither is released. The Engine draft accepts one trigger per job, keeps at most one pending fire for `concurrency: queue`, and evaluates an empty `timezone` as UTC. The Compose specification evaluates an empty `timezone` in the platform's local time zone, and defaults `concurrency` to `forbid` and `missed_fires` to `one`.
+Native scheduling is being built into Docker Engine ([moby/moby#53485](https://github.com/moby/moby/pull/53485), open and marked experimental) and into Compose ([docker/compose#14155](https://github.com/docker/compose/pull/14155), draft). Neither is released. The Engine pull request accepts one trigger per job, keeps at most one pending fire for `concurrency: queue`, and evaluates an empty `timezone` as UTC. The Compose specification evaluates an empty `timezone` in the platform's local time zone, and defaults `concurrency` to `forbid` and `missed_fires` to `one`.
 
-Ofelia already runs Compose workloads through `job-compose`, which shells out to `docker compose -f <file> run --rm <service>` or `exec`. Since [#887](https://github.com/netresearch/ofelia/pull/887), a canceled `run` execution stops and removes its container, found through the `ofelia.execution` label, and the CLI uses the same Docker endpoint as Ofelia's own client. `job-compose` does not read Compose job definitions or their triggers: it knows a file, a service name and a command.
+Ofelia already runs Compose workloads through `job-compose`, which shells out to `docker compose -f <file> run --rm <service>` or `exec`. Since [#887](https://github.com/netresearch/ofelia/pull/887), a canceled `run` execution stops and removes its container, found through the `ofelia.execution` label, and in `run` mode the CLI is pointed at the same Docker endpoint as Ofelia's own client. `job-compose` does not read Compose job definitions or their triggers: it knows a file, a service name and a command.
 
 Two existing facts constrain the design:
 
 1. Issue [#758](https://github.com/netresearch/ofelia/issues/758) lists `project`, `dir` and `environment` on `job-compose` as out of scope, so that Ofelia does not become a second container configuration language beside Compose.
-2. Ofelia's persistence (`core/persist`, `middlewares/save.go`, `middlewares/restore.go`) stores job definitions, disabled state and completed execution history. It stores no scheduling cursor, and restored executions are never marked as running. It cannot implement a catch-up policy today.
+2. Ofelia's persistence (`core/persist`, `middlewares/save.go`, `middlewares/restore.go`) stores the definitions of jobs created through the API, the set of disabled jobs and, with `save-folder`, completed execution history. It stores no scheduling cursor, and restored executions are never marked as running. It cannot implement a catch-up policy today.
 
 ## Decision
 
@@ -28,7 +28,7 @@ Ofelia loads Compose projects and discovers their `jobs:`. The workload definiti
 
 A **registered Compose project** is the canonical execution context. It holds the ordered Compose files, the selected profiles, the env file selection and the Docker endpoint. Jobs reference the project; the context is not repeated on every job.
 
-This revises the scope that [#758](https://github.com/netresearch/ofelia/issues/758) describes, for keys that **select** a Compose project only. Keys that **configure containers** (DNS, labels, restart policy, resource limits and the like) stay out of scope, for the reason #758 gives.
+This revises the scope that [#758](https://github.com/netresearch/ofelia/issues/758) describes, for keys that **select** a Compose project only. Keys that **configure containers** (DNS, labels, restart policy and the like) stay out of scope, for the reason #758 gives. For jobs loaded from Compose, resource limits are set in the Compose file as well.
 
 Existing `job-compose` entries keep working unchanged.
 
@@ -52,7 +52,7 @@ Every job has exactly one scheduling owner: Ofelia, or, once a released Engine s
 
 Ofelia uses [compose-go](https://github.com/compose-spec/compose-go), the reference implementation of the Compose specification, behind a small interface, so that execution stays a separate adapter. It handles interpolation, path resolution, profiles and merging.
 
-Reading the normalized output of `docker compose config` is not used: compose-go v2.16.1 tags the `Extensions` of `JobConfig`, `TriggerConfig` and `ScheduleConfig` with `json:"-"` ([types/jobs.go](https://github.com/compose-spec/compose-go/blob/v2.16.1/types/jobs.go)), so `x-` fields on jobs would be lost.
+Reading the normalized output of `docker compose config` is not used. It needs the docker CLI and the Compose plugin at load time, which the default image does not contain, and Ofelia would parse the Compose model a second time outside compose-go. Its JSON form also drops the `x-` fields of jobs: compose-go v2.16.1 tags the `Extensions` of `JobConfig`, `TriggerConfig` and `ScheduleConfig` with `json:"-"` ([types/jobs.go](https://github.com/compose-spec/compose-go/blob/v2.16.1/types/jobs.go)). The default YAML form keeps them.
 
 ### Initial trigger subset
 
