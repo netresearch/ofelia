@@ -47,7 +47,7 @@ type RunServiceJob struct {
 	EnvFile     []string      `gcfg:"env-file" mapstructure:"env-file," hash:"true"`
 	EnvFrom     []string      `gcfg:"env-from" mapstructure:"env-from," hash:"true"`
 	Annotations []string      `mapstructure:"annotations" hash:"true"`
-	MaxRuntime  time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
+	MaxRuntime  time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" hash:"true"`
 }
 
 // NewRunServiceJob returns a RunServiceJob bound to provider, which is the
