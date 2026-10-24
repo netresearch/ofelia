@@ -736,7 +736,7 @@ func (c *Config) registerAllJobs() {
 	}
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
-		c.inheritComposeMaxRuntime(&j.ComposeJob)
+		c.inheritComposeMaxRuntime(name, &j.ComposeJob)
 		j.Provider = provider
 		j.Name = name
 		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
@@ -1109,10 +1109,20 @@ func (c *Config) forgetDisabledName(name string) {
 }
 
 // inheritComposeMaxRuntime gives a run-mode compose job without a max-runtime
-// of its own the [global] one, as run and service jobs get it. Exec mode is
-// left alone: its command cannot be stopped, so Validate rejects the setting.
-func (c *Config) inheritComposeMaxRuntime(j *core.ComposeJob) {
-	if !j.Exec && j.MaxRuntime == 0 {
+// of its own the [global] one, as run and service jobs get it. Exec mode gets
+// none: its command cannot be stopped. A value set there is dropped with a
+// warning rather than failing the configuration, because the key loaded
+// (without effect) before compose jobs honored it.
+func (c *Config) inheritComposeMaxRuntime(name string, j *core.ComposeJob) {
+	if j.Exec {
+		if j.MaxRuntime != 0 {
+			c.logger.Warn("max-runtime is ignored for a compose job with exec = true: an exec'd command cannot be stopped",
+				"job", name, "max-runtime", j.MaxRuntime)
+			j.MaxRuntime = 0
+		}
+		return
+	}
+	if j.MaxRuntime == 0 {
 		j.MaxRuntime = c.Global.MaxRuntime
 	}
 }
@@ -1195,7 +1205,7 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
-		c.inheritComposeMaxRuntime(&j.ComposeJob)
+		c.inheritComposeMaxRuntime(name, &j.ComposeJob)
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
@@ -1326,7 +1336,7 @@ func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
-		c.inheritComposeMaxRuntime(&j.ComposeJob)
+		c.inheritComposeMaxRuntime(name, &j.ComposeJob)
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)

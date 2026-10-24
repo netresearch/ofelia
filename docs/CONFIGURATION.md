@@ -634,7 +634,8 @@ exec = false                # true runs `compose exec` instead of `compose run`
 max-runtime = 1h            # run mode only; default [global] max-runtime
 ```
 
-`file`, `service` and `exec` are the only compose-specific keys. The project
+`file`, `service` and `exec` are the only compose-specific keys; `max-runtime`
+works as for run jobs. The project
 name and the working directory follow from the compose file's location, as they
 do for the `docker compose` CLI.
 
@@ -642,7 +643,7 @@ When a `run`-mode execution is canceled or reaches its `max-runtime` (the job's
 own value, else `[global] max-runtime`), Ofelia stops and removes the run
 container it labeled with the execution ID; dependency services keep running.
 `exec`-mode commands cannot be stopped from outside the container, so
-`max-runtime` together with `exec = true` is rejected. See [jobs.md](jobs.md#cancellation-and-maximum-runtime)
+`max-runtime` together with `exec = true` is ignored with a logged warning. See [jobs.md](jobs.md#cancellation-and-maximum-runtime)
 for details, including which Docker endpoint the compose CLI uses.
 
 ### Compose Projects - Jobs Defined in Compose Files

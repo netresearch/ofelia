@@ -1019,10 +1019,10 @@ func (s *Scheduler) IsJobRunning(name string) bool {
 const defaultJobMaxRuntime = 24 * time.Hour
 
 // MaxRuntimeProvider is implemented by job types that expose a per-job
-// maximum runtime. Currently RunJob and RunServiceJob satisfy this
-// interface; ExecJob, LocalJob, and ComposeJob do not (they inherit
-// the bound from defaultJobMaxRuntime or, when wired through cli/config,
-// from `[global] max-runtime`).
+// maximum runtime. Currently RunJob, RunServiceJob and ComposeJob satisfy
+// this interface (cli/config fills in `[global] max-runtime` for them;
+// ComposeJob only in run mode); ExecJob and LocalJob do not, and run under
+// defaultJobMaxRuntime.
 type MaxRuntimeProvider interface {
 	GetMaxRuntime() time.Duration
 }

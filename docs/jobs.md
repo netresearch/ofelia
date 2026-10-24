@@ -364,8 +364,9 @@ container is started with `docker compose run --rm`.
 - `max-runtime`: duration = `[global] max-runtime`
   - Maximum time a `run`-mode execution may run before its container is stopped
     and removed. Without a value of its own the job uses `[global] max-runtime`
-    (default `24h`). Not supported with `exec = true`; the configuration is
-    rejected, because an exec'd command cannot be stopped.
+    (default `24h`). Not supported with `exec = true`, because an exec'd
+    command cannot be stopped: the value is ignored with a logged warning, and
+    the job API rejects it.
 - `run-on-startup`: boolean = `false`
   - Run the job once immediately when the scheduler starts, before regular cron-based scheduling begins. Startup executions are dispatched in non-blocking goroutines so they do not delay scheduler startup.
 
@@ -443,7 +444,7 @@ the daemon the jobs should run on.
 
 In `exec` mode the command runs inside an existing container, and the Docker
 Engine API cannot stop an exec'd process from outside. Canceling the execution
-does not stop the command, and `max-runtime` is rejected in this mode; enforce
+does not stop the command, and `max-runtime` has no effect in this mode; enforce
 a limit inside the command, e.g. `timeout 30s ...`.
 
 ## Compose projects

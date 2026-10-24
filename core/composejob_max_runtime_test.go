@@ -84,7 +84,7 @@ func TestComposeJob_GetMaxRuntime(t *testing.T) {
 	assert.Equal(t, time.Minute, job.GetMaxRuntime())
 }
 
-func TestComposeJob_ValidateMaxRuntime(t *testing.T) {
+func TestComposeJob_CheckMaxRuntime(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -96,7 +96,6 @@ func TestComposeJob_ValidateMaxRuntime(t *testing.T) {
 		{name: "run mode without bound"},
 		{name: "exec mode without bound", exec: true},
 		{name: "exec mode with bound", exec: true, max: time.Minute, wantErr: ErrComposeExecMaxRuntime},
-		{name: "negative bound", max: -time.Second, wantErr: ErrMaxRuntimeNegative},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -104,7 +103,7 @@ func TestComposeJob_ValidateMaxRuntime(t *testing.T) {
 			job := NewComposeJob()
 			job.Exec = tc.exec
 			job.MaxRuntime = tc.max
-			err := job.Validate()
+			err := job.CheckMaxRuntime()
 			if tc.wantErr == nil {
 				assert.NoError(t, err)
 				return

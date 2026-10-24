@@ -99,18 +99,19 @@ func TestComposeJobs_InheritGlobalMaxRuntimeFromLabels(t *testing.T) {
 		Labels: map[string]string{
 			requiredLabel: "true",
 			serviceLabel:  "true",
-			labelPrefix + ".job-compose.run.schedule":     "@hourly",
-			labelPrefix + ".job-compose.run.service":      "task",
-			labelPrefix + ".job-compose.viaexec.schedule": "@hourly",
-			labelPrefix + ".job-compose.viaexec.service":  "task",
-			labelPrefix + ".job-compose.viaexec.exec":     "true",
+			labelPrefix + ".job-compose.run.schedule":        "@hourly",
+			labelPrefix + ".job-compose.run.service":         "task",
+			labelPrefix + ".job-compose.viaexec.schedule":    "@hourly",
+			labelPrefix + ".job-compose.viaexec.service":     "task",
+			labelPrefix + ".job-compose.viaexec.exec":        "true",
+			labelPrefix + ".job-compose.viaexec.max-runtime": "5m",
 		},
 	}})
 
 	run := findComposeJob(t, cfg, "run")
 	assert.Equal(t, 30*time.Minute, run.MaxRuntime)
 	viaExec := findComposeJob(t, cfg, "viaexec")
-	assert.Zero(t, viaExec.MaxRuntime)
+	assert.Zero(t, viaExec.MaxRuntime, "exec mode inherits nothing and drops its own value")
 }
 
 // findComposeJob returns the label-defined compose job whose name ends in
@@ -126,10 +127,22 @@ func findComposeJob(t *testing.T, cfg *Config, suffix string) *ComposeJobConfig 
 	return nil
 }
 
-func TestComposeJob_ExecModeRejectsOwnMaxRuntime(t *testing.T) {
+// A configuration file with max-runtime on an exec-mode compose job loaded
+// before compose jobs honored the key, so it keeps loading: the value is
+// dropped with a warning instead of failing the whole configuration.
+func TestComposeJob_ExecModeIgnoresOwnMaxRuntime(t *testing.T) {
 	t.Parallel()
-	_, err := BuildFromString("[job-compose \"x\"]\nschedule = @daily\nservice = task\nexec = true\nmax-runtime = 5m\n",
-		test.NewTestLogger())
-	require.Error(t, err)
-	assert.ErrorIs(t, err, core.ErrComposeExecMaxRuntime)
+	logger, handler := test.NewTestLoggerWithHandler()
+	c, err := BuildFromFile(writeFile(t, t.TempDir(), "ofelia.ini",
+		"[job-compose \"x\"]\nschedule = @daily\nservice = task\nexec = true\nmax-runtime = 5m\n"), logger)
+	require.NoError(t, err, "the configuration must keep loading")
+	c.sh = core.NewScheduler(logger)
+	c.buildSchedulerMiddlewares(c.sh)
+	c.dockerHandler = &DockerHandler{ctx: context.Background(), logger: logger}
+	c.levelVar = &slog.LevelVar{}
+	c.registerAllJobs()
+
+	require.Contains(t, c.ComposeJobs, "x")
+	assert.Zero(t, c.ComposeJobs["x"].MaxRuntime, "exec mode cannot be bounded")
+	assert.True(t, handler.HasWarning("max-runtime is ignored"), "the dropped value must be reported")
 }

@@ -1100,7 +1100,7 @@ func (s *Server) newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
 	j.Service = req.Service
 	j.Exec = req.ExecFlag
 	j.MaxRuntime = maxRuntime
-	if err := j.Validate(); err != nil {
+	if err := j.CheckMaxRuntime(); err != nil {
 		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
 	}
 	// The same inheritance a config.ini [job-compose] gets; exec mode is left

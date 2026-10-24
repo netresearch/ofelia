@@ -76,7 +76,7 @@ type ComposeJob struct {
 	// MaxRuntime bounds a run-mode execution like RunJob.MaxRuntime: when it
 	// expires, the run container is stopped and removed. Zero means no
 	// per-job value; the configuration then fills in [global] max-runtime.
-	// Not supported with Exec (see Validate).
+	// Not supported with Exec (see CheckMaxRuntime).
 	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 	// Project is set only for jobs loaded from a registered Compose project
 	// ([compose-project] in the INI, see ADR-004). It cannot be set on a
@@ -115,13 +115,12 @@ func (j *ComposeJob) GetMaxRuntime() time.Duration {
 	return j.MaxRuntime
 }
 
-// Validate rejects a negative max-runtime, and a max-runtime in exec mode,
-// where nothing could enforce it.
-func (j *ComposeJob) Validate() error {
-	if j.MaxRuntime < 0 {
-		return fmt.Errorf("%w: %s", ErrMaxRuntimeNegative, j.MaxRuntime)
-	}
-	if j.Exec && j.MaxRuntime > 0 {
+// CheckMaxRuntime reports a max-runtime in exec mode, where nothing could
+// enforce it. The job API rejects such a request; a configuration file, which
+// accepted the key before compose jobs honored it, gets a warning instead (see
+// cli), so an existing file keeps loading.
+func (j *ComposeJob) CheckMaxRuntime() error {
+	if j.Exec && j.MaxRuntime != 0 {
 		return ErrComposeExecMaxRuntime
 	}
 	return nil
@@ -148,7 +147,7 @@ func (j *ComposeJob) Validate() error {
 // Docker Engine API has no way to stop an exec'd process from outside (see
 // ExecJob and issue #655), so the child process is not tied to the run
 // context: canceling the run, or the scheduler's default deadline, does not
-// stop it, which is why Validate rejects max-runtime in exec mode. Enforce a
+// stop it, which is why max-runtime is not honored in exec mode. Enforce a
 // hard limit inside the command (e.g. `timeout 30s ...`).
 func (j *ComposeJob) Run(ctx *Context) error {
 	cmd, err := j.buildCommand(ctx)

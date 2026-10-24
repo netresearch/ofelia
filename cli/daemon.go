@@ -774,7 +774,7 @@ func (c *DaemonCommand) buildPersistedComposeJob(
 		return nil, fmt.Errorf("job %q: %w", name, err)
 	}
 	cj.MaxRuntime = maxRuntime
-	if err := cj.Validate(); err != nil {
+	if err := cj.CheckMaxRuntime(); err != nil {
 		return nil, fmt.Errorf("job %q: %w", name, err)
 	}
 	// As for a persisted run job, the global is applied at each start rather
