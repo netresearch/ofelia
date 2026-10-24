@@ -367,7 +367,11 @@ the execution fails with `compose run termination unconfirmed`.
 The compose CLI uses the same Docker endpoint as Ofelia: `DOCKER_HOST` if set,
 otherwise the default socket. `DOCKER_CONTEXT` is not passed to the CLI in `run`
 mode, because Ofelia's own Docker client does not read Docker contexts and
-could not find the run container on another daemon.
+could not find the run container on another daemon. When `DOCKER_HOST` is
+unset and a Docker context other than `default` is selected — through
+`DOCKER_CONTEXT` or `currentContext` in the CLI's `config.json` — each `run`
+execution logs a warning that names the ignored context. Set `DOCKER_HOST` to
+the daemon the jobs should run on.
 
 In `exec` mode the command runs inside an existing container, and the Docker
 Engine API cannot stop an exec'd process from outside. Canceling the execution

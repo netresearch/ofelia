@@ -249,3 +249,65 @@ func TestComposeChildEnv_InvalidHost(t *testing.T) {
 	_, err := composeChildEnv(nil)
 	require.Error(t, err)
 }
+
+func TestIgnoredDockerContext(t *testing.T) {
+	cfgDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(cfgDir, "config.json"), []byte(`{"currentContext":"rootless"}`), 0o600))
+	defaultDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(defaultDir, "config.json"), []byte(`{"currentContext":"default"}`), 0o600))
+	home := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".docker"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".docker", "config.json"), []byte(`{"currentContext":"remote"}`), 0o600))
+
+	tests := []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{"DOCKER_CONTEXT is followed", []string{"DOCKER_CONTEXT=remote"}, "remote"},
+		{"default context changes nothing", []string{"DOCKER_CONTEXT=default"}, ""},
+		{"DOCKER_HOST already wins over DOCKER_CONTEXT", []string{"DOCKER_HOST=unix:///x.sock", "DOCKER_CONTEXT=remote"}, ""},
+		{"currentContext from DOCKER_CONFIG", []string{"DOCKER_CONFIG=" + cfgDir}, "rootless"},
+		{"currentContext default", []string{"DOCKER_CONFIG=" + defaultDir}, ""},
+		{"currentContext from HOME", []string{"HOME=" + home}, "remote"},
+		{"no config file", []string{"DOCKER_CONFIG=" + t.TempDir()}, ""},
+		{"DOCKER_CONTEXT beats the config file", []string{"DOCKER_CONTEXT=other", "DOCKER_CONFIG=" + cfgDir}, "other"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, ignoredDockerContext(tt.env), tt.name)
+	}
+}
+
+// runComposeWithLogger runs job to completion and returns the log handler.
+func runComposeWithLogger(t *testing.T, job *ComposeJob) *test.Handler {
+	t.Helper()
+	logger, handler := test.NewTestLoggerWithHandler()
+	exec, err := NewExecution()
+	require.NoError(t, err)
+	exec.Start()
+	ctx := NewContextWithContext(context.Background(), NewScheduler(logger), job, exec)
+	require.NoError(t, job.Run(ctx))
+	return handler
+}
+
+func TestComposeJob_WarnsAboutIgnoredDockerContext(t *testing.T) {
+	installFakeDocker(t, "exit 0")
+	t.Setenv("DOCKER_HOST", "")
+	t.Setenv("DOCKER_CONTEXT", "remote")
+
+	handler := runComposeWithLogger(t, newComposeCancelJob(nil))
+
+	assert.True(t, handler.HasWarning(`ignores Docker context "remote"`),
+		"a context the CLI no longer follows must be reported")
+}
+
+func TestComposeJob_NoWarningWithoutContext(t *testing.T) {
+	installFakeDocker(t, "exit 0")
+	t.Setenv("DOCKER_HOST", "")
+	t.Setenv("DOCKER_CONTEXT", "")
+	t.Setenv("DOCKER_CONFIG", t.TempDir())
+
+	handler := runComposeWithLogger(t, newComposeCancelJob(nil))
+
+	assert.False(t, handler.HasWarning("ignores Docker context"))
+}

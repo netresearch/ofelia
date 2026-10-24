@@ -5,10 +5,12 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -104,11 +106,16 @@ func (j *ComposeJob) Run(ctx *Context) error {
 }
 
 func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
-	env, err := composeChildEnv(os.Environ())
+	base := os.Environ()
+	env, err := composeChildEnv(base)
 	if err != nil {
 		return fmt.Errorf("compose docker endpoint: %w", err)
 	}
 	cmd.Env = env
+	if name := ignoredDockerContext(base); name != "" {
+		ctx.Warn(fmt.Sprintf("compose run ignores Docker context %q and uses %s, the endpoint Ofelia's "+
+			"Docker client uses; set DOCKER_HOST to choose the daemon", name, envValue(env, "DOCKER_HOST")))
+	}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("compose run: %w", err)
@@ -285,6 +292,52 @@ func composeChildEnv(base []string) ([]string, error) {
 		env = append(env, "DOCKER_TLS_VERIFY=1")
 	}
 	return env, nil
+}
+
+// ignoredDockerContext returns the Docker context the CLI would have followed
+// with the environment base, or "" when there is none. The CLI follows a
+// context only when DOCKER_HOST is unset: DOCKER_CONTEXT first, then
+// currentContext in its config file. composeChildEnv always sets DOCKER_HOST,
+// so such a context is ignored, and the caller warns about it.
+func ignoredDockerContext(base []string) string {
+	if envValue(base, "DOCKER_HOST") != "" {
+		return ""
+	}
+	if name := envValue(base, "DOCKER_CONTEXT"); name != "" {
+		if name == "default" {
+			return ""
+		}
+		return name
+	}
+	dir := envValue(base, "DOCKER_CONFIG")
+	if dir == "" {
+		home := envValue(base, "HOME")
+		if home == "" {
+			return ""
+		}
+		dir = filepath.Join(home, ".docker")
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "config.json")) //nolint:gosec // the docker CLI's own config file
+	if err != nil {
+		return ""
+	}
+	var cfg struct {
+		CurrentContext string `json:"currentContext"`
+	}
+	if json.Unmarshal(data, &cfg) != nil || cfg.CurrentContext == "default" {
+		return ""
+	}
+	return cfg.CurrentContext
+}
+
+// envValue returns the value of key in env, or "" when it is not set.
+func envValue(env []string, key string) string {
+	for _, kv := range env {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == key {
+			return v
+		}
+	}
+	return ""
 }
 
 // cliDockerHost translates an endpoint in the form Ofelia's client accepts
