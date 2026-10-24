@@ -104,7 +104,11 @@ type Config struct {
 	ComposeProjects map[string]*ComposeProjectConfig `json:"-" mapstructure:"-"`
 	// composeFiles are the Compose and env files of the registered projects;
 	// a change to one of them reloads the configuration like an INI change.
-	composeFiles      []string
+	composeFiles []string
+	// composeRevisions are the revisions of the loaded projects by
+	// registration name; a poll that loads a different revision reloads the
+	// configuration, which covers files the registration does not name.
+	composeRevisions  map[string]string
 	Docker            DockerConfig
 	mu                sync.RWMutex // protects job map access
 	configPath        string
@@ -1283,6 +1287,10 @@ func (c *Config) iniConfigUpdate() error {
 	for _, f := range files {
 		c.logger.Debug(fmt.Sprintf("checking config file %s", f))
 	}
+	if !changed && c.composeProjectsChanged() {
+		c.logger.Debug("a registered compose project changed")
+		changed = true
+	}
 	if !changed {
 		c.logger.Debug("config not changed")
 		return nil
@@ -1300,6 +1308,7 @@ func (c *Config) iniConfigUpdate() error {
 	c.configFiles = files
 	c.configModTime = latest
 	c.composeFiles = parsed.composeFiles
+	c.composeRevisions = parsed.composeRevisions
 	c.logger.Debug(fmt.Sprintf("applied config files from %s", strings.Join(files, ", ")))
 	if globalChanged {
 		c.Global = parsed.Global

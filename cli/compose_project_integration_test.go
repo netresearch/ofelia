@@ -29,6 +29,17 @@ func TestComposeProjectIntegration_RunsAScheduledJob(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker CLI not available")
 	}
+	// The registration checks the CLI for real here (the unit tests stub it).
+	// GitHub's ubuntu runner ships Docker Compose 2.38.2, which rejects
+	// top-level jobs, so this test skips there.
+	version, err := core.ComposeCLIVersion(context.Background())
+	if err != nil || !core.ComposeVersionAtLeast(version, core.MinComposeJobsVersion) {
+		t.Skipf("docker compose %q cannot run compose jobs (%v); %s or later is required",
+			version, err, core.MinComposeJobsVersion)
+	}
+	old := composeCLICheck
+	composeCLICheck = core.CheckComposeJobsSupport
+	t.Cleanup(func() { composeCLICheck = old })
 	dir := t.TempDir()
 	project := "ofelia-it-cp-" + strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))[:20]
 	compose := `name: ` + project + `

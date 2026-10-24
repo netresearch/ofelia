@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -64,6 +65,12 @@ type Spec struct {
 type Project struct {
 	// Name is the resolved Compose project name.
 	Name string
+	// WorkingDir is the resolved, absolute project directory.
+	WorkingDir string
+	// Profiles are the active profiles the project was loaded with, from the
+	// registration or, when it names none, from COMPOSE_PROFILES. A run passes
+	// them explicitly, so it uses exactly the loaded selection.
+	Profiles []string
 	// Revision identifies the loaded model; it changes when the merged,
 	// interpolated configuration changes.
 	Revision string
@@ -105,17 +112,9 @@ func (ComposeGoLoader) Load(ctx context.Context, spec Spec) (*Project, error) {
 	if len(spec.Files) == 0 {
 		return nil, fmt.Errorf("%w %q: no compose file configured", ErrInvalidSpec, spec.Name)
 	}
-	opts := []cli.ProjectOptionsFn{
-		cli.WithOsEnv,
-		cli.WithEnvFiles(spec.EnvFiles...),
-		cli.WithDotEnv,
-		cli.WithProfiles(spec.Profiles),
-	}
-	if spec.ProjectName != "" {
-		opts = append(opts, cli.WithName(spec.ProjectName))
-	}
-	if spec.ProjectDirectory != "" {
-		opts = append(opts, cli.WithWorkingDirectory(spec.ProjectDirectory))
+	opts, err := projectOptions(spec)
+	if err != nil {
+		return nil, fmt.Errorf("compose project %q: %w", spec.Name, err)
 	}
 	options, err := cli.NewProjectOptions(spec.Files, opts...)
 	if err != nil {
@@ -128,6 +127,38 @@ func (ComposeGoLoader) Load(ctx context.Context, spec Spec) (*Project, error) {
 	return Extract(spec.Name, project)
 }
 
+// projectOptions returns the compose-go options in the order the docker CLI
+// applies them (docker/compose v5.6.0, cmd/compose/compose.go
+// toProjectOptions), so the project loads as `docker compose` loads it: the
+// working directory first, because the default .env is looked up in it; the
+// OS environment, which wins over env files; the env files, applied twice as
+// the CLI does; then the profiles, which fall back to COMPOSE_PROFILES from the
+// environment or the env files; and the name, which falls back to
+// COMPOSE_PROJECT_NAME. Discovery of compose files (COMPOSE_FILE, the default
+// compose.yaml) is left out: a registration always names its files.
+func projectOptions(spec Spec) ([]cli.ProjectOptionsFn, error) {
+	opts := []cli.ProjectOptionsFn{
+		cli.WithWorkingDirectory(spec.ProjectDirectory),
+		cli.WithOsEnv,
+	}
+	if _, present := os.LookupEnv("PWD"); !present {
+		pwd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("working directory: %w", err)
+		}
+		opts = append(opts, cli.WithEnv([]string{"PWD=" + pwd}))
+	}
+	return append(opts,
+		cli.WithEnvFiles(spec.EnvFiles...),
+		cli.WithDotEnv,
+		// applied twice, as the docker CLI does
+		cli.WithEnvFiles(spec.EnvFiles...),
+		cli.WithDotEnv,
+		cli.WithDefaultProfiles(spec.Profiles...),
+		cli.WithName(spec.ProjectName),
+	), nil
+}
+
 // Extract applies the supported trigger subset to a loaded project. Jobs
 // behind an inactive profile are ignored, active jobs without a schedule are
 // listed as unscheduled, and every unsupported setting is reported. When any
@@ -138,7 +169,13 @@ func Extract(registration string, project *types.Project) (*Project, error) {
 		return nil, fmt.Errorf("compose project %q: %w", registration, err)
 	}
 	all := project.AllJobs()
-	out := &Project{Name: project.Name, Revision: revision}
+	out := &Project{Name: project.Name, WorkingDir: project.WorkingDir, Revision: revision}
+	for _, p := range project.Profiles {
+		// COMPOSE_PROFILES unset yields one empty entry; it selects nothing.
+		if p != "" {
+			out.Profiles = append(out.Profiles, p)
+		}
+	}
 	var errs []error
 	names := make([]string, 0, len(project.Jobs))
 	for name := range project.Jobs {

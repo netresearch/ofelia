@@ -450,19 +450,35 @@ stays defined in the Compose files: image, command, environment, mounts and
 networks are not repeated in the Ofelia configuration. The design is recorded
 in [ADR-004](adr/ADR-004-compose-jobs-as-job-source.md).
 
+Compose projects need the Compose CLI 5.6.0 or later, the first release that
+understands top-level `jobs:`; the [compose image variant](#image-for-compose-jobs)
+contains it. Ofelia runs `docker compose version` when it loads the
+configuration and rejects the projects with an error that names the version it
+found when the CLI is missing or older.
+
 ### Parameters
 
 - **`file`: string, repeatable**
   - A Compose file. Repeat the key for several files; they are merged in the
     order given, as with `docker compose -f a.yaml -f b.yaml`.
 - `profile`: string, repeatable
-  - A profile to activate. Jobs behind other profiles are not scheduled.
+  - A profile to activate. Jobs behind other profiles are not scheduled. Without
+    this key, `COMPOSE_PROFILES` from Ofelia's environment or the env files
+    applies, as for `docker compose`.
 - `env-file`: string, repeatable
-  - An env file for interpolation, replacing the default `.env`.
+  - An env file for interpolation, replacing the default `.env` of the project
+    directory.
 - `project-name`: string
-  - Overrides the project name Compose would derive.
+  - Overrides the project name Compose would derive, including one set by
+    `COMPOSE_PROJECT_NAME`.
 - `project-directory`: string
-  - Overrides the project's working directory.
+  - Overrides the project's working directory, which is where the default
+    `.env` is read from.
+
+The project is loaded as `docker compose` loads it, with the same order of
+environment, env files, profiles and name. Each run passes the resolved project
+name, profiles and directory explicitly, so it uses the context the job was
+loaded with.
 
 The section is read from the INI file only; container labels cannot register a
 project.
@@ -478,15 +494,19 @@ The command is:
 
 ```text
 docker compose -f <file>... --profile <profile>... --env-file <env-file>... \
-  -p <project> [--project-directory <dir>] run --rm -T -l ofelia.execution=<id> <job>
+  -p <project> --project-directory <dir> run --rm -T -l ofelia.execution=<id> <job>
 ```
 
 Jobs without a schedule are not scheduled by Ofelia; they stay manual-only and
 can be run with `docker compose run <job>`. A name that is already used by a
 `[job-compose]` section fails the configuration.
 
-A change to one of the project's Compose or env files reloads the
-configuration like an INI change. Each job carries a revision, a hash of its
+On every configuration poll (`config-poll-interval`), Ofelia loads each
+registered project again and reloads the configuration when the resolved model
+differs. That covers the files the section names as well as the default `.env`,
+files pulled in through `include:` or `extends`, and interpolated values. A
+project that no longer loads fails the reload, and the running configuration
+stays in place. Each job carries a revision, a hash of its
 own definition: only jobs whose definition changed are replaced, and each
 execution logs the revision it ran with. A running execution keeps the
 definition it started with.
@@ -502,7 +522,7 @@ different behavior would be a compatibility bug.
 |---|---|---|
 | `cron` with five fields | yes | Evaluated by Ofelia's scheduler |
 | `cron` with other field counts or `@daily` style shortcuts | no | Rejected |
-| `timezone` | yes | The schedule is evaluated in that zone; an empty value means the local time zone of the Ofelia process, which is logged when the project is loaded |
+| `timezone` | yes | The schedule is evaluated in that zone; an empty value means the local time zone of the Ofelia process, which is logged when the project is loaded. A daylight-saving switch does not count as a change of the job |
 | `concurrency: forbid` (also the default) | yes | Enables the per-job overlap prevention (`no-overlap`) |
 | `concurrency: queue` | no | Rejected |
 | `missed_fires: skip` | yes, only when set explicitly | Missed runs are not replayed |

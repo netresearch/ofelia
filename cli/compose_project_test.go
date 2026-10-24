@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -39,6 +40,13 @@ jobs:
     triggers:
       manual: true
 `
+
+// The unit tests must not depend on the docker compose CLI installed on the
+// host; TestComposeProject_OldComposeCLIFailsTheConfiguration and the
+// integration test swap the check explicitly.
+func init() {
+	composeCLICheck = func(context.Context) error { return nil }
+}
 
 func writeFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
@@ -173,4 +181,133 @@ jobs:
 	assert.NotEqual(t, oldBackup.Project.Revision, newBackup.Project.Revision)
 	assert.NotSame(t, oldBackup, newBackup, "the changed job is replaced")
 	assert.Same(t, oldCleanup, c.ComposeJobs["shop.cleanup"], "an unchanged job is kept")
+}
+
+// TestComposeProject_OldComposeCLIFailsTheConfiguration swaps the package
+// check; it must not run in parallel with tests that build compose projects.
+func TestComposeProject_OldComposeCLIFailsTheConfiguration(t *testing.T) {
+	old := composeCLICheck
+	composeCLICheck = func(context.Context) error {
+		return fmt.Errorf("%w: found docker compose 2.38.2", core.ErrComposeJobsUnsupported)
+	}
+	t.Cleanup(func() { composeCLICheck = old })
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml", shopCompose)
+	ini := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n")
+
+	_, err := BuildFromFile(ini, test.NewTestLogger())
+
+	require.ErrorIs(t, err, core.ErrComposeJobsUnsupported)
+	assert.Contains(t, err.Error(), "2.38.2")
+}
+
+// TestComposeProject_NoProjectSkipsTheCLICheck keeps a configuration without
+// [compose-project] sections independent of the docker compose CLI.
+func TestComposeProject_NoProjectSkipsTheCLICheck(t *testing.T) {
+	old := composeCLICheck
+	called := false
+	composeCLICheck = func(context.Context) error { called = true; return core.ErrComposeJobsUnsupported }
+	t.Cleanup(func() { composeCLICheck = old })
+
+	_, err := BuildFromString("[job-local \"x\"]\nschedule = @daily\ncommand = true\n", test.NewTestLogger())
+
+	require.NoError(t, err)
+	assert.False(t, called)
+}
+
+// prepareReload builds the configuration from iniPath and registers its jobs
+// with a scheduler, as the daemon does before a reload can happen.
+func prepareReload(t *testing.T, iniPath string) *Config {
+	t.Helper()
+	logger := test.NewTestLogger()
+	c, err := BuildFromFile(iniPath, logger)
+	require.NoError(t, err)
+	c.sh = core.NewScheduler(logger)
+	c.buildSchedulerMiddlewares(c.sh)
+	c.dockerHandler = &DockerHandler{ctx: context.Background(), logger: logger}
+	c.levelVar = &slog.LevelVar{}
+	for _, j := range c.ComposeJobs {
+		require.NoError(t, defaults.Set(j))
+		require.NoError(t, c.sh.AddJob(j))
+	}
+	return c
+}
+
+// TestComposeProject_ReloadOnIncludedFileChange changes only a file pulled in
+// through include:, which the registration does not name.
+func TestComposeProject_ReloadOnIncludedFileChange(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	jobs := func(cron string) string {
+		return "jobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - cron: \"" + cron +
+			"\"\n          missed_fires: skip\n  cleanup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n" +
+			"        - cron: \"30 3 * * *\"\n          missed_fires: skip\n"
+	}
+	jobsPath := writeFile(t, dir, "jobs.yaml", jobs("0 2 * * *"))
+	composePath := writeFile(t, dir, "compose.yaml", "name: shop\ninclude:\n  - jobs.yaml\n")
+	c := prepareReload(t, writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n"))
+	oldBackup, oldCleanup := c.ComposeJobs["shop.backup"], c.ComposeJobs["shop.cleanup"]
+	require.NotNil(t, oldBackup)
+
+	require.NoError(t, os.WriteFile(jobsPath, []byte(jobs("0 5 * * *")), 0o600))
+	require.NoError(t, c.iniConfigUpdate())
+
+	assert.Equal(t, "0 5 * * *", c.ComposeJobs["shop.backup"].Schedule, "the included file changed")
+	assert.NotSame(t, oldBackup, c.ComposeJobs["shop.backup"])
+	assert.Same(t, oldCleanup, c.ComposeJobs["shop.cleanup"], "an unchanged job is kept")
+}
+
+// TestComposeProject_ReloadOnDefaultDotEnvChange changes only the default
+// .env, which the registration does not name either.
+func TestComposeProject_ReloadOnDefaultDotEnvChange(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	envPath := writeFile(t, dir, ".env", "HOUR=2\n")
+	composePath := writeFile(t, dir, "compose.yaml",
+		"name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n"+
+			"        - cron: \"0 ${HOUR} * * *\"\n          missed_fires: skip\n")
+	c := prepareReload(t, writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n"))
+	require.Equal(t, "0 2 * * *", c.ComposeJobs["shop.backup"].Schedule)
+
+	require.NoError(t, os.WriteFile(envPath, []byte("HOUR=6\n"), 0o600))
+	require.NoError(t, c.iniConfigUpdate())
+
+	assert.Equal(t, "0 6 * * *", c.ComposeJobs["shop.backup"].Schedule, "the default .env changed")
+}
+
+// TestComposeProject_NoChangeKeepsJobs polls without any change: no job is
+// replaced.
+func TestComposeProject_NoChangeKeepsJobs(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml", shopCompose)
+	c := prepareReload(t, writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n"))
+	before := c.ComposeJobs["shop.cleanup"]
+
+	require.NoError(t, c.iniConfigUpdate())
+
+	assert.Same(t, before, c.ComposeJobs["shop.cleanup"])
+}
+
+// TestComposeProject_RunUsesResolvedContext: profiles and the project name
+// that came from the project's .env reach the job, so `docker compose run`
+// gets exactly the context the project was loaded with.
+func TestComposeProject_RunUsesResolvedContext(t *testing.T) {
+	t.Setenv("COMPOSE_PROFILES", "")
+	require.NoError(t, os.Unsetenv("COMPOSE_PROFILES"))
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml",
+		"jobs:\n  backup:\n    image: alpine:3.22\n    profiles: [\"sched\"]\n    triggers:\n      schedule:\n"+
+			"        - cron: \"0 2 * * *\"\n          missed_fires: skip\n")
+	writeFile(t, dir, ".env", "COMPOSE_PROFILES=sched\nCOMPOSE_PROJECT_NAME=fromenv\n")
+	ini := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n")
+
+	c, err := BuildFromFile(ini, test.NewTestLogger())
+	require.NoError(t, err)
+
+	j := c.ComposeJobs["shop.backup"]
+	require.NotNil(t, j, "COMPOSE_PROFILES from .env arms the job")
+	assert.Equal(t, []string{"sched"}, j.Project.Profiles)
+	assert.Equal(t, "fromenv", j.Project.ProjectName)
+	assert.Equal(t, dir, j.Project.ProjectDirectory)
 }

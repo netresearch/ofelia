@@ -76,8 +76,8 @@ type ComposeJob struct {
 
 // ComposeProjectContext is the project selection a job loaded from a
 // registered Compose project runs with. When Files is set it replaces File,
-// and Service names the Compose job. All fields take part in the job hash, so
-// a changed project replaces the job on reload.
+// and Service names the Compose job. Every field except TimeZone takes part in
+// the job hash, so a changed project replaces the job on reload.
 type ComposeProjectContext struct {
 	Files            []string `hash:"true"`
 	Profiles         []string `hash:"true"`
@@ -87,8 +87,11 @@ type ComposeProjectContext struct {
 	// Revision identifies the job's definition in the loaded configuration;
 	// each execution logs it.
 	Revision string `hash:"true"`
-	// TimeZone is the zone the schedule is evaluated in, as resolved at load.
-	TimeZone string `hash:"true"`
+	// TimeZone describes the zone the schedule is evaluated in, as resolved at
+	// load, for logs. It is not hashed: for the local zone it carries the
+	// current abbreviation and offset, which change at every daylight-saving
+	// switch, and an explicit zone is already part of the schedule (CRON_TZ).
+	TimeZone string
 }
 
 // NewComposeJob returns an empty ComposeJob; the caller fills in File,

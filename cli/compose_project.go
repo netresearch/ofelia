@@ -34,6 +34,10 @@ var ErrComposeJobNameTaken = errors.New("compose project job name already used b
 // can substitute a fixture.
 var composeProjectLoader composeproject.Loader = composeproject.ComposeGoLoader{}
 
+// composeCLICheck verifies that the docker compose CLI can run Compose jobs.
+// A variable so unit tests do not depend on the CLI installed on the host.
+var composeCLICheck = core.CheckComposeJobsSupport
+
 // ComposeProjectConfig registers a Compose project from a
 // [compose-project "name"] INI section (see ADR-004). It selects the project —
 // files, profiles, env files, name and directory — and configures no
@@ -82,6 +86,16 @@ func (c *Config) expandComposeProjects() error {
 	}
 	sort.Strings(names)
 	c.composeFiles = nil
+	c.composeRevisions = nil
+	if len(names) == 0 {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), composeProjectLoadTimeout)
+	defer cancel()
+	if err := composeCLICheck(ctx); err != nil {
+		return fmt.Errorf("compose projects %s: %w", strings.Join(names, ", "), err)
+	}
+	c.composeRevisions = make(map[string]string, len(names))
 	for _, name := range names {
 		if err := c.expandComposeProject(name, c.ComposeProjects[name]); err != nil {
 			return err
@@ -90,19 +104,45 @@ func (c *Config) expandComposeProjects() error {
 	return nil
 }
 
-func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) error {
-	ctx, cancel := context.WithTimeout(context.Background(), composeProjectLoadTimeout)
-	defer cancel()
-	spec := composeproject.Spec{
+// composeSpec turns a registration into the loader's input.
+func composeSpec(name string, p *ComposeProjectConfig) composeproject.Spec {
+	return composeproject.Spec{
 		Name: name, Files: p.Files, Profiles: p.Profiles, EnvFiles: p.EnvFiles,
 		ProjectName: p.ProjectName, ProjectDirectory: p.ProjectDirectory,
 	}
-	project, err := composeProjectLoader.Load(ctx, spec)
+}
+
+// composeProjectsChanged reloads every registered project and reports whether
+// a resolved model differs from the one the configuration was built from. It
+// catches what watching file times cannot: a change in a default .env, in a
+// file pulled in through include: or extends at any depth, or in an
+// interpolated value. A project that no longer loads also counts as changed,
+// so the reload reports the error.
+func (c *Config) composeProjectsChanged() bool {
+	if len(c.composeRevisions) == 0 {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), composeProjectLoadTimeout)
+	defer cancel()
+	for name, p := range c.ComposeProjects {
+		project, err := composeProjectLoader.Load(ctx, composeSpec(name, p))
+		if err != nil || project.Revision != c.composeRevisions[name] {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) error {
+	ctx, cancel := context.WithTimeout(context.Background(), composeProjectLoadTimeout)
+	defer cancel()
+	project, err := composeProjectLoader.Load(ctx, composeSpec(name, p))
 	if err != nil {
 		return fmt.Errorf("load compose project %q: %w", name, err)
 	}
 	c.composeFiles = append(c.composeFiles, p.Files...)
 	c.composeFiles = append(c.composeFiles, p.EnvFiles...)
+	c.composeRevisions[name] = project.Revision
 	for _, job := range project.Jobs {
 		jobName := name + "." + job.Name
 		if _, taken := c.ComposeJobs[jobName]; taken {
@@ -112,12 +152,15 @@ func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) erro
 			ComposeJob: core.ComposeJob{
 				BareJob: core.BareJob{Name: jobName, Schedule: job.Schedule},
 				Service: job.Name,
+				// The resolved name, profiles and directory, so a run uses the
+				// context the project was loaded with, including values that
+				// came from COMPOSE_PROJECT_NAME or COMPOSE_PROFILES.
 				Project: core.ComposeProjectContext{
 					Files:            p.Files,
-					Profiles:         p.Profiles,
+					Profiles:         project.Profiles,
 					EnvFiles:         p.EnvFiles,
 					ProjectName:      project.Name,
-					ProjectDirectory: p.ProjectDirectory,
+					ProjectDirectory: project.WorkingDir,
 					Revision:         job.Revision,
 					TimeZone:         job.TimeZone,
 				},

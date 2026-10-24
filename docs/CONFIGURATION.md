@@ -656,12 +656,14 @@ file = /srv/shop/compose.jobs.yaml
 
 # Optional
 profile = scheduled-jobs        # repeatable; jobs behind other profiles are not scheduled
-env-file = /srv/shop/.env.prod  # repeatable; replaces the default .env
+env-file = /srv/shop/.env.prod  # repeatable; replaces the default .env of the project directory
 project-name = shop             # default: derived by Compose
 project-directory = /srv/shop   # default: derived by Compose
 ```
 
-Only a subset of the Compose trigger model is accepted: a five-field `cron`,
+Compose projects need the Compose CLI 5.6.0 or later (for example the
+`-compose` image variant); Ofelia checks the version when it loads the
+configuration. Only a subset of the Compose trigger model is accepted: a five-field `cron`,
 `timezone`, `concurrency: forbid` and an explicit `missed_fires: skip`. Other
 settings fail the configuration with an error that names the job. The section
 is INI-only. See [jobs.md](jobs.md#compose-projects) for the full table and the
