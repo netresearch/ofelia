@@ -36,7 +36,7 @@ func ComposeCLIVersion(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("look path %q: %w", "docker", err)
 	}
-	cmd := exec.CommandContext(ctx, bin, "compose", "version", "--short")
+	cmd := exec.CommandContext(ctx, bin, "compose", "version", "--short") // #nosec G204 -- LookPath'd docker, constant args
 	cmd.Env = env
 	out, err := cmd.Output()
 	if err != nil {
