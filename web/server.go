@@ -715,8 +715,9 @@ type jobRequest struct {
 	File      string `json:"file,omitempty"`
 	Service   string `json:"service,omitempty"`
 	ExecFlag  bool   `json:"exec,omitempty"`
-	// MaxRuntime is a Go duration string (e.g. "30m"), run-jobs only —
-	// see core.ParseMaxRuntime. Empty means "no per-job override": the
+	// MaxRuntime is a Go duration string (e.g. "30m"), for run jobs and
+	// compose jobs without exec (rejected with exec) — see
+	// core.ParseMaxRuntime. Empty means "no per-job override": the
 	// job then inherits `[global] max-runtime`, and only falls through
 	// to the scheduler's 24h default (defaultJobMaxRuntime) when there
 	// is no global either. "0s" is equivalent to omitting it: it is not
@@ -870,6 +871,7 @@ func (s *Server) persistJob(name string, req *jobRequest) error {
 		j.File = req.File
 		j.Service = req.Service
 		j.Exec = req.ExecFlag
+		j.MaxRuntime = req.MaxRuntime
 	case "", jobTypeLocal:
 		j.Type = persist.JobTypeLocal
 	default:
@@ -1086,6 +1088,10 @@ func (s *Server) newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
 			return nil, fmt.Errorf("invalid command arguments: %w", err)
 		}
 	}
+	maxRuntime, err := core.ParseMaxRuntime(req.MaxRuntime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
+	}
 	j := &core.ComposeJob{Provider: s.provider}
 	j.Name = req.Name
 	j.Schedule = req.Schedule
@@ -1093,6 +1099,15 @@ func (s *Server) newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
 	j.File = req.File
 	j.Service = req.Service
 	j.Exec = req.ExecFlag
+	j.MaxRuntime = maxRuntime
+	if err := j.CheckMaxRuntime(); err != nil {
+		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
+	}
+	// The same inheritance a config.ini [job-compose] gets; exec mode is left
+	// alone because its command cannot be stopped.
+	if !j.Exec && j.MaxRuntime == 0 {
+		j.MaxRuntime = s.globalMaxRuntime()
+	}
 	return j, nil
 }
 

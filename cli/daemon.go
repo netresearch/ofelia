@@ -673,7 +673,7 @@ func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (co
 	case persist.JobTypeExec:
 		job, err = c.buildPersistedExecJob(name, j, provider)
 	case persist.JobTypeCompose:
-		job, err = buildPersistedComposeJob(name, j, validator, provider)
+		job, err = c.buildPersistedComposeJob(name, j, validator, provider)
 	case persist.JobTypeLocal, "":
 		job, err = buildPersistedLocalJob(name, j, validator)
 	default:
@@ -746,7 +746,7 @@ func (c *DaemonCommand) buildPersistedExecJob(name string, j *persist.Job, provi
 // buildPersistedComposeJob materializes a persist.JobTypeCompose into a core.ComposeJob.
 // provider may be nil: the job still runs, but a canceled run then cannot
 // confirm that its container stopped.
-func buildPersistedComposeJob(
+func (c *DaemonCommand) buildPersistedComposeJob(
 	name string, j *persist.Job, validator *cfgvalidator.CommandValidator, provider core.DockerProvider,
 ) (core.Job, error) {
 	if j.File != "" {
@@ -769,6 +769,19 @@ func buildPersistedComposeJob(
 	cj.File = j.File
 	cj.Service = j.Service
 	cj.Exec = j.Exec
+	maxRuntime, err := core.ParseMaxRuntime(j.MaxRuntime)
+	if err != nil {
+		return nil, fmt.Errorf("job %q: %w", name, err)
+	}
+	cj.MaxRuntime = maxRuntime
+	if err := cj.CheckMaxRuntime(); err != nil {
+		return nil, fmt.Errorf("job %q: %w", name, err)
+	}
+	// As for a persisted run job, the global is applied at each start rather
+	// than persisted, so a job that named no bound follows the current one.
+	if !cj.Exec && cj.MaxRuntime == 0 && c.config != nil {
+		cj.MaxRuntime = c.config.GlobalMaxRuntime()
+	}
 	return cj, nil
 }
 

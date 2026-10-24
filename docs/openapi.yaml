@@ -315,7 +315,8 @@ components:
         maxRuntime:
           type: string
           description: >-
-            run jobs; a Go duration such as "30m". Omitting it inherits
+            run jobs and compose jobs without exec (rejected with exec); a Go
+            duration such as "30m". Omitting it inherits
             [global] max-runtime, and reaches the scheduler's 24h default only
             when no global is set; "0s" means the same as omitting it — it is
             not a way to ask for no bound. Same fallback an INI [job-run]
