@@ -352,3 +352,23 @@ file = docker-compose.yml
 service = db
 command = pg_dumpall -U postgres
 ```
+
+### Cancellation and maximum runtime
+
+In the default `run` mode, Ofelia starts `docker compose run --rm -T` and labels
+the run container with `ofelia.execution=<execution ID>`. When the execution is
+canceled or reaches the global `max-runtime`, Ofelia stops the containers that
+carry this label (stop signal, 10 seconds grace, then `SIGKILL`), ends the
+compose CLI, removes the labeled containers and checks that none remain.
+Dependency services that Compose started for the run do not carry the label and
+keep running. If the Docker API cannot confirm that the run container is gone,
+the execution fails with `compose run termination unconfirmed`.
+
+The compose CLI uses the same Docker endpoint as Ofelia: `DOCKER_HOST` if set,
+otherwise the default socket. `DOCKER_CONTEXT` is not passed to the CLI in `run`
+mode, because Ofelia's own Docker client does not read Docker contexts and
+could not find the run container on another daemon.
+
+In `exec` mode the command runs inside an existing container, and the Docker
+Engine API cannot stop an exec'd process from outside. Canceling the execution
+does not stop the command; enforce a limit inside it, e.g. `timeout 30s ...`.

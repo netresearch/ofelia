@@ -673,7 +673,7 @@ func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (co
 	case persist.JobTypeExec:
 		job, err = c.buildPersistedExecJob(name, j, provider)
 	case persist.JobTypeCompose:
-		job, err = buildPersistedComposeJob(name, j, validator)
+		job, err = buildPersistedComposeJob(name, j, validator, provider)
 	case persist.JobTypeLocal, "":
 		job, err = buildPersistedLocalJob(name, j, validator)
 	default:
@@ -744,7 +744,11 @@ func (c *DaemonCommand) buildPersistedExecJob(name string, j *persist.Job, provi
 }
 
 // buildPersistedComposeJob materializes a persist.JobTypeCompose into a core.ComposeJob.
-func buildPersistedComposeJob(name string, j *persist.Job, validator *cfgvalidator.CommandValidator) (core.Job, error) {
+// provider may be nil: the job still runs, but a canceled run then cannot
+// confirm that its container stopped.
+func buildPersistedComposeJob(
+	name string, j *persist.Job, validator *cfgvalidator.CommandValidator, provider core.DockerProvider,
+) (core.Job, error) {
 	if j.File != "" {
 		if err := validator.ValidateFilePath(j.File); err != nil {
 			return nil, fmt.Errorf("invalid compose file path: %w", err)
@@ -758,7 +762,7 @@ func buildPersistedComposeJob(name string, j *persist.Job, validator *cfgvalidat
 			return nil, fmt.Errorf("invalid command arguments: %w", err)
 		}
 	}
-	cj := &core.ComposeJob{}
+	cj := &core.ComposeJob{Provider: provider}
 	cj.Name = name
 	cj.Schedule = j.Schedule
 	cj.Command = j.Command

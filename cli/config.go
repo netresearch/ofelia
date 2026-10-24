@@ -685,6 +685,7 @@ func (c *Config) registerAllJobs() {
 	}
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
+		j.Provider = provider
 		j.Name = name
 		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
 			func() { j.buildMiddlewares(c.logger, wm) })
@@ -1102,6 +1103,7 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
+		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
@@ -1231,6 +1233,7 @@ func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
+		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
