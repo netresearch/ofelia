@@ -260,7 +260,7 @@ Supported formats:
 - `20 0 1 * * *` (every night, 20 seconds after 1 AM - [Quartz format](http://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/tutorial-lesson-06.html)
 - `0 1 * * *` (every night at 1 AM - standard [cron format](https://en.wikipedia.org/wiki/Cron)).
 
-You can configure four different kinds of jobs:
+You can configure five different kinds of jobs:
 
 - `job-exec`: this job is executed inside of a running container.
 - `job-run`: runs a command inside of a new container, using a specific image.
