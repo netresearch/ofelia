@@ -20,8 +20,9 @@ RUN set -eux; \
   cp "/tmp/${BINARY}" /usr/bin/ofelia; \
   chmod +x /usr/bin/ofelia
 
-# Runtime stage
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+# Runtime base stage, shared by the default image (last stage) and the
+# compose variant.
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS runtime
 
 # OCI Image Annotations
 # See: https://github.com/opencontainers/image-spec/blob/main/annotations.md
@@ -55,3 +56,19 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
 ENTRYPOINT ["/sbin/tini", "-g", "--", "/usr/bin/ofelia"]
 
 CMD ["daemon", "--config", "/etc/ofelia/config.ini"]
+
+# Compose variant (`docker build --target compose`), published as the
+# `-compose` image tags: adds the docker CLI and the Compose plugin that
+# job-compose shells out to. Package versions follow the Alpine release of the
+# base image above, so they move with its Renovate-tracked digest.
+FROM runtime AS compose
+
+LABEL org.opencontainers.image.title="Ofelia (compose)" \
+      org.opencontainers.image.description="A docker job scheduler (based on mcuadros/ofelia), with the docker CLI and Compose plugin for job-compose"
+
+# hadolint ignore=DL3018
+RUN apk add --no-cache docker-cli docker-cli-compose
+
+# Default image: kept as the last stage, so a build without --target is
+# unchanged.
+FROM runtime
