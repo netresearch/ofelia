@@ -21,7 +21,10 @@ func TestComposeJobBuildCommand(t *testing.T) {
 				File:    "compose.yml",
 				Service: "svc",
 			},
-			wantArgs: []string{"docker", "compose", "-f", "compose.yml", "run", "--rm", "svc", "echo", "foo bar"},
+			wantArgs: []string{
+				"docker", "compose", "-f", "compose.yml", "run", "--rm", "-T",
+				"-l", "ofelia.execution=exec-id", "svc", "echo", "foo bar",
+			},
 		},
 		{
 			name: "Exec command",
@@ -41,6 +44,7 @@ func TestComposeJobBuildCommand(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewExecution error: %v", err)
 			}
+			exec.ID = "exec-id"
 			ctx := &Context{Execution: exec}
 			cmd, err := tt.job.buildCommand(ctx)
 			if err != nil {

@@ -1068,7 +1068,9 @@ func (s *Server) newExecJobFromRequest(req *jobRequest) (core.Job, error) {
 }
 
 // newComposeJobFromRequest validates compose job parameters and builds the job.
-func newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
+// The server's provider may be nil: the job still runs, but a canceled run
+// then cannot confirm that its container stopped.
+func (s *Server) newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
 	validator := config.NewCommandValidator()
 	if req.File != "" {
 		if err := validator.ValidateFilePath(req.File); err != nil {
@@ -1084,7 +1086,7 @@ func newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
 			return nil, fmt.Errorf("invalid command arguments: %w", err)
 		}
 	}
-	j := &core.ComposeJob{}
+	j := &core.ComposeJob{Provider: s.provider}
 	j.Name = req.Name
 	j.Schedule = req.Schedule
 	j.Command = req.Command
@@ -1123,7 +1125,7 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 	case jobTypeExec:
 		job, err = s.newExecJobFromRequest(req)
 	case jobTypeCompose:
-		job, err = newComposeJobFromRequest(req)
+		job, err = s.newComposeJobFromRequest(req)
 	case "", jobTypeLocal:
 		job, err = newLocalJobFromRequest(req)
 	default:

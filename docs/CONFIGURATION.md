@@ -614,23 +614,30 @@ max-runtime = 1h
 
 ### ComposeJob - Docker Compose Operations
 
-Manages Docker Compose projects.
+Runs a command in a service of a Compose project, through the `docker compose` CLI.
 
 ```ini
-[job-compose "stack-restart"]
+[job-compose "nightly-cleanup"]
 # Required
 schedule = 0 4 * * *        # 4 AM daily
-command = restart           # Compose command
+service = web               # Service (or Compose job) the command runs in
 
 # Optional
+command = php bin/cleanup.php   # Passed to the service; empty runs its default command
 file = /opt/compose/myapp/compose.yml   # Compose file; default compose.yml
-service = web               # Limit the command to one service
 exec = false                # true runs `compose exec` instead of `compose run`
 ```
 
 `file`, `service` and `exec` are the only compose-specific keys. The project
 name and the working directory follow from the compose file's location, as they
 do for the `docker compose` CLI.
+
+When a `run`-mode execution is canceled or reaches Ofelia's fixed 24-hour
+execution limit (`max-runtime` does not apply to compose jobs),
+Ofelia stops and removes the run container it labeled with the execution ID;
+dependency services keep running. `exec`-mode commands cannot be stopped from
+outside the container. See [jobs.md](jobs.md#cancellation-and-maximum-runtime)
+for details, including which Docker endpoint the compose CLI uses.
 
 ## Docker Labels Configuration
 

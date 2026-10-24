@@ -439,6 +439,16 @@ func resolveDockerHost(cfg *ClientConfig) (host, scheme string, err error) {
 	return scheme + "://" + rest, scheme, nil
 }
 
+// ResolveHost returns the Docker endpoint a client built from DefaultConfig
+// connects to: DOCKER_HOST when set, client.DefaultDockerHost otherwise,
+// normalized and validated like NewClientWithConfig does. Callers that hand
+// the endpoint to another Docker client (the compose job hands it to the
+// docker CLI) use it so both talk to the same daemon.
+func ResolveHost() (string, error) {
+	host, _, err := resolveDockerHost(DefaultConfig())
+	return host, err
+}
+
 // validateAndNormalizeHost is a thin wrapper preserved for the existing
 // internal test surface (TestValidateAndNormalizeHost). It defers to
 // resolveDockerHost with an empty config so callers can validate a
