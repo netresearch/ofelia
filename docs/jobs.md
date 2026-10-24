@@ -83,6 +83,15 @@ docker run -it --rm \
 
 When specifying exec jobs via labels, Ofelia prefixes the job name to keep jobs from different containers with the same label from clashing. By default the prefix is the Docker Compose **service** name (falling back to the container name), so the example above yields `nginx.flush-nginx-logs`. This default is collision-prone when one daemon watches several Compose projects that reuse a service name; the `[global]` `job-exec-label-scope` option (`service` / `container` / `container-service`) selects a collision-safe scheme. See [Cross-Container Job References](CONFIGURATION.md#cross-container-job-references-docker-compose) for details.
 
+### Cancellation
+
+The Docker Engine API cannot stop an exec'd process, so canceling an execution
+does not stop the command; enforce a limit inside it, e.g. `timeout 30s ...`.
+After a cancellation Ofelia inspects the exec and records what it finds: a
+command that exited meanwhile is classified by its exit code; one that is still
+running fails the execution with `exec still running` and the exec ID; if the
+inspection fails, the execution fails with `exec outcome unknown`.
+
 ## `run`
 
 This job can be used in 2 situations:
@@ -238,6 +247,18 @@ schedule = @every 15s
 command = touch test.txt
 dir = /tmp/
 ```
+
+### Cancellation
+
+When an execution is canceled — on scheduler shutdown, when the job is removed,
+or at Ofelia's fixed 24-hour execution limit — Ofelia sends `SIGTERM` to the
+process group the command runs in. Processes the command started belong to that
+group. Whatever is still running after 10 seconds gets `SIGKILL`, and the
+execution fails with `max runtime exceeded`. On Windows, which has no process
+groups, only the command's own process is killed, at once. If the processes are
+still there 10 seconds after the kill — for example because a process changed
+its user and Ofelia may no longer signal it — the execution fails with
+`local job termination unconfirmed` instead of waiting for the command to end.
 
 ## `service-run`
 
