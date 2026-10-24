@@ -255,7 +255,10 @@ or at Ofelia's fixed 24-hour execution limit — Ofelia sends `SIGTERM` to the
 process group the command runs in. Processes the command started belong to that
 group. Whatever is still running after 10 seconds gets `SIGKILL`, and the
 execution fails with `max runtime exceeded`. On Windows, which has no process
-groups, only the command's own process is killed, at once.
+groups, only the command's own process is killed, at once. If the processes are
+still there 10 seconds after the kill — for example because a process changed
+its user and Ofelia may no longer signal it — the execution fails with
+`local job termination unconfirmed` instead of waiting for the command to end.
 
 ## `service-run`
 

@@ -144,12 +144,14 @@ const execInspectAfterCancelTimeout = 10 * time.Second
 
 // Run executes a command in a container and waits for it to complete.
 //
-// When ctx is canceled before the command finished, Run stops reading its
-// output and inspects the exec on a fresh bounded context. The Docker Engine
-// API cannot stop an exec'd process, so Run reports what it finds: the exit
-// code when the process has exited meanwhile, domain.ErrExecStillRunning when
-// it is still running, and domain.ErrExecOutcomeUnknown when the inspection
-// fails. Both errors name the exec ID.
+// When ctx is canceled after the exec was created and before its result was
+// read, Run stops reading its output and inspects the exec on a fresh bounded
+// context. The Docker Engine API cannot stop an exec'd process, so Run reports
+// what it finds: the exit code when the process has exited meanwhile,
+// domain.ErrExecStillRunning when it is still running, and
+// domain.ErrExecOutcomeUnknown when the inspection fails. Both errors name the
+// exec ID. A cancellation before the exec was created returns the context
+// error: no process was started.
 func (s *ExecServiceAdapter) Run(
 	ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer,
 ) (int, error) {
@@ -179,6 +181,11 @@ func (s *ExecServiceAdapter) Run(
 		Tty:    config.Tty,
 	})
 	if err != nil {
+		// The start request may have reached the daemon, which starts the
+		// process, before the cancellation ended the call.
+		if ctx.Err() != nil {
+			return s.inspectAfterCancel(ctx, execID)
+		}
 		return -1, err
 	}
 	defer hijacked.Close()
@@ -187,16 +194,7 @@ func (s *ExecServiceAdapter) Run(
 	stopClose := context.AfterFunc(ctx, func() { _ = hijacked.Close() })
 	defer stopClose()
 
-	// Copy output
-	if config.Tty {
-		// TTY mode: stdout and stderr are combined
-		if stdout != nil {
-			_, err = io.Copy(stdout, hijacked.Reader)
-		}
-	} else {
-		// Non-TTY mode: demultiplex stdout and stderr
-		_, err = stdcopy.StdCopy(stdout, stderr, hijacked.Reader)
-	}
+	err = copyExecOutput(config.Tty, hijacked.Reader, stdout, stderr)
 	if ctx.Err() != nil {
 		return s.inspectAfterCancel(ctx, execID)
 	}
@@ -207,10 +205,31 @@ func (s *ExecServiceAdapter) Run(
 	// Get exit code
 	inspect, err := s.Inspect(ctx, execID)
 	if err != nil {
+		if ctx.Err() != nil {
+			return s.inspectAfterCancel(ctx, execID)
+		}
 		return -1, err
 	}
 
 	return inspect.ExitCode, nil
+}
+
+// copyExecOutput copies an attached exec stream to stdout and stderr. In TTY
+// mode both are combined into stdout; otherwise the stream is demultiplexed.
+func copyExecOutput(tty bool, r io.Reader, stdout, stderr io.Writer) error {
+	var err error
+	if tty {
+		if stdout == nil {
+			return nil
+		}
+		_, err = io.Copy(stdout, r)
+	} else {
+		_, err = stdcopy.StdCopy(stdout, stderr, r)
+	}
+	if err != nil {
+		return fmt.Errorf("reading exec stream: %w", err)
+	}
+	return nil
 }
 
 // inspectAfterCancel reports the state of an exec whose caller stopped

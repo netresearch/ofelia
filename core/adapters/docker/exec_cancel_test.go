@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -110,6 +111,77 @@ func TestExecServiceAdapter_Run_CanceledAfterExit(t *testing.T) {
 	}
 	if code != 7 {
 		t.Errorf("expected exit code 7, got %d", code)
+	}
+}
+
+// newSlowExecServer stubs a daemon whose start request hangs (startHangs) or
+// whose exec ends at once while the first inspection hangs (inspect slow). A
+// hanging call answers only after release; later inspections answer at once
+// with inspectBody.
+func newSlowExecServer(t *testing.T, startHangs bool, inspectBody string) *httptest.Server {
+	t.Helper()
+	release := make(chan struct{})
+	var inspections atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/containers/c1/exec"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"Id": "exec-123"}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/exec/exec-123/start"):
+			if startHangs {
+				<-release
+				return
+			}
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("stub server cannot hijack")
+				return
+			}
+			conn, buf, err := hj.Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			_, _ = buf.WriteString("HTTP/1.1 101 UPGRADED\r\nContent-Type: application/vnd.docker.raw-stream\r\n" +
+				"Connection: Upgrade\r\nUpgrade: tcp\r\n\r\n")
+			_ = buf.Flush()
+			_ = conn.Close() // the stream ends at once
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/exec/exec-123/json"):
+			if !startHangs && inspections.Add(1) == 1 {
+				<-release
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(inspectBody))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(func() { close(release); srv.Close() })
+	return srv
+}
+
+func TestExecServiceAdapter_Run_CanceledDuringStart(t *testing.T) {
+	t.Parallel()
+	srv := newSlowExecServer(t, true, `{"ID":"exec-123","Running":true,"ExitCode":0,"Pid":4242}`)
+
+	_, err := runCanceledExec(t, srv)
+
+	if !errors.Is(err, domain.ErrExecStillRunning) {
+		t.Fatalf("a start interrupted by cancellation must be inspected, got: %v", err)
+	}
+}
+
+func TestExecServiceAdapter_Run_CanceledDuringFinalInspect(t *testing.T) {
+	t.Parallel()
+	srv := newSlowExecServer(t, false, `{"ID":"exec-123","Running":false,"ExitCode":5}`)
+
+	code, err := runCanceledExec(t, srv)
+	if err != nil {
+		t.Fatalf("an inspection interrupted by cancellation must be retried, got: %v", err)
+	}
+	if code != 5 {
+		t.Errorf("expected exit code 5, got %d", code)
 	}
 }
 

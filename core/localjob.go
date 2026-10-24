@@ -52,6 +52,11 @@ var (
 	localJobWaitDelay = 10 * time.Second
 )
 
+// ErrLocalTerminationUnconfirmed reports that a canceled local job may still
+// be running: its process (group) was still present after SIGKILL, typically
+// because a process changed credentials and Ofelia may not signal it.
+var ErrLocalTerminationUnconfirmed = errors.New("local job termination unconfirmed")
+
 // Run looks up the binary on PATH, resolves the environment and executes the
 // command in Dir, blocking until the process exits. Returns ErrEmptyCommand
 // for an empty command, a lookup error when the binary is not on PATH, the
@@ -94,6 +99,9 @@ func (j *LocalJob) Run(ctx *Context) error {
 	}
 
 	if exitErr := terminateLocalProcess(cmd, done); exitErr != nil {
+		if errors.Is(exitErr, ErrLocalTerminationUnconfirmed) {
+			return fmt.Errorf("%w: %w", ErrMaxTimeRunning, exitErr)
+		}
 		ctx.Log("local process exited after cancellation: " + exitErr.Error())
 	}
 	return ErrMaxTimeRunning

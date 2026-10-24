@@ -95,12 +95,15 @@ func (j *ExecJob) consoleSize() *[2]uint {
 // via `max-runtime` alone.
 //
 // What Ofelia does instead is report what happened. After a cancellation
-// it inspects the exec on a fresh context: a process that has exited
+// that comes once the exec was created, it inspects the exec on a fresh
+// context: a process that has exited
 // meanwhile is classified by its exit code as usual; one that is still
 // running yields ErrMaxTimeRunning wrapped with ErrExecStillRunning, and a
 // failed inspection yields ErrMaxTimeRunning wrapped with
 // ErrExecOutcomeUnknown. Both name the exec ID, so the execution record
-// never claims that the command stopped.
+// never claims that the command stopped. A cancellation before the exec was
+// created yields ErrMaxTimeRunning with the context error; no process was
+// started then.
 func (j *ExecJob) Run(ctx *Context) error {
 	// Use the (deadline-bounded) middleware-chain context for cancellation
 	// propagation. The fallback to context.Background() is centralized in

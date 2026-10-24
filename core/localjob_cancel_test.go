@@ -115,6 +115,24 @@ func TestLocalJob_ChildHoldingOutputDoesNotBlockRun(t *testing.T) {
 	assert.True(t, handler.HasWarning("output after the process exited was not collected"))
 }
 
+func TestLocalJob_Cancel_UnsignalableGroupIsUnconfirmed(t *testing.T) {
+	setLocalTimings(t, 200*time.Millisecond, 200*time.Millisecond)
+	pidFile := filepath.Join(t.TempDir(), "leader.pid")
+	// Every group signal fails with EPERM, as for a process that changed
+	// credentials; the job keeps running and must not block Run.
+	old := localSignal
+	localSignal = func(int, syscall.Signal) error { return syscall.EPERM }
+	t.Cleanup(func() { localSignal = old })
+
+	_, err, took := runLocalWithCancel(t, `sh -c "echo $$ > `+pidFile+`; sleep 30"`, 300*time.Millisecond)
+	leader := readPID(t, pidFile)
+	t.Cleanup(func() { _ = syscall.Kill(-leader, syscall.SIGKILL) })
+
+	require.ErrorIs(t, err, ErrMaxTimeRunning)
+	require.ErrorIs(t, err, ErrLocalTerminationUnconfirmed)
+	assert.Less(t, took, 3*time.Second, "Run must not wait for a job it cannot stop")
+}
+
 func TestLocalJob_CompletedRunKeepsItsResult(t *testing.T) {
 	setLocalTimings(t, 2*time.Second, 2*time.Second)
 
