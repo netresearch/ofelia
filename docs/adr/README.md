@@ -21,6 +21,7 @@ Each ADR follows this structure:
 | [ADR-001](./ADR-001-docker-registry-authentication.md) | Docker Registry Authentication | Accepted | 2025-12-10 |
 | [ADR-002](./ADR-002-security-boundaries.md) | Security Boundary Definition | Accepted | 2025-12-17 |
 | [ADR-003](./ADR-003-config-validation-improvements.md) | Configuration Validation Improvements | Accepted | 2025-12-24 |
+| [ADR-004](./ADR-004-compose-jobs-as-job-source.md) | Compose Jobs as a Job Source | Proposed | 2026-10-24 |
 
 ## Creating New ADRs
 
