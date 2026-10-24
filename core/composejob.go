@@ -51,6 +51,11 @@ const (
 	composeVerifyInterval = 250 * time.Millisecond
 )
 
+// composeWaitDelay bounds how long Wait keeps copying output after the CLI
+// exited, when a process it started still holds the output pipes. A var so
+// tests can shorten it.
+var composeWaitDelay = composeCLIExitTimeout
+
 // ComposeJob runs a command through the `docker compose` CLI on the host
 // Ofelia itself runs on — `compose run --rm <service>` by default, or
 // `compose exec <service>` when Exec is set. Unlike the other job types it
@@ -117,6 +122,10 @@ func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
 			"Docker client uses; set DOCKER_HOST to choose the daemon", name, envValue(env, "DOCKER_HOST")))
 	}
 
+	// Without a bound, Wait — and the cancellation path that reads its result
+	// after killing the CLI — blocks for as long as any process the CLI
+	// started keeps the output pipes open.
+	cmd.WaitDelay = composeWaitDelay
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("compose run: %w", err)
 	}
@@ -126,7 +135,7 @@ func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
 	runCtx := ctx.RunContext()
 	select {
 	case err := <-done:
-		return composeExitError(err)
+		return composeExitError(ctx, err)
 	case <-runCtx.Done():
 	}
 
@@ -134,14 +143,21 @@ func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
 	// finished run keeps its own result.
 	select {
 	case err := <-done:
-		return composeExitError(err)
+		return composeExitError(ctx, err)
 	default:
 	}
 
 	return j.cancelRun(ctx, cmd, done)
 }
 
-func composeExitError(err error) error {
+// composeExitError classifies the CLI's exit. exec.ErrWaitDelay means the CLI
+// itself succeeded and only output still arriving after composeWaitDelay was
+// dropped, so the run counts as successful with a warning.
+func composeExitError(ctx *Context, err error) error {
+	if errors.Is(err, exec.ErrWaitDelay) {
+		ctx.Warn("compose run: output after the CLI exited was not collected: " + err.Error())
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("compose run: %w", err)
 	}

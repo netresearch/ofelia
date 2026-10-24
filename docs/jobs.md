@@ -357,7 +357,8 @@ command = pg_dumpall -U postgres
 
 In the default `run` mode, Ofelia starts `docker compose run --rm -T` and labels
 the run container with `ofelia.execution=<execution ID>`. When the execution is
-canceled or reaches the global `max-runtime`, Ofelia stops the containers that
+canceled or reaches Ofelia's fixed 24-hour execution limit (`max-runtime` does
+not apply to compose jobs), Ofelia stops the containers that
 carry this label (stop signal, 10 seconds grace, then `SIGKILL`), ends the
 compose CLI, removes the labeled containers and checks that none remain.
 Dependency services that Compose started for the run do not carry the label and

@@ -632,7 +632,8 @@ exec = false                # true runs `compose exec` instead of `compose run`
 name and the working directory follow from the compose file's location, as they
 do for the `docker compose` CLI.
 
-When a `run`-mode execution is canceled or reaches the global `max-runtime`,
+When a `run`-mode execution is canceled or reaches Ofelia's fixed 24-hour
+execution limit (`max-runtime` does not apply to compose jobs),
 Ofelia stops and removes the run container it labeled with the execution ID;
 dependency services keep running. `exec`-mode commands cannot be stopped from
 outside the container. See [jobs.md](jobs.md#cancellation-and-maximum-runtime)

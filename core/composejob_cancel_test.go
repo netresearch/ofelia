@@ -301,6 +301,20 @@ func TestComposeJob_WarnsAboutIgnoredDockerContext(t *testing.T) {
 		"a context the CLI no longer follows must be reported")
 }
 
+func TestComposeJob_ChildHoldingOutputDoesNotBlockRun(t *testing.T) {
+	// The CLI exits at once, but a process it started keeps stdout open.
+	installFakeDocker(t, "sleep 3 &\nexit 0")
+	old := composeWaitDelay
+	composeWaitDelay = 200 * time.Millisecond
+	t.Cleanup(func() { composeWaitDelay = old })
+
+	start := time.Now()
+	handler := runComposeWithLogger(t, newComposeCancelJob(nil))
+
+	assert.Less(t, time.Since(start), 2*time.Second, "Run must not wait for the pipe holder to exit")
+	assert.True(t, handler.HasWarning("output after the CLI exited was not collected"))
+}
+
 func TestComposeJob_NoWarningWithoutContext(t *testing.T) {
 	installFakeDocker(t, "exit 0")
 	t.Setenv("DOCKER_HOST", "")
