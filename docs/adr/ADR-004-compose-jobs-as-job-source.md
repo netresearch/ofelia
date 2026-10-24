@@ -92,7 +92,7 @@ Rejected until the deferred work below exists:
 - Deferred to later decisions:
   - Durable scheduling and dispatch state (activation time, accepted occurrence, dispatch started, one queued occurrence), which `missed_fires: one` and `concurrency: queue` need.
   - A native Engine backend: production support requires a released Engine capability, a compatibility matrix and runtime detection; observation of Engine-owned jobs comes first.
-  - Cancellation semantics for commands executed inside existing containers (`job-exec`, `job-compose` with `exec`, `job-local`), where the client can stop waiting while the command keeps running.
+  - Cancellation semantics for commands executed inside existing containers (`job-exec`, `job-compose` with `exec`): the Engine has no way to stop an exec'd process, so the client can stop waiting while the command keeps running.
 
 ## References
 
