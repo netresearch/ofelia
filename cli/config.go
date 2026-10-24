@@ -685,7 +685,7 @@ func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
 //
 // The five loops stay in one function on purpose. Their prologues really
 // do differ (only the Docker-backed kinds take a provider and initialize
-// runtime fields; only run and service inherit the global max-runtime),
+// runtime fields; only run, service and run-mode compose jobs inherit the global max-runtime),
 // and the config types embed different core jobs, so splitting them into
 // five methods only relocates the similarity into five signatures. What
 // they genuinely share is the tail, and that now lives in finishJob.
@@ -736,6 +736,7 @@ func (c *Config) registerAllJobs() {
 	}
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
+		c.inheritComposeMaxRuntime(&j.ComposeJob)
 		j.Provider = provider
 		j.Name = name
 		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
@@ -1107,6 +1108,15 @@ func (c *Config) forgetDisabledName(name string) {
 	delete(c.disabledUnregistered, name)
 }
 
+// inheritComposeMaxRuntime gives a run-mode compose job without a max-runtime
+// of its own the [global] one, as run and service jobs get it. Exec mode is
+// left alone: its command cannot be stopped, so Validate rejects the setting.
+func (c *Config) inheritComposeMaxRuntime(j *core.ComposeJob) {
+	if !j.Exec && j.MaxRuntime == 0 {
+		j.MaxRuntime = c.Global.MaxRuntime
+	}
+}
+
 // validatable is an optional interface for jobs that support validation
 type validatable interface {
 	Validate() error
@@ -1185,6 +1195,7 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
+		c.inheritComposeMaxRuntime(&j.ComposeJob)
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
@@ -1315,6 +1326,7 @@ func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
+		c.inheritComposeMaxRuntime(&j.ComposeJob)
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)

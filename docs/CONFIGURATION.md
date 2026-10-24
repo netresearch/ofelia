@@ -631,17 +631,18 @@ service = web               # Service (or Compose job) the command runs in
 command = php bin/cleanup.php   # Passed to the service; empty runs its default command
 file = /opt/compose/myapp/compose.yml   # Compose file; default compose.yml
 exec = false                # true runs `compose exec` instead of `compose run`
+max-runtime = 1h            # run mode only; default [global] max-runtime
 ```
 
 `file`, `service` and `exec` are the only compose-specific keys. The project
 name and the working directory follow from the compose file's location, as they
 do for the `docker compose` CLI.
 
-When a `run`-mode execution is canceled or reaches Ofelia's fixed 24-hour
-execution limit (`max-runtime` does not apply to compose jobs),
-Ofelia stops and removes the run container it labeled with the execution ID;
-dependency services keep running. `exec`-mode commands cannot be stopped from
-outside the container. See [jobs.md](jobs.md#cancellation-and-maximum-runtime)
+When a `run`-mode execution is canceled or reaches its `max-runtime` (the job's
+own value, else `[global] max-runtime`), Ofelia stops and removes the run
+container it labeled with the execution ID; dependency services keep running.
+`exec`-mode commands cannot be stopped from outside the container, so
+`max-runtime` together with `exec = true` is rejected. See [jobs.md](jobs.md#cancellation-and-maximum-runtime)
 for details, including which Docker endpoint the compose CLI uses.
 
 ### Compose Projects - Jobs Defined in Compose Files

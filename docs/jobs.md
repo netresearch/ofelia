@@ -361,6 +361,11 @@ container is started with `docker compose run --rm`.
   - Use `docker compose exec` instead of `run`.
 - `command`: string
   - Command passed to the service (optional).
+- `max-runtime`: duration = `[global] max-runtime`
+  - Maximum time a `run`-mode execution may run before its container is stopped
+    and removed. Without a value of its own the job uses `[global] max-runtime`
+    (default `24h`). Not supported with `exec = true`; the configuration is
+    rejected, because an exec'd command cannot be stopped.
 - `run-on-startup`: boolean = `false`
   - Run the job once immediately when the scheduler starts, before regular cron-based scheduling begins. Startup executions are dispatched in non-blocking goroutines so they do not delay scheduler startup.
 
@@ -419,8 +424,8 @@ command = pg_dumpall -U postgres
 
 In the default `run` mode, Ofelia starts `docker compose run --rm -T` and labels
 the run container with `ofelia.execution=<execution ID>`. When the execution is
-canceled or reaches Ofelia's fixed 24-hour execution limit (`max-runtime` does
-not apply to compose jobs), Ofelia stops the containers that
+canceled or reaches its `max-runtime` (the job's own value, else
+`[global] max-runtime`), Ofelia stops the containers that
 carry this label (stop signal, 10 seconds grace, then `SIGKILL`), ends the
 compose CLI, removes the labeled containers and checks that none remain.
 Dependency services that Compose started for the run do not carry the label and
@@ -438,7 +443,8 @@ the daemon the jobs should run on.
 
 In `exec` mode the command runs inside an existing container, and the Docker
 Engine API cannot stop an exec'd process from outside. Canceling the execution
-does not stop the command; enforce a limit inside it, e.g. `timeout 30s ...`.
+does not stop the command, and `max-runtime` is rejected in this mode; enforce
+a limit inside the command, e.g. `timeout 30s ...`.
 
 ## Compose projects
 
@@ -484,6 +490,9 @@ loaded with.
 
 The section is read from the INI file only; container labels cannot register a
 project.
+
+The jobs of a project are bounded by `[global] max-runtime`, like a
+`[job-compose]` without a value of its own.
 
 ### Jobs and names
 

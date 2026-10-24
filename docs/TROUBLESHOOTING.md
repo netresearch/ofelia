@@ -1069,7 +1069,8 @@ Error: Container failed to respond
 **Solutions**:
 
 1. **Raise the limit where it is set**: exec jobs have no `timeout` key, and
-   `max-runtime` applies only to `job-run` and `job-service-run`. A timeout on
+   `max-runtime` applies only to `job-run`, `job-service-run` and `job-compose`
+   in `run` mode. A timeout on
    an exec job therefore comes from the command or from the Docker daemon, not
    from ofelia. Cap it explicitly if you want a known limit:
    ```ini

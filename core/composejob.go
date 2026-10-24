@@ -32,6 +32,11 @@ const ComposeExecutionLabel = "ofelia.execution"
 // through the Docker API that the run container is gone.
 var ErrComposeTerminationUnconfirmed = errors.New("compose run termination unconfirmed")
 
+// ErrComposeExecMaxRuntime rejects max-runtime on a compose job in exec mode:
+// the command runs inside an existing container and cannot be stopped from
+// outside, so the bound would end only Ofelia's wait, not the command.
+var ErrComposeExecMaxRuntime = errors.New("max-runtime is not supported with exec = true")
+
 var (
 	errComposeNoProvider       = errors.New("no Docker provider configured")
 	errComposeContainersRemain = errors.New("run containers still present")
@@ -68,6 +73,11 @@ type ComposeJob struct {
 	File     string         `default:"compose.yml" gcfg:"file" mapstructure:"file" hash:"true"`
 	Service  string         `gcfg:"service" mapstructure:"service" hash:"true"`
 	Exec     bool           `default:"false" gcfg:"exec" mapstructure:"exec" hash:"true"`
+	// MaxRuntime bounds a run-mode execution like RunJob.MaxRuntime: when it
+	// expires, the run container is stopped and removed. Zero means no
+	// per-job value; the configuration then fills in [global] max-runtime.
+	// Not supported with Exec (see Validate).
+	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
 	// Project is set only for jobs loaded from a registered Compose project
 	// ([compose-project] in the INI, see ADR-004). It cannot be set on a
 	// [job-compose] section: the project context lives in the registration.
@@ -98,6 +108,25 @@ type ComposeProjectContext struct {
 // Service, Provider and the embedded BareJob.
 func NewComposeJob() *ComposeJob { return &ComposeJob{} }
 
+// GetMaxRuntime exposes the per-job maximum runtime so the scheduler bounds
+// the run context with it (MaxRuntimeProvider). Zero leaves the scheduler's
+// 24h default in place.
+func (j *ComposeJob) GetMaxRuntime() time.Duration {
+	return j.MaxRuntime
+}
+
+// Validate rejects a negative max-runtime, and a max-runtime in exec mode,
+// where nothing could enforce it.
+func (j *ComposeJob) Validate() error {
+	if j.MaxRuntime < 0 {
+		return fmt.Errorf("%w: %s", ErrMaxRuntimeNegative, j.MaxRuntime)
+	}
+	if j.Exec && j.MaxRuntime > 0 {
+		return ErrComposeExecMaxRuntime
+	}
+	return nil
+}
+
 // Run executes the compose command and blocks until the child process exits.
 // File, Service and the parsed command arguments are checked for command
 // injection first, so a malformed job fails before any process is started.
@@ -118,8 +147,9 @@ func NewComposeJob() *ComposeJob { return &ComposeJob{} }
 // In exec mode the command runs inside an existing service container. The
 // Docker Engine API has no way to stop an exec'd process from outside (see
 // ExecJob and issue #655), so the child process is not tied to the run
-// context: canceling the run, or a max-runtime deadline, does not stop it.
-// Enforce a hard limit inside the command (e.g. `timeout 30s ...`).
+// context: canceling the run, or the scheduler's default deadline, does not
+// stop it, which is why Validate rejects max-runtime in exec mode. Enforce a
+// hard limit inside the command (e.g. `timeout 30s ...`).
 func (j *ComposeJob) Run(ctx *Context) error {
 	cmd, err := j.buildCommand(ctx)
 	if err != nil {
