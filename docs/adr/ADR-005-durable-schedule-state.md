@@ -125,7 +125,7 @@ Both are additive changes in a module Netresearch maintains.
 
 ### Negative
 
-- Each fire of an affected schedule entry costs atomic writes of the state file: two for a run (dispatch and outcome), one for a fire that is skipped or coalesced. At a one-minute schedule that is up to two file renames per minute per job.
+- Each fire of an affected schedule entry costs atomic writes of the state file: two for a run (dispatch and outcome), a third when the run first waits for a global slot (waiting, then started), one for a fire that is skipped or coalesced. At a one-minute schedule that is two, at most three, file renames per minute per job.
 - A crash during a run makes its outcome unknown rather than retried. An operator must check the occurrence by hand.
 - After a crash, an `exec`-mode Compose job can run twice at the same time, because the restarted daemon cannot see the command that is still running.
 - A go-cron release must ship before the implementation.
