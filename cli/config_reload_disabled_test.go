@@ -186,6 +186,16 @@ func TestReplaceIfChanged_DisabledSurvivesRejectedReplacement(t *testing.T) {
 	entries := cfg.sh.Entries()
 	require.Len(t, entries, 1)
 	assert.True(t, entries[0].Paused)
+
+	// Once the corrected job is registered, the remembered name is gone: an
+	// operator who enables it keeps it enabled through the next reload.
+	require.NoError(t, cfg.sh.EnableJob("testjob"))
+	nextJob := &ExecJobConfig{Schedule: "@every 20s", Command: "echo next"}
+	require.True(t, replaceIfChanged(cfg, "testjob", fixedJob, nextJob, prep, JobSourceINI))
+	assert.False(t, cfg.sh.IsJobDisabled("testjob"), "an enabled job must stay enabled through the next reload")
+	entries = cfg.sh.Entries()
+	require.Len(t, entries, 1)
+	assert.False(t, entries[0].Paused)
 }
 
 // The other direction: an enabled job stays enabled after the replacement.
