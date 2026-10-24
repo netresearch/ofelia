@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/client"
@@ -137,7 +138,18 @@ func (s *ExecServiceAdapter) Inspect(ctx context.Context, execID string) (*domai
 	}, nil
 }
 
+// execInspectAfterCancelTimeout bounds the inspection Run performs after ctx
+// was canceled, on a fresh context: the canceled one would fail every call.
+const execInspectAfterCancelTimeout = 10 * time.Second
+
 // Run executes a command in a container and waits for it to complete.
+//
+// When ctx is canceled before the command finished, Run stops reading its
+// output and inspects the exec on a fresh bounded context. The Docker Engine
+// API cannot stop an exec'd process, so Run reports what it finds: the exit
+// code when the process has exited meanwhile, domain.ErrExecStillRunning when
+// it is still running, and domain.ErrExecOutcomeUnknown when the inspection
+// fails. Both errors name the exec ID.
 func (s *ExecServiceAdapter) Run(
 	ctx context.Context, containerID string, config *domain.ExecConfig, stdout, stderr io.Writer,
 ) (int, error) {
@@ -170,6 +182,10 @@ func (s *ExecServiceAdapter) Run(
 		return -1, err
 	}
 	defer hijacked.Close()
+	// The attached stream is not bound to ctx: close it on cancellation so
+	// the copy below returns instead of waiting for the process to end.
+	stopClose := context.AfterFunc(ctx, func() { _ = hijacked.Close() })
+	defer stopClose()
 
 	// Copy output
 	if config.Tty {
@@ -181,6 +197,9 @@ func (s *ExecServiceAdapter) Run(
 		// Non-TTY mode: demultiplex stdout and stderr
 		_, err = stdcopy.StdCopy(stdout, stderr, hijacked.Reader)
 	}
+	if ctx.Err() != nil {
+		return s.inspectAfterCancel(ctx, execID)
+	}
 	if err != nil && !errors.Is(err, io.EOF) {
 		return -1, fmt.Errorf("copying exec output: %w", err)
 	}
@@ -191,5 +210,24 @@ func (s *ExecServiceAdapter) Run(
 		return -1, err
 	}
 
+	return inspect.ExitCode, nil
+}
+
+// inspectAfterCancel reports the state of an exec whose caller stopped
+// waiting. It uses a fresh context because the caller's is already canceled;
+// the canceled one is accepted, as in RunJob.cleanupOnDeadline, and not used
+// as the parent, which would fail the inspection at once.
+//
+//nolint:contextcheck // intentional fresh ctx; parent already canceled
+func (s *ExecServiceAdapter) inspectAfterCancel(_ context.Context, execID string) (int, error) {
+	inspectCtx, cancel := context.WithTimeout(context.Background(), execInspectAfterCancelTimeout)
+	defer cancel()
+	inspect, err := s.Inspect(inspectCtx, execID)
+	if err != nil {
+		return -1, fmt.Errorf("%w: exec %s: %w", domain.ErrExecOutcomeUnknown, execID, err)
+	}
+	if inspect.Running {
+		return -1, fmt.Errorf("%w: exec %s (pid %d)", domain.ErrExecStillRunning, execID, inspect.Pid)
+	}
 	return inspect.ExitCode, nil
 }

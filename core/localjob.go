@@ -5,6 +5,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -42,20 +43,72 @@ func NewLocalJob() *LocalJob {
 	return &LocalJob{}
 }
 
+// localJobStopGrace is the time between SIGTERM and SIGKILL when a canceled
+// local job is terminated. localJobWaitDelay bounds how long Run keeps
+// collecting output after the process exited, when a process it started still
+// holds the output pipes. Both are vars so tests can shorten them.
+var (
+	localJobStopGrace = 10 * time.Second
+	localJobWaitDelay = 10 * time.Second
+)
+
 // Run looks up the binary on PATH, resolves the environment and executes the
 // command in Dir, blocking until the process exits. Returns ErrEmptyCommand
 // for an empty command, a lookup error when the binary is not on PATH, the
 // env-resolution error, or the process's exit error. Output is streamed to
-// the execution's stdout/stderr streams. The child process is not tied to the
-// run context: canceling the run, or a max-runtime deadline, does not kill
-// it.
+// the execution's stdout/stderr streams.
+//
+// The process is bound to the run context. When the run is canceled — on
+// scheduler shutdown, job removal or the execution time limit — Run sends
+// SIGTERM to the process group the command runs in, sends SIGKILL to whatever
+// is left after localJobStopGrace, and returns ErrMaxTimeRunning. On Windows,
+// which has no process groups or SIGTERM, only the command's own process is
+// killed, at once.
 func (j *LocalJob) Run(ctx *Context) error {
 	cmd, err := j.buildCommand(ctx)
 	if err != nil {
 		return err
 	}
+	setLocalProcessGroup(cmd)
+	cmd.WaitDelay = localJobWaitDelay
 
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("local run: %w", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	runCtx := ctx.RunContext()
+	select {
+	case err := <-done:
+		return localExitError(ctx, err)
+	case <-runCtx.Done():
+	}
+
+	// The process may have exited in the same instant the context fired; a
+	// finished run keeps its own result.
+	select {
+	case err := <-done:
+		return localExitError(ctx, err)
+	default:
+	}
+
+	if exitErr := terminateLocalProcess(cmd, done); exitErr != nil {
+		ctx.Log("local process exited after cancellation: " + exitErr.Error())
+	}
+	return ErrMaxTimeRunning
+}
+
+// localExitError classifies the process exit. exec.ErrWaitDelay means the
+// process itself succeeded and only output still arriving after
+// localJobWaitDelay was dropped, so the run counts as successful with a
+// warning.
+func localExitError(ctx *Context, err error) error {
+	if errors.Is(err, exec.ErrWaitDelay) {
+		ctx.Warn("local run: output after the process exited was not collected: " + err.Error())
+		return nil
+	}
+	if err != nil {
 		return fmt.Errorf("local run: %w", err)
 	}
 	return nil

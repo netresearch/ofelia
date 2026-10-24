@@ -13,6 +13,13 @@ import (
 	"github.com/netresearch/ofelia/core/domain"
 )
 
+// ErrExecStillRunning and ErrExecOutcomeUnknown classify a canceled job-exec
+// execution; see ExecJob.Run.
+var (
+	ErrExecStillRunning   = domain.ErrExecStillRunning
+	ErrExecOutcomeUnknown = domain.ErrExecOutcomeUnknown
+)
+
 // ExecJob runs a command inside an already-running container via
 // `docker exec`. The container named by Container must exist and be running;
 // Ofelia neither creates nor removes it, so state left behind by the command
@@ -80,12 +87,20 @@ func (j *ExecJob) consoleSize() *[2]uint {
 //
 // Limitation (issue #655): when the wrapper-level deadline from
 // #651's boundJobContext fires (or any other ctx cancellation occurs),
-// the SDK read returns promptly but the in-container process is left
+// Ofelia stops reading the output but the in-container process is left
 // running. The Docker Engine API exposes no `ExecStop` primitive — once
 // an exec session is started Ofelia cannot kill the inner process from
 // the outside. Operators relying on a hard ceiling for `job-exec` MUST
 // enforce it inside the entrypoint (e.g. `timeout 30s ...`) rather than
 // via `max-runtime` alone.
+//
+// What Ofelia does instead is report what happened. After a cancellation
+// it inspects the exec on a fresh context: a process that has exited
+// meanwhile is classified by its exit code as usual; one that is still
+// running yields ErrMaxTimeRunning wrapped with ErrExecStillRunning, and a
+// failed inspection yields ErrMaxTimeRunning wrapped with
+// ErrExecOutcomeUnknown. Both name the exec ID, so the execution record
+// never claims that the command stopped.
 func (j *ExecJob) Run(ctx *Context) error {
 	// Use the (deadline-bounded) middleware-chain context for cancellation
 	// propagation. The fallback to context.Background() is centralized in
@@ -121,6 +136,9 @@ func (j *ExecJob) Run(ctx *Context) error {
 		ctx.Execution.ErrorStream,
 	)
 	if err != nil {
+		if runCtx.Err() != nil {
+			return fmt.Errorf("exec run: %w: %w", ErrMaxTimeRunning, err)
+		}
 		return fmt.Errorf("exec run: %w", err)
 	}
 

@@ -33,6 +33,15 @@ var (
 
 	// ErrMaxTimeRunning indicates a job exceeded its maximum runtime.
 	ErrMaxTimeRunning = errors.New("maximum time running exceeded")
+
+	// ErrExecStillRunning indicates that an exec'd process was still running
+	// when Ofelia stopped waiting for it. The Docker Engine API cannot stop an
+	// exec'd process, so it keeps running inside the container.
+	ErrExecStillRunning = errors.New("exec still running")
+
+	// ErrExecOutcomeUnknown indicates that Ofelia stopped waiting for an
+	// exec'd process and could not inspect whether it is still running.
+	ErrExecOutcomeUnknown = errors.New("exec outcome unknown")
 )
 
 // ContainerNotFoundError indicates a container was not found.
