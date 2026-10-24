@@ -32,7 +32,7 @@ Ofelia keeps one record per **schedule entry**: a job identity plus a trigger po
 
 | Field | Meaning |
 |-------|---------|
-| Schedule revision | Hash of the cron expression and the resolved time zone |
+| Schedule revision | Hash of the cron expression, the resolved time zone, `concurrency` and `missed_fires` |
 | Activation time | When this schedule revision was first armed |
 | Cursor | The most recent scheduled time the scheduler evaluated while it was running |
 | Dispatch | The occurrence that was admitted last: its scheduled time, its trigger kind (scheduled, catch-up, manual), its execution ID, its state (waiting for a global slot, started, ended) and, once it ended, its outcome |
@@ -53,8 +53,8 @@ When an entry is registered, Ofelia compares the stored record with the configur
 | Situation | Effect |
 |-----------|--------|
 | No record | **First registration.** The record is written durably with activation time = cursor = now, and no catch-up runs. Fires before activation are never missed; a fire after it that falls into a later downtime is caught up, because the cursor is set. |
-| Record, same schedule revision | **Downtime.** Ofelia computes the most recent scheduled time between the cursor and now. If there is one, a single catch-up with that scheduled time starts through Ofelia's own dispatch path, the one a pending occurrence takes. Admitting it sets the cursor to that time in the same atomic update as its dispatch, so a second restart does not compute it again. |
-| Record, different schedule revision | **Schedule change.** Treated as first registration. A time that the old expression produced is not a missed fire of the new one, so a pending or waiting occurrence of the old revision is dropped and logged. |
+| Record, same schedule revision | **Downtime.** Ofelia computes the most recent scheduled time `t` with `cursor < t <= now`. If there is one, a single catch-up with that scheduled time starts through Ofelia's own dispatch path, the one a pending occurrence takes. Admitting it sets the cursor to that time in the same atomic update as its dispatch, so a second restart does not compute it again. |
+| Record, different schedule revision | **Schedule change.** Treated as first registration. A time that the old expression produced is not a missed fire of the new one, and a pending occurrence accepted under `queue` is not valid under `forbid`, so a pending or waiting occurrence of the old revision is dropped and logged. |
 | Job disabled | **Deliberate disable.** The entry is added paused, no catch-up is computed, and nothing of it starts while the job is disabled. Disabling drops a pending or waiting occurrence and logs it. Enabling the job sets the cursor to the enable time, so fires during the disabled period never count as missed. |
 | Job definition changed, schedule unchanged | The record is kept, because it is keyed by the schedule entry and not by the go-cron entry. The reload cancels a run in progress, as it does today; that occurrence ends with the outcome canceled. A pending occurrence, and a scheduled or catch-up dispatch still waiting for a global slot, stay in the record and start on the new entry, but only after the canceled run of the old entry has ended. A manual dispatch still waiting is dropped and logged. A disabled job stays disabled. |
 
@@ -73,10 +73,11 @@ There is no grace period: the specification defines none. A daemon that was down
 For a schedule entry with `missed_fires: one` or `concurrency: queue`, Ofelia writes the dispatch record durably before it starts the workload, and writes the outcome when the run ends. The guarantee is **at most once per occurrence**:
 
 - A crash before the write leaves the fire unrecorded. After the restart it counts as missed and runs as the catch-up. It had not started, so it does not run twice.
+- The state "started" is written immediately before the workload is launched. A crash between that write and the launch therefore loses the occurrence: it counts as handled with an unknown outcome although nothing ran. This is the price of at most once; the opposite order could run it twice.
 - A crash after the run started and before it finished leaves a started dispatch with no recorded end. After the restart that occurrence counts as handled and is not started again. Its outcome is recorded as unknown, in the same terms as `ErrExecOutcomeUnknown` for exec jobs.
 - For `run`-mode Compose jobs, the `ofelia.execution` label identifies that workload's container. While a container with the label of an unended dispatch still runs, the entry counts as busy: `forbid` skips the catch-up and later fires, `queue` holds them in the slot. For `exec` mode no such check exists, so the restarted daemon can start a second run beside a command that is still running.
 
-- A run that shutdown cancels ends with the outcome canceled. It counts as handled and is not started again after the restart.
+- A run that shutdown cancels ends with the outcome canceled. It counts as handled and is not started again after the restart. A run that has not ended when the 30-second shutdown wait expires has no recorded end, so after the restart it follows the crash rule: outcome unknown, and for `run` mode the entry stays busy while its labelled container runs.
 - A dispatch that is still waiting for a global slot has not started, so cancellation does not end it. On shutdown or reload the wait returns at once and the dispatch keeps the state "waiting"; it then starts as the catch-up or on the new entry, as after a crash. Two cases drop it and log it instead: a manual dispatch, and any waiting dispatch after a schedule change. A goroutine that gets its slot at the moment it is canceled checks for cancellation again and does not start the workload, so the occurrence cannot start on the old and the new entry.
 
 Running an occurrence twice would be the worse failure for jobs such as backups, rotations and migrations.
