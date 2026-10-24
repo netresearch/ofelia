@@ -34,29 +34,34 @@ func composeJobFor(t *testing.T, cfg any, req *jobRequest) (*core.ComposeJob, er
 }
 
 // An API-created compose job follows the same max-runtime ladder as an API
-// run job and an INI compose job: its own value, else the global.
+// run job and an INI compose job: its own value, else the scheduler's global
+// at run time. So an omitted value stays 0 on the job, and only a run-mode
+// job inherits.
 func TestComposeJob_APIMaxRuntime(t *testing.T) {
 	t.Parallel()
-	cfg := stubGlobalConfig{d: 2 * time.Hour}
 
 	cases := map[string]struct {
-		req  jobRequest
-		want time.Duration
+		req      jobRequest
+		want     time.Duration
+		inherits bool
 	}{
-		"omitted inherits the global": {req: jobRequest{}, want: 2 * time.Hour},
-		"explicit value wins":         {req: jobRequest{MaxRuntime: "30m"}, want: 30 * time.Minute},
-		"exec mode inherits nothing":  {req: jobRequest{ExecFlag: true}, want: 0},
+		"omitted inherits the global": {req: jobRequest{}, want: 0, inherits: true},
+		"explicit value wins":         {req: jobRequest{MaxRuntime: "30m"}, want: 30 * time.Minute, inherits: true},
+		"exec mode inherits nothing":  {req: jobRequest{ExecFlag: true}, want: 0, inherits: false},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			req := tc.req
-			cj, err := composeJobFor(t, cfg, &req)
+			cj, err := composeJobFor(t, nil, &req)
 			if err != nil {
 				t.Fatalf("newComposeJobFromRequest: %v", err)
 			}
 			if cj.MaxRuntime != tc.want {
 				t.Errorf("MaxRuntime = %v, want %v", cj.MaxRuntime, tc.want)
+			}
+			if got := cj.InheritsGlobalMaxRuntime(); got != tc.inherits {
+				t.Errorf("InheritsGlobalMaxRuntime() = %v, want %v", got, tc.inherits)
 			}
 		})
 	}

@@ -55,9 +55,10 @@ func TestComposeJobs_InheritGlobalMaxRuntimeAtStart(t *testing.T) {
 	t.Parallel()
 	c := registerCompose(t, composeMaxRuntimeINI)
 
-	assert.Equal(t, 30*time.Minute, c.ComposeJobs["inherits"].MaxRuntime, "a run-mode job inherits [global] max-runtime")
-	assert.Equal(t, 5*time.Minute, c.ComposeJobs["own"].MaxRuntime, "a job's own max-runtime wins")
+	assert.Equal(t, 30*time.Minute, c.sh.MaxRuntimeFor(c.ComposeJobs["inherits"]), "a run-mode job inherits [global] max-runtime")
+	assert.Equal(t, 5*time.Minute, c.sh.MaxRuntimeFor(c.ComposeJobs["own"]), "a job's own max-runtime wins")
 	assert.Zero(t, c.ComposeJobs["exec"].MaxRuntime, "exec mode cannot be stopped, so it inherits nothing")
+	assert.Equal(t, 24*time.Hour, c.sh.MaxRuntimeFor(c.ComposeJobs["exec"]), "exec mode stays on the scheduler default")
 }
 
 func TestComposeProjectJobs_InheritGlobalMaxRuntime(t *testing.T) {
@@ -67,7 +68,7 @@ func TestComposeProjectJobs_InheritGlobalMaxRuntime(t *testing.T) {
 	c := registerCompose(t, "[global]\nmax-runtime = 30m\n\n[compose-project \"shop\"]\nfile = "+composePath+"\n")
 
 	require.Contains(t, c.ComposeJobs, "shop.backup")
-	assert.Equal(t, 30*time.Minute, c.ComposeJobs["shop.backup"].MaxRuntime)
+	assert.Equal(t, 30*time.Minute, c.sh.MaxRuntimeFor(c.ComposeJobs["shop.backup"]))
 }
 
 func TestComposeJobs_InheritGlobalMaxRuntimeOnReload(t *testing.T) {
@@ -81,7 +82,7 @@ func TestComposeJobs_InheritGlobalMaxRuntimeOnReload(t *testing.T) {
 	require.NoError(t, c.iniConfigUpdate())
 
 	require.Contains(t, c.ComposeJobs, "added")
-	assert.Equal(t, 30*time.Minute, c.ComposeJobs["added"].MaxRuntime)
+	assert.Equal(t, 30*time.Minute, c.sh.MaxRuntimeFor(c.ComposeJobs["added"]))
 }
 
 func TestComposeJobs_InheritGlobalMaxRuntimeFromLabels(t *testing.T) {
@@ -109,9 +110,10 @@ func TestComposeJobs_InheritGlobalMaxRuntimeFromLabels(t *testing.T) {
 	}})
 
 	run := findComposeJob(t, cfg, "run")
-	assert.Equal(t, 30*time.Minute, run.MaxRuntime)
+	assert.Equal(t, 30*time.Minute, cfg.sh.MaxRuntimeFor(run))
 	viaExec := findComposeJob(t, cfg, "viaexec")
 	assert.Zero(t, viaExec.MaxRuntime, "exec mode inherits nothing and drops its own value")
+	assert.Equal(t, 24*time.Hour, cfg.sh.MaxRuntimeFor(viaExec))
 }
 
 // findComposeJob returns the label-defined compose job whose name ends in

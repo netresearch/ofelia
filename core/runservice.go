@@ -5,6 +5,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -47,7 +48,7 @@ type RunServiceJob struct {
 	EnvFile     []string      `gcfg:"env-file" mapstructure:"env-file," hash:"true"`
 	EnvFrom     []string      `gcfg:"env-from" mapstructure:"env-from," hash:"true"`
 	Annotations []string      `mapstructure:"annotations" hash:"true"`
-	MaxRuntime  time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
+	MaxRuntime  time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" hash:"true"`
 }
 
 // NewRunServiceJob returns a RunServiceJob bound to provider, which is the
@@ -59,11 +60,15 @@ func NewRunServiceJob(provider DockerProvider) *RunServiceJob {
 
 // GetMaxRuntime exposes the configured per-job maximum runtime so the
 // scheduler can wrap the per-run context with a deadline (issue #638).
-// A zero value means "no per-job override"; the scheduler falls back to
-// its default bound (typically 24h, mirroring `[global] max-runtime`).
+// A zero value means "no per-job override"; the run then follows the
+// scheduler's current `[global] max-runtime` (24h without one).
 func (j *RunServiceJob) GetMaxRuntime() time.Duration {
 	return j.MaxRuntime
 }
+
+// InheritsGlobalMaxRuntime reports that a service job without a max-runtime
+// of its own runs under `[global] max-runtime` (MaxRuntimeProvider).
+func (j *RunServiceJob) InheritsGlobalMaxRuntime() bool { return true }
 
 // InitializeRuntimeFields initializes fields that depend on the Docker provider.
 // This should be called after the Provider field is set.
@@ -246,6 +251,11 @@ func (j *RunServiceJob) watchContainer(ctx context.Context, jobCtx *Context, svc
 			select {
 			case <-ctx.Done():
 				err = ctx.Err()
+				// An inherited [global] max-runtime ends the run by
+				// canceling the context with this cause.
+				if errors.Is(context.Cause(ctx), ErrMaxTimeRunning) {
+					err = ErrMaxTimeRunning
+				}
 				return
 			case <-ticker.C:
 			}

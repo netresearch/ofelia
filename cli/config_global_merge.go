@@ -257,7 +257,8 @@ func (c *Config) applyAllowListedGlobals(parsed *Config) bool {
 	return changed
 }
 
-// refreshRuntimeKnobsAfterGlobalMerge re-applies the two process-wide knobs
+// refreshRuntimeKnobsAfterGlobalMerge hands the scheduler the current
+// [global] max-runtime and re-applies the two process-wide knobs
 // (log level, notification deduplicator) that were already initialized from
 // the INI side before applyAllowListedGlobals had a chance to forward
 // label-decoded overrides into c.Global. Without this:
@@ -278,6 +279,11 @@ func (c *Config) applyAllowListedGlobals(parsed *Config) bool {
 // This avoids re-initializing the deduplicator (which allocates a fresh map)
 // when only Slack/Mail/Save fields changed.
 func (c *Config) refreshRuntimeKnobsAfterGlobalMerge(prevLogLevel string, prevCooldown time.Duration) {
+	// Jobs read [global] max-runtime from the scheduler at run time, so a
+	// label-supplied value takes effect without re-registering them.
+	if c.sh != nil {
+		c.sh.SetGlobalMaxRuntime(c.Global.MaxRuntime)
+	}
 	if c.Global.LogLevel != prevLogLevel && c.Global.LogLevel != "" {
 		if err := ApplyLogLevel(c.Global.LogLevel, c.levelVar); err != nil {
 			c.logger.Warn("Failed to apply log level from container label (using current)",

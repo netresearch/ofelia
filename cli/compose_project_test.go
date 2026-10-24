@@ -264,6 +264,7 @@ func prepareReload(t *testing.T, iniPath string) *Config {
 	c.buildSchedulerMiddlewares(c.sh)
 	c.dockerHandler = &DockerHandler{ctx: context.Background(), logger: logger}
 	c.levelVar = &slog.LevelVar{}
+	c.sh.SetGlobalMaxRuntime(c.Global.MaxRuntime) // as registerAllJobs does
 	for _, j := range c.ComposeJobs {
 		require.NoError(t, defaults.Set(j))
 		require.NoError(t, c.sh.AddJob(j))

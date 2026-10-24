@@ -21,7 +21,6 @@ import (
 	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
-	"github.com/netresearch/ofelia/web"
 )
 
 const (
@@ -607,28 +606,6 @@ func (c *Config) mergeJobsFromDockerContainers() {
 	c.refreshRuntimeKnobsAfterGlobalMerge(prevLogLevel, prevCooldown)
 }
 
-// The web server holds this configuration as `any`, so nothing links the
-// two sides of #806 except this line. It lives here rather than in a test
-// on purpose: in a _test.go file `go build ./...` would still succeed
-// after a rename, the server's type assertion would start failing at
-// runtime, and every API-created run job would be back on the 24h
-// constant -- the bug, restored silently in exactly the builds that ship.
-var _ web.GlobalMaxRuntimeProvider = (*Config)(nil)
-
-// GlobalMaxRuntime reports the operator's `[global] max-runtime`.
-//
-// It exists for the web server, which holds this configuration as `any`
-// and reads it through web.GlobalMaxRuntimeProvider so an API-created run
-// job inherits the same bound an INI one gets from registerAllJobs (#806).
-//
-// Takes the read lock: the label reconcile writes Global under c.mu while
-// the web server serves requests.
-func (c *Config) GlobalMaxRuntime() time.Duration {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.Global.MaxRuntime
-}
-
 // mergeJobs copies jobs from src into dst while respecting INI precedence.
 func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind string) {
 	for name, j := range src {
@@ -685,11 +662,13 @@ func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
 //
 // The five loops stay in one function on purpose. Their prologues really
 // do differ (only the Docker-backed kinds take a provider and initialize
-// runtime fields; only run, service and run-mode compose jobs inherit the global max-runtime),
+// runtime fields; only compose jobs drop an exec-mode max-runtime),
 // and the config types embed different core jobs, so splitting them into
 // five methods only relocates the similarity into five signatures. What
 // they genuinely share is the tail, and that now lives in finishJob.
 func (c *Config) registerAllJobs() {
+	// Jobs without a max-runtime of their own read this at run time.
+	c.sh.SetGlobalMaxRuntime(c.Global.MaxRuntime)
 	provider := c.dockerHandler.GetDockerProvider()
 	rejected := 0
 
@@ -707,9 +686,6 @@ func (c *Config) registerAllJobs() {
 	for name, j := range c.RunJobs {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -725,9 +701,6 @@ func (c *Config) registerAllJobs() {
 	for name, j := range c.ServiceJobs {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -736,7 +709,7 @@ func (c *Config) registerAllJobs() {
 	}
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
-		c.inheritComposeMaxRuntime(name, &j.ComposeJob)
+		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
 		j.Provider = provider
 		j.Name = name
 		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
@@ -1108,22 +1081,16 @@ func (c *Config) forgetDisabledName(name string) {
 	delete(c.disabledUnregistered, name)
 }
 
-// inheritComposeMaxRuntime gives a run-mode compose job without a max-runtime
-// of its own the [global] one, as run and service jobs get it. Exec mode gets
-// none: its command cannot be stopped. A value set there is dropped with a
-// warning rather than failing the configuration, because the key loaded
-// (without effect) before compose jobs honored it.
-func (c *Config) inheritComposeMaxRuntime(name string, j *core.ComposeJob) {
-	if j.Exec {
-		if j.MaxRuntime != 0 {
-			c.logger.Warn("max-runtime is ignored for a compose job with exec = true: an exec'd command cannot be stopped",
-				"job", name, "max-runtime", j.MaxRuntime)
-			j.MaxRuntime = 0
-		}
-		return
-	}
-	if j.MaxRuntime == 0 {
-		j.MaxRuntime = c.Global.MaxRuntime
+// dropComposeExecMaxRuntime removes a max-runtime from a compose job in exec
+// mode: its command cannot be stopped. The value is dropped with a warning
+// rather than failing the configuration, because the key loaded (without
+// effect) before compose jobs honored it. A run-mode job keeps its own value;
+// without one it runs under the scheduler's [global] max-runtime.
+func (c *Config) dropComposeExecMaxRuntime(name string, j *core.ComposeJob) {
+	if j.Exec && j.MaxRuntime != 0 {
+		c.logger.Warn("max-runtime is ignored for a compose job with exec = true: an exec'd command cannot be stopped",
+			"job", name, "max-runtime", j.MaxRuntime)
+		j.MaxRuntime = 0
 	}
 }
 
@@ -1173,9 +1140,6 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	runPrep := func(name string, j *RunJobConfig) {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -1193,9 +1157,6 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	servicePrep := func(name string, j *RunServiceConfig) {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -1205,7 +1166,7 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
-		c.inheritComposeMaxRuntime(name, &j.ComposeJob)
+		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
@@ -1226,7 +1187,7 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	// Forward allow-listed non-webhook globals (Slack, Mail, Save,
 	// log-level, max-runtime, notification-cooldown, enable-strict-validation)
 	// BEFORE syncJobMap so the prep closures above — which call
-	// mergeNotificationDefaults / read c.Global.MaxRuntime — naturally pick
+	// mergeNotificationDefaults — naturally pick
 	// up fresh label values for any new or changed job. See #652.
 	//
 	// LIMITATION (documented in cli/config_global_merge.go header): jobs
@@ -1301,9 +1262,6 @@ func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 	runPrep := func(name string, j *RunJobConfig) {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -1323,9 +1281,6 @@ func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 	svcPrep := func(name string, j *RunServiceConfig) {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -1336,7 +1291,7 @@ func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
-		c.inheritComposeMaxRuntime(name, &j.ComposeJob)
+		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
@@ -1395,6 +1350,7 @@ func (c *Config) iniConfigUpdate() error {
 	c.logger.Debug(fmt.Sprintf("applied config files from %s", strings.Join(files, ", ")))
 	if globalChanged {
 		c.Global = parsed.Global
+		c.sh.SetGlobalMaxRuntime(c.Global.MaxRuntime)
 		c.rebuildAfterGlobalChange()
 	}
 
