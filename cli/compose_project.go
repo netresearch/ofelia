@@ -75,11 +75,19 @@ func decodeComposeProjectSection(section *ini.Section, c *Config, unknownJobs *[
 	return nil
 }
 
+// rejectedRevisionPrefix marks a project that was rejected. Its recorded
+// revision is the prefix plus the error, so a later poll reloads only when the
+// error changes or the project loads.
+const rejectedRevisionPrefix = "rejected: "
+
 // expandComposeProjects loads every registered Compose project and adds one
 // ComposeJobConfig per scheduled job to c.ComposeJobs. A project that fails to
-// load, or that has a job outside the supported trigger subset, fails the whole
-// configuration: it either runs as specified or not at all.
-func (c *Config) expandComposeProjects() error {
+// load, or that has a job outside the supported trigger subset, is rejected
+// with an error log and schedules no job; the rest of the configuration,
+// including other projects, is unaffected — the same way an invalid job is
+// rejected by registerJob. A missing or too old Compose CLI rejects every
+// project. A scheduled job either runs as specified or not at all.
+func (c *Config) expandComposeProjects() {
 	names := make([]string, 0, len(c.ComposeProjects))
 	for name := range c.ComposeProjects {
 		names = append(names, name)
@@ -88,20 +96,33 @@ func (c *Config) expandComposeProjects() error {
 	c.composeFiles = nil
 	c.composeRevisions = nil
 	if len(names) == 0 {
-		return nil
+		return
 	}
+	c.composeRevisions = make(map[string]string, len(names))
 	ctx, cancel := context.WithTimeout(context.Background(), composeProjectLoadTimeout)
 	defer cancel()
 	if err := composeCLICheck(ctx); err != nil {
-		return fmt.Errorf("compose projects %s: %w", strings.Join(names, ", "), err)
+		for _, name := range names {
+			c.rejectComposeProject(name, err)
+		}
+		return
 	}
-	c.composeRevisions = make(map[string]string, len(names))
 	for _, name := range names {
 		if err := c.expandComposeProject(name, c.ComposeProjects[name]); err != nil {
-			return err
+			c.rejectComposeProject(name, err)
 		}
 	}
-	return nil
+}
+
+// rejectComposeProject logs why a project schedules no job and records the
+// error as its revision.
+func (c *Config) rejectComposeProject(name string, err error) {
+	// A project that loaded and was rejected afterwards keeps its loaded
+	// revision, which is what currentComposeRevision compares against.
+	if _, loaded := c.composeRevisions[name]; !loaded {
+		c.composeRevisions[name] = rejectedRevisionPrefix + err.Error()
+	}
+	c.logger.Error(fmt.Sprintf("compose project %q rejected, its jobs are not scheduled: %v", name, err))
 }
 
 // composeSpec turns a registration into the loader's input.
@@ -116,21 +137,37 @@ func composeSpec(name string, p *ComposeProjectConfig) composeproject.Spec {
 // a resolved model differs from the one the configuration was built from. It
 // catches what watching file times cannot: a change in a default .env, in a
 // file pulled in through include: or extends at any depth, or in an
-// interpolated value. A project that no longer loads also counts as changed,
-// so the reload reports the error.
+// interpolated value. A project that starts or stops loading, or whose load
+// error changes, also counts as changed. A project rejected for the Compose CLI
+// counts as changed once the CLI check passes.
 func (c *Config) composeProjectsChanged() bool {
 	if len(c.composeRevisions) == 0 {
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), composeProjectLoadTimeout)
 	defer cancel()
+	cliErr := composeCLICheck(ctx)
 	for name, p := range c.ComposeProjects {
-		project, err := composeProjectLoader.Load(ctx, composeSpec(name, p))
-		if err != nil || project.Revision != c.composeRevisions[name] {
+		if c.currentComposeRevision(ctx, name, p, cliErr) != c.composeRevisions[name] {
 			return true
 		}
 	}
 	return false
+}
+
+// currentComposeRevision returns the revision expandComposeProject would
+// record for the project now: the loaded revision, or the rejection marker.
+// It covers load errors only; a job rejected later (a name collision) keeps
+// the loaded revision, because a reload would reject it the same way.
+func (c *Config) currentComposeRevision(ctx context.Context, name string, p *ComposeProjectConfig, cliErr error) string {
+	if cliErr != nil {
+		return rejectedRevisionPrefix + cliErr.Error()
+	}
+	project, err := composeProjectLoader.Load(ctx, composeSpec(name, p))
+	if err != nil {
+		return rejectedRevisionPrefix + fmt.Errorf("load compose project %q: %w", name, err).Error()
+	}
+	return project.Revision
 }
 
 func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) error {
@@ -143,11 +180,14 @@ func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) erro
 	c.composeFiles = append(c.composeFiles, p.Files...)
 	c.composeFiles = append(c.composeFiles, p.EnvFiles...)
 	c.composeRevisions[name] = project.Revision
+	// Check every name first, so a rejected project schedules none of its jobs.
 	for _, job := range project.Jobs {
-		jobName := name + "." + job.Name
-		if _, taken := c.ComposeJobs[jobName]; taken {
+		if jobName := name + "." + job.Name; c.ComposeJobs[jobName] != nil {
 			return fmt.Errorf("%w: %q", ErrComposeJobNameTaken, jobName)
 		}
+	}
+	for _, job := range project.Jobs {
+		jobName := name + "." + job.Name
 		c.ComposeJobs[jobName] = &ComposeJobConfig{
 			ComposeJob: core.ComposeJob{
 				BareJob: core.BareJob{Name: jobName, Schedule: job.Schedule},

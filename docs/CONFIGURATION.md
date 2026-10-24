@@ -664,8 +664,10 @@ project-directory = /srv/shop   # default: derived by Compose
 Compose projects need the Compose CLI 5.6.0 or later (for example the
 `-compose` image variant); Ofelia checks the version when it loads the
 configuration. Only a subset of the Compose trigger model is accepted: a five-field `cron`,
-`timezone`, `concurrency: forbid` and an explicit `missed_fires: skip`. Other
-settings fail the configuration with an error that names the job. The section
+`timezone`, `concurrency: forbid` and an explicit `missed_fires: skip`. With
+other settings, or with a missing or older CLI, the project is rejected: Ofelia
+logs an error that names the job or the version and schedules none of the
+project's jobs, while all other jobs keep running. The section
 is INI-only. See [jobs.md](jobs.md#compose-projects) for the full table and the
 profile setup that keeps `docker compose up` working.
 

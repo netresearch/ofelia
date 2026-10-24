@@ -453,8 +453,10 @@ in [ADR-004](adr/ADR-004-compose-jobs-as-job-source.md).
 Compose projects need the Compose CLI 5.6.0 or later, the first release that
 understands top-level `jobs:`; the [compose image variant](#image-for-compose-jobs)
 contains it. Ofelia runs `docker compose version` when it loads the
-configuration and rejects the projects with an error that names the version it
-found when the CLI is missing or older.
+configuration. When the CLI is missing or older, it logs an error that names
+the version it found and schedules no job of any Compose project; all other
+jobs run as usual. After a CLI upgrade, the next configuration poll loads the
+projects.
 
 ### Parameters
 
@@ -514,9 +516,11 @@ definition it started with.
 ### Supported triggers
 
 Ofelia accepts a subset of the Compose trigger model and rejects everything
-else when it loads the project. The error names the job and the setting, and
-the whole project is not loaded, because a setting mapped silently to a
-different behavior would be a compatibility bug.
+else when it loads the project. The logged error names the job and the
+setting, and the project schedules none of its jobs, because a setting mapped
+silently to a different behavior would be a compatibility bug. Other projects
+and all other jobs are unaffected, and the project is loaded again once its
+files change.
 
 | Setting | Supported | Behavior |
 |---|---|---|

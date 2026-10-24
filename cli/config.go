@@ -260,9 +260,7 @@ func BuildFromFile(filename string, logger *slog.Logger) (*Config, error) {
 			return nil, err
 		}
 	}
-	if err := c.expandComposeProjects(); err != nil {
-		return nil, err
-	}
+	c.expandComposeProjects()
 	// Compose files are watched with the INI files; count their mod times so
 	// the first poll does not see them as changed.
 	for _, f := range c.composeFiles {
@@ -424,9 +422,7 @@ func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 	if parseErr != nil {
 		return nil, fmt.Errorf("parse ini from string: %w", parseErr)
 	}
-	if err := c.expandComposeProjects(); err != nil {
-		return nil, err
-	}
+	c.expandComposeProjects()
 
 	// Collect used keys for deprecation detection
 	usedKeys := make(map[string]bool)

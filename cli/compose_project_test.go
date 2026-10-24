@@ -42,7 +42,7 @@ jobs:
 `
 
 // The unit tests must not depend on the docker compose CLI installed on the
-// host; TestComposeProject_OldComposeCLIFailsTheConfiguration and the
+// host; TestComposeProject_OldComposeCLIRejectsProjects and the
 // integration test swap the check explicitly.
 func init() {
 	composeCLICheck = func(context.Context) error { return nil }
@@ -98,17 +98,23 @@ func TestComposeProject_FilesAndProfilesKeepTheirOrder(t *testing.T) {
 	assert.Equal(t, "shop-prod", j.Project.ProjectName)
 }
 
-func TestComposeProject_RejectedTriggerFailsTheConfiguration(t *testing.T) {
+func TestComposeProject_RejectedTriggerRejectsOnlyTheProject(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	composePath := writeFile(t, dir, "compose.yaml",
 		"name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 2 * * *\"\n")
-	ini := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n")
+	ini := writeFile(t, dir, "ofelia.ini", "[job-local \"other\"]\nschedule = @daily\ncommand = true\n"+
+		"[compose-project \"shop\"]\nfile = "+composePath+"\n")
+	logger, handler := test.NewTestLoggerWithHandler()
 
-	_, err := BuildFromFile(ini, test.NewTestLogger())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), `job "backup"`)
-	assert.Contains(t, err.Error(), "set missed_fires: skip")
+	c, err := BuildFromFile(ini, logger)
+
+	require.NoError(t, err, "a rejected project must not fail the configuration")
+	assert.Empty(t, c.ComposeJobs, "the rejected project schedules no job")
+	assert.Contains(t, c.LocalJobs, "other", "other jobs are unaffected")
+	assert.True(t, handler.HasError(`compose project "shop" rejected`))
+	assert.True(t, handler.HasError(`job "backup"`))
+	assert.True(t, handler.HasError("set missed_fires: skip"))
 }
 
 func TestComposeProject_NameCollisionWithJobCompose(t *testing.T) {
@@ -117,9 +123,15 @@ func TestComposeProject_NameCollisionWithJobCompose(t *testing.T) {
 	composePath := writeFile(t, dir, "compose.yaml", shopCompose)
 	ini := writeFile(t, dir, "ofelia.ini", "[job-compose \"shop.backup\"]\nschedule = @daily\nservice = web\n"+
 		"[compose-project \"shop\"]\nfile = "+composePath+"\n")
+	logger, handler := test.NewTestLoggerWithHandler()
 
-	_, err := BuildFromFile(ini, test.NewTestLogger())
-	require.ErrorIs(t, err, ErrComposeJobNameTaken)
+	c, err := BuildFromFile(ini, logger)
+
+	require.NoError(t, err)
+	assert.Equal(t, "web", c.ComposeJobs["shop.backup"].Service, "the [job-compose] keeps its name")
+	assert.NotContains(t, c.ComposeJobs, "shop.cleanup", "a rejected project schedules none of its jobs")
+	assert.True(t, handler.HasError(ErrComposeJobNameTaken.Error()))
+	assert.False(t, c.composeProjectsChanged(), "an unchanged collision must not reload on every poll")
 }
 
 func TestComposeProject_JobComposeKeepsWorking(t *testing.T) {
@@ -183,22 +195,47 @@ jobs:
 	assert.Same(t, oldCleanup, c.ComposeJobs["shop.cleanup"], "an unchanged job is kept")
 }
 
-// TestComposeProject_OldComposeCLIFailsTheConfiguration swaps the package
-// check; it must not run in parallel with tests that build compose projects.
-func TestComposeProject_OldComposeCLIFailsTheConfiguration(t *testing.T) {
+// TestComposeProject_OldComposeCLIRejectsProjects swaps the package check; it
+// must not run in parallel with tests that build compose projects.
+func TestComposeProject_OldComposeCLIRejectsProjects(t *testing.T) {
 	old := composeCLICheck
-	composeCLICheck = func(context.Context) error {
-		return fmt.Errorf("%w: found docker compose 2.38.2", core.ErrComposeJobsUnsupported)
-	}
+	cliErr := fmt.Errorf("%w: found docker compose 2.38.2", core.ErrComposeJobsUnsupported)
+	composeCLICheck = func(context.Context) error { return cliErr }
 	t.Cleanup(func() { composeCLICheck = old })
 	dir := t.TempDir()
 	composePath := writeFile(t, dir, "compose.yaml", shopCompose)
+	ini := writeFile(t, dir, "ofelia.ini", "[job-local \"other\"]\nschedule = @daily\ncommand = true\n"+
+		"[compose-project \"shop\"]\nfile = "+composePath+"\n")
+	logger, handler := test.NewTestLoggerWithHandler()
+
+	c, err := BuildFromFile(ini, logger)
+
+	require.NoError(t, err, "a missing or old Compose CLI must not stop other jobs")
+	assert.Empty(t, c.ComposeJobs)
+	assert.Contains(t, c.LocalJobs, "other")
+	assert.True(t, handler.HasError("2.38.2"))
+	assert.False(t, c.composeProjectsChanged(), "an unchanged rejection must not reload on every poll")
+
+	composeCLICheck = func(context.Context) error { return nil }
+	assert.True(t, c.composeProjectsChanged(), "a CLI upgrade must reload the rejected project")
+}
+
+// TestComposeProject_RejectedProjectReloadsWhenFixed checks that a rejected
+// project does not reload on every poll and reloads once it loads.
+func TestComposeProject_RejectedProjectReloadsWhenFixed(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml",
+		"name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 2 * * *\"\n")
 	ini := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n")
 
-	_, err := BuildFromFile(ini, test.NewTestLogger())
+	c, err := BuildFromFile(ini, test.NewTestLogger())
+	require.NoError(t, err)
+	require.Empty(t, c.ComposeJobs)
+	assert.False(t, c.composeProjectsChanged(), "an unchanged rejection must not reload on every poll")
 
-	require.ErrorIs(t, err, core.ErrComposeJobsUnsupported)
-	assert.Contains(t, err.Error(), "2.38.2")
+	require.NoError(t, os.WriteFile(composePath, []byte(shopCompose), 0o600))
+	assert.True(t, c.composeProjectsChanged(), "a fixed project must reload")
 }
 
 // TestComposeProject_NoProjectSkipsTheCLICheck keeps a configuration without

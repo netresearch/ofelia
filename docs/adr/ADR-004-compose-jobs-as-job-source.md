@@ -77,7 +77,7 @@ Rejected until the deferred work below exists:
 ### Positive
 
 - Workload configuration is written once, in Compose.
-- The supported behavior is explicit: a configuration either runs as specified or fails at load time.
+- The supported behavior is explicit: a Compose job either runs as specified or its project is rejected at load time with a logged error. Other projects and jobs are unaffected, as for any rejected Ofelia job.
 - The identity model keeps history, overlap prevention and cleanup correct when several projects define jobs with the same name.
 
 ### Negative
