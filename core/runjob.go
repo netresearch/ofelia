@@ -79,7 +79,7 @@ type RunJob struct {
 	// 5-30s depending on heap size. See #234.
 	StopTimeout time.Duration `gcfg:"stop-timeout" mapstructure:"stop-timeout" hash:"true"`
 
-	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
+	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" hash:"true"`
 
 	containerID string
 	mu          sync.RWMutex // Protect containerID access

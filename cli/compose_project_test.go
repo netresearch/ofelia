@@ -160,8 +160,9 @@ func TestComposeProject_ReloadOnComposeFileChange(t *testing.T) {
 	c.buildSchedulerMiddlewares(c.sh)
 	c.dockerHandler = &DockerHandler{ctx: context.Background(), logger: logger}
 	c.levelVar = &slog.LevelVar{}
-	for _, j := range c.ComposeJobs { // prepared as registerAllJobs does
+	for name, j := range c.ComposeJobs { // prepared as registerAllJobs does
 		require.NoError(t, defaults.Set(j))
+		c.inheritComposeMaxRuntime(name, &j.ComposeJob)
 		require.NoError(t, c.sh.AddJob(j))
 	}
 	oldBackup, oldCleanup := c.ComposeJobs["shop.backup"], c.ComposeJobs["shop.cleanup"]
@@ -264,8 +265,11 @@ func prepareReload(t *testing.T, iniPath string) *Config {
 	c.buildSchedulerMiddlewares(c.sh)
 	c.dockerHandler = &DockerHandler{ctx: context.Background(), logger: logger}
 	c.levelVar = &slog.LevelVar{}
-	for _, j := range c.ComposeJobs {
+	for name, j := range c.ComposeJobs {
 		require.NoError(t, defaults.Set(j))
+		// registerAllJobs applies the [global] max-runtime too; without it the
+		// first reload sees a changed hash for every job.
+		c.inheritComposeMaxRuntime(name, &j.ComposeJob)
 		require.NoError(t, c.sh.AddJob(j))
 	}
 	return c

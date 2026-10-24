@@ -77,7 +77,7 @@ type ComposeJob struct {
 	// expires, the run container is stopped and removed. Zero means no
 	// per-job value; the configuration then fills in [global] max-runtime.
 	// Not supported with Exec (see CheckMaxRuntime).
-	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
+	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" hash:"true"`
 	// Project is set only for jobs loaded from a registered Compose project
 	// ([compose-project] in the INI, see ADR-004). It cannot be set on a
 	// [job-compose] section: the project context lives in the registration.
