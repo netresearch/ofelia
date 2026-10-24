@@ -68,6 +68,30 @@ type ComposeJob struct {
 	File     string         `default:"compose.yml" gcfg:"file" mapstructure:"file" hash:"true"`
 	Service  string         `gcfg:"service" mapstructure:"service" hash:"true"`
 	Exec     bool           `default:"false" gcfg:"exec" mapstructure:"exec" hash:"true"`
+	// Project is set only for jobs loaded from a registered Compose project
+	// ([compose-project] in the INI, see ADR-004). It cannot be set on a
+	// [job-compose] section: the project context lives in the registration.
+	Project ComposeProjectContext `mapstructure:"-"`
+}
+
+// ComposeProjectContext is the project selection a job loaded from a
+// registered Compose project runs with. When Files is set it replaces File,
+// and Service names the Compose job. Every field except TimeZone takes part in
+// the job hash, so a changed project replaces the job on reload.
+type ComposeProjectContext struct {
+	Files            []string `hash:"true"`
+	Profiles         []string `hash:"true"`
+	EnvFiles         []string `hash:"true"`
+	ProjectName      string   `hash:"true"`
+	ProjectDirectory string   `hash:"true"`
+	// Revision identifies the job's definition in the loaded configuration;
+	// each execution logs it.
+	Revision string `hash:"true"`
+	// TimeZone describes the zone the schedule is evaluated in, as resolved at
+	// load, for logs. It is not hashed: for the local zone it carries the
+	// current abbreviation and offset, which change at every daylight-saving
+	// switch, and an explicit zone is already part of the schedule (CRON_TZ).
+	TimeZone string
 }
 
 // NewComposeJob returns an empty ComposeJob; the caller fills in File,
@@ -100,6 +124,10 @@ func (j *ComposeJob) Run(ctx *Context) error {
 	cmd, err := j.buildCommand(ctx)
 	if err != nil {
 		return fmt.Errorf("compose build command: %w", err)
+	}
+	if j.Project.Revision != "" {
+		ctx.Log(fmt.Sprintf("compose project %s, job revision %s, schedule time zone %s",
+			j.Project.ProjectName, j.Project.Revision, j.Project.TimeZone))
 	}
 	if j.Exec {
 		if err := cmd.Run(); err != nil {
@@ -375,14 +403,54 @@ func cliDockerHost(host string) (string, bool) {
 	}
 }
 
+// projectArgs returns the global compose flags that select the project: one
+// -f per file, then --profile, --env-file, -p and --project-directory for a
+// job from a registered project, or the single -f File of a [job-compose].
+func (j *ComposeJob) projectArgs(validator *config.CommandValidator) ([]string, error) {
+	p := j.Project
+	if len(p.Files) == 0 {
+		if err := validator.ValidateFilePath(j.File); err != nil {
+			return nil, fmt.Errorf("invalid compose file path: %w", err)
+		}
+		return []string{"-f", j.File}, nil
+	}
+	var out []string
+	for _, f := range p.Files {
+		if err := validator.ValidateFilePath(f); err != nil {
+			return nil, fmt.Errorf("invalid compose file path: %w", err)
+		}
+		out = append(out, "-f", f)
+	}
+	for _, profile := range p.Profiles {
+		if err := validator.ValidateServiceName(profile); err != nil {
+			return nil, fmt.Errorf("invalid compose profile: %w", err)
+		}
+		out = append(out, "--profile", profile)
+	}
+	for _, f := range p.EnvFiles {
+		if err := validator.ValidateFilePath(f); err != nil {
+			return nil, fmt.Errorf("invalid compose env file path: %w", err)
+		}
+		out = append(out, "--env-file", f)
+	}
+	if p.ProjectName != "" {
+		if err := validator.ValidateServiceName(p.ProjectName); err != nil {
+			return nil, fmt.Errorf("invalid compose project name: %w", err)
+		}
+		out = append(out, "-p", p.ProjectName)
+	}
+	if p.ProjectDirectory != "" {
+		if err := validator.ValidateFilePath(p.ProjectDirectory); err != nil {
+			return nil, fmt.Errorf("invalid compose project directory: %w", err)
+		}
+		out = append(out, "--project-directory", p.ProjectDirectory)
+	}
+	return out, nil
+}
+
 func (j *ComposeJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 	// Validate inputs to prevent command injection
 	validator := config.NewCommandValidator()
-
-	// Validate file path
-	if err := validator.ValidateFilePath(j.File); err != nil {
-		return nil, fmt.Errorf("invalid compose file path: %w", err)
-	}
 
 	// Validate service name
 	if err := validator.ValidateServiceName(j.Service); err != nil {
@@ -390,8 +458,12 @@ func (j *ComposeJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 	}
 
 	// Build docker compose command
-	var cmdArgs []string
-	cmdArgs = append(cmdArgs, "docker", "compose", "-f", j.File)
+	cmdArgs := []string{"docker", "compose"}
+	projectArgs, err := j.projectArgs(validator)
+	if err != nil {
+		return nil, err
+	}
+	cmdArgs = append(cmdArgs, projectArgs...)
 
 	if j.Exec {
 		cmdArgs = append(cmdArgs, "exec", j.Service)

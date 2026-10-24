@@ -368,6 +368,9 @@ command = pg_dump ${DB_NAME:-mydb}
 #       (so the sections are [job-exec], [job-run], [job-local],
 #        [job-service-run] and [job-compose])
 # NAME: Unique job identifier
+
+[compose-project "NAME"]
+# Registers a Compose project; its scheduled jobs become jobs named NAME.<job>
 ```
 
 ### Global Settings
@@ -638,6 +641,35 @@ Ofelia stops and removes the run container it labeled with the execution ID;
 dependency services keep running. `exec`-mode commands cannot be stopped from
 outside the container. See [jobs.md](jobs.md#cancellation-and-maximum-runtime)
 for details, including which Docker endpoint the compose CLI uses.
+
+### Compose Projects - Jobs Defined in Compose Files
+
+A `[compose-project "NAME"]` section registers a Compose project. Every job in
+its top-level `jobs:` section that has a schedule becomes an Ofelia job named
+`NAME.<job>`; the workload stays defined in the Compose files.
+
+```ini
+[compose-project "shop"]
+# Required, repeatable: merged in this order
+file = /srv/shop/compose.yaml
+file = /srv/shop/compose.jobs.yaml
+
+# Optional
+profile = scheduled-jobs        # repeatable; jobs behind other profiles are not scheduled
+env-file = /srv/shop/.env.prod  # repeatable; replaces the default .env of the project directory
+project-name = shop             # default: derived by Compose
+project-directory = /srv/shop   # default: derived by Compose
+```
+
+Compose projects need the Compose CLI 5.6.0 or later (for example the
+`-compose` image variant); Ofelia checks the version when it loads the
+configuration. Only a subset of the Compose trigger model is accepted: a five-field `cron`,
+`timezone`, `concurrency: forbid` and an explicit `missed_fires: skip`. With
+other settings, or with a missing or older CLI, the project is rejected: Ofelia
+logs an error that names the job or the version and schedules none of the
+project's jobs, while all other jobs keep running. The section
+is INI-only. See [jobs.md](jobs.md#compose-projects) for the full table and the
+profile setup that keeps `docker compose up` working.
 
 ## Docker Labels Configuration
 

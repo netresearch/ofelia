@@ -26,7 +26,7 @@ Two existing facts constrain the design:
 
 Ofelia loads Compose projects and discovers their `jobs:`. The workload definition stays in Compose: image, command, environment, mounts and networks are not repeated in Ofelia configuration.
 
-A **registered Compose project** is the canonical execution context. It holds the ordered Compose files, the selected profiles, the env file selection and the Docker endpoint. Jobs reference the project; the context is not repeated on every job.
+A **registered Compose project** is the canonical execution context. It holds the ordered Compose files, the selected profiles and the env file selection. Its Docker endpoint is the one Ofelia's own client uses, to which the Compose CLI is pinned since #887. Jobs reference the project; the context is not repeated on every job.
 
 This revises the scope that [#758](https://github.com/netresearch/ofelia/issues/758) describes, for keys that **select** a Compose project only. Keys that **configure containers** (DNS, labels, restart policy and the like) stay out of scope, for the reason #758 gives. For jobs loaded from Compose, resource limits are set in the Compose file as well.
 
@@ -40,9 +40,9 @@ Existing `job-compose` entries keep working unchanged.
 | Job | Project identity + job name |
 | Schedule entry | Job identity + trigger position |
 
-A Docker context name is an alias for an endpoint and is never part of an identity. Launch, observation and cleanup resolve to the same endpoint.
+A Docker context name is an alias for an endpoint and is never part of an identity. Launch, observation and cleanup resolve to the same endpoint. While Ofelia talks to a single endpoint, the endpoint part is implicit and the job name is `<registration>.<job>`; it becomes explicit once more than one endpoint is supported.
 
-Each execution records the configuration revision of the loaded project it ran with. A reload affects later executions only.
+Each job carries the revision of its resolved definition and of the jobs and services in its `depends_on` closure, which `docker compose run` starts with it, and each execution records it. A reload replaces only the jobs whose definition changed, so a change to one job does not reset history or overlap state of the project's other jobs. The revision of the whole loaded project is logged when it loads. A reload affects later executions only.
 
 ### One scheduling owner per job
 
@@ -77,7 +77,7 @@ Rejected until the deferred work below exists:
 ### Positive
 
 - Workload configuration is written once, in Compose.
-- The supported behavior is explicit: a configuration either runs as specified or fails at load time.
+- The supported behavior is explicit: a Compose job either runs as specified or its project is rejected at load time with a logged error. Other projects and jobs are unaffected, as for any rejected Ofelia job.
 - The identity model keeps history, overlap prevention and cleanup correct when several projects define jobs with the same name.
 
 ### Negative

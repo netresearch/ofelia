@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	defaults "github.com/creasty/defaults"
 
@@ -39,6 +40,13 @@ func (c *ValidateCommand) Execute(_ []string) error {
 		if err := ApplyLogLevel(conf.Global.LogLevel, c.LevelVar); err != nil {
 			c.Logger.Warn(fmt.Sprintf("Failed to apply config log level (using default): %v", err))
 		}
+	}
+
+	// The daemon runs without a rejected Compose project and logs why; this
+	// command exists to catch exactly that before deployment.
+	if rejected := conf.rejectedComposeProjects(); len(rejected) > 0 {
+		c.Logger.Error("ERROR")
+		return fmt.Errorf("%w: %s", ErrComposeProjectRejected, strings.Join(rejected, ", "))
 	}
 
 	// Validate regardless of enable-strict-validation. That flag decides

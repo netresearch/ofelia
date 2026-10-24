@@ -260,13 +260,15 @@ Supported formats:
 - `20 0 1 * * *` (every night, 20 seconds after 1 AM - [Quartz format](http://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/tutorial-lesson-06.html)
 - `0 1 * * *` (every night at 1 AM - standard [cron format](https://en.wikipedia.org/wiki/Cron)).
 
-You can configure four different kinds of jobs:
+You can configure five different kinds of jobs:
 
 - `job-exec`: this job is executed inside of a running container.
 - `job-run`: runs a command inside of a new container, using a specific image.
 - `job-local`: runs the command inside of the host running ofelia.
 - `job-service-run`: runs the command inside a new "run-once" service, for running inside a swarm
 - `job-compose`: runs a command using `docker compose run` or `docker compose exec` based on a compose file
+
+A `[compose-project]` section registers a Compose project instead: Ofelia then schedules the jobs defined in its top-level `jobs:` section (see [Compose projects](docs/jobs.md#compose-projects)).
 
 See [Jobs reference documentation](docs/jobs.md) for all available parameters.
 See [Architecture overview](docs/architecture.md) for details about the scheduler, job types and middleware.

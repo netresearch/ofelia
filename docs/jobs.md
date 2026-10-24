@@ -439,3 +439,144 @@ the daemon the jobs should run on.
 In `exec` mode the command runs inside an existing container, and the Docker
 Engine API cannot stop an exec'd process from outside. Canceling the execution
 does not stop the command; enforce a limit inside it, e.g. `timeout 30s ...`.
+
+## Compose projects
+
+A `[compose-project]` section registers a Compose project. Ofelia loads it with
+[compose-go](https://github.com/compose-spec/compose-go), the reference
+implementation of the Compose specification, and schedules every job in its
+top-level `jobs:` section that has a `triggers.schedule` entry. The workload
+stays defined in the Compose files: image, command, environment, mounts and
+networks are not repeated in the Ofelia configuration. The design is recorded
+in [ADR-004](adr/ADR-004-compose-jobs-as-job-source.md).
+
+Compose projects need the Compose CLI 5.6.0 or later, the first release that
+understands top-level `jobs:`; the [compose image variant](#image-for-compose-jobs)
+contains it. Ofelia runs `docker compose version` when it loads the
+configuration. When the CLI is missing or older, it logs an error that names
+the version it found and schedules no job of any Compose project; all other
+jobs run as usual. After a CLI upgrade, the next configuration poll loads the
+projects.
+
+### Parameters
+
+- **`file`: string, repeatable**
+  - A Compose file. Repeat the key for several files; they are merged in the
+    order given, as with `docker compose -f a.yaml -f b.yaml`.
+- `profile`: string, repeatable
+  - A profile to activate. Jobs behind other profiles are not scheduled. Without
+    this key, `COMPOSE_PROFILES` from Ofelia's environment or the env files
+    applies, as for `docker compose`.
+- `env-file`: string, repeatable
+  - An env file for interpolation, replacing the default `.env` of the project
+    directory.
+- `project-name`: string
+  - Overrides the project name Compose would derive, including one set by
+    `COMPOSE_PROJECT_NAME`.
+- `project-directory`: string
+  - Overrides the project's working directory, which is where the default
+    `.env` is read from.
+
+The project is loaded as `docker compose` loads it, with the same order of
+environment, env files, profiles and name. Each run passes the resolved project
+name, profiles and directory explicitly, so it uses the context the job was
+loaded with.
+
+The section is read from the INI file only; container labels cannot register a
+project.
+
+### Jobs and names
+
+Each scheduled job becomes an Ofelia job named `<registration>.<job>`, for
+example `shop.backup`. It runs through the same adapter as `job-compose`, so it
+needs the docker CLI and the Compose plugin (see
+[Image for compose jobs](#image-for-compose-jobs)), and it is canceled the same
+way (see [Cancellation and maximum runtime](#cancellation-and-maximum-runtime)).
+The command is:
+
+```text
+docker compose -f <file>... --profile <profile>... --env-file <env-file>... \
+  -p <project> --project-directory <dir> run --rm -T -l ofelia.execution=<id> <job>
+```
+
+Jobs without a schedule are not scheduled by Ofelia; they stay manual-only and
+can be run with `docker compose run <job>`. When a job name is already used by
+a `[job-compose]` section, the project is rejected with a logged error and the
+`[job-compose]` keeps its name. `ofelia validate` exits with an error when any
+project is rejected. It runs the same Compose CLI check as the daemon, so run it
+where the Compose CLI 5.6.0 or later is installed, for example in the `-compose`
+image variant.
+
+On every configuration poll (`config-poll-interval`), Ofelia loads each
+registered project again and reloads the configuration when the resolved model
+differs. That covers the files the section names as well as the default `.env`,
+files pulled in through `include:` or `extends`, and interpolated values. A
+project that loaded before and is rejected by a reload, for example after a
+broken edit, keeps its last loaded jobs and logs the error; the rest of the
+reload is applied, and the project's jobs are replaced once it loads again.
+Each job carries a revision, a hash of its own definition and of every job and
+service in its `depends_on` closure, which `docker compose run` starts with it:
+only jobs whose revision changed are replaced, and each execution logs the
+revision it ran with. A running execution keeps the definition it started with.
+
+### Supported triggers
+
+Ofelia accepts a subset of the Compose trigger model and rejects everything
+else when it loads the project. The logged error names the job and the
+setting, and the project schedules none of its jobs, because a setting mapped
+silently to a different behavior would be a compatibility bug. Other projects
+and all other jobs are unaffected, and the project is loaded again once its
+files change.
+
+| Setting | Supported | Behavior |
+|---|---|---|
+| `cron` with five fields | yes | Evaluated by Ofelia's scheduler |
+| `cron` with other field counts or `@daily` style shortcuts | no | Rejected |
+| `timezone` | yes | The schedule is evaluated in that zone; an empty value means the local time zone of the Ofelia process, which is logged when the project is loaded. A daylight-saving switch does not count as a change of the job |
+| `concurrency: forbid` (also the default) | yes | Enables the per-job overlap prevention (`no-overlap`) |
+| `concurrency: queue` | no | Rejected |
+| `missed_fires: skip` | yes, only when set explicitly | Missed runs are not replayed |
+| `missed_fires: one`, or unset | no | Rejected; the specification's default is `one`, which needs catch-up Ofelia does not have yet. Set `missed_fires: skip` if skipping missed runs is acceptable |
+| more than one schedule entry | no | Rejected |
+| `triggers.manual: false` on the job or on a job it depends on | no | Rejected, because Ofelia runs the job with `docker compose run`, which refuses such jobs |
+
+The plain form `schedule: ["0 2 * * *"]` sets only the cron expression, so
+`missed_fires` stays at its default and the job is rejected. Write the
+structured form instead. Compose merges lists across files by appending, so a
+schedule entry in a second file adds a second entry; use `!override` to
+replace the list.
+
+### Keep scheduled jobs out of `docker compose up`
+
+Docker Compose 5.6 refuses `docker compose up` when an active job has a
+schedule, because Docker Engine does not run scheduled jobs yet. Put scheduled
+jobs behind a profile that `docker compose up` does not activate, and list that
+profile in the `[compose-project]` section:
+
+```yaml
+# /srv/shop/compose.yaml
+name: shop
+services:
+  web:
+    image: registry.example.com/shop:2026.10
+jobs:
+  backup:
+    image: registry.example.com/shop-maintenance:2026.10
+    command: ["/app/bin/backup"]
+    profiles: ["scheduled-jobs"]
+    triggers:
+      schedule:
+        - cron: "0 2 * * *"
+          timezone: Europe/Berlin
+          concurrency: forbid
+          missed_fires: skip
+```
+
+```ini
+[compose-project "shop"]
+file = /srv/shop/compose.yaml
+profile = scheduled-jobs
+```
+
+This schedules `shop.backup` at 02:00 Berlin time. `docker compose up` in
+`/srv/shop` starts `web` and leaves the job alone.
