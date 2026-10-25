@@ -996,14 +996,17 @@ func TestScheduleState_RunEndingDuringRemovalLeavesQueuedOccurrence(t *testing.T
 	h.eventually("shop.backup", func(r persist.Schedule) bool { return r.Pending != nil }, "the fire is queued")
 
 	h.s.mu.Lock()
+	var unlock sync.Once
+	t.Cleanup(func() { unlock.Do(h.s.mu.Unlock) })
 	removed := make(chan struct{})
 	go func() { defer close(removed); _ = h.s.RemoveJob(j) }()
 	require.Eventually(t, func() bool { return !h.s.cron.EntryByName("shop.backup").Valid() },
 		5*time.Second, time.Millisecond, "RemoveJob did not remove the go-cron entry")
-	// The removal canceled the run; give its end time to reach the check
-	// while the job maps still list the job.
+	// The removal canceled the run. Keep the window open long enough for the
+	// run's end to reach liveAndEnabled while the job maps still list the
+	// job; on the current code it usually has already.
 	time.Sleep(200 * time.Millisecond)
-	h.s.mu.Unlock()
+	unlock.Do(h.s.mu.Unlock)
 	<-removed
 
 	h.eventually("shop.backup", func(r persist.Schedule) bool {
