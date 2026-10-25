@@ -78,6 +78,10 @@ type Scheduler struct {
 	gate  runGate
 	regMu sync.Mutex
 
+	// orphanPollInterval overrides defaultOrphanPollInterval when positive;
+	// tests set it before Start.
+	orphanPollInterval time.Duration
+
 	// globalMaxRuntime is `[global] max-runtime`, the bound of every run of a
 	// job that inherits it (see MaxRuntimeProvider). It is read while the run
 	// is in progress, not copied into the job, so a changed value needs no
@@ -86,6 +90,16 @@ type Scheduler struct {
 	maxRuntimeMu      sync.Mutex
 	globalMaxRuntime  time.Duration
 	maxRuntimeChanged chan struct{}
+
+	// Durable schedule state (ADR-005, schedule_state.go). durableMu guards
+	// records, durable and the watcher context. Lock order: durableMu may be
+	// held while taking mu, never the other way round.
+	durableMu sync.Mutex
+	records   ScheduleRecordStore
+	durable   map[string]*durableEntry
+	// watchersDone is closed by Stop and ends the orphan watchers; a later
+	// Start replaces it.
+	watchersDone chan struct{}
 }
 
 // concurrencySemaphore holds a swappable semaphore channel used by the
@@ -229,6 +243,7 @@ func newSchedulerInternal(
 		metricsRecorder:   metricsRecorder,
 		clock:             clock,
 	}
+	s.watchersDone = make(chan struct{})
 
 	// Also set metrics on retry executor
 	if metricsRecorder != nil {
@@ -273,6 +288,12 @@ func (m *maxConcurrentSkipJob) Run() {
 // before delegating execution to the wrapped job. If no slot is immediately
 // available, the invocation is skipped and logged via cron.Logger.
 func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
+	// A job with durable schedule state runs its per-entry check first and
+	// then waits for a slot instead of being dropped here (ADR-005).
+	if w, ok := m.inner.(*jobWrapper); ok && w.durable() {
+		w.RunWithContext(ctx)
+		return
+	}
 	ch := m.sem.getChan()
 	select {
 	case ch <- struct{}{}: // try to acquire slot
@@ -399,6 +420,15 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	// get a chance to apply middlewares afterwards.
 	j.Use(s.Middlewares()...)
 
+	// A job with durable schedule state is evaluated against its record
+	// before its entry goes live; Start does it for jobs added before it.
+	var launch *pendingLaunch
+	evaluated := false
+	if policy, ok := s.durablePolicy(j); ok && s.cron.IsRunning() {
+		launch = s.prepareDurableEntry(j, policy, disabled)
+		evaluated = true
+	}
+
 	w := &jobWrapper{s: s, j: j}
 	s.regMu.Lock()
 	id, err := s.cron.AddJob(j.GetSchedule(), w, opts...)
@@ -426,6 +456,11 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	// would stay degraded until a restart.
 	delete(s.unschedulable, j.GetName())
 	s.mu.Unlock()
+	if launch != nil {
+		s.launch(launch)
+	} else if evaluated {
+		s.resumeAfterRegistration(j.GetName())
+	}
 
 	if IsTriggeredSchedule(j.GetSchedule()) {
 		s.Logger.Info(fmt.Sprintf(
@@ -568,7 +603,21 @@ func (s *Scheduler) Start() error {
 			"Jobs without dependencies will still run, but workflows may not execute as expected", err))
 	}
 
+	jobs := slices.Clone(s.Jobs)
 	s.mu.Unlock()
+	s.renewWatchers()
+
+	// Jobs with durable schedule state are evaluated against their records
+	// before go-cron starts; the occurrences that result start afterwards.
+	var launches []*pendingLaunch
+	for _, j := range jobs {
+		if policy, ok := s.durablePolicy(j); ok {
+			if l := s.prepareDurableEntry(j, policy, s.IsJobDisabled(j.GetName())); l != nil {
+				launches = append(launches, l)
+			}
+		}
+	}
+
 	s.Logger.Debug("Starting scheduler")
 	// All jobs — including triggered ones with ShouldRunOnStartup() — are registered
 	// in go-cron with WithRunImmediately() when applicable. go-cron handles the
@@ -577,6 +626,9 @@ func (s *Scheduler) Start() error {
 	// subsequent Next() calls return zero time so they remain dormant until explicitly
 	// triggered again via TriggerEntryByName().
 	s.cron.Start()
+	for _, l := range launches {
+		s.launch(l)
+	}
 
 	return nil
 }
@@ -597,6 +649,7 @@ func (s *Scheduler) Stop() error {
 // It stops accepting new jobs, then waits up to the timeout for running jobs to complete.
 // Returns nil if all jobs completed, or an error if the timeout was exceeded.
 func (s *Scheduler) StopWithTimeout(timeout time.Duration) error {
+	s.endOrphanWatchers()
 	// Use go-cron's StopWithTimeout for graceful shutdown
 	completed := s.cron.StopWithTimeout(timeout)
 
@@ -610,6 +663,7 @@ func (s *Scheduler) StopWithTimeout(timeout time.Duration) error {
 
 // StopAndWait stops the scheduler and waits indefinitely for all jobs to complete.
 func (s *Scheduler) StopAndWait() {
+	s.endOrphanWatchers()
 	s.cron.StopAndWait()
 	s.Logger.Debug("Scheduler stopped and all jobs completed")
 }
@@ -646,6 +700,11 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 
 	if !exists || disabled {
 		return fmt.Errorf("%w: %s", ErrJobNotFound, jobName)
+	}
+	if j := s.GetAnyJob(jobName); j != nil {
+		if _, durable := s.durablePolicy(j); durable && s.durableBusy(jobName) {
+			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
+		}
 	}
 
 	// Delegate to go-cron's TriggerEntryByName for proper middleware chain execution.
@@ -905,24 +964,37 @@ func (s *Scheduler) applyUpdatedJob(name string, newJob Job) error {
 // Job execution happens in separate goroutines that do not hold c.runningMu,
 // and runWithCtx only acquires s.mu.RLock (compatible with the Lock held here).
 func (s *Scheduler) DisableJob(name string) error {
+	j, changed, err := s.disableJob(name)
+	if err != nil || !changed {
+		return err
+	}
+	if _, ok := s.durablePolicy(j); ok {
+		s.durableDisabled(name)
+	}
+	return nil
+}
+
+// disableJob pauses the job under s.mu. changed is false when it was
+// disabled already.
+func (s *Scheduler) disableJob(name string) (j Job, changed bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	j, _ := getJob(s.Jobs, name)
+	j, _ = getJob(s.Jobs, name)
 	if j == nil {
-		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
+		return nil, false, fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
 	}
 	if _, already := s.disabledNames[name]; already {
-		return nil // already disabled
+		return j, false, nil
 	}
 
 	if err := s.cron.PauseEntryByName(name); err != nil {
-		return fmt.Errorf("pause job: %w", err)
+		return nil, false, fmt.Errorf("pause job: %w", err)
 	}
 
 	s.disabledNames[name] = struct{}{}
 	s.Logger.Info(fmt.Sprintf("Job disabled %q", name))
-	return nil
+	return j, true, nil
 }
 
 // EnableJob resumes a previously disabled/paused job. Uses go-cron's native
@@ -930,30 +1002,43 @@ func (s *Scheduler) DisableJob(name string) error {
 //
 // Lock safety: same as DisableJob -- see its doc comment for rationale.
 func (s *Scheduler) EnableJob(name string) error {
+	j, changed, err := s.enableJob(name)
+	if err != nil || !changed {
+		return err
+	}
+	if _, ok := s.durablePolicy(j); ok {
+		s.durableEnabled(name)
+	}
+	return nil
+}
+
+// enableJob resumes the job under s.mu. changed is false when it was enabled
+// already.
+func (s *Scheduler) enableJob(name string) (j Job, changed bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, disabled := s.disabledNames[name]; !disabled {
 		// Job is not in the disabled list. Check if it's an active job
 		// (already enabled) — if so, this is an idempotent no-op.
-		if _, active := s.jobsByName[name]; active {
-			return nil
+		if active, ok := s.jobsByName[name]; ok {
+			return active, false, nil
 		}
-		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
+		return nil, false, fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
 	}
 
-	j, _ := getJob(s.Jobs, name)
+	j, _ = getJob(s.Jobs, name)
 	if j == nil {
-		return fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
+		return nil, false, fmt.Errorf(errFmtWrapQuoted, ErrJobNotFound, name)
 	}
 
 	if err := s.cron.ResumeEntryByName(name); err != nil {
-		return fmt.Errorf("resume job: %w", err)
+		return nil, false, fmt.Errorf("resume job: %w", err)
 	}
 
 	delete(s.disabledNames, name)
 	s.Logger.Info(fmt.Sprintf("Job re-enabled %q", name))
-	return nil
+	return j, true, nil
 }
 
 // unknownJobName is used when a cron entry's name cannot be resolved from its ID.
@@ -1202,10 +1287,20 @@ type jobWrapper struct {
 	// retired is set when the job is removed or replaced; guarded by
 	// s.gate.mu.
 	retired bool
+	// keepsRecord is set when a run of this registration went through the
+	// per-entry check of ADR-005, which counts it as busy; guarded by
+	// s.gate.mu.
+	keepsRecord bool
 }
 
 // Compile-time assertion: jobWrapper implements cron.JobWithContext.
 var _ cron.JobWithContext = (*jobWrapper)(nil)
+
+// durable reports whether the wrapped job keeps durable schedule state.
+func (w *jobWrapper) durable() bool {
+	_, ok := w.s.durablePolicy(w.j)
+	return ok
+}
 
 // Run implements cron.Job. Called by go-cron for jobs that don't support
 // context. Defensive only: jobWrapper also implements
@@ -1231,7 +1326,7 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		}
 	}()
 
-	switch w.s.gate.enter(w) {
+	switch w.s.gate.enter(w, w.durable()) {
 	case gateRetired:
 		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
 		return
@@ -1269,6 +1364,21 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	// publishes the run; this covers a run that ends without reaching stop.
 	defer e.Cleanup()
 
+	// A job with durable schedule state passes the per-entry check of
+	// ADR-005 and takes a global slot before it runs. Its end is recorded in
+	// a defer, so a run that panics still releases the slot and the entry;
+	// it then counts as failed.
+	outcome := outcomeFailed
+	durableRun := false
+	if policy, ok := w.s.durablePolicy(w.j); ok {
+		adm := w.s.admit(ctx, w.j, policy, e.ID)
+		if adm == nil {
+			return
+		}
+		durableRun = true
+		defer func() { w.s.finishDispatch(adm, outcome) }()
+	}
+
 	// Bound the per-run context with the job's MaxRuntime (or the
 	// global or default bound) so a wedged Docker upstream cannot stall
 	// this goroutine indefinitely. Applied at the wrapper layer so all job
@@ -1288,6 +1398,10 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	})
 
 	w.stop(jctx, err)
+
+	if durableRun {
+		outcome = runOutcome(ctx, err, jctx.Execution)
+	}
 
 	if onComplete != nil {
 		success := err == nil && !jctx.Execution.Failed

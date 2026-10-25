@@ -34,6 +34,34 @@ var ErrComposeJobNameTaken = errors.New("compose project job name already used b
 // rejected; `ofelia validate` returns it, the daemon logs and continues.
 var ErrComposeProjectRejected = errors.New("compose projects rejected")
 
+// ErrComposeScheduleStateRequired rejects a Compose job whose schedule needs
+// schedule records (missed_fires: one, the default, or concurrency: queue)
+// when no state file keeps them.
+var ErrComposeScheduleStateRequired = errors.New(
+	"missed_fires: one (the default) and concurrency: queue need a state file; " +
+		"start the daemon with --state-file, or set missed_fires: skip and concurrency: forbid")
+
+// scheduleStateMode says whether a state file can keep schedule records.
+type scheduleStateMode int
+
+const (
+	// scheduleStateUnchecked skips the check: commands that only inspect the
+	// configuration do not know the daemon's flags.
+	scheduleStateUnchecked scheduleStateMode = iota
+	// scheduleStateAvailable means a state file is configured.
+	scheduleStateAvailable
+	// scheduleStateMissing means none is; jobs that need one are rejected.
+	scheduleStateMissing
+)
+
+// scheduleStateFor returns the mode for a configured state-file path.
+func scheduleStateFor(stateFile string) scheduleStateMode {
+	if stateFile == "" {
+		return scheduleStateMissing
+	}
+	return scheduleStateAvailable
+}
+
 // composeProjectLoader loads registered Compose projects. A variable so tests
 // can substitute a fixture.
 var composeProjectLoader composeproject.Loader = composeproject.ComposeGoLoader{}
@@ -154,6 +182,31 @@ func (c *Config) keepLastLoadedComposeJobs(parsed *Config) {
 	}
 }
 
+// scheduleRecordKept reports whether the schedule record of name stays: the
+// name is a configured Compose job that keeps a record, or a job of a project
+// the last load rejected, whose last loaded jobs are kept too (ADR-005).
+func (c *Config) scheduleRecordKept(name string) bool {
+	if j, ok := c.ComposeJobs[name]; ok {
+		if _, durable := j.SchedulePolicy(); durable {
+			return true
+		}
+	}
+	for project := range c.composeRejected {
+		if strings.HasPrefix(name, project+".") {
+			return true
+		}
+	}
+	return false
+}
+
+// pruneScheduleRecords removes the records of schedule entries that no
+// longer exist. Called after the state file is loaded and after each reload.
+func (c *Config) pruneScheduleRecords() {
+	if c.sh != nil {
+		c.sh.PruneScheduleRecords(c.scheduleRecordKept)
+	}
+}
+
 // rejectedComposeProjects returns the names of the projects the last load
 // rejected, sorted.
 func (c *Config) rejectedComposeProjects() []string {
@@ -225,6 +278,9 @@ func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) erro
 		if jobName := name + "." + job.Name; c.ComposeJobs[jobName] != nil {
 			return fmt.Errorf("%w: %q", ErrComposeJobNameTaken, jobName)
 		}
+		if job.NeedsScheduleState() && c.scheduleState == scheduleStateMissing {
+			return fmt.Errorf("job %q: %w", job.Name, ErrComposeScheduleStateRequired)
+		}
 	}
 	for _, job := range project.Jobs {
 		jobName := name + "." + job.Name
@@ -244,15 +300,21 @@ func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) erro
 					ProjectDirectory: project.WorkingDir,
 					Revision:         job.Revision,
 					TimeZone:         job.TimeZone,
+					MissedFires:      job.MissedFires,
+					Concurrency:      job.Concurrency,
 				},
 			},
-			// concurrency: forbid, the only accepted policy, is the existing
-			// per-job overlap prevention.
-			OverlapConfig: middlewares.OverlapConfig{NoOverlap: true},
+			// With missed_fires: skip and concurrency: forbid the job keeps no
+			// schedule record, and forbid is the existing per-job overlap
+			// prevention. A job with a record has the scheduler check overlap
+			// before the run, as ADR-005 requires.
+			OverlapConfig: middlewares.OverlapConfig{NoOverlap: !job.NeedsScheduleState()},
 			JobSource:     JobSourceINI,
 		}
-		c.logger.Info(fmt.Sprintf("compose project %q (revision %s): scheduling job %q as %q (%s, time zone %s, job revision %s)",
-			name, project.Revision, job.Name, jobName, job.Schedule, job.TimeZone, job.Revision))
+		c.logger.Info(fmt.Sprintf("compose project %q (revision %s): scheduling job %q as %q "+
+			"(%s, time zone %s, missed_fires %s, concurrency %s, job revision %s)",
+			name, project.Revision, job.Name, jobName, job.Schedule, job.TimeZone,
+			job.MissedFires, job.Concurrency, job.Revision))
 	}
 	if len(project.Unscheduled) > 0 {
 		c.logger.Info(fmt.Sprintf("compose project %q: jobs without a schedule stay manual-only: %s",

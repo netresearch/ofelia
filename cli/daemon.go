@@ -122,7 +122,7 @@ func (c *DaemonCommand) boot() (err error) {
 	c.shutdownManager = core.NewShutdownManager(c.Logger, 30*time.Second)
 
 	// Always try to read the config file, as there are options such as globals or some tasks that can be specified there and not in docker
-	config, err := BuildFromFile(c.ConfigFile, c.Logger)
+	config, err := buildFromFile(c.ConfigFile, c.Logger, scheduleStateFor(c.StateFile))
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
 		// Create an empty config if loading failed
@@ -603,6 +603,7 @@ func (c *DaemonCommand) initPersistStore() error {
 	if err := c.persistStore.Load(); err != nil {
 		return fmt.Errorf("persist load %q: %w", c.persistStore.Path(), err)
 	}
+	c.wireScheduleRecords()
 	snap := c.persistStore.Snapshot()
 	for name, j := range snap.Jobs {
 		job, err := c.persistedJobToScheduler(name, j)
@@ -641,6 +642,20 @@ func (c *DaemonCommand) initPersistStore() error {
 		"jobs", len(snap.Jobs),
 		"disabled", len(snap.Disabled))
 	return nil
+}
+
+// wireScheduleRecords hands the loaded state file to the scheduler as the
+// store of schedule records (ADR-005) and removes the records of jobs that no
+// longer exist. The records are evaluated when the scheduler starts, which is
+// after this.
+func (c *DaemonCommand) wireScheduleRecords() {
+	c.scheduler.SetScheduleStore(c.persistStore)
+	// A configuration that failed to load knows none of its jobs (boot falls
+	// back to an empty one, and only a loaded file sets configPath); pruning
+	// with it would delete every record, unended dispatches included.
+	if c.config != nil && c.config.configPath != "" {
+		c.config.pruneScheduleRecords()
+	}
 }
 
 // persistedJobToScheduler reconstructs a scheduler-ready core.Job

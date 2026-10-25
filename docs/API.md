@@ -168,9 +168,13 @@ Content-Type: application/json
 {"name": "backup"}
 ```
 
-Returns `204 No Content` on success. While the run of a removed or replaced
-job of the same name is still stopping, the run is skipped with a warning in
-the log and not started later; the response is `204` all the same.
+Returns `204 No Content` on success, `404 Not Found` for an unknown or disabled
+job, and `409 Conflict` for a Compose job with `missed_fires: one` or
+`concurrency: queue` while a run of it is in progress or waiting for a slot: a
+manual run never runs beside it and never replaces it. For any other job, while
+the run of a removed or replaced job of the same name is still stopping, the run
+is skipped with a warning in the log and not started later; the response is
+`204` all the same.
 
 ### Disable / enable a job
 

@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sort"
 	"sync"
+	"time"
 )
 
 // CurrentVersion is the on-disk schema version this build writes.
@@ -31,8 +32,8 @@ var ErrUnsupportedVersion = errors.New("persist: unsupported state-file version"
 // generic I/O errors that might warrant a retry.
 var ErrStateFileTooLarge = errors.New("persist: state file exceeds size limit")
 
-// ErrNullJobValue is returned by Load when the file contains a job
-// entry whose value is JSON `null` rather than an object. Pre-fix
+// ErrNullJobValue is returned by Load when the file contains a job or
+// schedule entry whose value is JSON `null` rather than an object. Pre-fix
 // this would surface as a nil-pointer panic on the next Snapshot or
 // Save; fail-closed at Load with a typed sentinel so callers can
 // distinguish hand-edit hazards from generic decode errors.
@@ -79,6 +80,50 @@ type State struct {
 	Version  int             `json:"version"`
 	Jobs     map[string]*Job `json:"jobs,omitempty"`     // keyed by job name
 	Disabled []string        `json:"disabled,omitempty"` // job names disabled; sorted on write for determinism
+	// Schedules holds the schedule records of Compose jobs with
+	// missed_fires: one or concurrency: queue (ADR-005), keyed by job name.
+	// A build that predates the field rejects a file that contains it,
+	// because Load refuses unknown fields.
+	Schedules map[string]*Schedule `json:"schedules,omitempty"`
+}
+
+// Schedule is the record of one schedule entry (ADR-005): where the
+// scheduler's evaluation of the schedule stands and what happened to the
+// occurrence it admitted last.
+type Schedule struct {
+	// Revision identifies the schedule the record belongs to: the cron
+	// expression, its time zone, concurrency and missed_fires. A different
+	// revision starts the record afresh.
+	Revision string `json:"revision"`
+	// Activated is when this revision was first armed.
+	Activated time.Time `json:"activated"`
+	// Cursor is the most recent scheduled time the running scheduler
+	// evaluated. A fire after it that falls into a downtime is missed.
+	Cursor time.Time `json:"cursor"`
+	// Dispatch is the occurrence admitted last.
+	Dispatch *Dispatch `json:"dispatch,omitempty"`
+	// Pending is the occurrence in the queue slot (concurrency: queue).
+	Pending *Occurrence `json:"pending,omitempty"`
+}
+
+// Occurrence is one fire of a schedule entry.
+type Occurrence struct {
+	// Scheduled is the time the fire was scheduled for, in UTC.
+	Scheduled time.Time `json:"scheduled"`
+	// Trigger is what produced it: "scheduled", "catch-up" or "manual".
+	Trigger string `json:"trigger"`
+}
+
+// Dispatch is an admitted occurrence and how far it got.
+type Dispatch struct {
+	Occurrence
+	// Execution is the execution ID of the run, set when the run starts.
+	Execution string `json:"execution,omitempty"`
+	// State is "waiting" (for a global slot), "started" or "ended".
+	State string `json:"state"`
+	// Outcome is set once the run ended: "success", "failed", "canceled",
+	// or "unknown" when the daemon stopped without recording an end.
+	Outcome string `json:"outcome,omitempty"`
 }
 
 // Store wraps an on-disk State with concurrency-safe mutators that
@@ -167,19 +212,32 @@ func (s *Store) Load() error {
 	if loaded.Version == 0 {
 		loaded.Version = CurrentVersion
 	}
-	// JSON allows `{"jobs":{"x":null}}` which decodes Jobs["x"]=nil.
-	// Snapshot/save then dereferences every entry, so a corrupt or
-	// hand-edited file with a null value would panic the daemon at
-	// boot or on the next save. Reject up-front so the operator sees
-	// "decode" in the error message and knows where to look.
-	for name, job := range loaded.Jobs {
-		if job == nil {
-			return fmt.Errorf("%w: %s: job %q", ErrNullJobValue, s.path, name)
-		}
+	if err := rejectNullEntries(s.path, loaded); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.state = loaded
+	return nil
+}
+
+// rejectNullEntries reports a job or schedule entry whose value is null.
+// JSON allows `{"jobs":{"x":null}}`, which decodes Jobs["x"]=nil.
+// Snapshot/save then dereferences every entry, so a corrupt or hand-edited
+// file with a null value would panic the daemon at boot or on the next save.
+// Reject up-front so the operator sees "decode" in the error message and
+// knows where to look.
+func rejectNullEntries(path string, loaded State) error {
+	for name, job := range loaded.Jobs {
+		if job == nil {
+			return fmt.Errorf("%w: %s: job %q", ErrNullJobValue, path, name)
+		}
+	}
+	for name, r := range loaded.Schedules {
+		if r == nil {
+			return fmt.Errorf("%w: %s: schedule %q", ErrNullJobValue, path, name)
+		}
+	}
 	return nil
 }
 
@@ -270,6 +328,80 @@ func (s *Store) ClearDisabled(name string) error {
 	return s.saveLocked()
 }
 
+// GetSchedule returns a copy of the named schedule record.
+func (s *Store) GetSchedule(name string) (Schedule, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	r, ok := s.state.Schedules[name]
+	if !ok {
+		return Schedule{}, false
+	}
+	return copySchedule(r), true
+}
+
+// PutSchedule inserts or replaces a schedule record and persists it in the
+// same atomic write. No-op if the store is disabled.
+func (s *Store) PutSchedule(name string, r Schedule) error {
+	if !s.Enabled() {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Schedules == nil {
+		s.state.Schedules = make(map[string]*Schedule)
+	}
+	cp := copySchedule(&r)
+	s.state.Schedules[name] = &cp
+	return s.saveLocked()
+}
+
+// RemoveSchedules deletes the named schedule records and persists once.
+// Names without a record are ignored; nothing is written if none had one.
+func (s *Store) RemoveSchedules(names ...string) error {
+	if !s.Enabled() {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	for _, name := range names {
+		if _, ok := s.state.Schedules[name]; ok {
+			delete(s.state.Schedules, name)
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return s.saveLocked()
+}
+
+// ScheduleNames returns the names that have a schedule record, sorted.
+func (s *Store) ScheduleNames() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	names := make([]string, 0, len(s.state.Schedules))
+	for name := range s.state.Schedules {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// copySchedule returns a copy of r that shares no pointer with it.
+func copySchedule(r *Schedule) Schedule {
+	cp := *r
+	if r.Dispatch != nil {
+		d := *r.Dispatch
+		cp.Dispatch = &d
+	}
+	if r.Pending != nil {
+		o := *r.Pending
+		cp.Pending = &o
+	}
+	return cp
+}
+
 // saveLocked serializes the current in-memory state and atomically
 // replaces the file via tmp+rename. Caller MUST hold s.mu for write —
 // the mutator-and-save cycle must be atomic, otherwise concurrent
@@ -344,6 +476,13 @@ func (s *Store) snapshotLocked() State {
 	}
 	if len(s.state.Disabled) > 0 {
 		out.Disabled = append([]string(nil), s.state.Disabled...)
+	}
+	if len(s.state.Schedules) > 0 {
+		out.Schedules = make(map[string]*Schedule, len(s.state.Schedules))
+		for k, v := range s.state.Schedules {
+			r := copySchedule(v)
+			out.Schedules[k] = &r
+		}
 	}
 	return out
 }

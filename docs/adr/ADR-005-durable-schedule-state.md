@@ -1,6 +1,6 @@
 # ADR-005: Durable Schedule State for Compose Job Triggers
 
-**Status**: Proposed  
+**Status**: Accepted  
 **Date**: 2026-10-24  
 **Authors**: SME
 
@@ -44,7 +44,7 @@ Advancing the cursor and recording what happened to that fire are **one atomic u
 
 A fire is identified by its scheduled time in UTC, not by the time it started.
 
-A manual run (`TriggerEntryByName`, the API, the web UI) does not advance the cursor. It is refused while the entry is busy, that is while a run is in progress or a dispatch waits for a global slot, so it never replaces a scheduled dispatch. An admitted manual run is recorded in the dispatch field with the trigger kind manual, so the crash rule below covers it too. While it runs, it occupies the job like a scheduled run: `forbid` stops a scheduled fire and `queue` puts it into the pending slot.
+A manual run (`TriggerEntryByName`, the API, the web UI) does not advance the cursor. The run-on-startup run counts as one: it starts at the time the job is registered, which the schedule never produces. It is refused while the entry is busy, that is while a run is in progress or a dispatch waits for a global slot, so it never replaces a scheduled dispatch. An admitted manual run is recorded in the dispatch field with the trigger kind manual, so the crash rule below covers it too. While it runs, it occupies the job like a scheduled run: `forbid` stops a scheduled fire and `queue` puts it into the pending slot.
 
 ### When a catch-up runs
 
@@ -58,7 +58,7 @@ When an entry is registered, Ofelia compares the stored record with the configur
 | Job disabled | **Deliberate disable.** The entry is added paused, no catch-up is computed, and nothing of it starts while the job is disabled. Disabling drops a pending or waiting occurrence and logs it. Enabling the job sets the cursor to the enable time, so fires during the disabled period never count as missed. |
 | Job definition changed, schedule unchanged | The record is kept, because it is keyed by the schedule entry and not by the go-cron entry. The reload cancels a run in progress, as it does today; that occurrence ends with the outcome canceled. A pending occurrence, and a scheduled or catch-up dispatch still waiting for a global slot, stay in the record and start on the new entry, but only after the canceled run of the old entry has ended. A manual dispatch still waiting is dropped and logged. A disabled job stays disabled. |
 
-This needs three changes to today's start-up and reload paths. The state file, with its disabled set and its records, is loaded **before** jobs are registered, so that each entry is added with the right pause state and catch-up. A reload keeps the disabled state of a job it replaces. A reload waits for the replaced entry's run to end before the new entry starts anything carried over.
+The comparison happens before the go-cron entry is live, so no fire can see a record that has not been evaluated: for jobs registered at start-up it runs when the scheduler starts, which is after the state file, with its disabled set and its records, has been loaded; for a job added later it runs before its entry is added. Only the start of the chosen occurrence waits until the entry is live. A reload keeps the disabled state of a job it replaces. A reload does not wait for the replaced entry's run to end; the per-entry check keeps the entry busy until that run has recorded its end, so nothing carried over starts beside it.
 
 go-cron's `MissedRunOnce` is not used. It stops counting after 100 missed times, so after a long downtime it runs an old scheduled time and moves the cursor there, and it does not check whether an entry is paused.
 
@@ -110,11 +110,13 @@ A state file has one owner. Two daemons sharing one file are not supported, cons
 
 ### Change in go-cron
 
-The record must be written by the code that admits or drops the run, with the run's scheduled time. go-cron gives a job no way to read that time. go-cron will put two values into the context a job receives: the scheduled time and the kind of trigger (scheduled or manual; catch-ups start through Ofelia's own dispatch path). The kind is needed because a manual run arrives with the current time as its scheduled time, and it must not advance the cursor. go-cron already uses the context this way for the workflow execution ID of entries with dependents.
+The record must be written by the code that admits or drops the run, with the run's scheduled time. go-cron gives a job no way to read that time. go-cron puts both into the context a job receives (`cron.RunInfoFromContext`): the scheduled time and the kind of trigger, one of scheduled, manual, catch-up (go-cron's own `MissedPolicy`, which Ofelia does not use), dependency (a workflow child) and immediate (the first run of an entry added `WithRunImmediately`, Ofelia's run-on-startup). The kind is needed because a manual run arrives with the current time as its scheduled time, and it must not advance the cursor. go-cron already uses the context this way for the workflow execution ID of entries with dependents.
 
-go-cron also needs a removal that waits for the removed entry's runs. `WaitForJobByName` looks the entry up by name, and the removal has already deleted the name, so today nothing can wait for a removed entry. With such a removal, `RemoveJob` keeps the promise its comment makes.
+Ofelia starts a catch-up, a queued occurrence and a dispatch that waited for a slot through its own dispatch path: it records the occurrence as a waiting dispatch, then starts the entry with `TriggerEntryWithInfo`, which carries that occurrence's scheduled time and kind. The run arrives at the per-entry check as what it is, and the check matches it to the waiting dispatch; no side state in memory is needed to recognize it, and a start that go-cron refuses leaves the dispatch waiting for the next registration.
 
-Both are additive changes in a module Netresearch maintains.
+Both are additive changes in a module Netresearch maintains ([netresearch/go-cron#429](https://github.com/netresearch/go-cron/pull/429)).
+
+`RemoveJob` does not wait for the run it cancels. The in-process state of an entry is keyed by the job name and outlives the go-cron entry, so when the canceled run kept a record too, the replacement's first fire finds the entry busy while that run is still stopping, and follows the concurrency policy like any other fire. When the canceled run belonged to a job that kept no record, as after a reload that adds `missed_fires` or `concurrency`, the per-entry check does not know that run; the fire is then skipped until the run has stopped, as for any job without a record.
 
 ## Consequences
 
@@ -129,13 +131,24 @@ Both are additive changes in a module Netresearch maintains.
 - Each fire of an affected schedule entry costs atomic writes of the state file: two for a run (dispatch and outcome), a third when the run first waits for a global slot (waiting, then started), one for a fire that is skipped or coalesced. At a one-minute schedule that is two, at most three, file renames per minute per job.
 - A crash during a run makes its outcome unknown rather than retried. An operator must check the occurrence by hand.
 - After a crash, an `exec`-mode Compose job can run twice at the same time, because the restarted daemon cannot see the command that is still running.
-- A go-cron release must ship before the implementation.
+- The implementation depends on a go-cron release with the changes above.
 
 ### Neutral
 
 - Schedules with `missed_fires: skip` and `concurrency: forbid` behave as they do today.
 - More than one schedule entry per job stays rejected. The records are per entry, but overlap state is still per job.
 - Cleanup of orphaned containers after a crash is not part of this decision. The execution label makes it possible later.
+
+## Implementation notes
+
+What the implementation does where the context above, written before it, describes an earlier state:
+
+- `RemoveJob` still does not wait for the canceled run, but a job registered under the same name no longer runs beside it ([#896](https://github.com/netresearch/ofelia/pull/896)): a job without a record skips its fires until that run has stopped, and a job with a record counts it as busy when that run kept a record too; otherwise its fires are skipped the same way. Context item 5 predates that.
+- A reload already kept the disabled state of a job it replaces (`7fabd9a`) when this ADR was written; context item 5 predates that too.
+- The start-up order is unchanged: jobs are still registered before the state file is loaded. The comparison runs when the scheduler starts, which is after the load (see "When a catch-up runs").
+- A schedule without a time zone is evaluated in the scheduler's local zone; the record keeps times in UTC, and the catch-up search converts the cursor back before it evaluates the schedule.
+- The schedule revision is a hash of the cron expression (which carries `CRON_TZ` for an explicit zone), `concurrency`, `missed_fires` and, when the expression names no zone, the local zone: its name and its abbreviation and UTC offset in January and July. The name alone is `Local` when the zone comes from `/etc/localtime`, so a changed host zone would otherwise keep the record.
+- `ofelia validate` takes `--state-file` (and `OFELIA_STATE_FILE`) to apply the same requirement as the daemon; commands that only inspect the configuration skip it.
 
 ## References
 

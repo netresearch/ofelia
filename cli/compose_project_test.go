@@ -103,7 +103,7 @@ func TestComposeProject_RejectedTriggerRejectsOnlyTheProject(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	composePath := writeFile(t, dir, "compose.yaml",
-		"name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 2 * * *\"\n")
+		"name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 0 2 * * *\"\n")
 	ini := writeFile(t, dir, "ofelia.ini", "[job-local \"other\"]\nschedule = @daily\ncommand = true\n"+
 		"[compose-project \"shop\"]\nfile = "+composePath+"\n")
 	logger, handler := test.NewTestLoggerWithHandler()
@@ -115,7 +115,68 @@ func TestComposeProject_RejectedTriggerRejectsOnlyTheProject(t *testing.T) {
 	assert.Contains(t, c.LocalJobs, "other", "other jobs are unaffected")
 	assert.True(t, handler.HasError(`compose project "shop" rejected`))
 	assert.True(t, handler.HasError(`job "backup"`))
-	assert.True(t, handler.HasError("set missed_fires: skip"))
+	assert.True(t, handler.HasError("a five-field expression is required"))
+}
+
+// plainCronCompose uses the plain cron form: missed_fires defaults to one.
+const plainCronCompose = "name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n" +
+	"        - \"0 2 * * *\"\n  queued:\n    image: alpine:3.22\n    triggers:\n      schedule:\n" +
+	"        - cron: \"0 3 * * *\"\n          concurrency: queue\n          missed_fires: skip\n" +
+	"  skipped:\n    image: alpine:3.22\n    triggers:\n      schedule:\n" +
+	"        - cron: \"0 4 * * *\"\n          missed_fires: skip\n"
+
+// Without a state file, a project whose schedules need schedule records is
+// rejected with an error that names the flag (ADR-005).
+func TestComposeProject_ScheduleStateRequiresStateFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml", plainCronCompose)
+	ini := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n")
+	logger, handler := test.NewTestLoggerWithHandler()
+
+	c, err := buildFromFile(ini, logger, scheduleStateMissing)
+
+	require.NoError(t, err)
+	assert.Empty(t, c.ComposeJobs, "the project is rejected as a whole")
+	assert.True(t, handler.HasError("--state-file"), "the error names the flag")
+	assert.True(t, handler.HasError(`job "backup"`))
+}
+
+// With a state file the plain cron form and concurrency: queue load, keep
+// their policies, and leave overlap to the scheduler's own check.
+func TestComposeProject_ScheduleStateWithStateFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	composePath := writeFile(t, dir, "compose.yaml", plainCronCompose)
+	ini := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n")
+
+	c, err := buildFromFile(ini, test.NewTestLogger(), scheduleStateAvailable)
+	require.NoError(t, err)
+
+	cases := map[string]struct {
+		missed, concurrency string
+		durable             bool
+	}{
+		"shop.backup":  {"one", "forbid", true},
+		"shop.queued":  {"skip", "queue", true},
+		"shop.skipped": {"skip", "forbid", false},
+	}
+	for name, want := range cases {
+		j := c.ComposeJobs[name]
+		require.NotNil(t, j, name)
+		assert.Equal(t, want.missed, j.Project.MissedFires, "%s: missed_fires", name)
+		assert.Equal(t, want.concurrency, j.Project.Concurrency, "%s: concurrency", name)
+		_, durable := j.SchedulePolicy()
+		assert.Equal(t, want.durable, durable, "%s: keeps a schedule record", name)
+		assert.Equal(t, !want.durable, j.NoOverlap, "%s: no-overlap only without a schedule record", name)
+		assert.Equal(t, want.durable, c.scheduleRecordKept(name), "%s: its record is kept", name)
+	}
+	assert.False(t, c.scheduleRecordKept("shop.gone"), "a removed job's record is pruned")
+
+	// A rejected project keeps its last loaded jobs, so their records stay too.
+	c.composeRejected = map[string]bool{"broken": true}
+	assert.True(t, c.scheduleRecordKept("broken.backup"), "a rejected project's records are kept")
+	assert.False(t, c.scheduleRecordKept("brokenx.backup"), "only the rejected project's own jobs")
 }
 
 func TestComposeProject_NameCollisionWithJobCompose(t *testing.T) {
@@ -227,7 +288,7 @@ func TestComposeProject_RejectedProjectReloadsWhenFixed(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	composePath := writeFile(t, dir, "compose.yaml",
-		"name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 2 * * *\"\n")
+		"name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 0 2 * * *\"\n")
 	ini := writeFile(t, dir, "ofelia.ini", "[compose-project \"shop\"]\nfile = "+composePath+"\n")
 
 	c, err := BuildFromFile(ini, test.NewTestLogger())
@@ -369,7 +430,7 @@ func TestComposeProject_ReloadKeepsJobsOfRejectedProject(t *testing.T) {
 		future := time.Now().Add(time.Minute)
 		require.NoError(t, os.Chtimes(composePath, future, future))
 	}
-	touch("name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 2 * * *\"\n")
+	touch("name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 0 2 * * *\"\n")
 	require.NoError(t, c.iniConfigUpdate())
 	assert.Same(t, oldBackup, c.ComposeJobs["shop.backup"], "a rejected reload keeps the last loaded job")
 	assert.Contains(t, c.ComposeJobs, "shop.cleanup")
@@ -394,7 +455,7 @@ func touchFile(t *testing.T, p, content string, d time.Duration) {
 	require.NoError(t, os.Chtimes(p, f, f))
 }
 
-const brokenShopCompose = "name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 2 * * *\"\n"
+const brokenShopCompose = "name: shop\njobs:\n  backup:\n    image: alpine:3.22\n    triggers:\n      schedule:\n        - \"0 0 2 * * *\"\n"
 
 // Kept jobs must survive a second reload while the project is still rejected.
 func TestComposeProject_KeptJobsSurviveSecondReload(t *testing.T) {

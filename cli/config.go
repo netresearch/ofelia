@@ -110,8 +110,11 @@ type Config struct {
 	composeRevisions map[string]string
 	// composeRejected names the projects rejected by the last load.
 	composeRejected map[string]bool
-	Docker          DockerConfig
-	mu              sync.RWMutex // protects job map access
+	// scheduleState says whether a state file can keep the schedule records
+	// that missed_fires: one and concurrency: queue need (ADR-005).
+	scheduleState scheduleStateMode
+	Docker        DockerConfig
+	mu            sync.RWMutex // protects job map access
 	// disabledUnregistered holds names that were disabled when a reload
 	// removed their job and the scheduler rejected the replacement; the next
 	// definition that registers under such a name is registered disabled.
@@ -252,12 +255,19 @@ func loadConfigFile(f string, c *Config, logger *slog.Logger, allUsedKeys map[st
 // The filename may include glob patterns. When multiple files are matched,
 // they are parsed in lexical order and merged.
 func BuildFromFile(filename string, logger *slog.Logger) (*Config, error) {
+	return buildFromFile(filename, logger, scheduleStateUnchecked)
+}
+
+// buildFromFile is BuildFromFile for a caller that knows whether a state file
+// is configured; a Compose project that needs one is rejected without it.
+func buildFromFile(filename string, logger *slog.Logger, state scheduleStateMode) (*Config, error) {
 	files, err := resolveConfigFiles(filename)
 	if err != nil {
 		return nil, err
 	}
 
 	c := NewConfig(logger)
+	c.scheduleState = state
 	var latest time.Time
 	allUsedKeys := make(map[string]bool)
 
@@ -1330,7 +1340,7 @@ func (c *Config) iniConfigUpdate() error {
 	}
 	c.logger.Debug(fmt.Sprintf("reloading config files from %s", strings.Join(files, ", ")))
 
-	parsed, err := BuildFromFile(c.configPath, c.logger)
+	parsed, err := buildFromFile(c.configPath, c.logger, c.scheduleState)
 	if err != nil {
 		return err
 	}
@@ -1366,6 +1376,7 @@ func (c *Config) iniConfigUpdate() error {
 	}
 
 	c.syncAllJobMapsFromINI(parsed)
+	c.pruneScheduleRecords()
 	return nil
 }
 

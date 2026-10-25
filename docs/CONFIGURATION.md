@@ -34,6 +34,7 @@ When the daemon runs with `--state-file=/path/to/state.json` (or `OFELIA_STATE_F
 
 - **Jobs created/updated via `POST /api/jobs/create` or `/api/jobs/update`** are recorded on each successful call and reapplied on the next daemon boot
 - **Disable flags** (`POST /api/jobs/disable` / `/enable`) are persisted regardless of the job's origin — operators can pause an INI-defined job from the UI and the pause survives restart
+- **Schedule records** of Compose jobs with `missed_fires: one` or `concurrency: queue` ([catch-up and the queue](jobs.md#missed-fires-and-the-queue)). They are written as the jobs fire; records of jobs that no longer exist are removed when the configuration loads, except for jobs of a project that is currently rejected
 
 **Lifecycle**:
 
@@ -59,9 +60,25 @@ When the daemon runs with `--state-file=/path/to/state.json` (or `OFELIA_STATE_F
       "command": "pg_dump mydb"
     }
   },
-  "disabled": ["paused-job"]
+  "disabled": ["paused-job"],
+  "schedules": {
+    "shop.backup": {
+      "revision": "3f2a9c1b7e04",
+      "activated": "2026-10-20T08:00:00Z",
+      "cursor": "2026-10-25T00:00:00Z",
+      "dispatch": {
+        "scheduled": "2026-10-25T00:00:00Z",
+        "trigger": "scheduled",
+        "execution": "5d1626707da0",
+        "state": "ended",
+        "outcome": "success"
+      }
+    }
+  }
 }
 ```
+
+An older Ofelia refuses a file with a `schedules` section, because it rejects fields it does not know. Remove the section before downgrading.
 
 **Operator workflow** (typical):
 
@@ -668,12 +685,15 @@ project-directory = /srv/shop   # default: derived by Compose
 Compose projects need the Compose CLI 5.6.0 or later (for example the
 `-compose` image variant); Ofelia checks the version when it loads the
 configuration. Only a subset of the Compose trigger model is accepted: a five-field `cron`,
-`timezone`, `concurrency: forbid` and an explicit `missed_fires: skip`. With
-other settings, or with a missing or older CLI, the project is rejected: Ofelia
-logs an error that names the job or the version and schedules none of the
-project's jobs, while all other jobs keep running. The section
-is INI-only. See [jobs.md](jobs.md#compose-projects) for the full table and the
-profile setup that keeps `docker compose up` working.
+`timezone`, `concurrency` and `missed_fires`. `missed_fires: one`, which is the
+default, and `concurrency: queue` need a state file (`--state-file`), which keeps
+a schedule record per job. With other settings, without a state file where one
+is needed, or with a missing or older CLI, the project is rejected: Ofelia
+logs an error that names the job and the setting, the flag or the version, and
+schedules none of the project's jobs, while all other jobs keep running. The
+section is INI-only. See [jobs.md](jobs.md#compose-projects) for the full table,
+[catch-up and the queue](jobs.md#missed-fires-and-the-queue), and the profile
+setup that keeps `docker compose up` working.
 
 ## Docker Labels Configuration
 

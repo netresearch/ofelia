@@ -769,9 +769,12 @@ func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.scheduler.RunJob(r.Context(), req.Name); err != nil {
-		if errors.Is(err, core.ErrJobNotFound) {
+		switch {
+		case errors.Is(err, core.ErrJobNotFound):
 			http.Error(w, msgJobNotFound, http.StatusNotFound)
-		} else {
+		case errors.Is(err, core.ErrJobBusy):
+			http.Error(w, "job is running or waiting to run; try again when it has finished", http.StatusConflict)
+		default:
 			s.scheduler.Logger.Error("run job failed", "job", req.Name, "error", err)
 			http.Error(w, "failed to run job", http.StatusInternalServerError)
 		}
@@ -914,7 +917,7 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.scheduler.AddJob(job); err != nil {
+	if err := s.scheduler.AddJob(job); err != nil { //nolint:contextcheck // the job outlives the request
 		s.scheduler.Logger.Error("create job failed", "job", req.Name, "error", err)
 		http.Error(w, "failed to create job", http.StatusBadRequest)
 		return
@@ -974,7 +977,7 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		if old := s.scheduler.GetAnyJob(req.Name); old != nil {
 			_ = s.scheduler.RemoveJob(old)
 		}
-		if err := s.scheduler.AddJob(job); err != nil {
+		if err := s.scheduler.AddJob(job); err != nil { //nolint:contextcheck // the job outlives the request
 			s.scheduler.Logger.Error("add job failed during update", "job", req.Name, "error", err)
 			http.Error(w, "failed to create job", http.StatusBadRequest)
 			return
