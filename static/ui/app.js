@@ -1004,12 +1004,14 @@ function renderRemoved(jobs) {
   jobs.forEach(j => {
     const tr = document.createElement('tr');
     let dot, lastRun, dur;
+    // running on a removed job is the canceled run that is still stopping.
+    const stopping = j.running ? dotSpan('running', 'Stopping') : null;
     if (j.lastRun) {
-      dot = statusDot(j.lastRun.failed, j.lastRun.skipped);
+      dot = stopping || statusDot(j.lastRun.failed, j.lastRun.skipped);
       lastRun = escapeHtml(formatTime(j.lastRun.date));
       dur = formatDuration(j.lastRun.duration);
     } else {
-      dot = dotSpan('none', 'Never run');
+      dot = stopping || dotSpan('none', 'Never run');
       lastRun = ''; dur = '';
     }
     tr.innerHTML = `<td>${dot}</td><td>${escapeHtml(j.name)}</td><td class="mono">${escapeHtml(j.schedule)}</td><td class="mono wrap">${escapeHtml(j.command)}</td><td>${lastRun}</td><td>${dur}</td>`;

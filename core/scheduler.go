@@ -70,6 +70,10 @@ type Scheduler struct {
 	clock           Clock
 	onJobComplete   func(jobName string, success bool)
 
+	// gate keeps a replacement's runs from starting beside the stopping run
+	// of the job it replaced; see runGate.
+	gate runGate
+
 	// globalMaxRuntime is `[global] max-runtime`, the bound of every run of a
 	// job that inherits it (see MaxRuntimeProvider). It is read while the run
 	// is in progress, not copied into the job, so a changed value needs no
@@ -391,7 +395,8 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	// get a chance to apply middlewares afterwards.
 	j.Use(s.Middlewares()...)
 
-	id, err := s.cron.AddJob(j.GetSchedule(), &jobWrapper{s, j}, opts...)
+	w := &jobWrapper{s: s, j: j}
+	id, err := s.cron.AddJob(j.GetSchedule(), w, opts...)
 	if err != nil {
 		s.Logger.Warn(fmt.Sprintf(
 			"Failed to register job %q - %q - %q",
@@ -401,6 +406,7 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 		return fmt.Errorf("add cron job: %w", err)
 	}
 	j.SetCronJobID(uint64(id))
+	s.gate.register(w)
 	s.mu.Lock()
 	s.Jobs = append(s.Jobs, j)
 	s.jobsByName[j.GetName()] = j
@@ -427,19 +433,23 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	return nil
 }
 
-// RemoveJob deregisters j so it will not fire again, blocks until any in-flight
-// invocation has finished, then drops it from the active jobs and appends it to
-// Removed. Removal is by name, so a job that was never registered is silently
-// ignored. The error return is always nil and exists for API stability.
+// RemoveJob deregisters j so it will not fire again, cancels a run in
+// progress, drops the job from the active jobs and appends it to Removed. It
+// does not wait for the canceled run to stop: until it has, IsRemovedJobRunning
+// reports true for j, and a job registered under the same name skips its
+// fires (see runGate). Removal is by name, so a job that was never registered
+// is silently ignored. The error return is always nil and exists for API
+// stability.
 func (s *Scheduler) RemoveJob(j Job) error {
 	s.Logger.Info(fmt.Sprintf(
 		"Job deregistered (will not fire again) %q - %q - %q - ID: %v",
 		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
 	))
-	// Use O(1) removal by name, then wait for any in-flight execution
-	// to complete before updating internal state
+	// Retire before removing: a fire go-cron dispatched before the removal
+	// but that has not reached the gate yet is then refused instead of
+	// starting after the removal returned.
+	s.gate.retire(j.GetName())
 	s.cron.RemoveByName(j.GetName())
-	s.cron.WaitForJobByName(j.GetName())
 	s.mu.Lock()
 	for i, job := range s.Jobs {
 		if job == j || job.GetCronJobID() == j.GetCronJobID() {
@@ -464,6 +474,9 @@ func (s *Scheduler) RemoveJobsByTag(tag string) int {
 	entries := s.cron.EntriesByTag(tag)
 	if len(entries) == 0 {
 		return 0
+	}
+	for _, entry := range entries {
+		s.gate.retire(entry.Name)
 	}
 
 	// Remove from cron using O(1) tag removal
@@ -799,9 +812,15 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 
 	newJob.Use(s.Middlewares()...)
 
-	if err := s.cron.UpdateEntryJobByName(name, newSchedule, &jobWrapper{s, newJob}); err != nil {
+	// Replacing the entry's job cancels the old job's run like a removal
+	// does, so the old registration is retired first; see RemoveJob.
+	old := s.gate.retire(name)
+	w := &jobWrapper{s: s, j: newJob}
+	if err := s.cron.UpdateEntryJobByName(name, newSchedule, w); err != nil {
+		s.gate.restore(old)
 		return fmt.Errorf("update job: %w", err)
 	}
+	s.gate.register(w)
 
 	if err := s.applyUpdatedJob(name, newJob); err != nil {
 		return err
@@ -1019,6 +1038,13 @@ func (s *Scheduler) IsJobRunning(name string) bool {
 	return s.cron.IsJobRunningByName(name)
 }
 
+// IsRemovedJobRunning reports whether j was removed or replaced and its
+// canceled run is still stopping. IsJobRunning cannot answer that: it asks by
+// name, which after a removal finds no entry, or the replacement's.
+func (s *Scheduler) IsRemovedJobRunning(j Job) bool {
+	return s.gate.retiredRunning(j)
+}
+
 // defaultJobMaxRuntime is the upper bound applied to job execution
 // contexts when neither the job nor the global config exposes a
 // MaxRuntime. It mirrors the documented default for
@@ -1155,6 +1181,9 @@ func boundJobContext(parent context.Context, j Job, defaultMax time.Duration) (c
 type jobWrapper struct {
 	s *Scheduler
 	j Job
+	// retired is set when the job is removed or replaced; guarded by
+	// s.gate.mu.
+	retired bool
 }
 
 // Compile-time assertion: jobWrapper implements cron.JobWithContext.
@@ -1183,6 +1212,18 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 			w.s.Logger.Error("Job panicked", "job", w.j.GetName(), "recover", r)
 		}
 	}()
+
+	switch w.s.gate.enter(w) {
+	case gateRetired:
+		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
+		return
+	case gateDraining:
+		w.s.Logger.Warn("skip: the canceled run of the removed or replaced job is still stopping",
+			"job", w.j.GetName())
+		return
+	case gateRun:
+	}
+	defer w.s.gate.leave(w)
 
 	// NOTE: Concurrency limiting is handled by the go-cron middleware chain
 	// (maxConcurrentSkipWrapper). Dependencies are handled by go-cron's native
