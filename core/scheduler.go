@@ -1359,8 +1359,10 @@ func (w *jobWrapper) RunWithContext(ctx context.Context) {
 
 // runAfterSlotWait runs a handed-back run-on-startup fire once it has a slot
 // of the global limit. Removal and Stop end the wait through ctx. Disabling
-// pauses the entry without ending ctx, so a job disabled while it waited does
-// not run, as for the per-entry check's wait (waitForSlot).
+// pauses the entry without ending ctx, so the job's disabled state is read
+// once the slot is taken: a job disabled at that moment does not run. Unlike
+// the per-entry check's wait (waitForSlot), a job disabled and enabled again
+// while it waited still runs.
 func (w *jobWrapper) runAfterSlotWait(ctx context.Context, slot chan struct{}) {
 	select {
 	case slot <- struct{}{}:
