@@ -702,7 +702,13 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 		return fmt.Errorf("%w: %s", ErrJobNotFound, jobName)
 	}
 	if j := s.GetAnyJob(jobName); j != nil {
-		if _, durable := s.durablePolicy(j); durable && s.durableBusy(jobName) {
+		_, durable := s.durablePolicy(j)
+		if durable && s.durableBusy(jobName) {
+			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
+		}
+		// The run would be skipped by the name lock (runGate) while a
+		// removed or replaced job's canceled run stops.
+		if s.gate.blocked(jobName, durable) {
 			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
 		}
 	}
@@ -716,6 +722,16 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 	}
 
 	return nil
+}
+
+// fireDeferredStartup fires the run-on-startup run of w that the name lock
+// (runGate) deferred while a removed or replaced job's run stopped.
+func (s *Scheduler) fireDeferredStartup(w *jobWrapper) {
+	name := w.j.GetName()
+	info := cron.RunInfo{ScheduledTime: s.now(), Trigger: cron.TriggerImmediate}
+	if err := s.cron.TriggerEntryWithInfoByName(name, info); err != nil {
+		s.Logger.Warn("could not start the deferred run-on-startup run", "job", name, "error", err)
+	}
 }
 
 // GetRemovedJobs returns a copy of all jobs that were removed from the scheduler.
@@ -1326,17 +1342,28 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		}
 	}()
 
-	switch w.s.gate.enter(w, w.durable()) {
+	durable := w.durable()
+	switch w.s.gate.enter(w, durable) {
 	case gateRetired:
 		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
 		return
 	case gateDraining:
+		if info, ok := cron.RunInfoFromContext(ctx); ok && info.Trigger == cron.TriggerImmediate {
+			w.s.gate.deferStartup(w, durable)
+			w.s.Logger.Warn("defer: the run-on-startup run waits until the canceled run of the removed or replaced job has stopped",
+				"job", w.j.GetName())
+			return
+		}
 		w.s.Logger.Warn("skip: the canceled run of the removed or replaced job is still stopping",
 			"job", w.j.GetName())
 		return
 	case gateRun:
 	}
-	defer w.s.gate.leave(w)
+	defer func() {
+		if due := w.s.gate.leave(w); due != nil {
+			w.s.fireDeferredStartup(due)
+		}
+	}()
 
 	// NOTE: Concurrency limiting is handled by the go-cron middleware chain
 	// (maxConcurrentSkipWrapper). Dependencies are handled by go-cron's native

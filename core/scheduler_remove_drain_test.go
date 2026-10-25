@@ -5,6 +5,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -161,8 +162,11 @@ func TestRemoveJob_ReplacementSkipsWhileTheOldRunStops(t *testing.T) {
 	if err := s.AddJob(repl); err != nil {
 		t.Fatalf("AddJob replacement: %v", err)
 	}
-	if err := s.RunJob(context.Background(), "dup"); err != nil {
-		t.Fatalf("RunJob replacement: %v", err)
+	if err := s.RunJob(context.Background(), "dup"); !errors.Is(err, ErrJobBusy) {
+		t.Fatalf("RunJob replacement = %v, want ErrJobBusy while the old run stops", err)
+	}
+	if err := s.cron.TriggerEntryByName("dup"); err != nil {
+		t.Fatalf("TriggerEntryByName: %v", err)
 	}
 	eventually(t, func() bool { return logs.HasWarning(drainSkipWarning) },
 		"the replacement's fire was not skipped while the old run was stopping")
@@ -177,6 +181,37 @@ func TestRemoveJob_ReplacementSkipsWhileTheOldRunStops(t *testing.T) {
 		t.Fatalf("RunJob after the drain: %v", err)
 	}
 	waitFor(t, repl.ran, "the replacement did not run after the old run had ended")
+}
+
+// The run-on-startup run of a job added while a removed job's canceled run
+// stops is deferred, not lost: a @triggered job gets no other fire that
+// would make up for it. It runs once the old run has ended, exactly once.
+func TestRemoveJob_ReplacementRunOnStartupRunsAfterTheOldRunStops(t *testing.T) {
+	s, logs := startedScheduler(t)
+	old := newStoppingJob("boot")
+	old.ignoreCancel = true
+	startStoppingJob(t, s, old)
+
+	if err := s.RemoveJob(old); err != nil {
+		t.Fatalf("RemoveJob: %v", err)
+	}
+	repl := newCountingJob("boot")
+	repl.RunOnStartup = true
+	if err := s.AddJob(repl); err != nil {
+		t.Fatalf("AddJob replacement: %v", err)
+	}
+	eventually(t, func() bool { return logs.HasWarning("defer: the run-on-startup run") },
+		"the replacement's run-on-startup fire was not deferred")
+	if n := repl.runs.Load(); n != 0 {
+		t.Fatalf("the replacement ran %d times beside the old run", n)
+	}
+
+	close(old.release)
+	waitFor(t, repl.ran, "the deferred run-on-startup run did not start after the old run had ended")
+	time.Sleep(50 * time.Millisecond)
+	if n := repl.runs.Load(); n != 1 {
+		t.Fatalf("the replacement ran %d times, want once", n)
+	}
 }
 
 // RemoveJobsByTag retires the removed jobs like RemoveJob does.
@@ -202,8 +237,11 @@ func TestRemoveJobsByTag_ReplacementSkipsWhileTheOldRunStops(t *testing.T) {
 	if err := s.AddJob(repl); err != nil {
 		t.Fatalf("AddJob replacement: %v", err)
 	}
-	if err := s.RunJob(context.Background(), "tagged"); err != nil {
-		t.Fatalf("RunJob replacement: %v", err)
+	if err := s.RunJob(context.Background(), "tagged"); !errors.Is(err, ErrJobBusy) {
+		t.Fatalf("RunJob replacement = %v, want ErrJobBusy while the old run stops", err)
+	}
+	if err := s.cron.TriggerEntryByName("tagged"); err != nil {
+		t.Fatalf("TriggerEntryByName: %v", err)
 	}
 	eventually(t, func() bool { return logs.HasWarning(drainSkipWarning) },
 		"the replacement's fire was not skipped while the old run was stopping")
@@ -226,8 +264,11 @@ func TestUpdateJob_NewJobSkipsWhileTheOldRunStops(t *testing.T) {
 		t.Fatalf("UpdateJob: %v", err)
 	}
 	waitFor(t, old.canceled, "the update did not cancel the old run")
-	if err := s.RunJob(context.Background(), "upd"); err != nil {
-		t.Fatalf("RunJob: %v", err)
+	if err := s.RunJob(context.Background(), "upd"); !errors.Is(err, ErrJobBusy) {
+		t.Fatalf("RunJob = %v, want ErrJobBusy while the old run stops", err)
+	}
+	if err := s.cron.TriggerEntryByName("upd"); err != nil {
+		t.Fatalf("TriggerEntryByName: %v", err)
 	}
 	eventually(t, func() bool { return logs.HasWarning(drainSkipWarning) },
 		"the new job's fire was not skipped while the old run was stopping")
@@ -307,5 +348,61 @@ func TestRunGate_RetiredRegistrationDoesNotStart(t *testing.T) {
 	}
 	if g.retiredRunning(w.j) {
 		t.Fatal("a refused fire counts as running")
+	}
+}
+
+// A deferred run-on-startup fire is handed back only when the last stopping
+// run that blocks it has ended, and only for the live registration.
+func TestRunGate_DeferredStartupWaitsForEveryStoppingRun(t *testing.T) {
+	var g runGate
+	a := &jobWrapper{j: newCountingJob("chain")}
+	g.register(a)
+	if v := g.enter(a, true); v != gateRun {
+		t.Fatalf("enter a = %v, want gateRun", v)
+	}
+	g.retire("chain")
+	b := &jobWrapper{j: newCountingJob("chain")}
+	g.register(b)
+	if v := g.enter(b, true); v != gateRun {
+		t.Fatalf("enter b = %v, want gateRun beside a run that kept a record", v)
+	}
+	g.retire("chain")
+	c := &jobWrapper{j: newCountingJob("chain")}
+	g.register(c)
+	if v := g.enter(c, false); v != gateDraining {
+		t.Fatalf("enter c = %v, want gateDraining", v)
+	}
+	g.deferStartup(c, false)
+
+	if due := g.leave(a); due != nil {
+		t.Fatal("the deferred fire was handed back while b still stops")
+	}
+	if due := g.leave(b); due != c {
+		t.Fatalf("leave b = %v, want the live registration c", due)
+	}
+	if _, ok := g.startup["chain"]; ok {
+		t.Fatal("the deferred fire is still recorded after it was handed back")
+	}
+}
+
+// A deferred run-on-startup fire of a registration that was replaced in the
+// meantime is dropped: the newer registration has a fire of its own.
+func TestRunGate_DeferredStartupOfAReplacedRegistrationIsDropped(t *testing.T) {
+	var g runGate
+	a := &jobWrapper{j: newCountingJob("chain")}
+	g.register(a)
+	g.enter(a, false)
+	g.retire("chain")
+	c := &jobWrapper{j: newCountingJob("chain")}
+	g.register(c)
+	if v := g.enter(c, false); v != gateDraining {
+		t.Fatalf("enter c = %v, want gateDraining", v)
+	}
+	g.deferStartup(c, false)
+	g.retire("chain")
+	g.register(&jobWrapper{j: newCountingJob("chain")})
+
+	if due := g.leave(a); due != nil {
+		t.Fatalf("leave a = %v, want nil for a replaced registration", due)
 	}
 }

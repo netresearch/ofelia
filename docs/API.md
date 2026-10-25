@@ -141,8 +141,9 @@ Each returns a JSON **array** of job objects:
 `time.Duration` nanoseconds. `origin` is one of `ini`, `label`, `api`, `web`.
 
 On `/api/jobs/removed`, `running` is `true` while the run that the removal
-canceled is still stopping. A job added under the same name skips its fires
-until then.
+canceled is still stopping. A job added under the same name skips its
+scheduled fires until then, refuses a manual run with `409 Conflict`, and runs
+its run-on-startup run once the old run has stopped.
 
 `recentRuns` summarises up to the ten newest executions, oldest first, so a list
 view can show outcome history without a history request per job. It is omitted
@@ -168,13 +169,16 @@ Content-Type: application/json
 {"name": "backup"}
 ```
 
-Returns `204 No Content` on success, `404 Not Found` for an unknown or disabled
-job, and `409 Conflict` for a Compose job with `missed_fires: one` or
-`concurrency: queue` while a run of it is in progress or waiting for a slot: a
-manual run never runs beside it and never replaces it. For any other job, while
-the run of a removed or replaced job of the same name is still stopping, the run
-is skipped with a warning in the log and not started later; the response is
-`204` all the same.
+Returns `204 No Content` on success and `404 Not Found` for an unknown or
+disabled job. It returns `409 Conflict` in two cases, and the run is not
+started:
+
+- for a Compose job with `missed_fires: one` or `concurrency: queue` while a run
+  of it is in progress or waiting for a slot: a manual run never runs beside it
+  and never replaces it;
+- for any job while the run of a removed or replaced job of the same name is
+  still stopping (see `running` on `/api/jobs/removed`). Retry once that run
+  has stopped.
 
 ### Disable / enable a job
 

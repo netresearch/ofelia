@@ -4,6 +4,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -87,6 +88,9 @@ func TestRemovedJobs_RunningShowsTheStoppingRun(t *testing.T) {
 	if !removedRunning(t, h, "gone") {
 		t.Fatal("the removed job reports running=false while its canceled run is stopping")
 	}
+	if code := runNow(h, "gone"); code != http.StatusConflict {
+		t.Fatalf("run while the old run stops: status %d, want 409", code)
+	}
 
 	close(old.release)
 	<-old.ended
@@ -97,4 +101,14 @@ func TestRemovedJobs_RunningShowsTheStoppingRun(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+	if code := runNow(h, "gone"); code != http.StatusNoContent {
+		t.Fatalf("run after the old run stopped: status %d, want 204", code)
+	}
+}
+
+func runNow(h http.Handler, name string) int {
+	body, _ := json.Marshal(map[string]string{"name": name})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/jobs/run", bytes.NewReader(body)))
+	return w.Code
 }
