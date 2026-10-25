@@ -140,6 +140,10 @@ Each returns a JSON **array** of job objects:
 `lastRun` is omitted when the job has never run. `duration` values are Go
 `time.Duration` nanoseconds. `origin` is one of `ini`, `label`, `api`, `web`.
 
+On `/api/jobs/removed`, `running` is `true` while the run that the removal
+canceled is still stopping. A job added under the same name skips its fires
+until then.
+
 `recentRuns` summarises up to the ten newest executions, oldest first, so a list
 view can show outcome history without a history request per job. It is omitted
 for jobs that have not run, and on `/api/jobs/removed`, where nothing reads it.
@@ -164,7 +168,9 @@ Content-Type: application/json
 {"name": "backup"}
 ```
 
-Returns `204 No Content` on success.
+Returns `204 No Content` on success. While the run of a removed or replaced
+job of the same name is still stopping, the run is skipped with a warning in
+the log and not started later; the response is `204` all the same.
 
 ### Disable / enable a job
 
@@ -243,8 +249,10 @@ Content-Type: application/json
 {"name": "cleanup"}
 ```
 
-Returns `204 No Content`. Jobs owned by the INI file or Docker labels return
-`403 Forbidden` — edit the owning configuration to remove them (or use
+Returns `204 No Content` once the job is removed. A run in progress is canceled,
+and the response does not wait for it to stop; the job's entry on
+`/api/jobs/removed` shows `running: true` until it has. Jobs owned by the INI
+file or Docker labels return `403 Forbidden` — edit the owning configuration to remove them (or use
 `/api/jobs/disable` to suppress them); only API/web-created jobs can be deleted
 here.
 

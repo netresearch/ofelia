@@ -88,7 +88,10 @@ paths:
       tags: [Jobs]
       responses:
         "200":
-          description: Array of jobs
+          description: >-
+            Array of removed jobs. `running` is true while the run that the
+            removal canceled is still stopping; a job added under the same
+            name skips its fires until then.
           content:
             application/json:
               schema:
@@ -131,7 +134,11 @@ paths:
       tags: [Job mutations]
       requestBody: {$ref: "#/components/requestBodies/JobName"}
       responses:
-        "204": {description: Job triggered}
+        "204":
+          description: >-
+            Job triggered. While the run of a removed or replaced job of the
+            same name is still stopping, the run is skipped and not started
+            later; the response is the same.
         "400": {$ref: "#/components/responses/PlainError"}
         "404": {$ref: "#/components/responses/PlainError"}
         "405": {$ref: "#/components/responses/PlainError"}
@@ -191,7 +198,11 @@ paths:
       tags: [Job mutations]
       requestBody: {$ref: "#/components/requestBodies/JobName"}
       responses:
-        "204": {description: Job deleted}
+        "204":
+          description: >-
+            Job removed. A run in progress is canceled, and the response does
+            not wait for it to stop; `/api/jobs/removed` reports
+            `running: true` until it has.
         "400": {$ref: "#/components/responses/PlainError"}
         "403":
           description: Job is owned by INI/label config; edit the source or use /api/jobs/disable
@@ -329,7 +340,11 @@ components:
         type: {type: string}
         schedule: {type: string}
         command: {type: string}
-        running: {type: boolean}
+        running:
+          type: boolean
+          description: >-
+            Whether a run of the job is in progress. For a removed job, true
+            means the run that the removal canceled is still stopping.
         lastRun: {$ref: "#/components/schemas/Execution"}
         nextRuns:
           type: array

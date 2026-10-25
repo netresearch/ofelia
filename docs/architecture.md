@@ -22,16 +22,28 @@ if len(tags) > 0 {
 if j.ShouldRunOnStartup() {
     opts = append(opts, cron.WithRunImmediately())
 }
-id, err := s.cron.AddJob(j.GetSchedule(), &jobWrapper{s, j}, opts...)
+w := &jobWrapper{s: s, j: j}
+id, err := s.cron.AddJob(j.GetSchedule(), w, opts...)
 ```
 
-Removal waits for any in-flight run to finish before the job is dropped from
-scheduler state, and update replaces the entry in place by name:
+Removal cancels a run in progress and drops the job from scheduler state at
+once; update replaces the entry in place by name and cancels the old job's run
+the same way. Neither waits for the canceled run to stop, which can take a
+while, for example to remove a container:
 
 ```go
+s.gate.retire(j.GetName())
 s.cron.RemoveByName(j.GetName())
-s.cron.WaitForJobByName(j.GetName())
 ```
+
+Until that run has stopped, `IsRemovedJobRunning` reports it, and a job
+registered under the same name skips its fires with a warning, so the old and
+the new job never run at the same time. A skip, not a wait: a waiting fire would
+hold a slot of the global concurrency limit for as long as the old run takes.
+A skipped fire is not run later; that includes a manual run and the
+run-on-startup fire of a job registered in that time. The bookkeeping is
+`runGate` in `core/run_gate.go`; each go-cron change and its gate change happen
+together under `Scheduler.regMu`.
 
 See `core/scheduler.go` (`AddJobWithTags`, `RemoveJob`, `UpdateJob`, `DisableJob`/`EnableJob`).
 

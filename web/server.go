@@ -634,7 +634,9 @@ func (s *Server) computeRunTimes(job core.Job, now time.Time) (next, prev []time
 // including the recent-run summary the jobs table's sparkline and
 // duration cell read.
 func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
-	return s.buildAPIJobList(list, true)
+	return s.buildAPIJobList(list, true, func(j core.Job) bool {
+		return s.scheduler.IsJobRunning(j.GetName())
+	})
 }
 
 // buildAPIRemovedJobs is buildAPIJobs without the recent-run summary.
@@ -642,11 +644,15 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 // nothing there reads recentRuns, so computing and marshaling the
 // newest runs of every removed job was work the 5s poll paid for on
 // every tick and threw away.
+//
+// A removed job's running reports its canceled run that is still
+// stopping. Asking by name would report the run of a job registered
+// under the same name since.
 func (s *Server) buildAPIRemovedJobs(list []core.Job) []apiJob {
-	return s.buildAPIJobList(list, false)
+	return s.buildAPIJobList(list, false, s.scheduler.IsRemovedJobRunning)
 }
 
-func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool) []apiJob {
+func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool, running func(core.Job) bool) []apiJob {
 	now := time.Now()
 	jobs := make([]apiJob, 0, len(list))
 	for _, job := range list {
@@ -675,7 +681,7 @@ func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool) []apiJob 
 			Type:       jobType(job),
 			Schedule:   job.GetSchedule(),
 			Command:    job.GetCommand(),
-			Running:    s.scheduler.IsJobRunning(job.GetName()),
+			Running:    running(job),
 			LastRun:    execInfo,
 			NextRuns:   nextRuns,
 			PrevRuns:   prevRuns,
