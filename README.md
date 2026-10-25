@@ -430,12 +430,19 @@ Override it with `--docker-poll-interval` or the `poll-interval` option in the
 `[docker]` section of the config file. Set it to `0` to disable both polling and
 automatic reloads. Command-line values only override the configuration when the
 flags are explicitly provided. A reload re-registers a job when one of its
-execution settings changed (for example `user`, `container` or `environment`,
-not only `schedule` and `command`); jobs whose settings are unchanged keep
-running untouched. Changes to `history-limit`, the retry settings, the
-workflow settings `depends-on`, `on-success` and `on-failure`, parallelism and
-`max-runtime` take effect only after a restart. Label-defined jobs pass the
-same security policy on a reload as on first registration.
+execution settings changed (for example `user`, `container`, `environment` or
+`max-runtime`, not only `schedule` and `command`); jobs whose settings are
+unchanged keep running untouched. A changed `[global]` value counts for every
+job that inherits it, such as `default-user`. Re-registering cancels a run of
+that job that is in progress, and the new registration starts without a
+previous run. `[global] max-runtime` is the exception: a job without a value
+of its own reads it while it runs, so a change applies without
+re-registering, to the next run and to a run in progress, measured from that
+run's start.
+Changes to `history-limit`, the retry settings, the workflow settings
+`depends-on`, `on-success` and `on-failure`, and parallelism take effect only
+after a restart. Label-defined jobs pass the same security policy on a reload
+as on first registration.
 
 Because the Docker image defines an `ENTRYPOINT`, pass the scheduler
 arguments as a list in `command:` so Compose does not treat them as a single

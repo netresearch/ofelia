@@ -75,9 +75,10 @@ type ComposeJob struct {
 	Exec     bool           `default:"false" gcfg:"exec" mapstructure:"exec" hash:"true"`
 	// MaxRuntime bounds a run-mode execution like RunJob.MaxRuntime: when it
 	// expires, the run container is stopped and removed. Zero means no
-	// per-job value; the configuration then fills in [global] max-runtime.
+	// per-job value; the run then follows the scheduler's current
+	// [global] max-runtime.
 	// Not supported with Exec (see CheckMaxRuntime).
-	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
+	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" hash:"true"`
 	// Project is set only for jobs loaded from a registered Compose project
 	// ([compose-project] in the INI, see ADR-004). It cannot be set on a
 	// [job-compose] section: the project context lives in the registration.
@@ -109,11 +110,17 @@ type ComposeProjectContext struct {
 func NewComposeJob() *ComposeJob { return &ComposeJob{} }
 
 // GetMaxRuntime exposes the per-job maximum runtime so the scheduler bounds
-// the run context with it (MaxRuntimeProvider). Zero leaves the scheduler's
-// 24h default in place.
+// the run context with it (MaxRuntimeProvider). Zero leaves the bound to the
+// scheduler: [global] max-runtime in run mode, its 24h default in exec mode.
 func (j *ComposeJob) GetMaxRuntime() time.Duration {
 	return j.MaxRuntime
 }
+
+// InheritsGlobalMaxRuntime reports whether the job runs under
+// `[global] max-runtime` when it has no max-runtime of its own: in run mode
+// it does, in exec mode it does not, because canceling `docker compose exec`
+// does not stop the command (see CheckMaxRuntime).
+func (j *ComposeJob) InheritsGlobalMaxRuntime() bool { return !j.Exec }
 
 // CheckMaxRuntime reports a max-runtime in exec mode, where nothing could
 // enforce it. The job API rejects such a request; a configuration file, which

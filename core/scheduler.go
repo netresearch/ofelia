@@ -69,6 +69,15 @@ type Scheduler struct {
 	metricsRecorder MetricsRecorder
 	clock           Clock
 	onJobComplete   func(jobName string, success bool)
+
+	// globalMaxRuntime is `[global] max-runtime`, the bound of every run of a
+	// job that inherits it (see MaxRuntimeProvider). It is read while the run
+	// is in progress, not copied into the job, so a changed value needs no
+	// re-registration. maxRuntimeChanged is closed and replaced on every
+	// change, which wakes the deadline watchers of runs in progress.
+	maxRuntimeMu      sync.Mutex
+	globalMaxRuntime  time.Duration
+	maxRuntimeChanged chan struct{}
 }
 
 // concurrencySemaphore holds a swappable semaphore channel used by the
@@ -1013,18 +1022,110 @@ func (s *Scheduler) IsJobRunning(name string) bool {
 // defaultJobMaxRuntime is the upper bound applied to job execution
 // contexts when neither the job nor the global config exposes a
 // MaxRuntime. It mirrors the documented default for
-// `[global] max-runtime` (24h) so behavior is consistent regardless of
-// whether a job inherits the global default at config-load time. See
-// issue #638.
+// `[global] max-runtime` (24h). See issue #638.
 const defaultJobMaxRuntime = 24 * time.Hour
 
 // MaxRuntimeProvider is implemented by job types that expose a per-job
 // maximum runtime. Currently RunJob, RunServiceJob and ComposeJob satisfy
-// this interface (cli/config fills in `[global] max-runtime` for them;
-// ComposeJob only in run mode); ExecJob and LocalJob do not, and run under
+// this interface; ExecJob and LocalJob do not, and run under
 // defaultJobMaxRuntime.
 type MaxRuntimeProvider interface {
+	// GetMaxRuntime returns the job's own max-runtime; 0 means none.
 	GetMaxRuntime() time.Duration
+	// InheritsGlobalMaxRuntime reports whether a job without a max-runtime
+	// of its own runs under the scheduler's `[global] max-runtime`
+	// (SetGlobalMaxRuntime). A compose job in exec mode does not.
+	InheritsGlobalMaxRuntime() bool
+}
+
+// SetGlobalMaxRuntime sets `[global] max-runtime`, the bound of every job
+// that inherits it. The value applies to the next run and to runs in
+// progress: a run whose elapsed time already reaches the new value ends with
+// ErrMaxTimeRunning. A value <= 0 means defaultJobMaxRuntime.
+func (s *Scheduler) SetGlobalMaxRuntime(d time.Duration) {
+	s.maxRuntimeMu.Lock()
+	defer s.maxRuntimeMu.Unlock()
+	if d == s.globalMaxRuntime {
+		return
+	}
+	s.globalMaxRuntime = d
+	if s.maxRuntimeChanged != nil {
+		close(s.maxRuntimeChanged)
+	}
+	s.maxRuntimeChanged = make(chan struct{})
+}
+
+// GlobalMaxRuntime returns the bound an inheriting job runs under now, and a
+// channel that is closed when the value next changes.
+func (s *Scheduler) GlobalMaxRuntime() (time.Duration, <-chan struct{}) {
+	s.maxRuntimeMu.Lock()
+	defer s.maxRuntimeMu.Unlock()
+	if s.maxRuntimeChanged == nil {
+		s.maxRuntimeChanged = make(chan struct{})
+	}
+	d := s.globalMaxRuntime
+	if d <= 0 {
+		d = defaultJobMaxRuntime
+	}
+	return d, s.maxRuntimeChanged
+}
+
+// MaxRuntimeFor returns the bound a run of j starting now runs under: the
+// job's own max-runtime, else the current `[global] max-runtime` for a job
+// that inherits it, else defaultJobMaxRuntime.
+func (s *Scheduler) MaxRuntimeFor(j Job) time.Duration {
+	if mp, ok := j.(MaxRuntimeProvider); ok {
+		if d := mp.GetMaxRuntime(); d > 0 {
+			return d
+		}
+		if mp.InheritsGlobalMaxRuntime() {
+			d, _ := s.GlobalMaxRuntime()
+			return d
+		}
+	}
+	return defaultJobMaxRuntime
+}
+
+// runContext bounds one run of j. A job with a max-runtime of its own, and a
+// job that does not inherit the global value, gets a fixed deadline from
+// boundJobContext. An inheriting job gets a deadline that follows
+// SetGlobalMaxRuntime while the run is in progress.
+func (s *Scheduler) runContext(parent context.Context, j Job) (context.Context, context.CancelFunc) {
+	if mp, ok := j.(MaxRuntimeProvider); ok && mp.GetMaxRuntime() <= 0 && mp.InheritsGlobalMaxRuntime() {
+		return s.inheritedDeadlineContext(parent)
+	}
+	return boundJobContext(parent, j, defaultJobMaxRuntime)
+}
+
+// inheritedDeadlineContext returns a child of parent that is canceled with
+// the cause ErrMaxTimeRunning once the time since the call reaches the
+// current global max-runtime. A change of the global value re-arms the
+// deadline against the same start time. The caller must invoke the returned
+// cancel when the run finishes, which also ends the watcher goroutine.
+func (s *Scheduler) inheritedDeadlineContext(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancelCause(parent)
+	start := time.Now()
+	go func() {
+		for {
+			d, changed := s.GlobalMaxRuntime()
+			remaining := d - time.Since(start)
+			if remaining <= 0 {
+				cancel(ErrMaxTimeRunning)
+				return
+			}
+			timer := time.NewTimer(remaining)
+			select {
+			case <-timer.C:
+				// Loop: the value can have changed just before the timer fired.
+			case <-changed:
+				timer.Stop()
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			}
+		}
+	}()
+	return ctx, func() { cancel(context.Canceled) }
 }
 
 // boundJobContext returns a child of parent with a deadline derived from
@@ -1109,12 +1210,12 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	defer e.Cleanup()
 
 	// Bound the per-run context with the job's MaxRuntime (or the
-	// scheduler default) so a wedged Docker upstream cannot stall this
-	// goroutine indefinitely. Applied at the wrapper layer so all job
+	// global or default bound) so a wedged Docker upstream cannot stall
+	// this goroutine indefinitely. Applied at the wrapper layer so all job
 	// types (ExecJob, RunJob, RunServiceJob, LocalJob, ComposeJob)
 	// inherit the bound, not just RunJob/RunServiceJob which already
 	// re-wrap inside startAndWait. See issue #638.
-	boundedCtx, cancelBound := boundJobContext(ctx, w.j, defaultJobMaxRuntime)
+	boundedCtx, cancelBound := w.s.runContext(ctx, w.j)
 	defer cancelBound()
 
 	jctx := NewContextWithContext(boundedCtx, w.s, w.j, e)

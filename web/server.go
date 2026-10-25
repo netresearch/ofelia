@@ -724,7 +724,7 @@ type jobRequest struct {
 	// a way to ask for no bound.
 	//
 	// That is the same ladder a config.ini [job-run] section climbs
-	// (cli/config.go, registerAllJobs). It used to stop one rung short
+	// (core.Scheduler.MaxRuntimeFor, read at run time). It used to stop one rung short
 	// here — an API-created job never saw the global, so an operator who
 	// set one got it for INI run jobs and 24h for API ones — which was
 	// issue #806.
@@ -986,50 +986,6 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(status)
 }
 
-// GlobalMaxRuntimeProvider is satisfied by the configuration the daemon
-// hands NewServer. The server holds that configuration as `any` to keep
-// this package from importing cli, so this is how an API-created run job
-// reaches `[global] max-runtime`.
-//
-// Implemented by *cli.Config; cli asserts the link at compile time so a
-// rename cannot quietly reduce this to the nil case.
-type GlobalMaxRuntimeProvider interface {
-	GlobalMaxRuntime() time.Duration
-}
-
-// globalMaxRuntime returns the operator's `[global] max-runtime`, or zero
-// when the server was built without a configuration that exposes one --
-// which is every test that passes nil, and any embedder that does not
-// implement the interface.
-//
-// The typed-nil check is not ceremony: config arrives as `any` through an
-// exported constructor, and a nil *cli.Config stored in one satisfies the
-// assertion while panicking on the call. Falling back to zero is what a
-// caller who has no configuration meant.
-func (s *Server) globalMaxRuntime() time.Duration {
-	p, ok := s.config.(GlobalMaxRuntimeProvider)
-	if !ok || isNilValue(p) {
-		return 0
-	}
-	return p.GlobalMaxRuntime()
-}
-
-// isNilValue reports whether v holds a nil of any kind that can be nil,
-// which a plain `v == nil` misses once the value carries a type. Limiting
-// it to pointers would be arbitrary: a nil func-backed implementor panics
-// on the call just as a nil *cli.Config does.
-func isNilValue(v any) bool {
-	rv := reflect.ValueOf(v)
-	//nolint:exhaustive // reflect.Kind has many values; only the nil-capable ones matter here
-	switch rv.Kind() {
-	case reflect.Pointer, reflect.Func, reflect.Map, reflect.Chan,
-		reflect.Slice, reflect.Interface, reflect.UnsafePointer:
-		return rv.IsNil()
-	default:
-		return false
-	}
-}
-
 func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 	if s.provider == nil {
 		return nil, fmt.Errorf("docker provider unavailable for run job")
@@ -1044,15 +1000,11 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
 	}
-	// Same rule registerAllJobs applies to an INI run job: a job that
-	// named no bound of its own inherits the operator's global, and only
-	// falls through to the scheduler's 24h constant when there is no
-	// global either. "0s" parses to zero and therefore inherits too,
-	// which is what makes it equivalent to omitting the field (#789)
-	// rather than a way to ask for no bound. See #806.
-	if maxRuntime == 0 {
-		maxRuntime = s.globalMaxRuntime()
-	}
+	// Same rule as for an INI run job: a job that named no bound of its own
+	// keeps 0 and runs under the scheduler's current [global] max-runtime,
+	// or its 24h constant when there is no global. "0s" parses to zero and
+	// therefore inherits too, which is what makes it equivalent to omitting
+	// the field (#789) rather than a way to ask for no bound. See #806.
 	j.MaxRuntime = maxRuntime
 	return j, nil
 }
@@ -1103,11 +1055,8 @@ func (s *Server) newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
 	if err := j.CheckMaxRuntime(); err != nil {
 		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
 	}
-	// The same inheritance a config.ini [job-compose] gets; exec mode is left
-	// alone because its command cannot be stopped.
-	if !j.Exec && j.MaxRuntime == 0 {
-		j.MaxRuntime = s.globalMaxRuntime()
-	}
+	// Without a value of its own, a run-mode job runs under the scheduler's
+	// current [global] max-runtime, as a config.ini [job-compose] does.
 	return j, nil
 }
 

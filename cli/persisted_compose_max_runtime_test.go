@@ -16,12 +16,11 @@ import (
 )
 
 // A compose job restored from the state file gets max-runtime the way the API
-// applied it at creation: its stored value, else the current global.
+// applied it at creation: its stored value, else 0, which a run-mode job
+// resolves to the scheduler's current global at run time.
 func TestPersistedComposeJob_MaxRuntime(t *testing.T) {
 	t.Parallel()
-	cfg := &Config{}
-	cfg.Global.MaxRuntime = 2 * time.Hour
-	c := &DaemonCommand{config: cfg}
+	c := &DaemonCommand{config: &Config{}}
 
 	build := func(t *testing.T, j *persist.Job) (*core.ComposeJob, error) {
 		t.Helper()
@@ -37,7 +36,8 @@ func TestPersistedComposeJob_MaxRuntime(t *testing.T) {
 
 	cj, err := build(t, &persist.Job{})
 	require.NoError(t, err)
-	assert.Equal(t, 2*time.Hour, cj.MaxRuntime, "no stored value inherits the global")
+	assert.Zero(t, cj.MaxRuntime, "no stored value keeps 0")
+	assert.True(t, cj.InheritsGlobalMaxRuntime(), "a run-mode job inherits the global at run time")
 
 	cj, err = build(t, &persist.Job{MaxRuntime: "45m"})
 	require.NoError(t, err)
@@ -45,7 +45,8 @@ func TestPersistedComposeJob_MaxRuntime(t *testing.T) {
 
 	cj, err = build(t, &persist.Job{Exec: true})
 	require.NoError(t, err)
-	assert.Zero(t, cj.MaxRuntime, "exec mode inherits nothing")
+	assert.Zero(t, cj.MaxRuntime)
+	assert.False(t, cj.InheritsGlobalMaxRuntime(), "exec mode inherits nothing")
 
 	_, err = build(t, &persist.Job{Exec: true, MaxRuntime: "5m"})
 	require.ErrorIs(t, err, core.ErrComposeExecMaxRuntime)
