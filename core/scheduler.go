@@ -300,15 +300,14 @@ func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 	// A run-on-startup fire handed back by the name lock (runGate) is sent
 	// while the run that blocked it still holds its slot; it waits for a
 	// slot instead of being dropped, so it is not lost after all.
-	if w, ok := m.inner.(*jobWrapper); ok && w.slotWait.CompareAndSwap(true, false) {
-		select {
-		case ch <- struct{}{}:
-		case <-ctx.Done():
+	// Only that fire takes the mark: a scheduled or manual fire of the same
+	// registration keeps the non-blocking path.
+	if w, ok := m.inner.(*jobWrapper); ok {
+		if info, _ := cron.RunInfoFromContext(ctx); info.Trigger == cron.TriggerImmediate &&
+			w.slotWait.CompareAndSwap(true, false) {
+			w.runAfterSlotWait(ctx, ch)
 			return
 		}
-		defer func() { <-ch }()
-		w.RunWithContext(ctx)
-		return
 	}
 	select {
 	case ch <- struct{}{}: // try to acquire slot
@@ -1356,6 +1355,32 @@ func (w *jobWrapper) Run() {
 // per-entry context that is canceled when the entry is removed or replaced.
 func (w *jobWrapper) RunWithContext(ctx context.Context) {
 	w.runWithCtx(ctx)
+}
+
+// runAfterSlotWait runs a handed-back run-on-startup fire once it has a slot
+// of the global limit. Removal and Stop end the wait through ctx. Disabling
+// pauses the entry without ending ctx, so a job disabled while it waited does
+// not run, as for the per-entry check's wait (waitForSlot).
+func (w *jobWrapper) runAfterSlotWait(ctx context.Context, slot chan struct{}) {
+	select {
+	case slot <- struct{}{}:
+	default:
+		w.s.Logger.Info("the global job limit is reached; the run-on-startup run waits for a slot", "job", w.j.GetName())
+		select {
+		case slot <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+	}
+	defer func() { <-slot }()
+	w.s.mu.RLock()
+	_, disabled := w.s.disabledNames[w.j.GetName()]
+	w.s.mu.RUnlock()
+	if disabled {
+		w.s.Logger.Info("skip: the job was disabled while its run-on-startup run waited for a slot", "job", w.j.GetName())
+		return
+	}
+	w.RunWithContext(ctx)
 }
 
 // passGate asks the name lock (runGate) whether this fire may run, and logs

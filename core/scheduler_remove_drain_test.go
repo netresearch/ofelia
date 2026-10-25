@@ -598,3 +598,97 @@ func TestRemoveJob_DeferredRunOnStartupWaitsForAGlobalSlot(t *testing.T) {
 		_ = s.Stop()
 	}
 }
+
+// A handed-back run-on-startup fire that waits for a global slot does not run
+// when the job is disabled meanwhile: disabling pauses the entry without
+// ending the wait's context, so the wait checks it once it has a slot.
+func TestRemoveJob_DeferredRunOnStartupOfADisabledJobDoesNotRun(t *testing.T) {
+	logger, logs := test.NewTestLoggerWithHandler()
+	s := NewScheduler(logger)
+	s.SetMaxConcurrentJobs(2)
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Stop() })
+	old := newStoppingJob("boot")
+	old.ignoreCancel = true
+	startStoppingJob(t, s, old)
+	if err := s.RemoveJob(old); err != nil {
+		t.Fatalf("RemoveJob: %v", err)
+	}
+	repl := newCountingJob("boot")
+	repl.RunOnStartup = true
+	if err := s.AddJob(repl); err != nil {
+		t.Fatalf("AddJob replacement: %v", err)
+	}
+	eventually(t, func() bool { return logs.HasWarning("defer: the run-on-startup run") },
+		"the replacement's run-on-startup fire was not deferred")
+	other := newStoppingJob("other")
+	other.ignoreCancel = true
+	t.Cleanup(func() { close(other.release) })
+	if err := s.AddJob(other); err != nil {
+		t.Fatalf("AddJob other: %v", err)
+	}
+	eventually(t, func() bool {
+		return s.RunJob(context.Background(), "other") == nil && func() bool {
+			select {
+			case <-other.started:
+				return true
+			case <-time.After(20 * time.Millisecond):
+				return false
+			}
+		}()
+	}, "the other job did not take the free slot")
+
+	// A waiter already queued on the limit takes the slot the old run frees.
+	slot := s.concurrencySem.getChan()
+	taken := make(chan struct{})
+	go func() { slot <- struct{}{}; close(taken) }()
+	close(old.release)
+	waitFor(t, taken, "the queued waiter did not get the old run's slot")
+	eventually(t, func() bool { return logs.HasMessage("the run-on-startup run waits for a slot") },
+		"the handed-back fire is not waiting for a slot")
+
+	if err := s.DisableJob("boot"); err != nil {
+		t.Fatalf("DisableJob: %v", err)
+	}
+	<-slot
+	eventually(t, func() bool { return logs.HasMessage("disabled while its run-on-startup run waited") },
+		"the waiting fire did not notice the disable")
+	if n := repl.runs.Load(); n != 0 {
+		t.Fatalf("the disabled job ran %d times", n)
+	}
+}
+
+// Only the handed-back run-on-startup fire (TriggerImmediate) takes the
+// slot-wait mark. A manual fire of the same registration with every slot
+// taken is skipped as before and leaves the mark for the fire it belongs to.
+func TestSlotWait_OnlyTheRunOnStartupFireTakesTheMark(t *testing.T) {
+	s, _ := startedScheduler(t)
+	s.SetMaxConcurrentJobs(1)
+	other := newStoppingJob("other")
+	other.ignoreCancel = true
+	startStoppingJob(t, s, other)
+	j := newCountingJob("marked")
+	if err := s.AddJob(j); err != nil {
+		t.Fatalf("AddJob: %v", err)
+	}
+	s.gate.mu.Lock()
+	w := s.gate.current["marked"]
+	s.gate.mu.Unlock()
+	w.slotWait.Store(true)
+
+	if err := s.cron.TriggerEntryByName("marked"); err != nil {
+		t.Fatalf("TriggerEntryByName: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	close(other.release)
+	waitFor(t, other.ended, "the other job did not end")
+	time.Sleep(100 * time.Millisecond)
+	if n := j.runs.Load(); n != 0 {
+		t.Fatalf("the manual fire waited for a slot and ran %d times", n)
+	}
+	if !w.slotWait.Load() {
+		t.Fatal("the manual fire took the run-on-startup fire's mark")
+	}
+}
