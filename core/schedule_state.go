@@ -432,7 +432,9 @@ func (s *Scheduler) orphanEnded(name, executionID string) *pendingLaunch {
 // durableMu.
 func (s *Scheduler) startPendingLocked(name string, e *durableEntry) *pendingLaunch {
 	rec, ok := s.records.GetSchedule(name)
-	if !ok || rec.Pending == nil || busyLocked(rec, e) || !s.liveAndEnabled(name) {
+	// A stopping scheduler starts nothing; the queued occurrence stays in the
+	// slot and starts at the next registration.
+	if !ok || rec.Pending == nil || busyLocked(rec, e) || !s.cron.IsRunning() || !s.liveAndEnabled(name) {
 		return nil
 	}
 	occ := *rec.Pending

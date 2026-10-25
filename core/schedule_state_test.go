@@ -952,6 +952,32 @@ func TestScheduleState_StopWithWaitingDispatchStartsNothing(t *testing.T) {
 	assert.Equal(t, dispatchWaiting, r.Dispatch.State, "the dispatch stays waiting for the next registration")
 }
 
+// Stopping the scheduler while a run is in progress and a fire is queued
+// keeps the queued occurrence in the slot without trying to start it on the
+// stopped go-cron.
+func TestScheduleState_StopWithQueuedOccurrenceStartsNothing(t *testing.T) {
+	t.Parallel()
+	logger, handler := test.NewTestLoggerWithHandler()
+	h := newDurableHarness(t, at(23, 1))
+	h.s.Logger = logger
+	j := newDurableJob("shop.backup", false, true)
+	require.NoError(t, h.s.AddJob(j))
+	h.start()
+	release := j.hold()
+	h.fire("shop.backup", at(23, 2))
+	nextRun(t, j)
+	h.fire("shop.backup", at(23, 3))
+	h.eventually("shop.backup", func(r persist.Schedule) bool { return r.Pending != nil }, "the fire is queued")
+
+	go func() { time.Sleep(200 * time.Millisecond); release() }()
+	_ = h.s.StopWithTimeout(5 * time.Second)
+
+	assert.False(t, handler.HasError("could not start the occurrence"), "Stop tried to start the queued occurrence")
+	r := h.record("shop.backup")
+	require.NotNil(t, r.Pending, "the queued occurrence stays for the next registration")
+	assert.True(t, r.Pending.Scheduled.Equal(at(23, 3)))
+}
+
 // failingStore refuses every write after the first n.
 type failingStore struct {
 	*persist.Store
