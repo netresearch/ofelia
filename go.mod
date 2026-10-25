@@ -23,7 +23,7 @@ require (
 	github.com/manifoldco/promptui v0.9.0
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
-	github.com/netresearch/go-cron v0.16.1
+	github.com/netresearch/go-cron v0.16.2-0.20261025053121-758e032e3745
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/crypto v0.58.0

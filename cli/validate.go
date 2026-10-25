@@ -18,9 +18,12 @@ import (
 // ValidateCommand validates the config file
 type ValidateCommand struct {
 	ConfigFile string `long:"config" env:"OFELIA_CONFIG" description:"configuration file"`
-	LogLevel   string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (overrides config)"`
-	Logger     *slog.Logger
-	LevelVar   *slog.LevelVar
+	// StateFile mirrors the daemon's option. Validation only checks whether one
+	// is set: Compose jobs with missed_fires: one or concurrency: queue need it.
+	StateFile string `long:"state-file" env:"OFELIA_STATE_FILE" description:"the daemon's state file; only checks whether one is set"`
+	LogLevel  string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (overrides config)"`
+	Logger    *slog.Logger
+	LevelVar  *slog.LevelVar
 }
 
 // Execute runs the validation command
@@ -31,7 +34,7 @@ func (c *ValidateCommand) Execute(_ []string) error {
 	}
 
 	c.Logger.Debug(fmt.Sprintf("Validating %q ... ", c.ConfigFile))
-	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
+	conf, err := buildFromFile(c.ConfigFile, c.Logger, scheduleStateFor(c.StateFile))
 	if err != nil {
 		c.Logger.Error("ERROR")
 		return err

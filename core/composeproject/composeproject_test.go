@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/netresearch/go-cron"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -111,9 +112,6 @@ func TestLoad_RejectsUnsupportedTriggers(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnsupportedTrigger)
 
 	cases := map[string]string{
-		"plain":         "missed_fires is unset and defaults to one",
-		"missed_one":    "missed_fires: one is not supported",
-		"queued":        "concurrency: queue is not supported",
 		"twice":         "2 schedule entries",
 		"no_manual":     "triggers.manual: false",
 		"dep_no_manual": `depends on job "locked", which sets triggers.manual: false`,
@@ -130,6 +128,42 @@ func TestLoad_RejectsUnsupportedTriggers(t *testing.T) {
 		assert.False(t, strings.HasPrefix(m, `compose project "bad", job "locked": `),
 			"locked has no schedule and is only reported through its dependent: %s", m)
 	}
+}
+
+// TestLoad_SchedulePolicies checks that missed_fires and concurrency load
+// with their defaults, and which jobs need the durable schedule state.
+func TestLoad_SchedulePolicies(t *testing.T) {
+	p, err := load(t, Spec{Name: "policies", Files: []string{"policies.yaml"}})
+	require.NoError(t, err)
+
+	cases := map[string]struct {
+		missed, concurrency string
+		durable             bool
+	}{
+		"plain":      {MissedFiresOne, ConcurrencyForbid, true},
+		"missed_one": {MissedFiresOne, ConcurrencyForbid, true},
+		"queued":     {MissedFiresSkip, ConcurrencyQueue, true},
+		"skipped":    {MissedFiresSkip, ConcurrencyForbid, false},
+	}
+	for name, want := range cases {
+		j := jobByName(t, p, name)
+		assert.Equal(t, want.missed, j.MissedFires, "%s: missed_fires", name)
+		assert.Equal(t, want.concurrency, j.Concurrency, "%s: concurrency", name)
+		assert.Equal(t, want.durable, j.NeedsScheduleState(), "%s: NeedsScheduleState", name)
+	}
+}
+
+// compose-go's schema rejects an unknown policy before Extract runs; Extract
+// also accepts a project built in code, so checkSchedule rejects it too.
+func TestCheckSchedule_UnknownPolicies(t *testing.T) {
+	_, _, errs := checkSchedule(types.ScheduleConfig{Cron: "0 2 * * *", MissedFires: "all", Concurrency: "replace"})
+	msgs := make([]string, 0, len(errs))
+	for _, e := range errs {
+		require.ErrorIs(t, e, ErrUnsupportedTrigger)
+		msgs = append(msgs, e.Error())
+	}
+	assert.True(t, containsLine(msgs, "", `missed_fires: "all"`), "no missed_fires error in %v", msgs)
+	assert.True(t, containsLine(msgs, "", `concurrency: "replace"`), "no concurrency error in %v", msgs)
 }
 
 func joinedMessages(err error) []string {

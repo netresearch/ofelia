@@ -543,18 +543,63 @@ files change.
 | `cron` with five fields | yes | Evaluated by Ofelia's scheduler |
 | `cron` with other field counts or `@daily` style shortcuts | no | Rejected |
 | `timezone` | yes | The schedule is evaluated in that zone; an empty value means the local time zone of the Ofelia process, which is logged when the project is loaded. A daylight-saving switch does not count as a change of the job |
-| `concurrency: forbid` (also the default) | yes | Enables the per-job overlap prevention (`no-overlap`) |
-| `concurrency: queue` | no | Rejected |
-| `missed_fires: skip` | yes, only when set explicitly | Missed runs are not replayed |
-| `missed_fires: one`, or unset | no | Rejected; the specification's default is `one`, which needs catch-up Ofelia does not have yet. Set `missed_fires: skip` if skipping missed runs is acceptable |
+| `concurrency: forbid` (also the default) | yes | A fire while a run is in progress is skipped and logged |
+| `concurrency: queue` | yes, with `--state-file` | A fire while a run is in progress waits in one queue slot and runs when that run ends; a further fire while the slot is full is dropped and logged |
+| `missed_fires: one`, or unset | yes, with `--state-file` | After a downtime, one catch-up run for the most recent missed fire |
+| `missed_fires: skip` | yes | Missed runs are not replayed |
 | more than one schedule entry | no | Rejected |
 | `triggers.manual: false` on the job or on a job it depends on | no | Rejected, because Ofelia runs the job with `docker compose run`, which refuses such jobs |
 
 The plain form `schedule: ["0 2 * * *"]` sets only the cron expression, so
-`missed_fires` stays at its default and the job is rejected. Write the
-structured form instead. Compose merges lists across files by appending, so a
-schedule entry in a second file adds a second entry; use `!override` to
-replace the list.
+`missed_fires` stays at its default `one` and the job needs a state file. Without
+`--state-file`, write the structured form with `missed_fires: skip`. Compose
+merges lists across files by appending, so a schedule entry in a second file
+adds a second entry; use `!override` to replace the list.
+
+### Missed fires and the queue
+
+`missed_fires: one` and `concurrency: queue` need state that survives a restart,
+so Ofelia keeps a schedule record per job in the state file
+([`--state-file`](CONFIGURATION.md#state-file---state-file), see
+[ADR-005](adr/ADR-005-durable-schedule-state.md)). Without a state file, a
+project that uses either setting is rejected with an error that names the flag.
+`ofelia validate` applies the same check; pass it `--state-file`, or set
+`OFELIA_STATE_FILE`, as for the daemon.
+
+The record holds the most recent scheduled time the running scheduler
+evaluated, and the run it admitted last. From it:
+
+- **Catch-up.** A fire is missed only when Ofelia was not running at its time.
+  At startup, Ofelia runs one catch-up per job, for the most recent missed fire,
+  however long the downtime was. A job seen for the first time catches up
+  nothing; fires before that are never missed. A fire the scheduler skipped
+  while it was running (`concurrency: forbid`) is not missed either.
+- **Changed schedule.** A changed `cron`, `timezone`, `concurrency` or
+  `missed_fires` starts the record afresh: a time the old schedule produced is
+  not a missed fire of the new one, and a queued run is dropped and logged.
+  A change to the job's definition alone keeps the record.
+- **Disabled job.** A disabled job catches up nothing. Disabling drops a queued
+  run; enabling counts the fires of the disabled period as handled.
+- **Manual runs.** `POST /api/jobs/run` and the web UI are refused with
+  `409 Conflict` while a run of the job is in progress or waiting, so a manual
+  run never runs beside a scheduled one. A manual run does not count as a fire.
+- **Global limit.** For these jobs the global limit of concurrent jobs delays a
+  run instead of dropping it. While the run waits for a slot, the job counts as
+  busy.
+- **At most once.** Ofelia records a run before it starts it. After a crash, a
+  run that had started counts as handled with the outcome `unknown`, and is not
+  started again; check it by hand. While its container (found by the
+  `ofelia.execution` label) still runs, the job counts as busy. In exec mode
+  (`docker compose exec`) Ofelia cannot see the command, so after a crash a
+  second run can start beside one that still runs.
+
+Each fire of such a job writes the state file: two atomic writes per run (start
+and end), a third when the run waits for a slot, and one for a fire that is
+skipped or queued.
+
+An older Ofelia refuses to load a state file that holds schedule records (it
+rejects fields it does not know). Before downgrading, remove the `schedules`
+section from the file.
 
 ### Keep scheduled jobs out of `docker compose up`
 

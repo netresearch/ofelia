@@ -122,7 +122,7 @@ func (c *DaemonCommand) boot() (err error) {
 	c.shutdownManager = core.NewShutdownManager(c.Logger, 30*time.Second)
 
 	// Always try to read the config file, as there are options such as globals or some tasks that can be specified there and not in docker
-	config, err := BuildFromFile(c.ConfigFile, c.Logger)
+	config, err := buildFromFile(c.ConfigFile, c.Logger, scheduleStateFor(c.StateFile))
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
 		// Create an empty config if loading failed
@@ -602,6 +602,12 @@ func (c *DaemonCommand) initPersistStore() error {
 	}
 	if err := c.persistStore.Load(); err != nil {
 		return fmt.Errorf("persist load %q: %w", c.persistStore.Path(), err)
+	}
+	// Schedule records (ADR-005) are evaluated when the scheduler starts,
+	// which is after this load; records of removed jobs go now.
+	c.scheduler.SetScheduleStore(c.persistStore)
+	if c.config != nil {
+		c.config.pruneScheduleRecords()
 	}
 	snap := c.persistStore.Snapshot()
 	for name, j := range snap.Jobs {

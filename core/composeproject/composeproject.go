@@ -96,6 +96,27 @@ type Job struct {
 	// changes only when this job changes, so a reload replaces only the jobs
 	// whose definition changed.
 	Revision string
+	// MissedFires is the schedule's missed_fires policy, MissedFiresOne or
+	// MissedFiresSkip; unset in the file means one.
+	MissedFires string
+	// Concurrency is the schedule's concurrency policy, ConcurrencyForbid or
+	// ConcurrencyQueue; unset in the file means forbid.
+	Concurrency string
+}
+
+// The schedule policies of the Compose specification.
+const (
+	MissedFiresOne    = "one"
+	MissedFiresSkip   = "skip"
+	ConcurrencyForbid = "forbid"
+	ConcurrencyQueue  = "queue"
+)
+
+// NeedsScheduleState reports whether the job's schedule needs Ofelia's
+// durable schedule state (ADR-005): a catch-up for a missed fire, or a queue
+// slot.
+func (j Job) NeedsScheduleState() bool {
+	return j.MissedFires == MissedFiresOne || j.Concurrency == ConcurrencyQueue
 }
 
 // Loader loads a Compose project. It exists so that the cli package does not
@@ -226,7 +247,19 @@ func extractJob(name string, job types.JobConfig, all types.Jobs, services types
 	if err != nil {
 		errs = append(errs, err)
 	}
-	return Job{Name: name, Schedule: schedule, TimeZone: zone, Revision: revision}, errs
+	return Job{
+		Name: name, Schedule: schedule, TimeZone: zone, Revision: revision,
+		MissedFires: orDefault(sched.MissedFires, MissedFiresOne),
+		Concurrency: orDefault(sched.Concurrency, ConcurrencyForbid),
+	}, errs
+}
+
+// orDefault returns v, or def when v is empty.
+func orDefault(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
 }
 
 // jobRevision returns a short hash of a job's definition and of every job and
@@ -279,20 +312,12 @@ func checkSchedule(s types.ScheduleConfig) (string, string, []error) {
 			ErrUnsupportedTrigger, s.Cron, n))
 	}
 	switch s.Concurrency {
-	case "", "forbid":
-	case "queue":
-		errs = append(errs, fmt.Errorf("%w: concurrency: queue is not supported yet; use forbid", ErrUnsupportedTrigger))
+	case "", ConcurrencyForbid, ConcurrencyQueue:
 	default:
 		errs = append(errs, fmt.Errorf("%w: concurrency: %q", ErrUnsupportedTrigger, s.Concurrency))
 	}
 	switch s.MissedFires {
-	case "skip":
-	case "":
-		errs = append(errs, fmt.Errorf("%w: missed_fires is unset and defaults to one, which is not supported yet; "+
-			"set missed_fires: skip if skipping missed runs is acceptable", ErrUnsupportedTrigger))
-	case "one":
-		errs = append(errs, fmt.Errorf("%w: missed_fires: one is not supported yet; "+
-			"set missed_fires: skip if skipping missed runs is acceptable", ErrUnsupportedTrigger))
+	case "", MissedFiresOne, MissedFiresSkip:
 	default:
 		errs = append(errs, fmt.Errorf("%w: missed_fires: %q", ErrUnsupportedTrigger, s.MissedFires))
 	}

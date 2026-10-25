@@ -103,6 +103,43 @@ type ComposeProjectContext struct {
 	// current abbreviation and offset, which change at every daylight-saving
 	// switch, and an explicit zone is already part of the schedule (CRON_TZ).
 	TimeZone string
+	// MissedFires and Concurrency are the schedule's policies from the
+	// Compose file ("one" or "skip", "forbid" or "queue"). With "one" or
+	// "queue" the job keeps a schedule record (ADR-005).
+	MissedFires string `hash:"true"`
+	Concurrency string `hash:"true"`
+}
+
+// SchedulePolicy reports the durable schedule policy of a job loaded from a
+// registered Compose project whose schedule sets missed_fires: one or
+// concurrency: queue (DurableScheduleJob, ADR-005).
+func (j *ComposeJob) SchedulePolicy() (SchedulePolicy, bool) {
+	catchUp := j.Project.MissedFires == "one"
+	queue := j.Project.Concurrency == "queue"
+	if j.Project.Revision == "" || !catchUp && !queue {
+		return SchedulePolicy{}, false
+	}
+	return SchedulePolicy{CatchUp: catchUp, Queue: queue, Revision: ScheduleRevision(j.Schedule, catchUp, queue)}, true
+}
+
+// WorkloadRunning reports whether the run container of the execution still
+// runs (WorkloadChecker). It finds it by ComposeExecutionLabel. In exec mode
+// the command runs inside a service container and cannot be found, so it
+// reports false.
+func (j *ComposeJob) WorkloadRunning(ctx context.Context, executionID string) (bool, error) {
+	if j.Exec {
+		return false, nil
+	}
+	if j.Provider == nil {
+		return false, errComposeNoProvider
+	}
+	containers, err := j.Provider.ListContainers(ctx, domain.ListOptions{
+		Filters: map[string][]string{"label": {ComposeExecutionLabel + "=" + executionID}},
+	})
+	if err != nil {
+		return false, fmt.Errorf("listing run containers: %w", err)
+	}
+	return len(containers) > 0, nil
 }
 
 // NewComposeJob returns an empty ComposeJob; the caller fills in File,
