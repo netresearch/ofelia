@@ -110,9 +110,16 @@ type ComposeProjectContext struct {
 	Concurrency string `hash:"true"`
 }
 
+// SatisfiesRequirement reports that a job loaded from a registered Compose
+// project has its compose files: they are in Project.Files, not in File, which
+// the configuration validator checks (config.RequirementSatisfier).
+func (j *ComposeJob) SatisfiesRequirement(key string) bool {
+	return key == "file" && len(j.Project.Files) > 0
+}
+
 // SchedulePolicy reports the durable schedule policy of a job loaded from a
 // registered Compose project whose schedule sets missed_fires: one or
-// concurrency: queue (DurableScheduleJob, ADR-005).
+// concurrency: queue (SchedulePolicyProvider, ADR-005).
 func (j *ComposeJob) SchedulePolicy() (SchedulePolicy, bool) {
 	catchUp := j.Project.MissedFires == "one"
 	queue := j.Project.Concurrency == "queue"

@@ -822,17 +822,23 @@ func TestLatestMissed(t *testing.T) {
 		"just before now": {at(22, 2), at(23, 2).Add(-time.Second), time.Time{}},
 	}
 	for name, tc := range cases {
-		got := latestMissed(durableSchedule, tc.cursor, tc.now)
+		got := latestMissed(durableSchedule, tc.cursor, tc.now, time.Local)
 		assert.True(t, got.Equal(tc.want), "%s: got %v, want %v", name, got, tc.want)
 	}
 	// The record keeps the cursor in UTC; the schedule is still evaluated in
-	// local time.
-	got := latestMissed(durableSchedule, at(22, 2).UTC(), at(23, 10).UTC())
-	assert.True(t, got.Equal(at(23, 2)), "a UTC cursor: got %v, want %v", got, at(23, 2))
+	// the scheduler's zone. An explicit zone keeps this independent of the
+	// host's.
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	require.NoError(t, err)
+	cursor := time.Date(2026, 10, 22, 2, 0, 0, 0, berlin).UTC()
+	now := time.Date(2026, 10, 23, 10, 0, 0, 0, berlin).UTC()
+	got := latestMissed(durableSchedule, cursor, now, berlin)
+	want := time.Date(2026, 10, 23, 2, 0, 0, 0, berlin)
+	assert.True(t, got.Equal(want), "a UTC cursor: got %v, want %v", got, want)
 	// Longer than go-cron's catch-up limit of 100 missed times.
-	got = latestMissed("* * * * *", at(20, 0), at(23, 0))
+	got = latestMissed("* * * * *", at(20, 0), at(23, 0), time.Local)
 	assert.True(t, got.Equal(at(23, 0)), "after a long downtime the most recent fire is found, got %v", got)
-	assert.True(t, latestMissed("not a schedule", at(20, 0), at(23, 0)).IsZero())
+	assert.True(t, latestMissed("not a schedule", at(20, 0), at(23, 0), time.Local).IsZero())
 }
 
 func TestScheduleRevision(t *testing.T) {
@@ -844,4 +850,95 @@ func TestScheduleRevision(t *testing.T) {
 	assert.NotEqual(t, base, ScheduleRevision("0 2 * * *", false, false), "missed_fires")
 	assert.NotEqual(t, base, ScheduleRevision("0 2 * * *", true, true), "concurrency")
 	assert.NotEqual(t, base, ScheduleRevision("CRON_TZ=Europe/Berlin 0 2 * * *", true, false), "the zone")
+
+	// A zone from /etc/localtime is named "Local" whatever it is; a changed
+	// host zone must still change the revision.
+	plus1 := scheduleRevision("0 2 * * *", true, false, time.FixedZone("Local", 3600))
+	utc := scheduleRevision("0 2 * * *", true, false, time.FixedZone("Local", 0))
+	assert.NotEqual(t, plus1, utc, "the local zone's offset")
+	assert.Equal(t, plus1, scheduleRevision("0 2 * * *", true, false, time.FixedZone("Local", 3600)))
+	explicit := "CRON_TZ=Europe/Berlin 0 2 * * *"
+	assert.Equal(t, scheduleRevision(explicit, true, false, time.FixedZone("Local", 3600)),
+		scheduleRevision(explicit, true, false, time.FixedZone("Local", 0)), "an explicit zone ignores the host's")
+}
+
+// panicJob is a durable job whose first run panics.
+type panicJob struct {
+	*durableJob
+	panicked bool
+}
+
+func (j *panicJob) Run(ctx *Context) error {
+	if !j.panicked {
+		j.panicked = true
+		panic("boom")
+	}
+	return j.durableJob.Run(ctx)
+}
+
+// A run that panics releases its slot, records the outcome failed and leaves
+// the job idle, so the next fire runs.
+func TestScheduleState_PanicReleasesTheEntry(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 1))
+	h.s.SetMaxConcurrentJobs(1)
+	j := &panicJob{durableJob: newDurableJob("shop.backup", true, false)}
+	require.NoError(t, h.s.AddJob(j))
+	h.start()
+
+	h.fire("shop.backup", at(23, 2))
+	h.eventually("shop.backup", func(r persist.Schedule) bool {
+		return ended(r) && r.Dispatch.Outcome == outcomeFailed
+	}, "the panicked run ends with the outcome failed")
+
+	h.fire("shop.backup", at(23, 3))
+	run := nextRun(t, j.durableJob)
+	assert.True(t, run.info.ScheduledTime.Equal(at(23, 3)), "the next fire runs")
+}
+
+// interruptedRecord is a record whose last run started before a crash.
+func interruptedRecord(revision string) persist.Schedule {
+	return persist.Schedule{
+		Revision: revision, Activated: at(19, 10), Cursor: at(23, 2),
+		Dispatch: &persist.Dispatch{
+			Occurrence: persist.Occurrence{Scheduled: at(23, 2), Trigger: triggerScheduled},
+			Execution:  "interrupted", State: dispatchStarted,
+		},
+	}
+}
+
+// The crash rules apply to a disabled job too: once it is enabled, its
+// container still keeps it busy.
+func TestScheduleState_CrashRulesForDisabledJob(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 10))
+	j := newDurableJob("shop.backup", true, false)
+	j.setRunning(func(id string) (bool, error) { return id == "interrupted", nil })
+	h.put("shop.backup", interruptedRecord(j.policy.Revision))
+	require.NoError(t, h.s.AddJobDisabled(j))
+	h.start()
+
+	r := h.record("shop.backup")
+	assert.Equal(t, outcomeUnknown, r.Dispatch.Outcome)
+	require.NoError(t, h.s.EnableJob("shop.backup"))
+	require.ErrorIs(t, h.s.RunJob(context.Background(), "shop.backup"), ErrJobBusy)
+}
+
+// A changed schedule starts the record afresh but keeps the crash rules: the
+// interrupted run's outcome is unknown and its container keeps the job busy.
+func TestScheduleState_CrashRulesForChangedSchedule(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 10))
+	j := newDurableJob("shop.backup", true, false)
+	j.setRunning(func(id string) (bool, error) { return id == "interrupted", nil })
+	h.put("shop.backup", interruptedRecord("old-revision"))
+	require.NoError(t, h.s.AddJob(j))
+	h.start()
+
+	r := h.record("shop.backup")
+	assert.Equal(t, j.policy.Revision, r.Revision)
+	require.NotNil(t, r.Dispatch)
+	assert.Equal(t, outcomeUnknown, r.Dispatch.Outcome)
+	require.ErrorIs(t, h.s.RunJob(context.Background(), "shop.backup"), ErrJobBusy)
+	noRun(t, j)
 }

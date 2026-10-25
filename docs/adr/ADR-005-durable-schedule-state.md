@@ -147,7 +147,7 @@ What the implementation does where the context above, written before it, describ
 - A reload already kept the disabled state of a job it replaces (`7fabd9a`) when this ADR was written; context item 5 predates that too.
 - The start-up order is unchanged: jobs are still registered before the state file is loaded. The comparison runs when the scheduler starts, which is after the load (see "When a catch-up runs").
 - A schedule without a time zone is evaluated in the scheduler's local zone; the record keeps times in UTC, and the catch-up search converts the cursor back before it evaluates the schedule.
-- The schedule revision is a hash of the cron expression (which carries `CRON_TZ` for an explicit zone), the local zone's name when it names none, `concurrency` and `missed_fires`.
+- The schedule revision is a hash of the cron expression (which carries `CRON_TZ` for an explicit zone), `concurrency`, `missed_fires` and, when the expression names no zone, the local zone: its name and its abbreviation and UTC offset in January and July. The name alone is `Local` when the zone comes from `/etc/localtime`, so a changed host zone would otherwise keep the record.
 - `ofelia validate` takes `--state-file` (and `OFELIA_STATE_FILE`) to apply the same requirement as the daemon; commands that only inspect the configuration skip it.
 
 ## References

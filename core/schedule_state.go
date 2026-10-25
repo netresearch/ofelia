@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/netresearch/go-cron"
@@ -65,9 +66,9 @@ type SchedulePolicy struct {
 	Revision string
 }
 
-// DurableScheduleJob is implemented by jobs whose schedule entry may keep a
-// record (ADR-005). ok is false for a job that keeps none.
-type DurableScheduleJob interface {
+// SchedulePolicyProvider is implemented by jobs whose schedule entry may keep
+// a record (ADR-005). ok is false for a job that keeps none.
+type SchedulePolicyProvider interface {
 	SchedulePolicy() (policy SchedulePolicy, ok bool)
 }
 
@@ -82,12 +83,26 @@ type WorkloadChecker interface {
 // carries CRON_TZ for an explicit zone), the scheduler's local zone when it
 // names none, and both policies.
 func ScheduleRevision(schedule string, catchUp, queue bool) string {
+	return scheduleRevision(schedule, catchUp, queue, time.Local)
+}
+
+func scheduleRevision(schedule string, catchUp, queue bool, local *time.Location) string {
 	zone := "explicit"
 	if !hasExplicitZone(schedule) {
-		zone = time.Local.String()
+		zone = zoneKey(local)
 	}
 	sum := sha256.Sum256(fmt.Appendf(nil, "%s\x00%s\x00%t\x00%t", schedule, zone, catchUp, queue))
 	return hex.EncodeToString(sum[:])[:12]
+}
+
+// zoneKey identifies a zone by what it does to a schedule: its name and its
+// abbreviation and UTC offset in January and July. The name alone is
+// "Local" when the zone comes from /etc/localtime, so a changed host zone
+// would otherwise keep the revision.
+func zoneKey(loc *time.Location) string {
+	jan, janOff := time.Date(2026, time.January, 1, 12, 0, 0, 0, loc).Zone()
+	jul, julOff := time.Date(2026, time.July, 1, 12, 0, 0, 0, loc).Zone()
+	return fmt.Sprintf("%s/%s%+d/%s%+d", loc.String(), jan, janOff, jul, julOff)
 }
 
 func hasExplicitZone(schedule string) bool {
@@ -107,7 +122,7 @@ type durableEntry struct {
 	// daemon stopped and still runs; "" when there is none.
 	orphan string
 	// stopWatch ends the goroutine that waits for the orphan to end.
-	stopWatch context.CancelFunc
+	stopWatch func()
 }
 
 // SetScheduleStore sets where schedule records are kept. Without one, no job
@@ -120,7 +135,7 @@ func (s *Scheduler) SetScheduleStore(store ScheduleRecordStore) {
 
 // durablePolicy returns the policy of j when it keeps a record.
 func (s *Scheduler) durablePolicy(j Job) (SchedulePolicy, bool) {
-	d, ok := j.(DurableScheduleJob)
+	d, ok := j.(SchedulePolicyProvider)
 	if !ok {
 		return SchedulePolicy{}, false
 	}
@@ -194,10 +209,9 @@ func (s *Scheduler) launch(l *pendingLaunch) {
 // the caller starts it with launch once the entry is live.
 func (s *Scheduler) prepareDurableEntry(j Job, policy SchedulePolicy, disabled bool) *pendingLaunch {
 	name := j.GetName()
-	life := s.lifetime()
 	orphan := ""
-	if candidate := s.unendedDispatch(name, policy); candidate != "" {
-		orphan = s.checkOrphan(life, j, candidate)
+	if candidate := s.unendedDispatch(name); candidate != "" {
+		orphan = s.checkOrphan(context.Background(), j, candidate)
 	}
 
 	s.durableMu.Lock()
@@ -205,21 +219,31 @@ func (s *Scheduler) prepareDurableEntry(j Job, policy SchedulePolicy, disabled b
 	now := s.now()
 	rec, ok := s.records.GetSchedule(name)
 	e := s.entryLocked(name)
+	// The crash rules hold whatever else changed: a run that started before
+	// the restart is never repeated, and its container keeps the job busy,
+	// also when the job is disabled or its schedule changed.
+	if ok {
+		s.settleInterruptedLocked(j, &rec, e, orphan)
+	}
 	if !ok || rec.Revision != policy.Revision {
+		fresh := persist.Schedule{Revision: policy.Revision, Activated: now, Cursor: now}
 		if ok {
 			s.logDropped(name, rec, "the schedule changed")
+			if rec.Dispatch != nil && rec.Dispatch.State == dispatchEnded {
+				fresh.Dispatch = rec.Dispatch
+			}
 		}
-		s.putLocked(name, persist.Schedule{Revision: policy.Revision, Activated: now, Cursor: now})
+		s.putLocked(name, fresh)
 		return nil
 	}
 	if disabled {
+		s.putLocked(name, rec)
 		return nil
 	}
-	s.settleInterruptedLocked(life, j, &rec, e, orphan)
 
 	latest := time.Time{}
 	if policy.CatchUp {
-		latest = latestMissed(j.GetSchedule(), rec.Cursor, now)
+		latest = latestMissed(j.GetSchedule(), rec.Cursor, now, time.Local)
 	}
 	launch := s.chooseLaunchLocked(name, &rec, e, policy, latest)
 	s.putLocked(name, rec)
@@ -231,7 +255,7 @@ func (s *Scheduler) prepareDurableEntry(j Job, policy SchedulePolicy, disabled b
 // as handled with the outcome unknown, and stays busy while its workload
 // (orphan) still runs; a manual run that was still waiting is dropped.
 // Caller holds durableMu and writes rec.
-func (s *Scheduler) settleInterruptedLocked(life context.Context, j Job, rec *persist.Schedule, e *durableEntry, orphan string) {
+func (s *Scheduler) settleInterruptedLocked(j Job, rec *persist.Schedule, e *durableEntry, orphan string) {
 	name := j.GetName()
 	d := rec.Dispatch
 	if d == nil || e.inFlight {
@@ -243,7 +267,7 @@ func (s *Scheduler) settleInterruptedLocked(life context.Context, j Job, rec *pe
 		s.Logger.Warn("a run was in progress when the daemon stopped; its outcome is unknown and it is not started again",
 			"job", name, "scheduled", d.Scheduled, "execution", d.Execution)
 		if orphan != "" && e.orphan == "" {
-			s.watchOrphanLocked(life, j, e, orphan)
+			s.watchOrphanLocked(j, e, orphan)
 		}
 	case d.State == dispatchWaiting && d.Trigger == triggerManual:
 		s.Logger.Warn("dropping a manual run that was still waiting for a slot", "job", name)
@@ -308,11 +332,11 @@ func (s *Scheduler) busyFireLocked(name string, rec *persist.Schedule, policy Sc
 // unendedDispatch returns the execution ID of a run that the record shows as
 // started and that this process does not own: a run that was in progress
 // when the daemon stopped.
-func (s *Scheduler) unendedDispatch(name string, policy SchedulePolicy) string {
+func (s *Scheduler) unendedDispatch(name string) string {
 	s.durableMu.Lock()
 	defer s.durableMu.Unlock()
 	rec, ok := s.records.GetSchedule(name)
-	if !ok || rec.Revision != policy.Revision || rec.Dispatch == nil || rec.Dispatch.State != dispatchStarted {
+	if !ok || rec.Dispatch == nil || rec.Dispatch.State != dispatchStarted {
 		return ""
 	}
 	if s.entryLocked(name).inFlight {
@@ -345,15 +369,27 @@ func (s *Scheduler) checkOrphan(parent context.Context, j Job, executionID strin
 }
 
 // watchOrphanLocked keeps the entry busy until the orphaned run's workload
-// is gone, then starts a queued occurrence. life is the scheduler's
-// lifetime context, which Stop cancels. Caller holds durableMu.
-func (s *Scheduler) watchOrphanLocked(life context.Context, j Job, e *durableEntry, executionID string) {
+// is gone, then starts a queued occurrence. Stop, or pruning the job's
+// record, ends the watcher. Caller holds durableMu.
+func (s *Scheduler) watchOrphanLocked(j Job, e *durableEntry, executionID string) {
 	name := j.GetName()
 	e.orphan = executionID
-	ctx, cancel := context.WithCancel(life)
-	e.stopWatch = cancel
+	done := s.watchersDone
+	stop := make(chan struct{})
+	var once sync.Once
+	e.stopWatch = func() { once.Do(func() { close(stop) }) }
 	s.Logger.Warn("the interrupted run still runs; the job stays busy until it ends", "job", name, "execution", executionID)
 	go func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			select {
+			case <-done:
+			case <-stop:
+			case <-ctx.Done():
+			}
+			cancel()
+		}()
 		ticker := time.NewTicker(orphanPollInterval)
 		defer ticker.Stop()
 		for {
@@ -421,8 +457,8 @@ func (s *Scheduler) liveAndEnabled(name string) bool {
 func (s *Scheduler) endOrphanWatchers() {
 	s.durableMu.Lock()
 	defer s.durableMu.Unlock()
-	if s.stopWatchers != nil {
-		s.stopWatchers()
+	if !isClosed(s.watchersDone) {
+		close(s.watchersDone)
 	}
 	for _, e := range s.durable {
 		e.stopWatch = nil
@@ -430,22 +466,23 @@ func (s *Scheduler) endOrphanWatchers() {
 	}
 }
 
-// renewWatchers gives a scheduler started again after Stop a live context
-// for its orphan watchers. The new context derives from the canceled one's
-// values, not its cancellation.
+// renewWatchers gives a scheduler started again after Stop an open channel
+// for its orphan watchers.
 func (s *Scheduler) renewWatchers() {
 	s.durableMu.Lock()
 	defer s.durableMu.Unlock()
-	if s.watchersCtx.Err() != nil {
-		s.watchersCtx, s.stopWatchers = context.WithCancel(context.WithoutCancel(s.watchersCtx))
+	if isClosed(s.watchersDone) {
+		s.watchersDone = make(chan struct{})
 	}
 }
 
-// lifetime returns the context that bounds orphan checks and watchers.
-func (s *Scheduler) lifetime() context.Context {
-	s.durableMu.Lock()
-	defer s.durableMu.Unlock()
-	return s.watchersCtx
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 // putLocked writes rec and logs a failure. Caller holds durableMu.
@@ -472,15 +509,15 @@ func (s *Scheduler) logDropped(name string, rec persist.Schedule, reason string)
 // does not parse.
 //
 // A schedule without CRON_TZ is evaluated in the location of the time it is
-// given, and the scheduler evaluates it in local time, so the search starts
-// from the cursor in local time; the record keeps it in UTC.
-func latestMissed(schedule string, cursor, now time.Time) time.Time {
+// given, and the scheduler evaluates it in loc (time.Local), so the search
+// starts from the cursor in loc; the record keeps it in UTC.
+func latestMissed(schedule string, cursor, now time.Time, loc *time.Location) time.Time {
 	sched, err := cron.FullParser().Parse(schedule)
 	if err != nil {
 		return time.Time{}
 	}
 	var last time.Time
-	for t := sched.Next(cursor.In(time.Local)); !t.IsZero() && !t.After(now); t = sched.Next(t) {
+	for t := sched.Next(cursor.In(loc)); !t.IsZero() && !t.After(now); t = sched.Next(t) {
 		last = t
 	}
 	if last.IsZero() {

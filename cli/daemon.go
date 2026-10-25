@@ -603,12 +603,7 @@ func (c *DaemonCommand) initPersistStore() error {
 	if err := c.persistStore.Load(); err != nil {
 		return fmt.Errorf("persist load %q: %w", c.persistStore.Path(), err)
 	}
-	// Schedule records (ADR-005) are evaluated when the scheduler starts,
-	// which is after this load; records of removed jobs go now.
-	c.scheduler.SetScheduleStore(c.persistStore)
-	if c.config != nil {
-		c.config.pruneScheduleRecords()
-	}
+	c.wireScheduleRecords()
 	snap := c.persistStore.Snapshot()
 	for name, j := range snap.Jobs {
 		job, err := c.persistedJobToScheduler(name, j)
@@ -647,6 +642,17 @@ func (c *DaemonCommand) initPersistStore() error {
 		"jobs", len(snap.Jobs),
 		"disabled", len(snap.Disabled))
 	return nil
+}
+
+// wireScheduleRecords hands the loaded state file to the scheduler as the
+// store of schedule records (ADR-005) and removes the records of jobs that no
+// longer exist. The records are evaluated when the scheduler starts, which is
+// after this.
+func (c *DaemonCommand) wireScheduleRecords() {
+	c.scheduler.SetScheduleStore(c.persistStore)
+	if c.config != nil {
+		c.config.pruneScheduleRecords()
+	}
 }
 
 // persistedJobToScheduler reconstructs a scheduler-ready core.Job

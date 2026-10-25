@@ -93,10 +93,9 @@ type Scheduler struct {
 	durableMu sync.Mutex
 	records   ScheduleRecordStore
 	durable   map[string]*durableEntry
-	// watchersCtx bounds the orphan watchers and their checks; Stop cancels
-	// it, a later Start renews it.
-	watchersCtx  context.Context //nolint:containedctx // ends the orphan watchers on Stop
-	stopWatchers context.CancelFunc
+	// watchersDone is closed by Stop and ends the orphan watchers; a later
+	// Start replaces it.
+	watchersDone chan struct{}
 }
 
 // concurrencySemaphore holds a swappable semaphore channel used by the
@@ -240,7 +239,7 @@ func newSchedulerInternal(
 		metricsRecorder:   metricsRecorder,
 		clock:             clock,
 	}
-	s.watchersCtx, s.stopWatchers = context.WithCancel(context.Background())
+	s.watchersDone = make(chan struct{})
 
 	// Also set metrics on retry executor
 	if metricsRecorder != nil {
@@ -1352,12 +1351,18 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	defer e.Cleanup()
 
 	// A job with durable schedule state passes the per-entry check of
-	// ADR-005 and takes a global slot before it runs.
-	var adm *admission
+	// ADR-005 and takes a global slot before it runs. Its end is recorded in
+	// a defer, so a run that panics still releases the slot and the entry;
+	// it then counts as failed.
+	outcome := outcomeFailed
+	durableRun := false
 	if policy, ok := w.s.durablePolicy(w.j); ok {
-		if adm = w.s.admit(ctx, w.j, policy, e.ID); adm == nil {
+		adm := w.s.admit(ctx, w.j, policy, e.ID)
+		if adm == nil {
 			return
 		}
+		durableRun = true
+		defer func() { w.s.finishDispatch(adm, outcome) }()
 	}
 
 	// Bound the per-run context with the job's MaxRuntime (or the
@@ -1380,8 +1385,8 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 
 	w.stop(jctx, err)
 
-	if adm != nil {
-		w.s.finishDispatch(adm, runOutcome(ctx, err, jctx.Execution))
+	if durableRun {
+		outcome = runOutcome(ctx, err, jctx.Execution)
 	}
 
 	if onComplete != nil {

@@ -706,18 +706,30 @@ func (cv *Validator2) validateJobMap(v *Validator, m reflect.Value, section stri
 			continue
 		}
 		jobName := key.String()
+		satisfier, _ := entry.Interface().(RequirementSatisfier)
 		for _, req := range append([]jobRequirement{scheduleRequirement}, reqs...) {
-			cv.checkJobRequirement(v, val, section, jobName, req)
+			cv.checkJobRequirement(v, val, satisfier, section, jobName, req)
 		}
 	}
 }
 
+// RequirementSatisfier is implemented by a job that can meet a section
+// requirement without the field the section names: a compose job loaded from
+// a registered Compose project carries its files in the project context, not
+// in "file".
+type RequirementSatisfier interface {
+	SatisfiesRequirement(key string) bool
+}
+
 // checkJobRequirement reports a requirement that no field satisfies.
 func (cv *Validator2) checkJobRequirement(
-	v *Validator, job reflect.Value, section, jobName string, req jobRequirement,
+	v *Validator, job reflect.Value, satisfier RequirementSatisfier, section, jobName string, req jobRequirement,
 ) {
 	for _, name := range req.fields {
 		if strings.TrimSpace(fieldValueByKey(job, name)) != "" {
+			return
+		}
+		if satisfier != nil && satisfier.SatisfiesRequirement(name) {
 			return
 		}
 	}
