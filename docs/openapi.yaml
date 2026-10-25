@@ -142,6 +142,13 @@ paths:
         "400": {$ref: "#/components/responses/PlainError"}
         "404": {$ref: "#/components/responses/PlainError"}
         "405": {$ref: "#/components/responses/PlainError"}
+        "409":
+          description: >-
+            A Compose job with `missed_fires: one` or `concurrency: queue` has
+            a run in progress or waiting for a slot; the manual run is refused.
+          content:
+            text/plain:
+              schema: {type: string}
         "500": {$ref: "#/components/responses/PlainError"}
   /api/jobs/disable:
     post:

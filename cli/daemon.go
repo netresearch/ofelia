@@ -650,7 +650,10 @@ func (c *DaemonCommand) initPersistStore() error {
 // after this.
 func (c *DaemonCommand) wireScheduleRecords() {
 	c.scheduler.SetScheduleStore(c.persistStore)
-	if c.config != nil {
+	// A configuration that failed to load knows none of its jobs (boot falls
+	// back to an empty one, and only a loaded file sets configPath); pruning
+	// with it would delete every record, unended dispatches included.
+	if c.config != nil && c.config.configPath != "" {
 		c.config.pruneScheduleRecords()
 	}
 }
