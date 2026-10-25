@@ -1206,7 +1206,8 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		return
 	}
 
-	// Ensure buffers are returned to pool when done
+	// Ensure buffers are returned to pool when done. stop does it before it
+	// publishes the run; this covers a run that ends without reaching stop.
 	defer e.Cleanup()
 
 	// Bound the per-run context with the job's MaxRuntime (or the
@@ -1246,10 +1247,7 @@ func (w *jobWrapper) start(ctx *Context) {
 
 func (w *jobWrapper) stop(ctx *Context, err error) {
 	ctx.Stop(err)
-
-	if l, ok := ctx.Job.(interface{ SetLastRun(*Execution) }); ok {
-		l.SetLastRun(ctx.Execution)
-	}
+	defer w.publish(ctx)
 
 	errText := "none"
 	if ctx.Execution.Error != nil {
@@ -1270,4 +1268,17 @@ func (w *jobWrapper) stop(ctx *Context, err error) {
 	)
 
 	ctx.Log(msg)
+}
+
+// publish makes the ended run the job's last run. It first moves the output
+// out of the pooled buffers (Execution.Cleanup), so readers of the last run,
+// such as the web API on another goroutine, only ever see strings that no
+// longer change. Published with the buffers still attached, a reader could
+// race the Cleanup that follows and read a buffer the pool had already
+// handed to another run (#898).
+func (w *jobWrapper) publish(ctx *Context) {
+	ctx.Execution.Cleanup()
+	if l, ok := ctx.Job.(interface{ SetLastRun(*Execution) }); ok {
+		l.SetLastRun(ctx.Execution)
+	}
 }
