@@ -978,6 +978,43 @@ func TestScheduleState_StopWithQueuedOccurrenceStartsNothing(t *testing.T) {
 	assert.True(t, r.Pending.Scheduled.Equal(at(23, 3)))
 }
 
+// RemoveJob deletes the go-cron entry before it updates the job maps. A run
+// that ends in between must not start the queued occurrence: liveness comes
+// from go-cron, which already knows the job is gone. The test holds s.mu so
+// that RemoveJob stops in exactly that window.
+func TestScheduleState_RunEndingDuringRemovalLeavesQueuedOccurrence(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 1))
+	j := newDurableJob("shop.backup", false, true)
+	require.NoError(t, h.s.AddJob(j))
+	h.start()
+	release := j.hold()
+	t.Cleanup(release)
+	h.fire("shop.backup", at(23, 2))
+	nextRun(t, j)
+	h.fire("shop.backup", at(23, 3))
+	h.eventually("shop.backup", func(r persist.Schedule) bool { return r.Pending != nil }, "the fire is queued")
+
+	h.s.mu.Lock()
+	removed := make(chan struct{})
+	go func() { defer close(removed); _ = h.s.RemoveJob(j) }()
+	require.Eventually(t, func() bool { return !h.s.cron.EntryByName("shop.backup").Valid() },
+		5*time.Second, time.Millisecond, "RemoveJob did not remove the go-cron entry")
+	// The removal canceled the run; give its end time to reach the check
+	// while the job maps still list the job.
+	time.Sleep(200 * time.Millisecond)
+	h.s.mu.Unlock()
+	<-removed
+
+	h.eventually("shop.backup", func(r persist.Schedule) bool {
+		return ended(r) || r.Dispatch.Scheduled.Equal(at(23, 3))
+	}, "the record settles after the canceled run")
+	r := h.record("shop.backup")
+	require.False(t, r.Dispatch.Scheduled.Equal(at(23, 3)), "the queued occurrence was started on the removed entry")
+	require.NotNil(t, r.Pending, "the queued occurrence is gone")
+	assert.True(t, r.Pending.Scheduled.Equal(at(23, 3)))
+}
+
 // failingStore refuses every write after the first n.
 type failingStore struct {
 	*persist.Store
