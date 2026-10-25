@@ -18,7 +18,9 @@ import (
 )
 
 // ErrJobBusy is returned by RunJob for a job with durable schedule state
-// while a run of it is in progress or waiting for a global slot (ADR-005).
+// while a run of it is in progress or waiting for a global slot (ADR-005),
+// and for any job while the canceled run of a removed or replaced job of the
+// same name is still stopping (runGate).
 var ErrJobBusy = errors.New("job is busy")
 
 // The values of persist.Occurrence.Trigger and persist.Dispatch.State and

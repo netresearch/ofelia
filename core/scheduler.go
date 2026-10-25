@@ -11,6 +11,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/netresearch/go-cron"
@@ -291,10 +292,23 @@ func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 	// A job with durable schedule state runs its per-entry check first and
 	// then waits for a slot instead of being dropped here (ADR-005).
 	if w, ok := m.inner.(*jobWrapper); ok && w.durable() {
+		w.slotWait.Store(false) // the per-entry check waits for a slot anyway
 		w.RunWithContext(ctx)
 		return
 	}
 	ch := m.sem.getChan()
+	// A run-on-startup fire handed back by the name lock (runGate) is sent
+	// while the run that blocked it still holds its slot; it waits for a
+	// slot instead of being dropped, so it is not lost after all.
+	// Only that fire takes the mark: a scheduled or manual fire of the same
+	// registration keeps the non-blocking path.
+	if w, ok := m.inner.(*jobWrapper); ok {
+		if info, _ := cron.RunInfoFromContext(ctx); info.Trigger == cron.TriggerImmediate &&
+			w.slotWait.CompareAndSwap(true, false) {
+			w.runAfterSlotWait(ctx, ch)
+			return
+		}
+	}
 	select {
 	case ch <- struct{}{}: // try to acquire slot
 		defer func() { <-ch }()
@@ -702,7 +716,13 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 		return fmt.Errorf("%w: %s", ErrJobNotFound, jobName)
 	}
 	if j := s.GetAnyJob(jobName); j != nil {
-		if _, durable := s.durablePolicy(j); durable && s.durableBusy(jobName) {
+		_, durable := s.durablePolicy(j)
+		if durable && s.durableBusy(jobName) {
+			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
+		}
+		// The run would be skipped by the name lock (runGate) while a
+		// removed or replaced job's canceled run stops.
+		if s.gate.blocked(jobName, durable) {
 			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
 		}
 	}
@@ -716,6 +736,21 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 	}
 
 	return nil
+}
+
+// fireDeferredStartup fires the run-on-startup run of w that the name lock
+// (runGate) deferred while a removed or replaced job's run stopped.
+func (s *Scheduler) fireDeferredStartup(w *jobWrapper) {
+	name := w.j.GetName()
+	info := cron.RunInfo{ScheduledTime: s.now(), Trigger: cron.TriggerImmediate}
+	w.slotWait.Store(true)
+	if err := s.cron.TriggerEntryWithInfoByName(name, info); err != nil {
+		w.slotWait.Store(false)
+		if errors.Is(err, cron.ErrNotRunning) {
+			return // the daemon is stopping; nothing starts any more
+		}
+		s.Logger.Warn("could not start the deferred run-on-startup run", "job", name, "error", err)
+	}
 }
 
 // GetRemovedJobs returns a copy of all jobs that were removed from the scheduler.
@@ -896,7 +931,7 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 		s.regMu.Unlock()
 		return fmt.Errorf("update job: %w", err)
 	}
-	s.gate.register(w)
+	s.gate.replace(old, w, w.durable())
 	s.regMu.Unlock()
 
 	if err := s.applyUpdatedJob(name, newJob); err != nil {
@@ -1291,6 +1326,10 @@ type jobWrapper struct {
 	// per-entry check of ADR-005, which counts it as busy; guarded by
 	// s.gate.mu.
 	keepsRecord bool
+	// slotWait makes the next fire of this registration wait for a global
+	// slot instead of being skipped; set for a handed-back run-on-startup
+	// fire (fireDeferredStartup), cleared by the fire that uses it.
+	slotWait atomic.Bool
 }
 
 // Compile-time assertion: jobWrapper implements cron.JobWithContext.
@@ -1318,6 +1357,55 @@ func (w *jobWrapper) RunWithContext(ctx context.Context) {
 	w.runWithCtx(ctx)
 }
 
+// runAfterSlotWait runs a handed-back run-on-startup fire once it has a slot
+// of the global limit. Removal and Stop end the wait through ctx. Disabling
+// pauses the entry without ending ctx, so the job's disabled state is read
+// once the slot is taken: a job disabled at that moment does not run. Unlike
+// the per-entry check's wait (waitForSlot), a job disabled and enabled again
+// while it waited still runs.
+func (w *jobWrapper) runAfterSlotWait(ctx context.Context, slot chan struct{}) {
+	select {
+	case slot <- struct{}{}:
+	default:
+		w.s.Logger.Info("the global job limit is reached; the run-on-startup run waits for a slot", "job", w.j.GetName())
+		select {
+		case slot <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+	}
+	defer func() { <-slot }()
+	w.s.mu.RLock()
+	_, disabled := w.s.disabledNames[w.j.GetName()]
+	w.s.mu.RUnlock()
+	if disabled {
+		w.s.Logger.Info("skip: the job was disabled while its run-on-startup run waited for a slot", "job", w.j.GetName())
+		return
+	}
+	w.RunWithContext(ctx)
+}
+
+// passGate asks the name lock (runGate) whether this fire may run, and logs
+// why not. A run-on-startup fire that a stopping run blocks is deferred.
+func (w *jobWrapper) passGate(ctx context.Context) bool {
+	info, _ := cron.RunInfoFromContext(ctx)
+	switch w.s.gate.enter(w, w.durable(), info.Trigger == cron.TriggerImmediate) {
+	case gateRetired:
+		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
+		return false
+	case gateDeferred:
+		w.s.Logger.Warn("defer: the run-on-startup run waits until the canceled run of the removed or replaced job has stopped",
+			"job", w.j.GetName())
+		return false
+	case gateDraining:
+		w.s.Logger.Warn("skip: the canceled run of the removed or replaced job is still stopping",
+			"job", w.j.GetName())
+		return false
+	case gateRun:
+	}
+	return true
+}
+
 func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	// Add panic recovery to handle job panics gracefully
 	defer func() {
@@ -1326,17 +1414,19 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		}
 	}()
 
-	switch w.s.gate.enter(w, w.durable()) {
-	case gateRetired:
-		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
+	if !w.passGate(ctx) {
 		return
-	case gateDraining:
-		w.s.Logger.Warn("skip: the canceled run of the removed or replaced job is still stopping",
-			"job", w.j.GetName())
-		return
-	case gateRun:
 	}
-	defer w.s.gate.leave(w)
+	defer func() {
+		// regMu orders the end of this run against registration changes:
+		// a deferred run-on-startup fire is handed back and fired for the
+		// registration leave chose, not for one that replaced it meanwhile.
+		w.s.regMu.Lock()
+		defer w.s.regMu.Unlock()
+		if due := w.s.gate.leave(w); due != nil {
+			w.s.fireDeferredStartup(due)
+		}
+	}()
 
 	// NOTE: Concurrency limiting is handled by the go-cron middleware chain
 	// (maxConcurrentSkipWrapper). Dependencies are handled by go-cron's native
