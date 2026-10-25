@@ -1334,6 +1334,29 @@ func (w *jobWrapper) RunWithContext(ctx context.Context) {
 	w.runWithCtx(ctx)
 }
 
+// passGate asks the name lock (runGate) whether this fire may run, and logs
+// why not. A run-on-startup fire that a stopping run blocks is deferred.
+func (w *jobWrapper) passGate(ctx context.Context) bool {
+	durable := w.durable()
+	switch w.s.gate.enter(w, durable) {
+	case gateRetired:
+		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
+		return false
+	case gateDraining:
+		if info, ok := cron.RunInfoFromContext(ctx); ok && info.Trigger == cron.TriggerImmediate {
+			w.s.gate.deferStartup(w, durable)
+			w.s.Logger.Warn("defer: the run-on-startup run waits until the canceled run of the removed or replaced job has stopped",
+				"job", w.j.GetName())
+			return false
+		}
+		w.s.Logger.Warn("skip: the canceled run of the removed or replaced job is still stopping",
+			"job", w.j.GetName())
+		return false
+	case gateRun:
+	}
+	return true
+}
+
 func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	// Add panic recovery to handle job panics gracefully
 	defer func() {
@@ -1342,22 +1365,8 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		}
 	}()
 
-	durable := w.durable()
-	switch w.s.gate.enter(w, durable) {
-	case gateRetired:
-		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
+	if !w.passGate(ctx) {
 		return
-	case gateDraining:
-		if info, ok := cron.RunInfoFromContext(ctx); ok && info.Trigger == cron.TriggerImmediate {
-			w.s.gate.deferStartup(w, durable)
-			w.s.Logger.Warn("defer: the run-on-startup run waits until the canceled run of the removed or replaced job has stopped",
-				"job", w.j.GetName())
-			return
-		}
-		w.s.Logger.Warn("skip: the canceled run of the removed or replaced job is still stopping",
-			"job", w.j.GetName())
-		return
-	case gateRun:
 	}
 	defer func() {
 		if due := w.s.gate.leave(w); due != nil {

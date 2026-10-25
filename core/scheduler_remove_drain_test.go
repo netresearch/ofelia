@@ -374,7 +374,7 @@ func TestRunGate_DeferredStartupWaitsForEveryStoppingRun(t *testing.T) {
 	}
 	g.deferStartup(c, false)
 
-	if due := g.leave(a); due != nil {
+	if g.leave(a) != nil {
 		t.Fatal("the deferred fire was handed back while b still stops")
 	}
 	if due := g.leave(b); due != c {
