@@ -419,8 +419,10 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	// A job with durable schedule state is evaluated against its record
 	// before its entry goes live; Start does it for jobs added before it.
 	var launch *pendingLaunch
+	evaluated := false
 	if policy, ok := s.durablePolicy(j); ok && s.cron.IsRunning() {
 		launch = s.prepareDurableEntry(j, policy, disabled)
+		evaluated = true
 	}
 
 	w := &jobWrapper{s: s, j: j}
@@ -450,7 +452,11 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	// would stay degraded until a restart.
 	delete(s.unschedulable, j.GetName())
 	s.mu.Unlock()
-	s.launch(launch)
+	if launch != nil {
+		s.launch(launch)
+	} else if evaluated {
+		s.resumeAfterRegistration(j.GetName())
+	}
 
 	if IsTriggeredSchedule(j.GetSchedule()) {
 		s.Logger.Info(fmt.Sprintf(
@@ -1312,7 +1318,7 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		}
 	}()
 
-	switch w.s.gate.enter(w) {
+	switch w.s.gate.enter(w, w.durable()) {
 	case gateRetired:
 		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
 		return

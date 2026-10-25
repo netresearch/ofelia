@@ -441,8 +441,8 @@ func (s *Scheduler) startPendingLocked(name string, e *durableEntry) *pendingLau
 
 // liveAndEnabled reports whether name has a go-cron entry and is not
 // disabled. It asks go-cron, not the job maps: RemoveJob deletes the entry
-// first and updates the maps only after the canceled run has ended, and a
-// queued occurrence must not be started on an entry that is being removed.
+// before it updates the maps, and a queued occurrence must not be started on
+// an entry that is being removed.
 func (s *Scheduler) liveAndEnabled(name string) bool {
 	if !s.cron.EntryByName(name).Valid() {
 		return false
@@ -674,22 +674,58 @@ func (s *Scheduler) waitForSlot(ctx context.Context, name string, slot chan stru
 
 // abandonWait ends a wait for a slot without starting the run. A scheduled
 // or catch-up dispatch stays waiting and starts at the next registration of
-// the entry; a manual one is dropped.
+// the entry, or at once when a replacement has already been registered; a
+// manual one is dropped.
 func (s *Scheduler) abandonWait(name, reason string) {
 	s.durableMu.Lock()
-	defer s.durableMu.Unlock()
 	s.entryLocked(name).inFlight = false
 	rec, ok := s.records.GetSchedule(name)
 	if !ok || rec.Dispatch == nil || rec.Dispatch.State != dispatchWaiting {
+		s.durableMu.Unlock()
 		return
 	}
 	if rec.Dispatch.Trigger == triggerManual {
 		s.Logger.Warn("dropping a manual run that was waiting for a slot: "+reason, "job", name)
 		rec.Dispatch = nil
 		s.putLocked(name, rec)
+		s.durableMu.Unlock()
 		return
 	}
 	s.Logger.Info("the run waiting for a slot did not start: "+reason+"; it starts at the next registration", "job", name)
+	launch := s.resumeLocked(name)
+	s.durableMu.Unlock()
+	s.launch(launch)
+}
+
+// resumeAfterRegistration starts what the record holds for an entry that has
+// just been registered and that nothing runs: a waiting dispatch or a queued
+// occurrence. prepareDurableEntry does that when the entry is idle at the
+// time; this covers a run of the replaced entry that ended, or gave up its
+// wait for a slot, between that evaluation and the entry going live, after
+// which nothing else would start it.
+func (s *Scheduler) resumeAfterRegistration(name string) {
+	s.durableMu.Lock()
+	launch := s.resumeLocked(name)
+	s.durableMu.Unlock()
+	s.launch(launch)
+}
+
+// resumeLocked returns the occurrence to start on an idle, registered and
+// enabled entry: the waiting dispatch, else the queued occurrence. Starting
+// one twice is harmless: the second arrival has a scheduled time at or before
+// the cursor and is ignored. A waiting manual dispatch, which does not move
+// the cursor, never gets here: abandonWait and the registration drop it.
+// Caller holds durableMu.
+func (s *Scheduler) resumeLocked(name string) *pendingLaunch {
+	e := s.entryLocked(name)
+	if e.inFlight || e.orphan != "" || !s.liveAndEnabled(name) {
+		return nil
+	}
+	rec, ok := s.records.GetSchedule(name)
+	if ok && rec.Dispatch != nil && rec.Dispatch.State == dispatchWaiting {
+		return &pendingLaunch{name: name, info: occurrenceInfo(rec.Dispatch.Occurrence)}
+	}
+	return s.startPendingLocked(name, e)
 }
 
 func trySlot(slot chan struct{}) bool {

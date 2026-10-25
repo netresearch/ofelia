@@ -78,17 +78,22 @@ func (g *runGate) restore(w *jobWrapper) {
 }
 
 // enter decides whether a fire of w may run, and counts it if so. The caller
-// must call leave(w) when a counted run ends.
-func (g *runGate) enter(w *jobWrapper) gateVerdict {
+// must call leave(w) when a counted run ends. ownBusyCheck skips the check
+// for a stopping run of the same name, for a job whose per-entry check
+// already counts that run as busy and applies its concurrency policy (a job
+// with durable schedule state, ADR-005).
+func (g *runGate) enter(w *jobWrapper, ownBusyCheck bool) gateVerdict {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if w.retired {
 		return gateRetired
 	}
 	name := w.j.GetName()
-	for other, n := range g.running[name] {
-		if other.retired && n > 0 {
-			return gateDraining
+	if !ownBusyCheck {
+		for other, n := range g.running[name] {
+			if other.retired && n > 0 {
+				return gateDraining
+			}
 		}
 	}
 	if g.running == nil {

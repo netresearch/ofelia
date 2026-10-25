@@ -302,7 +302,7 @@ func TestRunGate_RetiredRegistrationDoesNotStart(t *testing.T) {
 	if got := g.retire("late"); got != w {
 		t.Fatalf("retire returned %v, want the registration", got)
 	}
-	if v := g.enter(w); v != gateRetired {
+	if v := g.enter(w, false); v != gateRetired {
 		t.Fatalf("enter = %v, want gateRetired", v)
 	}
 	if g.retiredRunning(w.j) {

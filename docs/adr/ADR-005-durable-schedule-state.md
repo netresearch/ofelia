@@ -114,9 +114,9 @@ The record must be written by the code that admits or drops the run, with the ru
 
 Ofelia starts a catch-up, a queued occurrence and a dispatch that waited for a slot through its own dispatch path: it records the occurrence as a waiting dispatch, then starts the entry with `TriggerEntryWithInfo`, which carries that occurrence's scheduled time and kind. The run arrives at the per-entry check as what it is, and the check matches it to the waiting dispatch; no side state in memory is needed to recognize it, and a start that go-cron refuses leaves the dispatch waiting for the next registration.
 
-go-cron also needs a removal that waits for the removed entry's runs. `WaitForJobByName` looks the entry up by name, and the removal has already deleted the name, so nothing could wait for a removed entry. `RemoveByNameAndWait` removes the entry and waits, bounded by a context, so `RemoveJob` keeps the promise its comment makes.
+Both are additive changes in a module Netresearch maintains ([netresearch/go-cron#429](https://github.com/netresearch/go-cron/pull/429)).
 
-All three are additive changes in a module Netresearch maintains ([netresearch/go-cron#429](https://github.com/netresearch/go-cron/pull/429)).
+`RemoveJob` does not wait for the run it cancels. The in-process state of an entry is keyed by the job name and outlives the go-cron entry, so the replacement's first fire finds the entry busy while the canceled run is still stopping, and follows the concurrency policy like any other fire.
 
 ## Consequences
 
@@ -143,7 +143,7 @@ All three are additive changes in a module Netresearch maintains ([netresearch/g
 
 What the implementation does where the context above, written before it, describes an earlier state:
 
-- `RemoveJob` waits for the canceled run, for up to 30 seconds ([#896](https://github.com/netresearch/ofelia/pull/896)); context item 5 predates that.
+- `RemoveJob` still does not wait for the canceled run, but a job registered under the same name no longer runs beside it ([#896](https://github.com/netresearch/ofelia/pull/896)): a job without a record skips its fires until that run has stopped, and a job with a record counts it as busy. Context item 5 predates that.
 - A reload already kept the disabled state of a job it replaces (`7fabd9a`) when this ADR was written; context item 5 predates that too.
 - The start-up order is unchanged: jobs are still registered before the state file is loaded. The comparison runs when the scheduler starts, which is after the load (see "When a catch-up runs").
 - A schedule without a time zone is evaluated in the scheduler's local zone; the record keeps times in UTC, and the catch-up search converts the cursor back before it evaluates the schedule.

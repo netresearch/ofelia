@@ -664,6 +664,88 @@ func TestScheduleState_WaitingSurvivesReload(t *testing.T) {
 	noRun(t, j)
 }
 
+// RemoveJob does not wait for a dispatch that waits for a slot to give up,
+// so the replacement can be registered first. The dispatch then counts as
+// in flight at the registration and nothing starts; when it gives up, it
+// starts on the replacement.
+func TestScheduleState_WaitingGivenUpAfterReregistrationStarts(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 1))
+	j := newDurableJob("shop.backup", true, false)
+	require.NoError(t, h.s.AddJob(j))
+	h.start()
+	h.put("shop.backup", persist.Schedule{
+		Revision: j.policy.Revision, Activated: at(23, 1), Cursor: at(23, 2),
+		Dispatch: &persist.Dispatch{Occurrence: persist.Occurrence{Scheduled: at(23, 2), Trigger: triggerScheduled}, State: dispatchWaiting},
+	})
+	h.s.durableMu.Lock()
+	h.s.entryLocked("shop.backup").inFlight = true // the old entry's wait for a slot
+	h.s.durableMu.Unlock()
+
+	require.NoError(t, h.s.RemoveJob(j))
+	replacement := newDurableJob("shop.backup", true, false)
+	require.NoError(t, h.s.AddJob(replacement))
+	noRun(t, replacement)
+
+	h.s.abandonWait("shop.backup", "the job was removed")
+	run := nextRun(t, replacement)
+	assert.True(t, run.info.ScheduledTime.Equal(at(23, 2)))
+	h.eventually("shop.backup", ended, "it ends")
+	noRun(t, replacement)
+}
+
+// hookStore calls onPut after every write; the writer holds durableMu.
+type hookStore struct {
+	*persist.Store
+	onPut func()
+}
+
+func (h *hookStore) PutSchedule(name string, r persist.Schedule) error {
+	err := h.Store.PutSchedule(name, r)
+	if h.onPut != nil {
+		h.onPut()
+	}
+	return err
+}
+
+// The run of the replaced entry can end after the registration has
+// evaluated the record and before the new entry is live: the evaluation saw
+// it in flight and started nothing, and the run's end found no live entry to
+// start the queued occurrence on. The registration then starts it.
+func TestScheduleState_RunEndingDuringRegistrationStartsQueued(t *testing.T) {
+	t.Parallel()
+	hs := &hookStore{Store: persist.NewStore(filepath.Join(t.TempDir(), "state.json"))}
+	clock := NewCronClock(at(23, 1))
+	s := NewSchedulerWithClock(test.NewTestLogger(), clock)
+	s.SetScheduleStore(hs)
+	t.Cleanup(func() { _ = s.StopWithTimeout(5 * time.Second) })
+	require.NoError(t, s.Start())
+
+	policy := newDurableJob("shop.backup", false, true).policy
+	require.NoError(t, hs.PutSchedule("shop.backup", persist.Schedule{
+		Revision: policy.Revision, Activated: at(23, 1), Cursor: at(23, 3),
+		Dispatch: &persist.Dispatch{
+			Occurrence: persist.Occurrence{Scheduled: at(23, 2), Trigger: triggerScheduled},
+			State:      dispatchEnded, Outcome: outcomeCanceled,
+		},
+		Pending: &persist.Occurrence{Scheduled: at(23, 3), Trigger: triggerScheduled},
+	}))
+	s.durableMu.Lock()
+	s.entryLocked("shop.backup").inFlight = true // the replaced entry's run
+	s.durableMu.Unlock()
+	// The registration's write is the last step of its evaluation; the run
+	// ends right after it, before the entry goes live.
+	hs.onPut = func() {
+		s.entryLocked("shop.backup").inFlight = false
+		hs.onPut = nil
+	}
+
+	replacement := newDurableJob("shop.backup", false, true)
+	require.NoError(t, s.AddJob(replacement))
+	run := nextRun(t, replacement)
+	assert.True(t, run.info.ScheduledTime.Equal(at(23, 3)))
+}
+
 // A manual run waiting for a slot is dropped when its entry is removed.
 func TestScheduleState_WaitingManualDroppedOnRemoval(t *testing.T) {
 	t.Parallel()
@@ -730,6 +812,47 @@ func TestScheduleState_ReloadCarriesQueuedOccurrence(t *testing.T) {
 
 	replacement := newDurableJob("shop.backup", false, true)
 	require.NoError(t, h.s.AddJob(replacement))
+	run := nextRun(t, replacement)
+	assert.True(t, run.info.ScheduledTime.Equal(at(23, 3)))
+}
+
+// stubbornDurableJob is a durableJob whose run goes on after its context
+// ends, until release is closed: a run that takes time to stop.
+type stubbornDurableJob struct {
+	*durableJob
+	release chan struct{}
+}
+
+func (j *stubbornDurableJob) Run(ctx *Context) error {
+	info, _ := cron.RunInfoFromContext(ctx.RunContext())
+	j.runs <- observedRun{info: info, execution: ctx.Execution.ID}
+	<-j.release
+	return nil
+}
+
+// RemoveJob does not wait for the canceled run. A fire of the replacement
+// while that run is still stopping finds the entry busy and follows the
+// concurrency policy: with queue it waits in the record and starts once the
+// old run has ended, rather than being skipped by the name lock that keeps
+// other jobs apart (runGate).
+func TestScheduleState_FireWhileReplacedRunStopsIsQueued(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 1))
+	old := &stubbornDurableJob{durableJob: newDurableJob("shop.backup", false, true), release: make(chan struct{})}
+	require.NoError(t, h.s.AddJob(old))
+	h.start()
+
+	h.fire("shop.backup", at(23, 2))
+	nextRun(t, old.durableJob)
+	require.NoError(t, h.s.RemoveJob(old))
+
+	replacement := newDurableJob("shop.backup", false, true)
+	require.NoError(t, h.s.AddJob(replacement))
+	h.fire("shop.backup", at(23, 3))
+	h.eventually("shop.backup", func(r persist.Schedule) bool { return r.Pending != nil }, "the fire is queued")
+	noRun(t, replacement)
+
+	close(old.release)
 	run := nextRun(t, replacement)
 	assert.True(t, run.info.ScheduledTime.Equal(at(23, 3)))
 }
