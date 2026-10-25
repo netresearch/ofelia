@@ -168,7 +168,9 @@ Content-Type: application/json
 {"name": "backup"}
 ```
 
-Returns `204 No Content` on success.
+Returns `204 No Content` on success. While the run of a removed or replaced
+job of the same name is still stopping, the run is skipped with a warning in
+the log and not started later; the response is `204` all the same.
 
 ### Disable / enable a job
 

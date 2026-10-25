@@ -40,7 +40,10 @@ Until that run has stopped, `IsRemovedJobRunning` reports it, and a job
 registered under the same name skips its fires with a warning, so the old and
 the new job never run at the same time. A skip, not a wait: a waiting fire would
 hold a slot of the global concurrency limit for as long as the old run takes.
-The bookkeeping is `runGate` in `core/run_gate.go`.
+A skipped fire is not run later; that includes a manual run and the
+run-on-startup fire of a job registered in that time. The bookkeeping is
+`runGate` in `core/run_gate.go`; each go-cron change and its gate change happen
+together under `Scheduler.regMu`.
 
 See `core/scheduler.go` (`AddJobWithTags`, `RemoveJob`, `UpdateJob`, `DisableJob`/`EnableJob`).
 

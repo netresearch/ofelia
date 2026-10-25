@@ -5,6 +5,7 @@ package core
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -257,6 +258,39 @@ func TestUpdateJob_FailedUpdateKeepsTheJobRunnable(t *testing.T) {
 		t.Fatalf("RunJob: %v", err)
 	}
 	waitFor(t, j.ran, "the job did not run after the failed update")
+}
+
+// A failed UpdateJob restores the registration it retired. A RemoveJob of the
+// same name running at the same time must not be undone by that restore:
+// the removed job keeps reporting its stopping run, and a replacement skips
+// its fires until the run has ended.
+func TestUpdateJob_FailedUpdateDoesNotReviveARemovedJob(t *testing.T) {
+	s, _ := startedScheduler(t)
+	for i := range 2000 {
+		old := newStoppingJob("raced")
+		old.ignoreCancel = true
+		startStoppingJob(t, s, old)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = s.UpdateJob("raced", "not a schedule", newCountingJob("raced"))
+		}()
+		go func() {
+			defer wg.Done()
+			_ = s.RemoveJob(old)
+		}()
+		wg.Wait()
+
+		if !s.IsRemovedJobRunning(old) {
+			close(old.release)
+			t.Fatalf("round %d: the removed job's stopping run is no longer reported", i)
+		}
+		close(old.release)
+		waitFor(t, old.ended, "the old run did not end")
+		eventually(t, func() bool { return !s.IsRemovedJobRunning(old) }, "the old run is still counted")
+	}
 }
 
 // A fire that go-cron dispatched before the removal but that reaches the gate

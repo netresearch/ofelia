@@ -17,7 +17,11 @@ import "sync"
 // registration of the same name starts one either: such a fire is skipped.
 // A skip, not a wait, because a fire holds a slot of the global concurrency
 // limit, and a run that ignores its cancellation can go on for its whole
-// max-runtime.
+// max-runtime. A skipped fire is not run later; that includes a manual run
+// and the run-on-startup fire of a job registered in that time.
+//
+// The scheduler calls register, retire and restore together with the
+// go-cron change they describe, under Scheduler.regMu.
 type runGate struct {
 	mu      sync.Mutex
 	current map[string]*jobWrapper

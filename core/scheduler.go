@@ -71,8 +71,12 @@ type Scheduler struct {
 	onJobComplete   func(jobName string, success bool)
 
 	// gate keeps a replacement's runs from starting beside the stopping run
-	// of the job it replaced; see runGate.
-	gate runGate
+	// of the job it replaced; see runGate. regMu makes each change of a
+	// go-cron entry and the matching gate change one step, so a concurrent
+	// update and removal of one name cannot leave the gate describing an
+	// entry go-cron no longer has. It is held only around those calls.
+	gate  runGate
+	regMu sync.Mutex
 
 	// globalMaxRuntime is `[global] max-runtime`, the bound of every run of a
 	// job that inherits it (see MaxRuntimeProvider). It is read while the run
@@ -396,7 +400,12 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	j.Use(s.Middlewares()...)
 
 	w := &jobWrapper{s: s, j: j}
+	s.regMu.Lock()
 	id, err := s.cron.AddJob(j.GetSchedule(), w, opts...)
+	if err == nil {
+		s.gate.register(w)
+	}
+	s.regMu.Unlock()
 	if err != nil {
 		s.Logger.Warn(fmt.Sprintf(
 			"Failed to register job %q - %q - %q",
@@ -406,7 +415,6 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 		return fmt.Errorf("add cron job: %w", err)
 	}
 	j.SetCronJobID(uint64(id))
-	s.gate.register(w)
 	s.mu.Lock()
 	s.Jobs = append(s.Jobs, j)
 	s.jobsByName[j.GetName()] = j
@@ -448,8 +456,10 @@ func (s *Scheduler) RemoveJob(j Job) error {
 	// Retire before removing: a fire go-cron dispatched before the removal
 	// but that has not reached the gate yet is then refused instead of
 	// starting after the removal returned.
+	s.regMu.Lock()
 	s.gate.retire(j.GetName())
 	s.cron.RemoveByName(j.GetName())
+	s.regMu.Unlock()
 	s.mu.Lock()
 	for i, job := range s.Jobs {
 		if job == j || job.GetCronJobID() == j.GetCronJobID() {
@@ -471,8 +481,10 @@ func (s *Scheduler) RemoveJob(j Job) error {
 // Returns the number of jobs removed.
 func (s *Scheduler) RemoveJobsByTag(tag string) int {
 	// Get entries by tag before removal for logging
+	s.regMu.Lock()
 	entries := s.cron.EntriesByTag(tag)
 	if len(entries) == 0 {
+		s.regMu.Unlock()
 		return 0
 	}
 	for _, entry := range entries {
@@ -481,6 +493,7 @@ func (s *Scheduler) RemoveJobsByTag(tag string) int {
 
 	// Remove from cron using O(1) tag removal
 	count := s.cron.RemoveByTag(tag)
+	s.regMu.Unlock()
 
 	// Update our internal state
 	s.mu.Lock()
@@ -793,9 +806,9 @@ func (s *Scheduler) lookupJob(name string) Job {
 }
 
 // UpdateJob atomically replaces the schedule and job implementation for an
-// existing named entry using go-cron's UpdateEntryJobByName. The old job's
-// in-flight invocations complete before the new schedule takes effect (because
-// go-cron serializes entry mutations through the scheduler goroutine).
+// existing named entry using go-cron's UpdateEntryJobByName. Replacing the job
+// cancels the old job's run in progress, and UpdateJob does not wait for it to
+// stop: until it has, the new job skips its fires (see runGate).
 //
 // Disabled jobs are updated in place and stay disabled: refusing them would
 // force callers into remove+add, which resumes the job and files the old copy
@@ -813,14 +826,19 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 	newJob.Use(s.Middlewares()...)
 
 	// Replacing the entry's job cancels the old job's run like a removal
-	// does, so the old registration is retired first; see RemoveJob.
+	// does, so the old registration is retired first; see RemoveJob. A
+	// failed update restores it, under the same regMu, so a removal of the
+	// name in between cannot be undone by the restore.
+	s.regMu.Lock()
 	old := s.gate.retire(name)
 	w := &jobWrapper{s: s, j: newJob}
 	if err := s.cron.UpdateEntryJobByName(name, newSchedule, w); err != nil {
 		s.gate.restore(old)
+		s.regMu.Unlock()
 		return fmt.Errorf("update job: %w", err)
 	}
 	s.gate.register(w)
+	s.regMu.Unlock()
 
 	if err := s.applyUpdatedJob(name, newJob); err != nil {
 		return err
@@ -832,9 +850,9 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 
 // applyUpdatedJob records newJob as the live job for name. It runs after
 // the cron entry has already been replaced, so it must tolerate the job
-// having vanished in between: RemoveJob drops the cron entry and waits
-// for in-flight runs BEFORE it takes s.mu, so a delete that began after
-// UpdateJob's pre-check can complete entirely inside that window.
+// having vanished in between: RemoveJob drops the cron entry BEFORE it
+// takes s.mu, so a delete that began after UpdateJob's pre-check can
+// complete entirely inside that window.
 //
 // Two orderings matter here, and both used to be wrong:
 //

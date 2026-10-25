@@ -90,17 +90,11 @@ func TestRemovedJobs_RunningShowsTheStoppingRun(t *testing.T) {
 
 	close(old.release)
 	<-old.ended
-	// Wait in the scheduler, not through the API: the API reads the last
-	// run's output, and reading it while the run returns its buffers is a
-	// data race of its own.
 	deadline := time.Now().Add(5 * time.Second)
-	for sc.IsRemovedJobRunning(old) {
+	for removedRunning(t, h, "gone") {
 		if time.Now().After(deadline) {
-			t.Fatal("the removed job's run is still counted after it ended")
+			t.Fatal("the removed job still reports running after its run ended")
 		}
 		time.Sleep(5 * time.Millisecond)
-	}
-	if removedRunning(t, h, "gone") {
-		t.Fatal("the removed job still reports running after its run ended")
 	}
 }
