@@ -329,11 +329,9 @@ func TestScheduleState_CrashDuringRunWithNothingMissed(t *testing.T) {
 // concurrency: queue holds the catch-up in the slot, and it starts once the
 // workload is gone.
 func TestScheduleState_OrphanKeepsEntryBusy(t *testing.T) {
-	prev := orphanPollInterval
-	orphanPollInterval = 10 * time.Millisecond
-	t.Cleanup(func() { orphanPollInterval = prev })
-
+	t.Parallel()
 	h := newDurableHarness(t, at(23, 10))
+	h.s.orphanPollInterval = 10 * time.Millisecond
 	j := newDurableJob("shop.backup", true, true)
 	var gone sync.WaitGroup
 	gone.Add(1)
@@ -876,6 +874,82 @@ func TestScheduleState_FireWhileReplacedRunStopsIsQueued(t *testing.T) {
 	close(old.release)
 	run := nextRun(t, replacement)
 	assert.True(t, run.info.ScheduledTime.Equal(at(23, 3)))
+}
+
+// plainStubbornJob keeps no record, and its run goes on after its context
+// ends, until release is closed.
+type plainStubbornJob struct {
+	BareJob
+	started chan struct{}
+	release chan struct{}
+}
+
+func (j *plainStubbornJob) Run(*Context) error {
+	j.started <- struct{}{}
+	<-j.release
+	return nil
+}
+
+// A reload turns a job without a record into one with a record while the
+// old run still stops. The replacement's per-entry check does not know that
+// run, so the name lock (runGate) still keeps the replacement from running
+// beside it; once the old run has ended, the next fire runs.
+func TestScheduleState_ReplacementOfAJobWithoutRecordWaitsForItsRun(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 1))
+	old := &plainStubbornJob{
+		BareJob: BareJob{Name: "shop.backup", Schedule: durableSchedule, Command: "true"},
+		started: make(chan struct{}, 4), release: make(chan struct{}),
+	}
+	require.NoError(t, h.s.AddJob(old))
+	h.start()
+	require.NoError(t, h.s.cron.TriggerEntryByName("shop.backup"))
+	<-old.started
+	require.NoError(t, h.s.RemoveJob(old))
+	require.True(t, h.s.IsRemovedJobRunning(old), "the old run is still stopping")
+
+	replacement := newDurableJob("shop.backup", false, true)
+	require.NoError(t, h.s.AddJob(replacement))
+	h.fire("shop.backup", at(23, 3))
+	noRun(t, replacement)
+
+	close(old.release)
+	require.Eventually(t, func() bool { return !h.s.IsRemovedJobRunning(old) }, 5*time.Second, 5*time.Millisecond)
+	h.fire("shop.backup", at(23, 4))
+	run := nextRun(t, replacement)
+	assert.True(t, run.info.ScheduledTime.Equal(at(23, 4)))
+}
+
+// Stopping the scheduler while a dispatch waits for a global slot keeps the
+// dispatch waiting in the record without trying to start it again, which
+// go-cron would refuse with an error because it no longer runs.
+func TestScheduleState_StopWithWaitingDispatchStartsNothing(t *testing.T) {
+	t.Parallel()
+	logger, handler := test.NewTestLoggerWithHandler()
+	store := persist.NewStore(filepath.Join(t.TempDir(), "state.json"))
+	clock := NewCronClock(at(23, 1))
+	s := NewSchedulerWithClock(logger, clock)
+	s.SetScheduleStore(store)
+	s.SetMaxConcurrentJobs(1)
+	a := newDurableJob("p.a", false, true)
+	b := newDurableJob("p.b", false, true)
+	releaseA := a.hold()
+	require.NoError(t, s.AddJob(a))
+	require.NoError(t, s.AddJob(b))
+	require.NoError(t, s.Start())
+	require.NoError(t, s.cron.TriggerEntryWithInfoByName("p.a", cron.RunInfo{ScheduledTime: at(23, 2), Trigger: cron.TriggerScheduled}))
+	nextRun(t, a)
+	require.NoError(t, s.cron.TriggerEntryWithInfoByName("p.b", cron.RunInfo{ScheduledTime: at(23, 2), Trigger: cron.TriggerScheduled}))
+	require.Eventually(t, func() bool { return handler.HasMessage("waits for a slot") }, 5*time.Second, 5*time.Millisecond)
+
+	go func() { time.Sleep(200 * time.Millisecond); releaseA() }()
+	_ = s.StopWithTimeout(5 * time.Second)
+
+	assert.False(t, handler.HasError("could not start the occurrence"), "Stop tried to start the waiting dispatch")
+	r, ok := store.GetSchedule("p.b")
+	require.True(t, ok)
+	require.NotNil(t, r.Dispatch)
+	assert.Equal(t, dispatchWaiting, r.Dispatch.State, "the dispatch stays waiting for the next registration")
 }
 
 // failingStore refuses every write after the first n.

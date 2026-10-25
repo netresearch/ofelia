@@ -38,9 +38,10 @@ const (
 	outcomeUnknown  = "unknown"
 )
 
-// orphanPollInterval is how often the scheduler checks whether a run that
-// was in progress when the daemon stopped is still running.
-var orphanPollInterval = 15 * time.Second
+// defaultOrphanPollInterval is how often the scheduler checks whether a run
+// that was in progress when the daemon stopped is still running, unless
+// Scheduler.orphanPollInterval sets another interval.
+const defaultOrphanPollInterval = 15 * time.Second
 
 // orphanCheckTimeout bounds one such check.
 const orphanCheckTimeout = 10 * time.Second
@@ -379,6 +380,10 @@ func (s *Scheduler) watchOrphanLocked(j Job, e *durableEntry, executionID string
 	var once sync.Once
 	e.stopWatch = func() { once.Do(func() { close(stop) }) }
 	s.Logger.Warn("the interrupted run still runs; the job stays busy until it ends", "job", name, "execution", executionID)
+	interval := s.orphanPollInterval
+	if interval <= 0 {
+		interval = defaultOrphanPollInterval
+	}
 	go func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -390,7 +395,7 @@ func (s *Scheduler) watchOrphanLocked(j Job, e *durableEntry, executionID string
 			}
 			cancel()
 		}()
-		ticker := time.NewTicker(orphanPollInterval)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -719,7 +724,9 @@ func (s *Scheduler) resumeAfterRegistration(name string) {
 // Caller holds durableMu.
 func (s *Scheduler) resumeLocked(name string) *pendingLaunch {
 	e := s.entryLocked(name)
-	if e.inFlight || e.orphan != "" || !s.liveAndEnabled(name) {
+	// A stopping scheduler starts nothing; the occurrence stays in the record
+	// and starts at the next registration.
+	if e.inFlight || e.orphan != "" || !s.cron.IsRunning() || !s.liveAndEnabled(name) {
 		return nil
 	}
 	rec, ok := s.records.GetSchedule(name)

@@ -78,6 +78,10 @@ type Scheduler struct {
 	gate  runGate
 	regMu sync.Mutex
 
+	// orphanPollInterval overrides defaultOrphanPollInterval when positive;
+	// tests set it before Start.
+	orphanPollInterval time.Duration
+
 	// globalMaxRuntime is `[global] max-runtime`, the bound of every run of a
 	// job that inherits it (see MaxRuntimeProvider). It is read while the run
 	// is in progress, not copied into the job, so a changed value needs no
@@ -1283,6 +1287,10 @@ type jobWrapper struct {
 	// retired is set when the job is removed or replaced; guarded by
 	// s.gate.mu.
 	retired bool
+	// keepsRecord is set when a run of this registration went through the
+	// per-entry check of ADR-005, which counts it as busy; guarded by
+	// s.gate.mu.
+	keepsRecord bool
 }
 
 // Compile-time assertion: jobWrapper implements cron.JobWithContext.
