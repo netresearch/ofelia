@@ -559,6 +559,27 @@ func TestScheduleState_ManualRun(t *testing.T) {
 	assert.True(t, r.Cursor.Equal(cursor), "a manual run must not move the cursor")
 }
 
+// The run-on-startup run is no fire of the schedule: it runs, recorded like a
+// manual run, and does not move the cursor to the start time. go-cron
+// reports it as TriggerImmediate, delivered here directly like h.fire does.
+func TestScheduleState_RunOnStartupDoesNotMoveCursor(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 10))
+	j := newDurableJob("shop.backup", true, false)
+	h.put("shop.backup", persist.Schedule{Revision: j.policy.Revision, Activated: at(23, 1), Cursor: at(23, 2)})
+	require.NoError(t, h.s.AddJob(j))
+	h.start()
+
+	require.NoError(t, h.s.cron.TriggerEntryWithInfoByName("shop.backup",
+		cron.RunInfo{ScheduledTime: at(23, 10), Trigger: cron.TriggerImmediate}))
+	run := nextRun(t, j)
+	assert.Equal(t, cron.TriggerImmediate, run.info.Trigger)
+	h.eventually("shop.backup", ended, "the run-on-startup run ends")
+	r := h.record("shop.backup")
+	assert.Equal(t, triggerManual, r.Dispatch.Trigger)
+	assert.True(t, r.Cursor.Equal(at(23, 2)), "the run-on-startup run must not move the cursor, got %v", r.Cursor)
+}
+
 // The per-entry check refuses a manual run that reaches it while the job is
 // busy, also when it bypasses RunJob's own check (another job's dependency
 // chain, or a race with RunJob).

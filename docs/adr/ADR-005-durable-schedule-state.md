@@ -44,7 +44,7 @@ Advancing the cursor and recording what happened to that fire are **one atomic u
 
 A fire is identified by its scheduled time in UTC, not by the time it started.
 
-A manual run (`TriggerEntryByName`, the API, the web UI) does not advance the cursor. It is refused while the entry is busy, that is while a run is in progress or a dispatch waits for a global slot, so it never replaces a scheduled dispatch. An admitted manual run is recorded in the dispatch field with the trigger kind manual, so the crash rule below covers it too. While it runs, it occupies the job like a scheduled run: `forbid` stops a scheduled fire and `queue` puts it into the pending slot.
+A manual run (`TriggerEntryByName`, the API, the web UI) does not advance the cursor. The run-on-startup run counts as one: it starts at the time the job is registered, which the schedule never produces. It is refused while the entry is busy, that is while a run is in progress or a dispatch waits for a global slot, so it never replaces a scheduled dispatch. An admitted manual run is recorded in the dispatch field with the trigger kind manual, so the crash rule below covers it too. While it runs, it occupies the job like a scheduled run: `forbid` stops a scheduled fire and `queue` puts it into the pending slot.
 
 ### When a catch-up runs
 
@@ -110,7 +110,7 @@ A state file has one owner. Two daemons sharing one file are not supported, cons
 
 ### Change in go-cron
 
-The record must be written by the code that admits or drops the run, with the run's scheduled time. go-cron gives a job no way to read that time. go-cron puts both into the context a job receives (`cron.RunInfoFromContext`): the scheduled time and the kind of trigger, one of scheduled, manual, catch-up (go-cron's own `MissedPolicy`, which Ofelia does not use) and dependency (a workflow child). The kind is needed because a manual run arrives with the current time as its scheduled time, and it must not advance the cursor. go-cron already uses the context this way for the workflow execution ID of entries with dependents.
+The record must be written by the code that admits or drops the run, with the run's scheduled time. go-cron gives a job no way to read that time. go-cron puts both into the context a job receives (`cron.RunInfoFromContext`): the scheduled time and the kind of trigger, one of scheduled, manual, catch-up (go-cron's own `MissedPolicy`, which Ofelia does not use), dependency (a workflow child) and immediate (the first run of an entry added `WithRunImmediately`, Ofelia's run-on-startup). The kind is needed because a manual run arrives with the current time as its scheduled time, and it must not advance the cursor. go-cron already uses the context this way for the workflow execution ID of entries with dependents.
 
 Ofelia starts a catch-up, a queued occurrence and a dispatch that waited for a slot through its own dispatch path: it records the occurrence as a waiting dispatch, then starts the entry with `TriggerEntryWithInfo`, which carries that occurrence's scheduled time and kind. The run arrives at the per-entry check as what it is, and the check matches it to the waiting dispatch; no side state in memory is needed to recognize it, and a start that go-cron refuses leaves the dispatch waiting for the next registration.
 

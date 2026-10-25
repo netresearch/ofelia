@@ -599,9 +599,10 @@ func (s *Scheduler) arrivalLocked(name string, rec *persist.Schedule, e *durable
 		return d.Occurrence, true
 	}
 	switch info.Trigger {
-	case cron.TriggerManual, cron.TriggerDependency:
-		// A manual run, or one started by another job's dependency chain,
-		// does not move the cursor and is refused while the entry is busy.
+	case cron.TriggerManual, cron.TriggerDependency, cron.TriggerImmediate:
+		// A manual run, one started by another job's dependency chain, and
+		// the run-on-startup run are no fires of the schedule: they do not
+		// move the cursor and are refused while the entry is busy.
 		if busyLocked(*rec, e) {
 			s.Logger.Warn("a run is in progress; the manual run is refused", "job", name)
 			return persist.Occurrence{}, false
