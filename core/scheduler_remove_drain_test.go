@@ -6,6 +6,7 @@ package core
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -214,6 +215,64 @@ func TestRemoveJob_ReplacementRunOnStartupRunsAfterTheOldRunStops(t *testing.T) 
 	}
 }
 
+// The deferred run-on-startup run survives a web API update of the job
+// while the old run stops: go-cron fires no run-on-startup run for a job
+// swapped in by UpdateJob, so the updated job takes the deferred one over.
+func TestUpdateJob_TakesOverTheDeferredRunOnStartup(t *testing.T) {
+	s, logs := startedScheduler(t)
+	old := newStoppingJob("boot")
+	old.ignoreCancel = true
+	startStoppingJob(t, s, old)
+
+	if err := s.RemoveJob(old); err != nil {
+		t.Fatalf("RemoveJob: %v", err)
+	}
+	repl := newCountingJob("boot")
+	repl.RunOnStartup = true
+	if err := s.AddJob(repl); err != nil {
+		t.Fatalf("AddJob replacement: %v", err)
+	}
+	eventually(t, func() bool { return logs.HasWarning("defer: the run-on-startup run") },
+		"the replacement's run-on-startup fire was not deferred")
+	upd := newCountingJob("boot")
+	upd.RunOnStartup = true
+	if err := s.UpdateJob("boot", TriggeredSchedule, upd); err != nil {
+		t.Fatalf("UpdateJob: %v", err)
+	}
+
+	close(old.release)
+	waitFor(t, upd.ran, "the updated job did not run its deferred run-on-startup run")
+	time.Sleep(50 * time.Millisecond)
+	if n, m := repl.runs.Load(), upd.runs.Load(); n != 0 || m != 1 {
+		t.Fatalf("runs: replacement %d, updated %d; want 0 and 1", n, m)
+	}
+}
+
+// The end of a run waits for Scheduler.regMu before it leaves the name
+// lock, so no registration change (AddJob, UpdateJob) falls between the
+// moment leave picks the registration whose deferred run-on-startup run is
+// due and the moment that run is fired.
+func TestRunEnd_WaitsForRegistrationChanges(t *testing.T) {
+	s, _ := startedScheduler(t)
+	old := newStoppingJob("held")
+	old.ignoreCancel = true
+	startStoppingJob(t, s, old)
+	if err := s.RemoveJob(old); err != nil {
+		t.Fatalf("RemoveJob: %v", err)
+	}
+
+	s.regMu.Lock()
+	close(old.release)
+	waitFor(t, old.ended, "the old run did not end")
+	time.Sleep(50 * time.Millisecond)
+	stillCounted := s.IsRemovedJobRunning(old)
+	s.regMu.Unlock()
+	if !stillCounted {
+		t.Fatal("the run left the name lock while regMu was held")
+	}
+	eventually(t, func() bool { return !s.IsRemovedJobRunning(old) }, "the run did not leave after regMu was released")
+}
+
 // RemoveJobsByTag retires the removed jobs like RemoveJob does.
 func TestRemoveJobsByTag_ReplacementSkipsWhileTheOldRunStops(t *testing.T) {
 	s, logs := startedScheduler(t)
@@ -343,7 +402,7 @@ func TestRunGate_RetiredRegistrationDoesNotStart(t *testing.T) {
 	if got := g.retire("late"); got != w {
 		t.Fatalf("retire returned %v, want the registration", got)
 	}
-	if v := g.enter(w, false); v != gateRetired {
+	if v := g.enter(w, false, false); v != gateRetired {
 		t.Fatalf("enter = %v, want gateRetired", v)
 	}
 	if g.retiredRunning(w.j) {
@@ -357,22 +416,21 @@ func TestRunGate_DeferredStartupWaitsForEveryStoppingRun(t *testing.T) {
 	var g runGate
 	a := &jobWrapper{j: newCountingJob("chain")}
 	g.register(a)
-	if v := g.enter(a, true); v != gateRun {
+	if v := g.enter(a, true, false); v != gateRun {
 		t.Fatalf("enter a = %v, want gateRun", v)
 	}
 	g.retire("chain")
 	b := &jobWrapper{j: newCountingJob("chain")}
 	g.register(b)
-	if v := g.enter(b, true); v != gateRun {
+	if v := g.enter(b, true, false); v != gateRun {
 		t.Fatalf("enter b = %v, want gateRun beside a run that kept a record", v)
 	}
 	g.retire("chain")
 	c := &jobWrapper{j: newCountingJob("chain")}
 	g.register(c)
-	if v := g.enter(c, false); v != gateDraining {
-		t.Fatalf("enter c = %v, want gateDraining", v)
+	if v := g.enter(c, false, true); v != gateDeferred {
+		t.Fatalf("enter c = %v, want gateDeferred", v)
 	}
-	g.deferStartup(c, false)
 
 	if g.leave(a) != nil {
 		t.Fatal("the deferred fire was handed back while b still stops")
@@ -391,18 +449,102 @@ func TestRunGate_DeferredStartupOfAReplacedRegistrationIsDropped(t *testing.T) {
 	var g runGate
 	a := &jobWrapper{j: newCountingJob("chain")}
 	g.register(a)
-	g.enter(a, false)
+	g.enter(a, false, false)
 	g.retire("chain")
 	c := &jobWrapper{j: newCountingJob("chain")}
 	g.register(c)
-	if v := g.enter(c, false); v != gateDraining {
-		t.Fatalf("enter c = %v, want gateDraining", v)
+	if v := g.enter(c, false, true); v != gateDeferred {
+		t.Fatalf("enter c = %v, want gateDeferred", v)
 	}
-	g.deferStartup(c, false)
 	g.retire("chain")
 	g.register(&jobWrapper{j: newCountingJob("chain")})
 
 	if due := g.leave(a); due != nil {
 		t.Fatalf("leave a = %v, want nil for a replaced registration", due)
+	}
+}
+
+// go-cron fires the run-on-startup run of a new entry as soon as AddJob adds
+// it, before addJob records the registration on the gate. A stopping run
+// that ends in that moment still hands the deferred fire back.
+func TestRunGate_DeferredStartupOfANotYetRecordedRegistrationIsHandedBack(t *testing.T) {
+	var g runGate
+	a := &jobWrapper{j: newCountingJob("boot")}
+	g.register(a)
+	g.enter(a, false, false)
+	g.retire("boot")
+	c := &jobWrapper{j: newCountingJob("boot")}
+	if v := g.enter(c, false, true); v != gateDeferred {
+		t.Fatalf("enter c = %v, want gateDeferred", v)
+	}
+	if due := g.leave(a); due != c {
+		t.Fatalf("leave a = %v, want c", due)
+	}
+}
+
+// UpdateJob swaps the job in place, and go-cron fires no run-on-startup run
+// for the swapped-in job. The deferred fire moves to it when its job runs on
+// startup, and is dropped when it does not.
+func TestRunGate_UpdateJobTakesOverTheDeferredStartup(t *testing.T) {
+	setup := func() (*runGate, *jobWrapper, *jobWrapper) {
+		g := &runGate{}
+		a := &jobWrapper{j: newCountingJob("boot")}
+		g.register(a)
+		g.enter(a, false, false)
+		g.retire("boot")
+		c := &jobWrapper{j: newCountingJob("boot")}
+		g.register(c)
+		if v := g.enter(c, false, true); v != gateDeferred {
+			t.Fatalf("enter c = %v, want gateDeferred", v)
+		}
+		return g, a, c
+	}
+
+	t.Run("updated job runs on startup", func(t *testing.T) {
+		g, a, c := setup()
+		g.retire("boot")
+		j := newCountingJob("boot")
+		j.RunOnStartup = true
+		d := &jobWrapper{j: j}
+		g.replace(c, d, false)
+		if due := g.leave(a); due != d {
+			t.Fatalf("leave a = %v, want the updated registration", due)
+		}
+	})
+	t.Run("updated job does not run on startup", func(t *testing.T) {
+		g, a, c := setup()
+		g.retire("boot")
+		g.replace(c, &jobWrapper{j: newCountingJob("boot")}, false)
+		if due := g.leave(a); due != nil {
+			t.Fatalf("leave a = %v for a job without run-on-startup, want nil", due)
+		}
+	})
+}
+
+// The old run ends at the moment the replacement is added. go-cron fires the
+// replacement's run-on-startup run before addJob records it on the gate, so
+// over many rounds every interleaving of the two occurs; the run must start
+// exactly once in each.
+func TestRemoveJob_RunOnStartupSurvivesTheOldRunEndingDuringAddJob(t *testing.T) {
+	for i := range 50 {
+		s, _ := startedScheduler(t)
+		old := newStoppingJob("boot")
+		old.ignoreCancel = true
+		startStoppingJob(t, s, old)
+		if err := s.RemoveJob(old); err != nil {
+			t.Fatalf("RemoveJob: %v", err)
+		}
+		repl := newCountingJob("boot")
+		repl.RunOnStartup = true
+		go close(old.release)
+		if err := s.AddJob(repl); err != nil {
+			t.Fatalf("AddJob replacement: %v", err)
+		}
+		waitFor(t, repl.ran, "round "+strconv.Itoa(i)+": the run-on-startup run was lost")
+		time.Sleep(20 * time.Millisecond)
+		if n := repl.runs.Load(); n != 1 {
+			t.Fatalf("round %d: the replacement ran %d times, want once", i, n)
+		}
+		_ = s.Stop()
 	}
 }

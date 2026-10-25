@@ -143,7 +143,11 @@ Each returns a JSON **array** of job objects:
 On `/api/jobs/removed`, `running` is `true` while the run that the removal
 canceled is still stopping. A job added under the same name skips its
 scheduled fires until then, refuses a manual run with `409 Conflict`, and runs
-its run-on-startup run once the old run has stopped.
+its run-on-startup run once the old run has stopped. The exception is a Compose
+job with `missed_fires: one` or `concurrency: queue` replacing another such
+job: its own check counts the old run as busy, so it applies its concurrency
+policy to scheduled fires and refuses the run-on-startup run like a manual run
+(ADR-005).
 
 `recentRuns` summarises up to the ten newest executions, oldest first, so a list
 view can show outcome history without a history request per job. It is omitted

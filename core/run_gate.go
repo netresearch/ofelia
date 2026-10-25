@@ -47,6 +47,7 @@ const (
 	gateRun      gateVerdict = iota // no conflict; the run is counted
 	gateRetired                     // the registration was removed or replaced
 	gateDraining                    // a retired run of the same name still runs
+	gateDeferred                    // as gateDraining, and the run-on-startup fire was recorded for later
 )
 
 // register records w as the live registration of its job's name.
@@ -89,6 +90,31 @@ func (g *runGate) restore(w *jobWrapper) {
 	g.current[w.j.GetName()] = w
 }
 
+// replace records w as the live registration of its name in place of old,
+// which UpdateJob retired, and moves old's deferred run-on-startup fire to w
+// when w's job runs on startup too: go-cron fires a job swapped in by
+// UpdateJob no run-on-startup run of its own. ownBusyCheck as for enter.
+// The stopping run that blocks the fire cannot have ended in between: its
+// leave waits for Scheduler.regMu, which UpdateJob holds.
+func (g *runGate) replace(old, w *jobWrapper, ownBusyCheck bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	name := w.j.GetName()
+	if g.current == nil {
+		g.current = make(map[string]*jobWrapper)
+	}
+	g.current[name] = w
+	d, ok := g.startup[name]
+	if !ok || old == nil || d.w != old {
+		return
+	}
+	if !w.j.ShouldRunOnStartup() {
+		delete(g.startup, name)
+		return
+	}
+	g.startup[name] = deferredStartup{w: w, ownBusyCheck: ownBusyCheck}
+}
+
 // enter decides whether a fire of w may run, and counts it if so. The caller
 // must call leave(w) when a counted run ends.
 //
@@ -98,7 +124,11 @@ func (g *runGate) restore(w *jobWrapper) {
 // that went through that check too, because the check already counts it;
 // a stopping run that did not, such as one of a job that kept no record
 // before a reload, still makes it skip.
-func (g *runGate) enter(w *jobWrapper, ownBusyCheck bool) gateVerdict {
+//
+// startup says that the fire is w's run-on-startup run. A skipped one is
+// recorded, under the same lock as the decision, so that the stopping run's
+// leave hands it back.
+func (g *runGate) enter(w *jobWrapper, ownBusyCheck, startup bool) gateVerdict {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if w.retired {
@@ -106,6 +136,13 @@ func (g *runGate) enter(w *jobWrapper, ownBusyCheck bool) gateVerdict {
 	}
 	name := w.j.GetName()
 	if g.blockedLocked(name, ownBusyCheck) {
+		if startup {
+			if g.startup == nil {
+				g.startup = make(map[string]deferredStartup)
+			}
+			g.startup[name] = deferredStartup{w: w, ownBusyCheck: ownBusyCheck}
+			return gateDeferred
+		}
 		return gateDraining
 	}
 	w.keepsRecord = ownBusyCheck
@@ -137,21 +174,11 @@ func (g *runGate) blockedLocked(name string, ownBusyCheck bool) bool {
 	return false
 }
 
-// deferStartup records that the run-on-startup fire of w was skipped by
-// enter, so that leave hands it back once the name is no longer blocked.
-func (g *runGate) deferStartup(w *jobWrapper, ownBusyCheck bool) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.startup == nil {
-		g.startup = make(map[string]deferredStartup)
-	}
-	g.startup[w.j.GetName()] = deferredStartup{w: w, ownBusyCheck: ownBusyCheck}
-}
-
 // leave ends a run that enter counted. It returns the registration whose
 // deferred run-on-startup fire is due now, or nil: one is due when a retired
-// run ends, the name no longer blocks that fire and the registration is
-// still live.
+// run ends, the name no longer blocks that fire and the registration was not
+// removed or replaced. The caller holds Scheduler.regMu across leave and the
+// fire, so no registration change falls between them.
 func (g *runGate) leave(w *jobWrapper) *jobWrapper {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -169,7 +196,9 @@ func (g *runGate) leave(w *jobWrapper) *jobWrapper {
 		return nil
 	}
 	delete(g.startup, name)
-	if due.w.retired || g.current[name] != due.w {
+	if due.w.retired {
+		// Removed, or replaced by a registration with a run-on-startup
+		// fire of its own; UpdateJob moved the fire before retiring.
 		return nil
 	}
 	return due.w

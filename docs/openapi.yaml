@@ -93,7 +93,9 @@ paths:
             removal canceled is still stopping; a job added under the same
             name skips its scheduled fires until then, refuses a manual run
             with 409, and runs its run-on-startup run once the old run has
-            stopped.
+            stopped. A Compose job with schedule state replacing another
+            such job is the exception: it applies its concurrency policy and
+            refuses the run-on-startup run while the old run is busy.
           content:
             application/json:
               schema:

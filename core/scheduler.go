@@ -912,7 +912,7 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 		s.regMu.Unlock()
 		return fmt.Errorf("update job: %w", err)
 	}
-	s.gate.register(w)
+	s.gate.replace(old, w, w.durable())
 	s.regMu.Unlock()
 
 	if err := s.applyUpdatedJob(name, newJob); err != nil {
@@ -1337,18 +1337,16 @@ func (w *jobWrapper) RunWithContext(ctx context.Context) {
 // passGate asks the name lock (runGate) whether this fire may run, and logs
 // why not. A run-on-startup fire that a stopping run blocks is deferred.
 func (w *jobWrapper) passGate(ctx context.Context) bool {
-	durable := w.durable()
-	switch w.s.gate.enter(w, durable) {
+	info, _ := cron.RunInfoFromContext(ctx)
+	switch w.s.gate.enter(w, w.durable(), info.Trigger == cron.TriggerImmediate) {
 	case gateRetired:
 		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
 		return false
+	case gateDeferred:
+		w.s.Logger.Warn("defer: the run-on-startup run waits until the canceled run of the removed or replaced job has stopped",
+			"job", w.j.GetName())
+		return false
 	case gateDraining:
-		if info, ok := cron.RunInfoFromContext(ctx); ok && info.Trigger == cron.TriggerImmediate {
-			w.s.gate.deferStartup(w, durable)
-			w.s.Logger.Warn("defer: the run-on-startup run waits until the canceled run of the removed or replaced job has stopped",
-				"job", w.j.GetName())
-			return false
-		}
 		w.s.Logger.Warn("skip: the canceled run of the removed or replaced job is still stopping",
 			"job", w.j.GetName())
 		return false
@@ -1369,6 +1367,11 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		return
 	}
 	defer func() {
+		// regMu orders the end of this run against registration changes:
+		// a deferred run-on-startup fire is handed back and fired for the
+		// registration leave chose, not for one that replaced it meanwhile.
+		w.s.regMu.Lock()
+		defer w.s.regMu.Unlock()
 		if due := w.s.gate.leave(w); due != nil {
 			w.s.fireDeferredStartup(due)
 		}
