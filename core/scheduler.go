@@ -11,6 +11,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/netresearch/go-cron"
@@ -291,10 +292,24 @@ func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 	// A job with durable schedule state runs its per-entry check first and
 	// then waits for a slot instead of being dropped here (ADR-005).
 	if w, ok := m.inner.(*jobWrapper); ok && w.durable() {
+		w.slotWait.Store(false) // the per-entry check waits for a slot anyway
 		w.RunWithContext(ctx)
 		return
 	}
 	ch := m.sem.getChan()
+	// A run-on-startup fire handed back by the name lock (runGate) is sent
+	// while the run that blocked it still holds its slot; it waits for a
+	// slot instead of being dropped, so it is not lost after all.
+	if w, ok := m.inner.(*jobWrapper); ok && w.slotWait.CompareAndSwap(true, false) {
+		select {
+		case ch <- struct{}{}:
+		case <-ctx.Done():
+			return
+		}
+		defer func() { <-ch }()
+		w.RunWithContext(ctx)
+		return
+	}
 	select {
 	case ch <- struct{}{}: // try to acquire slot
 		defer func() { <-ch }()
@@ -729,7 +744,12 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 func (s *Scheduler) fireDeferredStartup(w *jobWrapper) {
 	name := w.j.GetName()
 	info := cron.RunInfo{ScheduledTime: s.now(), Trigger: cron.TriggerImmediate}
+	w.slotWait.Store(true)
 	if err := s.cron.TriggerEntryWithInfoByName(name, info); err != nil {
+		w.slotWait.Store(false)
+		if errors.Is(err, cron.ErrNotRunning) {
+			return // the daemon is stopping; nothing starts any more
+		}
 		s.Logger.Warn("could not start the deferred run-on-startup run", "job", name, "error", err)
 	}
 }
@@ -1307,6 +1327,10 @@ type jobWrapper struct {
 	// per-entry check of ADR-005, which counts it as busy; guarded by
 	// s.gate.mu.
 	keepsRecord bool
+	// slotWait makes the next fire of this registration wait for a global
+	// slot instead of being skipped; set for a handed-back run-on-startup
+	// fire (fireDeferredStartup), cleared by the fire that uses it.
+	slotWait atomic.Bool
 }
 
 // Compile-time assertion: jobWrapper implements cron.JobWithContext.

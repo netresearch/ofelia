@@ -548,3 +548,53 @@ func TestRemoveJob_RunOnStartupSurvivesTheOldRunEndingDuringAddJob(t *testing.T)
 		_ = s.Stop()
 	}
 }
+
+// The deferred run-on-startup run is fired while the old run still holds its
+// global concurrency slot. With every other slot taken it waits for a slot
+// instead of being skipped by the limit. The race the test covers is decided
+// in microseconds, so it runs many rounds.
+func TestRemoveJob_DeferredRunOnStartupWaitsForAGlobalSlot(t *testing.T) {
+	for i := range 30 {
+		logger, logs := test.NewTestLoggerWithHandler()
+		s := NewScheduler(logger)
+		s.SetMaxConcurrentJobs(2)
+		if err := s.Start(); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		old := newStoppingJob("boot")
+		old.ignoreCancel = true
+		startStoppingJob(t, s, old)
+		if err := s.RemoveJob(old); err != nil {
+			t.Fatalf("RemoveJob: %v", err)
+		}
+		repl := newCountingJob("boot")
+		repl.RunOnStartup = true
+		if err := s.AddJob(repl); err != nil {
+			t.Fatalf("AddJob replacement: %v", err)
+		}
+		eventually(t, func() bool { return logs.HasWarning("defer: the run-on-startup run") },
+			"the replacement's run-on-startup fire was not deferred")
+		other := newStoppingJob("other")
+		other.ignoreCancel = true
+		if err := s.AddJob(other); err != nil {
+			t.Fatalf("AddJob other: %v", err)
+		}
+		// The deferred fire hands its slot back after the gate refused it;
+		// only then can the other job take it.
+		eventually(t, func() bool {
+			return s.RunJob(context.Background(), "other") == nil && func() bool {
+				select {
+				case <-other.started:
+					return true
+				case <-time.After(20 * time.Millisecond):
+					return false
+				}
+			}()
+		}, "the other job did not take the free slot")
+
+		close(old.release)
+		waitFor(t, repl.ran, "round "+strconv.Itoa(i)+": the deferred run-on-startup run was lost")
+		close(other.release)
+		_ = s.Stop()
+	}
+}
