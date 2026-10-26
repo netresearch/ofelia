@@ -413,6 +413,27 @@ services:
       - /srv/myapp:/srv/myapp:ro   # same path as on the host
 ```
 
+For a registered `[compose-project]` that uses file-backed Compose configs or
+secrets, also provide writable private scratch storage at the **same absolute
+path on the Docker host and inside Ofelia**. Compose bind-mounts their captured
+files into the workload, so a container-private `/tmp` is not sufficient:
+
+```yaml
+services:
+  ofelia:
+    environment:
+      TMPDIR: /var/lib/ofelia/compose-snapshots
+    volumes:
+      - /var/lib/ofelia/compose-snapshots:/var/lib/ofelia/compose-snapshots
+```
+
+Create that persistent host directory with mode `0700` and ownership matching
+the Ofelia process. Do not share it with unrelated containers. The same requirement
+applies with a remote Docker daemon: the scratch files must be visible there
+at the same absolute path. Without file-backed configs or secrets, the private
+model file is read only by the Compose CLI and a normal local temporary
+directory is sufficient.
+
 ```ini
 [job-compose "backup"]
 schedule = @daily
@@ -502,10 +523,10 @@ example `shop.backup`. It runs through the same adapter as `job-compose`, so it
 needs the docker CLI and the Compose plugin (see
 [Image for compose jobs](#image-for-compose-jobs)), and it is canceled the same
 way (see [Cancellation and maximum runtime](#cancellation-and-maximum-runtime)).
-The command is:
+The registered job runs with a private accepted model and interpolation environment:
 
 ```text
-docker compose -f <file>... --profile <profile>... --env-file <env-file>... \
+docker compose -f <accepted-model> --all-resources --profile <profile>... --env-file <accepted-env> \
   -p <project> --project-directory <dir> run --rm -T -l ofelia.execution=<id> <job>
 ```
 
@@ -536,9 +557,50 @@ Retained jobs undergo the same identity check. Last loaded definitions stay
 scheduled only while their identities remain distinct; a collision between a
 retained definition and a newly loaded project rejects both registrations.
 Each job carries a revision, a hash of its own definition and of every job and
-service in its `depends_on` closure, which `docker compose run` starts with it:
+service in its `depends_on` closure and their referenced Compose resources,
+including captured config and secret contents, which `docker compose run` starts with it:
 only jobs whose revision changed are replaced, and each execution logs the
 revision it ran with. A running execution keeps the definition it started with.
+
+Registered projects run the accepted, resolved Compose model from a private
+temporary file created for each execution.
+Includes, overrides, interpolation, relative paths, and job/service environment
+and label files are resolved when the project loads. File-backed and
+environment-backed Compose configs and secrets are captured at that point.
+Optional dependencies behind inactive profiles do not run and do not require
+their environment or configuration files until their profile is enabled.
+File-backed inputs retain their original file mode and Unix UID/GID; Ofelia
+fails the execution explicitly if its runtime cannot reproduce that ownership.
+An unprivileged Ofelia process can preserve files it owns but needs suitable
+privileges to reproduce another owner's UID/GID. Environment-backed inputs
+keep Compose's native upload behavior and per-reference access settings.
+A rejected reload therefore continues
+running the last accepted workload, even if its original files have changed
+or are no longer readable. Resolved values are kept in memory and are excluded
+from API output and the schedule state file. The private model and interpolation
+environment are removed after each execution.
+
+Captured file inputs are retained in `TMPDIR/ofelia-compose-inputs` with stable
+paths derived from their contents and access settings. They remain there after
+the CLI and Ofelia exit, because dependency service containers can still bind
+them and must be able to restart. The parent directory is private (`0700`);
+mounted file permissions preserve the accepted source. Reuse checks the bytes
+and access settings and rejects symlinks or altered files. Ofelia does not
+automatically prune this directory. Remove its contents only after all containers
+that reference those paths have been removed; retain it across host restarts.
+
+Ofelia reserves the dependency-service label `ofelia.compose.resources` for a
+fingerprint of that service's accepted config and secret inputs, including
+pre-start hooks. This lets Compose recreate an existing dependency when those
+inputs change on a valid reload. Unchanged or unrelated dependency services keep
+their containers; changing a job's command or schedule does not force recreation.
+
+This snapshot covers the Compose definition and these configuration inputs.
+Image tags, build contexts, bind-mounted application data and external Docker
+resources keep their normal runtime behavior; their contents are not pinned.
+Use immutable image digests and versioned build inputs where reproducible
+application contents are required. A plain `[job-compose]` continues reading
+its configured file for each run.
 
 ### Supported triggers
 

@@ -267,6 +267,8 @@ func (c *Config) currentComposeRevision(ctx context.Context, name string, p *Com
 	return project.Revision
 }
 
+// expandComposeProject validates one registration before creating its scheduled jobs, which share the accepted
+// execution model and carry their own relevant-input revisions.
 func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) error {
 	ctx, cancel := context.WithTimeout(context.Background(), composeProjectLoadTimeout)
 	defer cancel()
@@ -288,6 +290,12 @@ func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) erro
 	}
 	for _, job := range project.Jobs {
 		jobName := name + "." + job.Name
+		var snapshot *core.ComposeExecutionSnapshot
+		if project.Snapshot != "" {
+			snapshot = &core.ComposeExecutionSnapshot{
+				Model: project.Snapshot, Files: project.SnapshotFiles, Environment: project.SnapshotEnvironment,
+			}
+		}
 		c.ComposeJobs[jobName] = &ComposeJobConfig{
 			composeRegistration: name,
 			ComposeJob: core.ComposeJob{
@@ -306,6 +314,7 @@ func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) erro
 					TimeZone:         job.TimeZone,
 					MissedFires:      job.MissedFires,
 					Concurrency:      job.Concurrency,
+					Snapshot:         snapshot,
 				},
 			},
 			// With missed_fires: skip and concurrency: forbid the job keeps no

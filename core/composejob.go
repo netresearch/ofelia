@@ -108,6 +108,10 @@ type ComposeProjectContext struct {
 	// "queue" the job keeps a schedule record (ADR-005).
 	MissedFires string `hash:"true"`
 	Concurrency string `hash:"true"`
+	// Snapshot holds the accepted, resolved model for an imported job. The
+	// definition revision covers its relevant inputs; the whole snapshot is
+	// deliberately excluded from the hash so unrelated jobs stay unchanged.
+	Snapshot *ComposeExecutionSnapshot `json:"-"`
 }
 
 // SatisfiesRequirement reports that a job loaded from a registered Compose
@@ -205,6 +209,11 @@ func (j *ComposeJob) Run(ctx *Context) error {
 	if err != nil {
 		return fmt.Errorf("compose build command: %w", err)
 	}
+	cleanup, err := j.prepareSnapshot(cmd)
+	if err != nil {
+		return fmt.Errorf("compose execution snapshot: %w", err)
+	}
+	defer cleanup()
 	if j.Project.Revision != "" {
 		ctx.Log(fmt.Sprintf("compose project %s, job revision %s, schedule time zone %s",
 			j.Project.ProjectName, j.Project.Revision, j.Project.TimeZone))
@@ -218,6 +227,8 @@ func (j *ComposeJob) Run(ctx *Context) error {
 	return j.runWithCancellation(ctx, cmd)
 }
 
+// runWithCancellation pins Compose to Ofelia's Docker endpoint and cleans up labeled workloads on cancellation,
+// reporting an explicit error if termination cannot be confirmed.
 func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
 	base := os.Environ()
 	env, err := composeChildEnv(base)
@@ -225,6 +236,12 @@ func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
 		return fmt.Errorf("compose docker endpoint: %w", err)
 	}
 	cmd.Env = env
+	if j.Project.Snapshot != nil {
+		// An inherited value must not override a captured synthetic input
+		// loaded from the snapshot's private interpolation environment.
+		cmd.Env = withoutSnapshotEnvironment(cmd.Env, j.Project.Snapshot.Environment)
+		cmd.Env = append(cmd.Env, "COMPOSE_PROFILES="+strings.Join(j.Project.Profiles, ","))
+	}
 	if name := ignoredDockerContext(base); name != "" {
 		ctx.Warn(fmt.Sprintf("compose run ignores Docker context %q and uses %s, the endpoint Ofelia's "+
 			"Docker client uses; set DOCKER_HOST to choose the daemon", name, envValue(env, "DOCKER_HOST")))
@@ -495,11 +512,15 @@ func (j *ComposeJob) projectArgs(validator *config.CommandValidator) ([]string, 
 		return []string{"-f", j.File}, nil
 	}
 	var out []string
-	for _, f := range p.Files {
-		if err := validator.ValidateFilePath(f); err != nil {
-			return nil, fmt.Errorf("invalid compose file path: %w", err)
+	if p.Snapshot != nil {
+		out = append(out, "-f", "-", "--all-resources")
+	} else {
+		for _, f := range p.Files {
+			if err := validator.ValidateFilePath(f); err != nil {
+				return nil, fmt.Errorf("invalid compose file path: %w", err)
+			}
+			out = append(out, "-f", f)
 		}
-		out = append(out, "-f", f)
 	}
 	for _, profile := range p.Profiles {
 		if err := validator.ValidateServiceName(profile); err != nil {
@@ -507,11 +528,13 @@ func (j *ComposeJob) projectArgs(validator *config.CommandValidator) ([]string, 
 		}
 		out = append(out, "--profile", profile)
 	}
-	for _, f := range p.EnvFiles {
-		if err := validator.ValidateFilePath(f); err != nil {
-			return nil, fmt.Errorf("invalid compose env file path: %w", err)
+	if p.Snapshot == nil {
+		for _, f := range p.EnvFiles {
+			if err := validator.ValidateFilePath(f); err != nil {
+				return nil, fmt.Errorf("invalid compose env file path: %w", err)
+			}
+			out = append(out, "--env-file", f)
 		}
-		out = append(out, "--env-file", f)
 	}
 	if p.ProjectName != "" {
 		if err := validator.ValidateServiceName(p.ProjectName); err != nil {
