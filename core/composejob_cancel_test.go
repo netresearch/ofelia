@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -187,6 +188,60 @@ func TestComposeJob_FailedRunReportsExitError(t *testing.T) {
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrMaxTimeRunning)
 	assert.Contains(t, err.Error(), "exit status 3")
+}
+
+// A failed CLI must retain its exit status while cleanup either confirms the
+// workload ended or exposes the uncertainty needed to keep admission blocked.
+func TestComposeJob_FailedCLIReconcilesItsWorkload(t *testing.T) {
+	installFakeDocker(t, "exit 7")
+	for _, unreachable := range []bool{false, true} {
+		name := "cleanup confirmed"
+		if unreachable {
+			name = "Docker unreachable"
+		}
+		t.Run(name, func(t *testing.T) {
+			client := mock.NewDockerClient()
+			containers := client.Containers().(*mock.ContainerService)
+			live, stopped := true, false
+			containers.OnList = func(context.Context, domain.ListOptions) ([]domain.Container, error) {
+				if unreachable {
+					return nil, errors.New("daemon disconnected")
+				}
+				if live {
+					return []domain.Container{{ID: "orphaned-run"}}, nil
+				}
+				return nil, nil
+			}
+			containers.OnStop = func(context.Context, string, domain.StopOptions) error {
+				stopped = true
+				return nil
+			}
+			containers.OnRemove = func(context.Context, string, domain.RemoveOptions) error {
+				live = false
+				return nil
+			}
+			job := newComposeCancelJob(NewSDKDockerProviderFromClient(client, nil, nil))
+			execution, err := NewExecution()
+			require.NoError(t, err)
+			defer execution.Cleanup()
+			ctx := NewContextWithContext(context.Background(), NewScheduler(test.NewTestLogger()), job, execution)
+			err = job.Run(ctx)
+			require.Error(t, err)
+			require.NoError(t, ctx.RunContext().Err(), "a CLI failure is not a run cancellation")
+			require.NotErrorIs(t, err, ErrMaxTimeRunning)
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, err, &exitErr)
+			assert.Equal(t, 7, exitErr.ExitCode(), "preserve the original CLI exit status")
+			if unreachable {
+				require.ErrorIs(t, err, ErrComposeTerminationUnconfirmed)
+				assert.Contains(t, err.Error(), "daemon disconnected")
+			} else {
+				require.NotErrorIs(t, err, ErrComposeTerminationUnconfirmed)
+				assert.True(t, stopped)
+				assert.False(t, live, "a failed CLI must not leave its run workload alive")
+			}
+		})
+	}
 }
 
 func TestCliDockerHost(t *testing.T) {

@@ -126,6 +126,9 @@ type durableEntry struct {
 	orphan string
 	// stopWatch ends the goroutine that waits for the orphan to end.
 	stopWatch func()
+	// pruneWhenIdle retains a removed schedule only until its last workload
+	// has ended. A later durable registration keeps the record again.
+	pruneWhenIdle bool
 }
 
 // SetScheduleStore sets where schedule records are kept. Without one, no job
@@ -222,6 +225,7 @@ func (s *Scheduler) prepareDurableEntry(j Job, policy SchedulePolicy, disabled b
 	now := s.now()
 	rec, ok := s.records.GetSchedule(name)
 	e := s.entryLocked(name)
+	e.pruneWhenIdle = false
 	// The crash rules hold whatever else changed: a run that started before
 	// the restart is never repeated, and its container keeps the job busy,
 	// also when the job is disabled or its schedule changed.
@@ -233,6 +237,7 @@ func (s *Scheduler) prepareDurableEntry(j Job, policy SchedulePolicy, disabled b
 		if ok {
 			s.logDropped(name, rec, "the schedule changed")
 			fresh.Workload = rec.Workload
+			fresh.WorkloadEnded = rec.WorkloadEnded
 			if rec.Dispatch != nil && rec.Dispatch.State == dispatchEnded {
 				fresh.Dispatch = rec.Dispatch
 			}
@@ -271,6 +276,7 @@ func (s *Scheduler) settleInterruptedLocked(j Job, rec *persist.Schedule, e *dur
 			"job", name, "scheduled", d.Scheduled, "execution", d.Execution)
 	}
 	rec.Workload = orphan
+	rec.WorkloadEnded = orphan == ""
 	if orphan != "" && e.orphan == "" {
 		s.watchOrphanLocked(context.Background(), j, e, orphan)
 	}
@@ -341,26 +347,26 @@ func (s *Scheduler) busyFireLocked(name string, rec *persist.Schedule, policy Sc
 func (s *Scheduler) unendedDispatch(name string) string {
 	s.durableMu.Lock()
 	defer s.durableMu.Unlock()
+	if s.records == nil {
+		return ""
+	}
 	rec, ok := s.records.GetSchedule(name)
 	if !ok || s.entryLocked(name).inFlight {
 		return ""
 	}
-	if rec.Workload != "" {
-		return rec.Workload
-	}
-	if d := rec.Dispatch; d != nil && (d.State == dispatchStarted ||
-		d.State == dispatchEnded && d.Outcome != outcomeSuccess) {
-		return d.Execution
-	}
-	return ""
+	return unresolvedExecution(rec)
 }
 
 // checkOrphan returns executionID when j can tell that the run's workload
 // still runs, "" otherwise.
 func (s *Scheduler) checkOrphan(parent context.Context, j Job, executionID string) string {
-	wc, ok := j.(WorkloadChecker)
-	if !ok || executionID == "" {
+	if executionID == "" {
 		return ""
+	}
+	wc, ok := j.(WorkloadChecker)
+	if !ok {
+		s.Logger.Warn("the current job cannot observe its previous workload; keeping the job busy", "job", j.GetName())
+		return executionID
 	}
 	ctx, cancel := context.WithTimeout(parent, orphanCheckTimeout)
 	defer cancel()
@@ -387,6 +393,11 @@ func (s *Scheduler) watchOrphanLocked(parent context.Context, j Job, e *durableE
 	if isClosed(s.watchersDone) {
 		return
 	}
+	// A later compatible registration can reconcile this persisted guard.
+	// Repeated polling cannot help an adapter that has no observer at all.
+	if _, ok := j.(WorkloadChecker); !ok {
+		return
+	}
 	name := j.GetName()
 	e.orphan = executionID
 	done := s.watchersDone
@@ -411,25 +422,31 @@ func (s *Scheduler) watchOrphanLocked(parent context.Context, j Job, e *durableE
 			}
 			cancel()
 		}()
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-			if s.checkOrphan(ctx, j, executionID) != "" {
-				continue
-			}
-			launch, cleared := s.orphanEnded(name, executionID)
-			if cleared {
-				s.Logger.Info("the interrupted run has ended", "job", name, "execution", executionID)
-				s.launch(launch)
-				return
-			}
-		}
+		s.pollOrphan(ctx, j, executionID, interval)
 	}()
+}
+
+// pollOrphan observes the inherited workload until its end is durably recorded.
+// Only then may pending work launch; scheduler cancellation stops observation.
+func (s *Scheduler) pollOrphan(ctx context.Context, j Job, executionID string, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if s.checkOrphan(ctx, j, executionID) != "" {
+			continue
+		}
+		launch, cleared := s.orphanEnded(j.GetName(), executionID)
+		if cleared {
+			s.Logger.Info("the interrupted run has ended", "job", j.GetName(), "execution", executionID)
+			s.launch(launch)
+			return
+		}
+	}
 }
 
 // orphanEnded clears the orphan and, when an occurrence is queued, records it
@@ -443,12 +460,16 @@ func (s *Scheduler) orphanEnded(name, executionID string) (*pendingLaunch, bool)
 	}
 	if rec, ok := s.records.GetSchedule(name); ok {
 		rec.Workload = ""
+		rec.WorkloadEnded = true
 		if !s.putLocked(name, rec) {
 			return nil, false
 		}
 	}
 	e.orphan = ""
 	e.stopWatch = nil
+	if s.pruneIdleRecordLocked(name, e) {
+		return nil, true
+	}
 	return s.startPendingLocked(name, e), true
 }
 
@@ -600,6 +621,7 @@ func (s *Scheduler) admit(ctx context.Context, j Job, policy SchedulePolicy, exe
 	if gotSlot {
 		d.State, d.Execution = dispatchStarted, executionID
 		rec.Workload = executionID
+		rec.WorkloadEnded = false
 	}
 	rec.Dispatch = d
 	if !s.putLocked(name, rec) {
@@ -706,6 +728,7 @@ func (s *Scheduler) waitForSlot(ctx context.Context, j Job, slot chan struct{}, 
 	}
 	rec.Dispatch.State, rec.Dispatch.Execution = dispatchStarted, executionID
 	rec.Workload = executionID
+	rec.WorkloadEnded = false
 	if !s.putLocked(name, rec) {
 		e.inFlight = false
 		s.watchOrphanLocked(ctx, j, e, executionID)
@@ -798,6 +821,7 @@ func (s *Scheduler) finishDispatch(ctx context.Context, a *admission, outcome st
 			rec.Dispatch.Outcome = outcome
 		}
 		rec.Workload = ""
+		rec.WorkloadEnded = !unconfirmed
 		if unconfirmed {
 			rec.Workload = a.execution
 		}
@@ -808,7 +832,10 @@ func (s *Scheduler) finishDispatch(ctx context.Context, a *admission, outcome st
 	}
 	e.inFlight = false
 	a.release()
-	launch := s.startPendingLocked(a.name, e)
+	var launch *pendingLaunch
+	if !s.pruneIdleRecordLocked(a.name, e) {
+		launch = s.startPendingLocked(a.name, e)
+	}
 	s.durableMu.Unlock()
 	s.launch(launch)
 }
@@ -871,8 +898,8 @@ func (s *Scheduler) durableEnabled(name string) {
 	s.putLocked(name, rec)
 }
 
-// PruneScheduleRecords removes the records of schedule entries for which
-// keep returns false, and stops their orphan watchers.
+// PruneScheduleRecords removes unused schedule records. Unresolved workloads
+// retain a guard until they end, also while their configuration is absent.
 func (s *Scheduler) PruneScheduleRecords(keep func(name string) bool) {
 	s.durableMu.Lock()
 	defer s.durableMu.Unlock()
@@ -882,17 +909,16 @@ func (s *Scheduler) PruneScheduleRecords(keep func(name string) bool) {
 	var gone []string
 	for _, name := range s.records.ScheduleNames() {
 		if keep(name) {
+			if e := s.durable[name]; e != nil {
+				e.pruneWhenIdle = false
+			}
+			continue
+		}
+		if s.retainRemovedWorkloadLocked(name) {
 			continue
 		}
 		gone = append(gone, name)
-		if e, ok := s.durable[name]; ok {
-			if e.stopWatch != nil {
-				e.stopWatch()
-			}
-			if !e.inFlight {
-				delete(s.durable, name)
-			}
-		}
+		s.stopPrunedWatcherLocked(name)
 	}
 	if len(gone) == 0 {
 		return

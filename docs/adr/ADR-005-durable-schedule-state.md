@@ -37,7 +37,7 @@ Ofelia keeps one record per **schedule entry**: a job identity plus a trigger po
 | Cursor | The most recent scheduled time the scheduler evaluated while it was running |
 | Dispatch | The occurrence that was admitted last: its scheduled time, its trigger kind (scheduled, catch-up, manual), its execution ID, its state (waiting for a global slot, started, ended) and, once it ended, its outcome |
 | Pending | The occurrence in the queue slot, if any (`concurrency: queue` only) |
-| Workload | The execution ID whose workload has not been confirmed ended, independently of the dispatch's outcome |
+| Workload | The execution ID whose workload has not been confirmed ended, independently of the dispatch's outcome, plus a confirmed-end marker that distinguishes settled workloads from legacy records with unknown workload state |
 
 The cursor advances on **every** fire the running scheduler evaluates, including fires that `forbid` stops or the queue coalesces. A fire is missed only when the scheduler was not running at its scheduled time. Without this rule, a reload that re-adds a job would treat a fire that `forbid` skipped five minutes earlier as missed and run it. A paused go-cron entry is rescheduled before any job code runs, so a disabled job does not advance the cursor; enabling it resets the cursor instead (see below).
 
@@ -80,6 +80,7 @@ For a schedule entry with `missed_fires: one` or `concurrency: queue`, Ofelia wr
 
 - A run that shutdown cancels ends with the outcome canceled. It counts as handled and is not started again after the restart. A run that has not ended when the 30-second shutdown wait expires has no recorded end, so after the restart it follows the crash rule: outcome unknown, and for `run` mode the entry stays busy while its labelled container runs.
 - If Compose cancellation returns `ErrComposeTerminationUnconfirmed`, the execution records its failed or canceled outcome but the job stays busy until a later container check confirms the workload has ended. That protection survives daemon restarts. The failed execution is not retried, and a queued or manual run cannot overlap the unresolved workload.
+- A failed Compose CLI can leave its workload alive even without a canceled run context. A nonzero CLI exit therefore performs the same bounded labeled-container cleanup, preserves the CLI error, and adds `ErrComposeTerminationUnconfirmed` when cleanup cannot be confirmed. The dispatch is released only after confirmed workload termination.
 - A dispatch that is still waiting for a global slot has not started, so cancellation does not end it. On shutdown or reload the wait returns at once and the dispatch keeps the state "waiting"; it then starts as the catch-up or on the new entry, as after a crash. Two cases drop it and log it instead: a manual dispatch, and any waiting dispatch after a schedule change. A goroutine that gets its slot at the moment it is canceled checks for cancellation again and does not start the workload, so the occurrence cannot start on the old and the new entry.
 
 Running an occurrence twice would be the worse failure for jobs such as backups, rotations and migrations.
@@ -106,7 +107,7 @@ Other Compose entries and Ofelia's own job types keep the current limit behavior
 
 The records are a new section of the existing state file. `missed_fires: one` and `concurrency: queue` require `--state-file`. Without it, a project using either setting is rejected with an error that names the flag. Silently degrading to `skip` or `forbid` would be the compatibility bug ADR-004 rules out.
 
-After a successful load, Ofelia removes records of schedule entries that no longer exist. Records of a rejected project stay, as its last loaded jobs do.
+After a successful load, Ofelia removes records of schedule entries that no longer exist, except while their workload remains unresolved. It drops the old queued occurrence but retains that workload's record and observer until the end is confirmed. This retained record is marked as workload-only: restoring a durable policy activates a fresh schedule instead of catching up its deliberately inactive interval. Re-adding the same name, or changing its policy to `skip`/`forbid`, cannot bypass the workload guard. A replacement adapter that cannot observe the old workload keeps the guard until a compatible registration can reconcile it. A fresh `skip`/`forbid` job still keeps no record. Records of a rejected project stay, as its last loaded jobs do.
 
 A state file has one owner. Two daemons sharing one file are not supported, consistent with ADR-004's single scheduling owner.
 

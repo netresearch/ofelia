@@ -108,6 +108,9 @@ type Schedule struct {
 	// ended. It survives dispatch completion, schedule changes and restarts.
 	// An empty value means there is no unresolved workload.
 	Workload string `json:"workload,omitempty"`
+	// WorkloadEnded distinguishes a confirmed workload end from legacy
+	// unsuccessful records that did not track workload state at all.
+	WorkloadEnded bool `json:"workloadEnded,omitempty"`
 }
 
 // Occurrence is one fire of a schedule entry.

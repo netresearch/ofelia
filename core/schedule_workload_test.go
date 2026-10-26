@@ -19,6 +19,8 @@ import (
 	"github.com/netresearch/ofelia/core/persist"
 )
 
+// A second restart must retain the orphan guard even after the first marked
+// its dispatch ended/unknown, including when Docker observation is unavailable.
 func TestScheduleState_OrphanSurvivesRepeatedRestarts(t *testing.T) {
 	t.Parallel()
 	for _, lookupFails := range []bool{false, true} {
@@ -73,6 +75,8 @@ type unconfirmedDurableJob struct {
 	attempts atomic.Int32
 }
 
+// Run makes the first execution return an unconfirmed-cleanup error while
+// later executions complete normally, separating wrapper completion from workload end.
 func (j *unconfirmedDurableJob) Run(ctx *Context) error {
 	attempt := j.attempts.Add(1)
 	if err := j.durableJob.Run(ctx); err != nil {
@@ -84,6 +88,8 @@ func (j *unconfirmedDurableJob) Run(ctx *Context) error {
 	return nil
 }
 
+// Unconfirmed cleanup must keep manual and queued admissions blocked across
+// a restart until observation confirms that the original workload is gone.
 func TestScheduleState_UnconfirmedTerminationKeepsQueuedWorkloadBlocked(t *testing.T) {
 	t.Parallel()
 	h := newDurableHarness(t, at(23, 10))
@@ -127,6 +133,8 @@ func TestScheduleState_UnconfirmedTerminationKeepsQueuedWorkloadBlocked(t *testi
 	assert.True(t, second.info.ScheduledTime.Equal(at(25, 2)))
 }
 
+// Retrying before a failed cleanup is reconciled could create a second live
+// workload for the same occurrence, so the sentinel must end the retry loop.
 func TestRetryExecutor_DoesNotRetryUnconfirmedComposeWorkload(t *testing.T) {
 	t.Parallel()
 	j := newDurableJob("shop.backup", true, true)
@@ -145,6 +153,8 @@ func TestRetryExecutor_DoesNotRetryUnconfirmedComposeWorkload(t *testing.T) {
 	assert.Equal(t, 1, attempts, "retrying can overlap the workload whose termination was not confirmed")
 }
 
+// Older unsuccessful records contain no independent workload state and
+// therefore require observation before another execution may be admitted.
 func TestScheduleState_LegacyUnsuccessfulDispatchIsChecked(t *testing.T) {
 	t.Parallel()
 	for _, outcome := range []string{outcomeUnknown, outcomeFailed, outcomeCanceled} {
@@ -169,6 +179,8 @@ func TestScheduleState_LegacyUnsuccessfulDispatchIsChecked(t *testing.T) {
 	}
 }
 
+// A canceled execution result does not prove cleanup ended the container;
+// its replacement must inherit the unresolved workload guard.
 func TestScheduleState_UnconfirmedCanceledReplacementStaysBusy(t *testing.T) {
 	t.Parallel()
 	h := newDurableHarness(t, at(23, 1))
@@ -192,6 +204,8 @@ func TestScheduleState_UnconfirmedCanceledReplacementStaysBusy(t *testing.T) {
 	noRun(t, j2)
 }
 
+// Observing an end cannot release the entry before the cleared guard is
+// persisted; a failed state update must remain conservative.
 func TestScheduleState_OrphanReleaseWaitsForDurableWrite(t *testing.T) {
 	t.Parallel()
 	h := newDurableHarness(t, at(23, 10))
@@ -214,6 +228,8 @@ func TestScheduleState_OrphanReleaseWaitsForDurableWrite(t *testing.T) {
 	assert.Empty(t, h.record(j.Name).Workload)
 }
 
+// The store may update memory before its disk write fails. Recovery must
+// reconcile a never-launched workload once storage works again instead of wedging it.
 func TestScheduleState_FailedStartWriteDoesNotLeaveAWorkloadBusy(t *testing.T) {
 	t.Parallel()
 	for _, waitsForSlot := range []bool{false, true} {

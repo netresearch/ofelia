@@ -411,6 +411,8 @@ func (s *Scheduler) AddJobDisabled(j Job) error {
 	return s.addJob(j, true)
 }
 
+// addJob reconciles retained state before making the new cron entry live,
+// then binds its wrapper to the name gate before launching any deferred occurrence.
 func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	if j.GetSchedule() == "" {
 		s.recordUnschedulable(j.GetName(), ErrEmptySchedule)
@@ -441,6 +443,8 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 	if policy, ok := s.durablePolicy(j); ok && s.cron.IsRunning() {
 		launch = s.prepareDurableEntry(j, policy, disabled)
 		evaluated = true
+	} else if s.cron.IsRunning() {
+		s.prepareRetainedWorkload(j)
 	}
 
 	w := &jobWrapper{s: s, j: j}
@@ -629,6 +633,8 @@ func (s *Scheduler) Start() error {
 			if l := s.prepareDurableEntry(j, policy, s.IsJobDisabled(j.GetName())); l != nil {
 				launches = append(launches, l)
 			}
+		} else {
+			s.prepareRetainedWorkload(j)
 		}
 	}
 
@@ -717,7 +723,7 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 	}
 	if j := s.GetAnyJob(jobName); j != nil {
 		_, durable := s.durablePolicy(j)
-		if durable && s.durableBusy(jobName) {
+		if durable && s.durableBusy(jobName) || !durable && s.retainedWorkloadBusy(jobName) {
 			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
 		}
 		// The run would be skipped by the name lock (runGate) while a
@@ -1406,6 +1412,8 @@ func (w *jobWrapper) passGate(ctx context.Context) bool {
 	return true
 }
 
+// runWithCtx applies name and workload guards before admitting an invocation.
+// Admitted runs preserve cleanup errors in their durable outcome and publication.
 func (w *jobWrapper) runWithCtx(ctx context.Context) {
 	// Add panic recovery to handle job panics gracefully
 	defer func() {
@@ -1427,6 +1435,10 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 			w.s.fireDeferredStartup(due)
 		}
 	}()
+	if !w.durable() && w.s.retainedWorkloadBusy(w.j.GetName()) {
+		w.s.Logger.Warn("skip: a previous workload has not confirmed its end", "job", w.j.GetName())
+		return
+	}
 
 	// NOTE: Concurrency limiting is handled by the go-cron middleware chain
 	// (maxConcurrentSkipWrapper). Dependencies are handled by go-cron's native

@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// sampleSchedule includes an admitted occurrence, pending work and an
+// independent workload identity so persistence tests exercise their separation.
 func sampleSchedule() Schedule {
 	at := time.Date(2026, 10, 25, 2, 0, 0, 0, time.UTC)
 	return Schedule{
@@ -40,6 +42,23 @@ func TestStore_Schedule_PersistsAcrossInstances(t *testing.T) {
 	got, ok := reloaded.GetSchedule("shop.backup")
 	require.True(t, ok)
 	assert.Equal(t, sampleSchedule(), got)
+}
+
+// A settled unsuccessful dispatch must remain distinguishable from legacy
+// unknown workload state after the record is loaded by another store instance.
+func TestStore_Schedule_ConfirmedWorkloadEndPersists(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "state.json")
+	s := NewStore(path)
+	rec := sampleSchedule()
+	rec.Dispatch.State, rec.Dispatch.Outcome = "ended", "unknown"
+	rec.Workload, rec.WorkloadEnded = "", true
+	require.NoError(t, s.PutSchedule("shop.backup", rec))
+	reloaded := NewStore(path)
+	require.NoError(t, reloaded.Load())
+	got, ok := reloaded.GetSchedule("shop.backup")
+	require.True(t, ok)
+	assert.Equal(t, rec, got, "confirmed absence must remain distinct from an unknown legacy workload")
 }
 
 // Every other mutator saves the snapshot; a snapshot without the schedule

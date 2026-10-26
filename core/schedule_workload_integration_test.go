@@ -18,6 +18,8 @@ import (
 	"github.com/netresearch/ofelia/core/persist"
 )
 
+// A real labeled container keeps the job occupied across two state-file
+// reloads; removing that container allows the next Compose execution to start.
 func TestScheduleWorkloadIntegration_RepeatedRestartWaitsForComposeContainer(t *testing.T) {
 	t.Parallel()
 	provider := newIntegrationProvider(t)

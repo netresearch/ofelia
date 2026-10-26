@@ -23,13 +23,13 @@ import (
 )
 
 // ComposeExecutionLabel is the container label a `compose run` job sets to
-// the execution ID, so cancellation can find the run container — and only
+// the execution ID, so cleanup can find the run container — and only
 // that one, never a dependency service Compose started alongside it.
 const ComposeExecutionLabel = "ofelia.execution"
 
-// ErrComposeTerminationUnconfirmed reports that a canceled `compose run`
-// may still be running: Ofelia stopped waiting, but could not confirm
-// through the Docker API that the run container is gone.
+// ErrComposeTerminationUnconfirmed reports that a run container may still
+// be running after cancellation or an abnormal CLI exit: Ofelia stopped
+// waiting, but could not confirm through Docker that the container is gone.
 var ErrComposeTerminationUnconfirmed = errors.New("compose run termination unconfirmed")
 
 // ErrComposeExecMaxRuntime rejects max-runtime on a compose job in exec mode:
@@ -44,7 +44,7 @@ var (
 
 const (
 	// composeStopTimeout is the grace period between the stop signal and
-	// SIGKILL when a canceled run container is stopped — the same 10s
+	// SIGKILL when a run container is stopped during cleanup — the same 10s
 	// default RunJob uses when stop-timeout is unset.
 	composeStopTimeout = 10 * time.Second
 	// composeCLIExitTimeout bounds the wait for the compose CLI to exit
@@ -65,8 +65,8 @@ var composeWaitDelay = composeCLIExitTimeout
 // Ofelia itself runs on — `compose run --rm <service>` by default, or
 // `compose exec <service>` when Exec is set. Unlike the other job types it
 // shells out instead of talking to the Docker API, so the docker binary
-// must be on Ofelia's PATH. Provider is used only to find and stop the run
-// container when a `compose run` execution is canceled.
+// must be on Ofelia's PATH. Provider observes run containers and performs
+// bounded cleanup after cancellation or an abnormal CLI exit.
 type ComposeJob struct {
 	BareJob  `mapstructure:",squash"`
 	Provider DockerProvider `json:"-"`
@@ -130,13 +130,10 @@ func (j *ComposeJob) SchedulePolicy() (SchedulePolicy, bool) {
 }
 
 // WorkloadRunning reports whether the run container of the execution still
-// runs (WorkloadChecker). It finds it by ComposeExecutionLabel. In exec mode
-// the command runs inside a service container and cannot be found, so it
-// reports false.
+// runs (WorkloadChecker). It finds it by ComposeExecutionLabel, including a
+// run from before the job switched to exec mode. An exec command creates no
+// labeled container of its own and therefore cannot be observed this way.
 func (j *ComposeJob) WorkloadRunning(ctx context.Context, executionID string) (bool, error) {
-	if j.Exec {
-		return false, nil
-	}
 	if j.Provider == nil {
 		return false, errComposeNoProvider
 	}
@@ -193,6 +190,9 @@ func (j *ComposeJob) CheckMaxRuntime() error {
 // then returns ErrMaxTimeRunning, wrapped together with
 // ErrComposeTerminationUnconfirmed when the Docker API could not confirm
 // that the run container is gone.
+// An abnormal CLI exit also performs this bounded workload cleanup while
+// preserving the original exit error. If cleanup cannot be confirmed, that
+// error is joined with ErrComposeTerminationUnconfirmed as well.
 //
 // In exec mode the command runs inside an existing service container. The
 // Docker Engine API has no way to stop an exec'd process from outside (see
@@ -218,6 +218,8 @@ func (j *ComposeJob) Run(ctx *Context) error {
 	return j.runWithCancellation(ctx, cmd)
 }
 
+// runWithCancellation pins Compose to Ofelia's Docker endpoint and cleans up labeled workloads on cancellation,
+// reporting an explicit error if termination cannot be confirmed.
 func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
 	base := os.Environ()
 	env, err := composeChildEnv(base)
@@ -243,7 +245,7 @@ func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
 	runCtx := ctx.RunContext()
 	select {
 	case err := <-done:
-		return composeExitError(ctx, err)
+		return j.finishRun(ctx, err)
 	case <-runCtx.Done():
 	}
 
@@ -251,11 +253,25 @@ func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
 	// finished run keeps its own result.
 	select {
 	case err := <-done:
-		return composeExitError(ctx, err)
+		return j.finishRun(ctx, err)
 	default:
 	}
 
 	return j.cancelRun(ctx, cmd, done)
+}
+
+// finishRun preserves the CLI result but also reconciles an abnormal exit.
+// A killed or disconnected CLI can leave its run container alive even when
+// the run context is healthy, so its exit error alone cannot release the job.
+func (j *ComposeJob) finishRun(ctx *Context, err error) error {
+	exitErr := composeExitError(ctx, err)
+	if exitErr == nil {
+		return nil
+	}
+	if cleanupErr := j.cleanupRun(ctx, nil, nil); cleanupErr != nil {
+		return errors.Join(exitErr, cleanupErr)
+	}
+	return exitErr
 }
 
 // composeExitError classifies the CLI's exit. exec.ErrWaitDelay means the CLI
@@ -276,6 +292,15 @@ func composeExitError(ctx *Context, err error) error {
 // uses a fresh context because the run context has already expired; reusing
 // it would turn every cleanup call into an immediate failure (issue #655).
 func (j *ComposeJob) cancelRun(ctx *Context, cmd *exec.Cmd, done <-chan error) error {
+	if err := j.cleanupRun(ctx, cmd, done); err != nil {
+		return fmt.Errorf("%w: %w", ErrMaxTimeRunning, err)
+	}
+	return ErrMaxTimeRunning
+}
+
+// cleanupRun confirms the end of this execution's labeled containers. A nil
+// command means Wait already returned; only its workload still needs cleanup.
+func (j *ComposeJob) cleanupRun(ctx *Context, cmd *exec.Cmd, done <-chan error) error {
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), jobCleanupTimeout+composeStopTimeout)
 	defer cancel()
 
@@ -287,8 +312,10 @@ func (j *ComposeJob) cancelRun(ctx *Context, cmd *exec.Cmd, done <-chan error) e
 		cleanupErrs = append(cleanupErrs, err)
 	}
 
-	if exitErr := stopCLI(cmd, done); exitErr != nil {
-		ctx.Log("compose CLI exited after cancellation: " + exitErr.Error())
+	if cmd != nil {
+		if exitErr := stopCLI(cmd, done); exitErr != nil {
+			ctx.Log("compose CLI exited after cancellation: " + exitErr.Error())
+		}
 	}
 
 	// A container created while cancellation was in progress shows up only
@@ -301,9 +328,9 @@ func (j *ComposeJob) cancelRun(ctx *Context, cmd *exec.Cmd, done <-chan error) e
 	}
 
 	if len(cleanupErrs) > 0 {
-		return fmt.Errorf("%w: %w: %w", ErrMaxTimeRunning, ErrComposeTerminationUnconfirmed, errors.Join(cleanupErrs...))
+		return fmt.Errorf("%w: %w", ErrComposeTerminationUnconfirmed, errors.Join(cleanupErrs...))
 	}
-	return ErrMaxTimeRunning
+	return nil
 }
 
 // stopCLI asks the compose CLI to exit, kills it when it does not within
