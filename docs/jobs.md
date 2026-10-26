@@ -662,9 +662,26 @@ evaluated, and the run it admitted last. From it:
 - **At most once.** Ofelia records a run before it starts it. After a crash, a
   run that had started counts as handled with the outcome `unknown`, and is not
   started again; check it by hand. While its container (found by the
-  `ofelia.execution` label) still runs, the job counts as busy. In exec mode
+  `ofelia.execution` label) still runs, or Docker cannot be queried, the job
+  counts as busy. The workload's execution ID is persisted independently of
+  the execution outcome, so this protection survives repeated restarts and
+  schedule changes. If a canceled run reports `compose run termination
+  unconfirmed`, the job also stays busy until Docker confirms the workload
+  has ended; its execution is not retried and a queued run keeps waiting. In exec mode
   (`docker compose exec`) Ofelia cannot see the command, so after a crash a
   second run can start beside one that still runs.
+
+An unresolved workload guard also survives changing the job to `skip`/`forbid`,
+or removing and later re-adding its configuration under the same name. Old
+queued occurrences are dropped when that schedule is removed; the workload
+record stays until its end is confirmed. A fresh `skip`/`forbid` job still needs
+no schedule record. Restoring a durable policy activates a fresh schedule;
+the deliberately inactive interval is not caught up. Keep the existing state
+file configured until these guards are settled. A replacement adapter that cannot observe the previous
+workload keeps the guard until a compatible adapter can confirm its end.
+If the Compose CLI exits with an error while the run context is still healthy,
+Ofelia also stops and removes that execution's labeled workload. The original
+CLI error is preserved; an unconfirmed cleanup retains the same workload guard.
 
 Each fire of such a job writes the state file: two atomic writes per run (start
 and end), a third when the run waits for a slot, and one for a fire that is
@@ -673,6 +690,8 @@ skipped or queued.
 An older Ofelia refuses to load a state file that holds schedule records (it
 rejects fields it does not know). Before downgrading, remove the `schedules`
 section from the file.
+Do this only after confirming that all workloads represented by those records
+have ended, so removing the records cannot release a live workload's guard.
 
 ### Keep scheduled jobs out of `docker compose up`
 

@@ -64,6 +64,8 @@ func TestComposeJob_PoliciesAreHashed(t *testing.T) {
 	assert.NotEqual(t, ha, hc, "missed_fires")
 }
 
+// Recovery observes the execution label on the daemon, including a run
+// inherited by a registration that now uses exec mode.
 func TestComposeJob_WorkloadRunning(t *testing.T) {
 	t.Parallel()
 	client := mock.NewDockerClient()
@@ -98,7 +100,14 @@ func TestComposeJob_WorkloadRunning(t *testing.T) {
 	require.Error(t, err)
 
 	j.Exec = true
+	containers.OnList = func(context.Context, domain.ListOptions) ([]domain.Container, error) {
+		return []domain.Container{{ID: "previous-run-container"}}, nil
+	}
 	ok, err = j.WorkloadRunning(context.Background(), "exec-1")
+	require.NoError(t, err)
+	assert.True(t, ok, "a replacement exec job must still observe its previous run container")
+	containers.OnList = func(context.Context, domain.ListOptions) ([]domain.Container, error) { return nil, nil }
+	ok, err = j.WorkloadRunning(context.Background(), "exec-2")
 	require.NoError(t, err)
 	assert.False(t, ok, "exec mode cannot see its command")
 

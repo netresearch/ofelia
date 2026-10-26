@@ -4,6 +4,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -97,6 +98,9 @@ func (re *RetryExecutor) ExecuteWithRetry(job Job, ctx *Context, runFunc func(*C
 		if err == nil {
 			re.recordRetrySuccess(job.GetName(), attempt)
 			return nil
+		}
+		if errors.Is(err, ErrComposeTerminationUnconfirmed) {
+			return err
 		}
 
 		lastErr = err
