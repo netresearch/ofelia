@@ -67,6 +67,8 @@ func retainSnapshotInput(dir string, input domain.ComposeSnapshotFile) (string, 
 	return path, verifySnapshotInput(path, input)
 }
 
+// verifySnapshotInput permits reuse only while the retained inode still matches the accepted bytes and access
+// metadata; symlinks and altered cache entries fail closed.
 func verifySnapshotInput(path string, input domain.ComposeSnapshotFile) error {
 	info, err := os.Lstat(path)
 	if err != nil {

@@ -10,6 +10,8 @@ import (
 	"syscall"
 )
 
+// snapshotFileIdentity captures host UID/GID from the opened file metadata; unavailable identity is represented
+// explicitly rather than guessed.
 func snapshotFileIdentity(info os.FileInfo) (int, int) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {

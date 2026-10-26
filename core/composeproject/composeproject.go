@@ -287,6 +287,7 @@ func jobRevision(name string, all types.Jobs, services types.Services) (string, 
 	return hex.EncodeToString(sum[:])[:revisionLength], nil
 }
 
+// shortRevision produces a stable shortened SHA-256 token for serialized accepted execution inputs.
 func shortRevision(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])[:revisionLength]

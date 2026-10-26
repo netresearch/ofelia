@@ -21,6 +21,8 @@ import (
 	"github.com/netresearch/ofelia/test"
 )
 
+// TestComposeProjectIntegration_RejectedReloadRunsSnapshot verifies against Docker that rejecting edited inputs
+// preserves the accepted command, environment and readable config/secret mounts for a non-root read-only job.
 func TestComposeProjectIntegration_RejectedReloadRunsSnapshot(t *testing.T) {
 	version, err := core.ComposeCLIVersion(context.Background())
 	if err != nil || !core.ComposeVersionAtLeast(version, core.MinComposeJobsVersion) {
@@ -87,6 +89,8 @@ jobs:
 	assert.NotContains(t, stdout, "rejected-")
 }
 
+// TestComposeProjectIntegration_DependencySnapshotSurvivesRestart proves retained input files outlive the job
+// CLI so an existing non-root dependency can restart with its original accepted configuration.
 func TestComposeProjectIntegration_DependencySnapshotSurvivesRestart(t *testing.T) {
 	version, err := core.ComposeCLIVersion(context.Background())
 	if err != nil || !core.ComposeVersionAtLeast(version, core.MinComposeJobsVersion) {

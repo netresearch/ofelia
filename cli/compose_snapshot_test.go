@@ -19,6 +19,8 @@ import (
 	"github.com/netresearch/ofelia/test"
 )
 
+// TestComposeProject_RejectedReloadRunsAcceptedDefinition observes the adapter's supplied CLI model after a
+// rejected reload, preventing an old scheduler revision from executing an edited command.
 func TestComposeProject_RejectedReloadRunsAcceptedDefinition(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake docker CLI is a shell script")

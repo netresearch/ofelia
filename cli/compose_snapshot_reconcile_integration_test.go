@@ -22,6 +22,9 @@ import (
 	"github.com/netresearch/ofelia/test"
 )
 
+// TestComposeProjectIntegration_ValidReloadUpdatesOnlyAffectedDependency checks container identities and actual
+// mounted bytes: accepted resource changes recreate the affected service while unchanged and unrelated services
+// keep running.
 func TestComposeProjectIntegration_ValidReloadUpdatesOnlyAffectedDependency(t *testing.T) {
 	version, err := core.ComposeCLIVersion(context.Background())
 	if err != nil || !core.ComposeVersionAtLeast(version, core.MinComposeJobsVersion) {

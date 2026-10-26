@@ -227,6 +227,8 @@ func (j *ComposeJob) Run(ctx *Context) error {
 	return j.runWithCancellation(ctx, cmd)
 }
 
+// runWithCancellation pins Compose to Ofelia's Docker endpoint and cleans up labeled workloads on cancellation,
+// reporting an explicit error if termination cannot be confirmed.
 func (j *ComposeJob) runWithCancellation(ctx *Context, cmd *exec.Cmd) error {
 	base := os.Environ()
 	env, err := composeChildEnv(base)

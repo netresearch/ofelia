@@ -74,6 +74,8 @@ func (j *ComposeJob) prepareSnapshot(cmd *exec.Cmd) (func(), error) {
 	return cleanup, nil
 }
 
+// escapeSnapshotInterpolation prepares an already-resolved model for Compose's second parse while preserving
+// exact JSON numbers and literal mapping keys.
 func escapeSnapshotInterpolation(model string) ([]byte, error) {
 	decoder := json.NewDecoder(strings.NewReader(model))
 	decoder.UseNumber()
@@ -88,6 +90,8 @@ func escapeSnapshotInterpolation(model string) ([]byte, error) {
 	return data, nil
 }
 
+// escapeSnapshotValue protects string values from a second interpolation pass; map keys remain literal because
+// Compose does not interpolate them.
 func escapeSnapshotValue(value any) any {
 	switch item := value.(type) {
 	case string:
@@ -121,6 +125,8 @@ func snapshotEnvironment(environment map[string]string) string {
 	return out.String()
 }
 
+// withoutSnapshotEnvironment removes inherited synthetic variables so the private accepted env file wins
+// without altering unrelated Docker endpoint or process settings.
 func withoutSnapshotEnvironment(environment []string, captured map[string]string) []string {
 	out := make([]string, 0, len(environment))
 	for _, entry := range environment {
@@ -132,6 +138,8 @@ func withoutSnapshotEnvironment(environment []string, captured map[string]string
 	return out
 }
 
+// materializeSnapshot substitutes verified retained inputs into a copy of the accepted model; it never mutates
+// the in-memory definition shared by executions.
 func materializeSnapshot(snapshot *ComposeExecutionSnapshot, dir string) (string, error) {
 	var model map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(snapshot.Model), &model); err != nil {
@@ -158,6 +166,8 @@ func materializeSnapshot(snapshot *ComposeExecutionSnapshot, dir string) (string
 	return string(data), nil
 }
 
+// replaceSnapshotFile rewrites one captured config or secret reference, rejecting missing or unexpected
+// resource keys instead of silently using an operator's current files.
 func replaceSnapshotFile(model map[string]json.RawMessage, key, path string) error {
 	kind, name, ok := strings.Cut(key, "/")
 	if !ok || kind != "configs" && kind != "secrets" {

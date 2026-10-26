@@ -16,6 +16,8 @@ import (
 // Lstat and regular-file checks at the caller still reject symlinks.
 func snapshotPathPrivate(_ os.FileInfo) bool { return true }
 
+// setSnapshotInputIdentity applies portable source mode bits without inventing Unix ownership on a host that
+// has no uid_t semantics.
 func setSnapshotInputIdentity(file *os.File, input domain.ComposeSnapshotFile) error {
 	if err := file.Chmod(os.FileMode(input.Mode)); err != nil {
 		return fmt.Errorf("set captured input mode: %w", err)
@@ -23,4 +25,6 @@ func setSnapshotInputIdentity(file *os.File, input domain.ComposeSnapshotFile) e
 	return nil
 }
 
+// snapshotInputIdentityMatches omits unavailable Unix identity checks; native ACL protection remains a
+// deployment responsibility on these hosts.
 func snapshotInputIdentityMatches(_ os.FileInfo, _ domain.ComposeSnapshotFile) bool { return true }

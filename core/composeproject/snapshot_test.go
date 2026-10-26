@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestLoad_ExecutionSnapshotResolvesFileInputs covers includes, resolved paths and captured
+// env/label/config/secret data, proving later loads cannot mutate an already accepted model.
 func TestLoad_ExecutionSnapshotResolvesFileInputs(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -88,6 +90,8 @@ jobs:
 	assert.Equal(t, []byte("accepted-secret\n"), project.SnapshotFiles["secrets/credential"].Content)
 }
 
+// TestLoad_ExecutionSnapshotCapturesEnvironmentResources verifies environment-backed resources retain native
+// upload semantics while original variable names cannot influence later runs.
 func TestLoad_ExecutionSnapshotCapturesEnvironmentResources(t *testing.T) {
 	t.Setenv("OFELIA_SNAPSHOT_SECRET", "secret-$literal")
 	t.Setenv("OFELIA_SNAPSHOT_CONFIG", "config-$literal")
@@ -120,6 +124,8 @@ jobs:
 	assert.NotContains(t, project.Snapshot, "OFELIA_SNAPSHOT_SECRET")
 }
 
+// TestLoad_ExecutionSnapshotIgnoresUnrelatedInactiveInputs ensures dormant profiles do not require their
+// production files merely to schedule an independent active job.
 func TestLoad_ExecutionSnapshotIgnoresUnrelatedInactiveInputs(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -155,6 +161,8 @@ jobs:
 	assert.NotContains(t, project.Snapshot, "missing-production")
 }
 
+// TestLoad_ExecutionSnapshotPreservesRawEnvironment checks raw env-file values retain their quotes and dollars
+// instead of being normalized a second time.
 func TestLoad_ExecutionSnapshotPreservesRawEnvironment(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -180,6 +188,8 @@ jobs:
 	assert.Equal(t, `"literal-$value"`, *snapshot.Jobs["backup"].Environment["VALUE"])
 }
 
+// TestLoad_ExecutionSnapshotIncludesDependencyHookResources ensures a config mounted only by a pre-start hook
+// still changes the owning job's accepted revision.
 func TestLoad_ExecutionSnapshotIncludesDependencyHookResources(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

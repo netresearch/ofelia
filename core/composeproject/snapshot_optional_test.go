@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestLoad_ExecutionSnapshotSkipsInactiveOptionalDependencyInputs compares normal Compose acceptance with
+// snapshot selection, then enables the profile to verify its input and revision requirements return.
 func TestLoad_ExecutionSnapshotSkipsInactiveOptionalDependencyInputs(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

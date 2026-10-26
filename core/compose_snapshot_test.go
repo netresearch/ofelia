@@ -20,16 +20,22 @@ import (
 	"github.com/netresearch/ofelia/core/domain"
 )
 
+// snapshotCommand supplies the post-validation argument layout used to verify private-model substitution
+// without launching a workload.
 func snapshotCommand() *exec.Cmd {
 	return &exec.Cmd{Args: []string{"docker", "compose", "-f", "-", "run", "--rm", "backup"}}
 }
 
+// snapshotTestFile gives synthetic accepted bytes the current process's identity, avoiding privileged ownership
+// changes in ordinary unit tests.
 func snapshotTestFile(content string) domain.ComposeSnapshotFile {
 	return domain.ComposeSnapshotFile{Content: []byte(content), Mode: 0o600, UID: os.Geteuid(), GID: os.Getegid()}
 }
 
+// TestComposeJobSnapshot_RetainsInputsAndRemovesTemporaryModel isolates its cache and distinguishes
+// dependency-owned retained inputs from per-run model/env files that must be removed.
 func TestComposeJobSnapshot_RetainsInputsAndRemovesTemporaryModel(t *testing.T) {
-	t.Parallel()
+	t.Setenv("TMPDIR", t.TempDir())
 	job := NewComposeJob()
 	job.Project.Snapshot = &ComposeExecutionSnapshot{
 		Model: `{"name":"snapshot","services":{},"configs":{"settings":{"file":"old.conf"}},` +
@@ -81,6 +87,8 @@ func TestComposeJobSnapshot_RetainsInputsAndRemovesTemporaryModel(t *testing.T) 
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
+// TestComposeJobSnapshot_InvalidModelCleansPrivateDirectory ensures rejecting malformed accepted data cannot
+// leave a secret-bearing temporary execution directory behind.
 func TestComposeJobSnapshot_InvalidModelCleansPrivateDirectory(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
@@ -93,6 +101,8 @@ func TestComposeJobSnapshot_InvalidModelCleansPrivateDirectory(t *testing.T) {
 	assert.Empty(t, entries)
 }
 
+// TestComposeJobSnapshot_RejectsMissingCapturedResource checks that inconsistent capture metadata fails without
+// exposing private input contents in the error.
 func TestComposeJobSnapshot_RejectsMissingCapturedResource(t *testing.T) {
 	t.Parallel()
 	snapshot := &ComposeExecutionSnapshot{
@@ -103,6 +113,8 @@ func TestComposeJobSnapshot_RejectsMissingCapturedResource(t *testing.T) {
 	assert.NotContains(t, err.Error(), "secret", "input bytes must not be included in errors")
 }
 
+// TestComposeJobSnapshot_EnvironmentRoundTrip protects literal dollars, quotes, backslashes and line endings
+// through the private dotenv serialization boundary.
 func TestComposeJobSnapshot_EnvironmentRoundTrip(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{"OFELIA_SNAPSHOT_A": "value-'$literal\\\nsecond\rline", "OFELIA_SNAPSHOT_B": ""}
@@ -111,6 +123,8 @@ func TestComposeJobSnapshot_EnvironmentRoundTrip(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
+// TestComposeJobSnapshot_ConcurrentInputsKeepBytesAndAccess verifies atomic shared-cache publication, stable
+// identities for equal inputs and separation of different permission contracts.
 func TestComposeJobSnapshot_ConcurrentInputsKeepBytesAndAccess(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "inputs")
@@ -153,6 +167,8 @@ func TestComposeJobSnapshot_ConcurrentInputsKeepBytesAndAccess(t *testing.T) {
 	require.ErrorIs(t, err, errInvalidComposeSnapshot)
 }
 
+// TestComposeJobSnapshot_RejectsRetainedSymlink prevents a preexisting cache name from redirecting accepted
+// input reads to another file.
 func TestComposeJobSnapshot_RejectsRetainedSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("creating symlinks may require Windows privileges")
@@ -170,6 +186,8 @@ func TestComposeJobSnapshot_RejectsRetainedSymlink(t *testing.T) {
 	require.ErrorIs(t, err, errInvalidComposeSnapshot)
 }
 
+// TestComposeJobSnapshot_DollarKeysKeepTheirLiteralNames compares real Compose parsing with a control model so
+// escaping values cannot corrupt literal label keys.
 func TestComposeJobSnapshot_DollarKeysKeepTheirLiteralNames(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("docker"); err != nil {
@@ -210,6 +228,8 @@ func TestComposeJobSnapshot_DollarKeysKeepTheirLiteralNames(t *testing.T) {
 	assert.Equal(t, expected.Services["task"].Labels, model.Services["task"].Labels)
 }
 
+// TestComposeJobSnapshot_PreservesLargeIntegerValues guards against float64 rounding while the accepted JSON
+// model is traversed for interpolation escaping.
 func TestComposeJobSnapshot_PreservesLargeIntegerValues(t *testing.T) {
 	t.Parallel()
 	data, err := escapeSnapshotInterpolation(`{"services":{"task":{"shm_size":9007199254740993}}}`)
@@ -217,6 +237,8 @@ func TestComposeJobSnapshot_PreservesLargeIntegerValues(t *testing.T) {
 	assert.Contains(t, string(data), "9007199254740993")
 }
 
+// TestComposeJobSnapshot_RejectsUnsafeInputDirectory proves predictable cache names cannot cause input writes
+// through a pre-created symlink or shared-writable directory.
 func TestComposeJobSnapshot_RejectsUnsafeInputDirectory(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix permissions and symlinks are required")

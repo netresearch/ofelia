@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestLoad_ServiceResourceFingerprintTracksOnlyItsAcceptedInputs distinguishes config, secret, hook and access
+// changes from job, registration, profile and unrelated-resource edits.
 func TestLoad_ServiceResourceFingerprintTracksOnlyItsAcceptedInputs(t *testing.T) {
 	t.Setenv("OFELIA_RESOURCE_REVIEW_NATIVE", "accepted-native")
 	dir := t.TempDir()
@@ -89,6 +91,8 @@ jobs:
 	assert.NotEqual(t, accepted, load(model, "first", nil), "native environment-backed inputs must update the service")
 }
 
+// TestServiceResourceFingerprintPreservesSourceLabelsAndIgnoresItsOwnLabel protects shared source maps and
+// prevents the generated fingerprint from feeding back into its next hash.
 func TestServiceResourceFingerprintPreservesSourceLabelsAndIgnoresItsOwnLabel(t *testing.T) {
 	t.Parallel()
 	labels := types.Labels{"customer": "accepted", snapshotResourceLabel: "previous-fingerprint"}

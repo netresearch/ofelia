@@ -263,6 +263,8 @@ func (c *Config) currentComposeRevision(ctx context.Context, name string, p *Com
 	return project.Revision
 }
 
+// expandComposeProject validates one registration before creating its scheduled jobs, which share the accepted
+// execution model and carry their own relevant-input revisions.
 func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) error {
 	ctx, cancel := context.WithTimeout(context.Background(), composeProjectLoadTimeout)
 	defer cancel()

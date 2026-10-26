@@ -157,6 +157,8 @@ func activeExecutionDependencies(dependencies types.DependsOnConfig, source *typ
 	return out
 }
 
+// selectedResources copies only referenced top-level definitions, keeping unrelated inactive configuration
+// inputs outside the accepted execution closure.
 func selectedResources[T any](kind string, all map[string]T, used map[string]any) map[string]T {
 	out := map[string]T{}
 	for name, value := range all {
@@ -198,6 +200,8 @@ func resolveExecutionEnvironment(project *types.Project) (*types.Project, error)
 	return project, nil
 }
 
+// captureFileObjects freezes selected file and environment inputs while retaining each resource's native
+// Compose bind-mount or upload semantics.
 func captureFileObjects(project *types.Project) (map[string]domain.ComposeSnapshotFile, map[string]string, error) {
 	files, environment := map[string]domain.ComposeSnapshotFile{}, map[string]string{}
 	for name, cfg := range project.Configs {
@@ -219,6 +223,8 @@ func captureFileObjects(project *types.Project) (map[string]domain.ComposeSnapsh
 	return files, environment, nil
 }
 
+// captureFileObject captures one resource without consulting operator inputs again at execution time;
+// environment-backed resources receive isolated synthetic names.
 func captureFileObject(cfg types.FileObjectConfig, key string, env types.Mapping,
 	files map[string]domain.ComposeSnapshotFile, environment map[string]string,
 ) (types.FileObjectConfig, error) {
@@ -244,6 +250,8 @@ func captureFileObject(cfg types.FileObjectConfig, key string, env types.Mapping
 	return cfg, nil
 }
 
+// captureSnapshotFile reads bytes and access metadata from the same opened regular inode, avoiding path
+// replacement between content capture and identity inspection.
 func captureSnapshotFile(path string) (domain.ComposeSnapshotFile, error) {
 	file, err := os.Open(path) // #nosec G304 -- registered Compose config/secret input, read at acceptance
 	if err != nil {
@@ -265,6 +273,8 @@ func captureSnapshotFile(path string) (domain.ComposeSnapshotFile, error) {
 	return domain.ComposeSnapshotFile{Content: content, Mode: uint32(info.Mode().Perm()), UID: uid, GID: gid}, nil
 }
 
+// snapshotRevision hashes accepted input values together and propagates serialization errors instead of
+// claiming a revision that omitted data.
 func snapshotRevision(values ...any) (string, error) {
 	data, err := json.Marshal(values)
 	if err != nil {
@@ -296,6 +306,8 @@ func executionResources(closure map[string]any, project *types.Project,
 	return resources, inputs
 }
 
+// addContainerResources includes the top-level objects a container references, so their definitions participate
+// in revision selection alongside the workload itself.
 func addContainerResources(container types.ContainerSpec, project *types.Project, add func(string, any)) {
 	for _, config := range container.Configs {
 		add("configs/"+config.Source, project.Configs[config.Source])
@@ -316,6 +328,8 @@ func addContainerResources(container types.ContainerSpec, project *types.Project
 	}
 }
 
+// executionSpecifications includes service pre-start containers because their independently mounted
+// configuration is part of executing the dependency.
 func executionSpecifications(closure map[string]any) []types.ServiceConfig {
 	var out []types.ServiceConfig
 	for _, definition := range closure {
@@ -332,6 +346,8 @@ func executionSpecifications(closure map[string]any) []types.ServiceConfig {
 	return out
 }
 
+// resourceEnvironment limits captured synthetic values to the referenced resources, preventing unrelated
+// environment changes from recreating a service.
 func resourceEnvironment(resources map[string]any, environment map[string]string) map[string]string {
 	out := map[string]string{}
 	for _, resource := range resources {

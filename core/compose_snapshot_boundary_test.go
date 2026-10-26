@@ -16,6 +16,8 @@ import (
 	"github.com/netresearch/ofelia/test"
 )
 
+// TestComposeJobSnapshot_ChildEnvironmentUsesAcceptedInputs checks the actual child-process boundary so ambient
+// synthetic variables and profiles cannot override the frozen execution inputs.
 func TestComposeJobSnapshot_ChildEnvironmentUsesAcceptedInputs(t *testing.T) {
 	t.Setenv("OFELIA_SNAPSHOT_ACCEPTED", "inherited-rejected-value")
 	t.Setenv("COMPOSE_PROFILES", "unaccepted-profile")
@@ -43,6 +45,8 @@ cat "$3"
 	assert.NotContains(t, execution.GetStdout(), "rejected")
 }
 
+// TestComposeJobSnapshot_CacheFailureRemovesPrivateExecutionFiles verifies a blocked cache cannot be
+// overwritten or leak input bytes and that failed preparation removes its per-run directory.
 func TestComposeJobSnapshot_CacheFailureRemovesPrivateExecutionFiles(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
@@ -64,6 +68,8 @@ func TestComposeJobSnapshot_CacheFailureRemovesPrivateExecutionFiles(t *testing.
 	assert.Equal(t, "existing-data", string(data), "a blocked cache path cannot be overwritten")
 }
 
+// TestComposeJobSnapshot_InvalidTempDirectoryDoesNotChangeCommand ensures allocation failure leaves the command
+// unprepared, preventing any child from receiving a partial snapshot.
 func TestComposeJobSnapshot_InvalidTempDirectoryDoesNotChangeCommand(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
 	job := NewComposeJob()
