@@ -1213,7 +1213,7 @@ function jobAction(endpoint, past, confirmMsg) {
   return async (name) => {
     if (confirmMsg && !globalThis.confirm(confirmMsg(name))) return;
     if (await apiPost(endpoint, {name})) toast.success(`Job "${name}" ${past}.`);
-    refresh();
+    void refresh();
   };
 }
 const runJob = jobAction('/api/jobs/run', 'started');
@@ -1284,7 +1284,7 @@ document.getElementById('jobForm').addEventListener('submit', async e => {
   editing = null;
   resetForm();
   switchTab('jobs');
-  refresh();
+  void refresh();
 });
 
 /* role="switch" overrides the input's implicit checkbox role, and with it
@@ -1345,16 +1345,16 @@ document.querySelector('#jobs tbody').addEventListener('click', (e) => {
     if (btn.getAttribute('aria-disabled') === 'true') return;
     const action = btn.dataset.action;
     const name = btn.dataset.job;
-    if (action === 'run') runJob(name);
+    if (action === 'run') void runJob(name);
     else if (action === 'edit') editJob(name);
-    else if (action === 'disable') disableJob(name);
-    else if (action === 'delete') deleteJob(name);
-    else if (action === 'enable') enableJob(name);
-    else if (action === 'history') loadHistory(name);
+    else if (action === 'disable') void disableJob(name);
+    else if (action === 'delete') void deleteJob(name);
+    else if (action === 'enable') void enableJob(name);
+    else if (action === 'history') void loadHistory(name);
     return;
   }
   const tr = e.target.closest('tr[data-job-name]');
-  if (tr) loadHistory(tr.dataset.jobName);
+  if (tr) void loadHistory(tr.dataset.jobName);
 });
 document.getElementById('closeHistoryBtn').addEventListener('click', closeHistory);
 document.getElementById('formClearBtn').addEventListener('click', resetForm);
@@ -1508,7 +1508,7 @@ async function refresh() {
   lastDashboardPayload = text;
 }
 checkAuth();
-refresh();
+void refresh();
 /* A hidden tab stops polling entirely; coming back refreshes at once
    and resumes the interval, so returning users never see stale data. */
 let pollTimer = setInterval(refresh, 5000);
@@ -1517,7 +1517,7 @@ document.addEventListener('visibilitychange', () => {
     clearInterval(pollTimer);
     pollTimer = null;
   } else if (!pollTimer) {
-    refresh();
+    void refresh();
     pollTimer = setInterval(refresh, 5000);
   }
 });
