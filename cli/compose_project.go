@@ -284,6 +284,12 @@ func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) erro
 	}
 	for _, job := range project.Jobs {
 		jobName := name + "." + job.Name
+		var snapshot *core.ComposeExecutionSnapshot
+		if project.Snapshot != "" {
+			snapshot = &core.ComposeExecutionSnapshot{
+				Model: project.Snapshot, Files: project.SnapshotFiles, Environment: project.SnapshotEnvironment,
+			}
+		}
 		c.ComposeJobs[jobName] = &ComposeJobConfig{
 			composeRegistration: name,
 			ComposeJob: core.ComposeJob{
@@ -302,6 +308,7 @@ func (c *Config) expandComposeProject(name string, p *ComposeProjectConfig) erro
 					TimeZone:         job.TimeZone,
 					MissedFires:      job.MissedFires,
 					Concurrency:      job.Concurrency,
+					Snapshot:         snapshot,
 				},
 			},
 			// With missed_fires: skip and concurrency: forbid the job keeps no

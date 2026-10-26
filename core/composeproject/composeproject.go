@@ -30,6 +30,8 @@ import (
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/netresearch/go-cron"
+
+	"github.com/netresearch/ofelia/core/domain"
 )
 
 // Errors returned for job definitions outside the supported subset. Each
@@ -80,6 +82,15 @@ type Project struct {
 	// Unscheduled names the active jobs without a schedule; they stay
 	// manual-only and are not scheduled by Ofelia.
 	Unscheduled []string
+	// Snapshot is the resolved execution model. It and SnapshotFiles may
+	// contain secrets; callers must never expose them in logs or API output.
+	Snapshot string
+	// SnapshotFiles captures configs and secrets backed by a file or an
+	// environment variable, keyed by resource kind and name.
+	SnapshotFiles map[string]domain.ComposeSnapshotFile
+	// SnapshotEnvironment preserves environment-backed config/secret inputs
+	// on Compose's native upload path rather than turning them into bind mounts.
+	SnapshotEnvironment map[string]string
 }
 
 // Job is one scheduled Compose job.
@@ -146,7 +157,7 @@ func (ComposeGoLoader) Load(ctx context.Context, spec Spec) (*Project, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compose project %q: %w", spec.Name, err)
 	}
-	return Extract(spec.Name, project)
+	return snapshotProject(spec.Name, project)
 }
 
 // projectOptions returns the compose-go options in the order the docker CLI
@@ -274,6 +285,11 @@ func jobRevision(name string, all types.Jobs, services types.Services) (string, 
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])[:revisionLength], nil
+}
+
+func shortRevision(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])[:revisionLength]
 }
 
 // collectClosure adds name and, recursively, every job and service it depends
