@@ -1,7 +1,7 @@
 # Binary selector stage — picks the correct pre-built binary for the target platform.
 # Docker automatically sets TARGETARCH and TARGETVARIANT during multi-platform builds.
 # All pre-built binaries must be in bin/ in the build context.
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS binary-selector
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS binary-selector
 
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -22,7 +22,7 @@ RUN set -eux; \
 
 # Runtime base stage, shared by the default image (last stage) and the
 # compose variant.
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS runtime
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS runtime
 
 # OCI Image Annotations
 # See: https://github.com/opencontainers/image-spec/blob/main/annotations.md
