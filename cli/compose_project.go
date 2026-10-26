@@ -146,6 +146,7 @@ func (c *Config) expandComposeProjects() {
 			c.rejectComposeProject(name, err)
 		}
 	}
+	c.rejectDuplicateComposeJobIdentities()
 }
 
 // rejectComposeProject logs why a project schedules no job and records the
@@ -180,6 +181,9 @@ func (c *Config) keepLastLoadedComposeJobs(parsed *Config) {
 			c.logger.Warn(fmt.Sprintf("compose project %q: keeping its %d last loaded job(s) until it loads again", name, kept))
 		}
 	}
+	// A retained definition may use a different project name than the newly
+	// rejected model. Check the actual jobs again before updating the scheduler.
+	parsed.rejectDuplicateComposeJobIdentities()
 }
 
 // scheduleRecordKept reports whether the schedule record of name stays: the

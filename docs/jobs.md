@@ -517,6 +517,14 @@ project is rejected. It runs the same Compose CLI check as the daemon, so run it
 where the Compose CLI 5.6.0 or later is installed, for example in the `-compose`
 image variant.
 
+Different registration names must not schedule the same job in the same
+resolved Compose project. Every registration uses Ofelia's Docker endpoint,
+so the pair of the resolved project name and Compose job name identifies a
+workload. If two registrations claim that pair, both projects are rejected
+as a whole; choosing different files, profiles or registration aliases does
+not create a separate workload identity. Distinct projects or distinct jobs
+within one project may be registered separately.
+
 On every configuration poll (`config-poll-interval`), Ofelia loads each
 registered project again and reloads the configuration when the resolved model
 differs. That covers the files the section names as well as the default `.env`,
@@ -524,6 +532,9 @@ files pulled in through `include:` or `extends`, and interpolated values. A
 project that loaded before and is rejected by a reload, for example after a
 broken edit, keeps its last loaded jobs and logs the error; the rest of the
 reload is applied, and the project's jobs are replaced once it loads again.
+Retained jobs undergo the same identity check. Last loaded definitions stay
+scheduled only while their identities remain distinct; a collision between a
+retained definition and a newly loaded project rejects both registrations.
 Each job carries a revision, a hash of its own definition and of every job and
 service in its `depends_on` closure, which `docker compose run` starts with it:
 only jobs whose revision changed are replaced, and each execution logs the
