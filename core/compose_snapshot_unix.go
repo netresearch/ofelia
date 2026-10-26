@@ -15,7 +15,8 @@ import (
 
 func snapshotPathPrivate(info os.FileInfo) bool {
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	return ok && stat.Uid == uint32(os.Geteuid()) && info.Mode().Perm()&0o077 == 0 //nolint:gosec // effective UID is an OS identifier
+	// #nosec G115 -- Conversion preserves the Unix uid_t identifier returned by the OS.
+	return ok && stat.Uid == uint32(os.Geteuid()) && info.Mode().Perm()&0o077 == 0
 }
 
 func setSnapshotInputIdentity(file *os.File, input domain.ComposeSnapshotFile) error {
