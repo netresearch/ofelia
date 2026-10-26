@@ -556,6 +556,8 @@ temporary file created for each execution.
 Includes, overrides, interpolation, relative paths, and job/service environment
 and label files are resolved when the project loads. File-backed and
 environment-backed Compose configs and secrets are captured at that point.
+Optional dependencies behind inactive profiles do not run and do not require
+their environment or configuration files until their profile is enabled.
 File-backed inputs retain their original file mode and Unix UID/GID; Ofelia
 fails the execution explicitly if its runtime cannot reproduce that ownership.
 An unprivileged Ofelia process can preserve files it owns but needs suitable
@@ -575,6 +577,12 @@ mounted file permissions preserve the accepted source. Reuse checks the bytes
 and access settings and rejects symlinks or altered files. Ofelia does not
 automatically prune this directory. Remove its contents only after all containers
 that reference those paths have been removed; retain it across host restarts.
+
+Ofelia reserves the dependency-service label `ofelia.compose.resources` for a
+fingerprint of that service's accepted config and secret inputs, including
+pre-start hooks. This lets Compose recreate an existing dependency when those
+inputs change on a valid reload. Unchanged or unrelated dependency services keep
+their containers; changing a job's command or schedule does not force recreation.
 
 This snapshot covers the Compose definition and these configuration inputs.
 Image tags, build contexts, bind-mounted application data and external Docker

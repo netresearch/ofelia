@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"strings"
 
@@ -16,6 +17,8 @@ import (
 )
 
 const secretResourcePrefix = "secrets/"
+
+const snapshotResourceLabel = "ofelia.compose.resources"
 
 // snapshotProject resolves inputs once, before either revisions or the
 // execution model are accepted. Inactive definitions stay in the snapshot:
@@ -31,6 +34,9 @@ func snapshotProject(registration string, source *types.Project) (*Project, erro
 	}
 	files, environment, err := captureFileObjects(resolved)
 	if err != nil {
+		return nil, fmt.Errorf("compose project %q: %w", registration, err)
+	}
+	if err := labelServiceResources(resolved, files, environment); err != nil {
 		return nil, fmt.Errorf("compose project %q: %w", registration, err)
 	}
 	model, err := resolved.MarshalJSON()
@@ -67,14 +73,54 @@ func snapshotProject(registration string, source *types.Project) (*Project, erro
 	return out, nil
 }
 
+// Compose hashes a service's references, not the referenced config/secret
+// contents. Make accepted input changes visible in that hash, so an existing
+// dependency cannot keep mounting an older retained input after a valid reload.
+// The fingerprint excludes jobs, scheduling, profile selection and temp paths.
+func labelServiceResources(project *types.Project, files map[string]domain.ComposeSnapshotFile, environment map[string]string) error {
+	for name, service := range project.Services {
+		allResources, inputs := executionResources(map[string]any{"service:" + name: service}, project, files)
+		resources := map[string]any{}
+		for key, resource := range allResources {
+			switch resource.(type) {
+			case types.ConfigObjConfig, types.SecretConfig:
+				resources[key] = resource
+			}
+		}
+		if len(resources) == 0 {
+			continue
+		}
+		revision, err := snapshotRevision(resources, inputs, resourceEnvironment(resources, environment))
+		if err != nil {
+			return err
+		}
+		service.Labels = maps.Clone(service.Labels)
+		if service.Labels == nil {
+			service.Labels = types.Labels{}
+		}
+		service.Labels[snapshotResourceLabel] = revision
+		project.Services[name] = service
+	}
+	return nil
+}
+
 // Select only scheduled jobs and their dependencies before reading file
 // inputs. An unrelated inactive profile must not need its env/config files
 // installed merely to arm an active job. Dependencies behind profiles remain
 // in the execution model so Compose can activate them on demand.
 func selectExecutionProject(source *types.Project, scheduled []Job) *types.Project {
+	jobs, services := source.AllJobs(), source.AllServices()
+	for name, job := range jobs {
+		job.DependsOn = activeExecutionDependencies(job.DependsOn, source)
+		jobs[name] = job
+	}
+	for name, service := range services {
+		service.DependsOn = activeExecutionDependencies(service.DependsOn, source)
+		services[name] = service
+	}
 	closure := map[string]any{}
 	for _, job := range scheduled {
-		collectClosure(job.Name, source.AllJobs(), source.AllServices(), closure)
+		collectClosure(job.Name, jobs, services, closure)
 	}
 	project := *source
 	project.Services, project.Jobs = types.Services{}, types.Jobs{}
@@ -94,6 +140,21 @@ func selectExecutionProject(source *types.Project, scheduled []Job) *types.Proje
 	project.Volumes = selectedResources("volumes", source.Volumes, resources)
 	project.Models = selectedResources("models", source.Models, resources)
 	return &project
+}
+
+// Optional dependencies behind inactive profiles do not run and must not need
+// their environment or config files. Keep required edges: Compose itself
+// validates or activates those, and their accepted inputs belong to the model.
+func activeExecutionDependencies(dependencies types.DependsOnConfig, source *types.Project) types.DependsOnConfig {
+	out := types.DependsOnConfig{}
+	for name, dependency := range dependencies {
+		_, jobActive := source.Jobs[name]
+		_, serviceActive := source.Services[name]
+		if dependency.Required || jobActive || serviceActive {
+			out[name] = dependency
+		}
+	}
+	return out
 }
 
 func selectedResources[T any](kind string, all map[string]T, used map[string]any) map[string]T {
