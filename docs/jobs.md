@@ -589,7 +589,12 @@ evaluated, and the run it admitted last. From it:
 - **At most once.** Ofelia records a run before it starts it. After a crash, a
   run that had started counts as handled with the outcome `unknown`, and is not
   started again; check it by hand. While its container (found by the
-  `ofelia.execution` label) still runs, the job counts as busy. In exec mode
+  `ofelia.execution` label) still runs, or Docker cannot be queried, the job
+  counts as busy. The workload's execution ID is persisted independently of
+  the execution outcome, so this protection survives repeated restarts and
+  schedule changes. If a canceled run reports `compose run termination
+  unconfirmed`, the job also stays busy until Docker confirms the workload
+  has ended; its execution is not retried and a queued run keeps waiting. In exec mode
   (`docker compose exec`) Ofelia cannot see the command, so after a crash a
   second run can start beside one that still runs.
 

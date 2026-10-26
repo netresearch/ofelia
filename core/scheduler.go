@@ -1466,7 +1466,7 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 			return
 		}
 		durableRun = true
-		defer func() { w.s.finishDispatch(adm, outcome) }()
+		defer func() { w.s.finishDispatch(ctx, adm, outcome, errors.Join(err, e.Error)) }()
 	}
 
 	// Bound the per-run context with the job's MaxRuntime (or the

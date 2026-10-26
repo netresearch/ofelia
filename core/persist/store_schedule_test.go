@@ -24,7 +24,8 @@ func sampleSchedule() Schedule {
 			Execution:  "exec-1",
 			State:      "started",
 		},
-		Pending: &Occurrence{Scheduled: at.Add(time.Hour), Trigger: "scheduled"},
+		Pending:  &Occurrence{Scheduled: at.Add(time.Hour), Trigger: "scheduled"},
+		Workload: "exec-1",
 	}
 }
 
