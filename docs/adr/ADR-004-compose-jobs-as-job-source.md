@@ -1,6 +1,6 @@
 # ADR-004: Compose Jobs as a Job Source
 
-**Status**: Proposed  
+**Status**: Accepted (implemented; extended by [ADR-005](./ADR-005-durable-schedule-state.md))
 **Date**: 2026-10-24  
 **Authors**: SME
 
@@ -15,7 +15,7 @@ Native scheduling is being built into Docker Engine ([moby/moby#53485](https://g
 
 Ofelia already runs Compose workloads through `job-compose`, which shells out to `docker compose -f <file> run --rm <service>` or `exec`. Since [#887](https://github.com/netresearch/ofelia/pull/887), a canceled `run` execution stops and removes its container, found through the `ofelia.execution` label, and in `run` mode the CLI is pointed at the same Docker endpoint as Ofelia's own client. `job-compose` does not read Compose job definitions or their triggers: it knows a file, a service name and a command.
 
-Two existing facts constrain the design:
+Two facts at the time of this decision constrained the design:
 
 1. Issue [#758](https://github.com/netresearch/ofelia/issues/758) lists `project`, `dir` and `environment` on `job-compose` as out of scope, so that Ofelia does not become a second container configuration language beside Compose.
 2. Ofelia's persistence (`core/persist`, `middlewares/save.go`, `middlewares/restore.go`) stores the definitions of jobs created through the API, the set of disabled jobs and, with `save-folder`, completed execution history. It stores no scheduling cursor, and restored executions are never marked as running. It cannot implement a catch-up policy today.
@@ -54,7 +54,18 @@ Ofelia uses [compose-go](https://github.com/compose-spec/compose-go), the refere
 
 Reading the normalized output of `docker compose config` is not used. It needs the docker CLI and the Compose plugin at load time, which the default image does not contain, and Ofelia would parse the Compose model a second time outside compose-go. Its JSON form also drops the `x-` fields of jobs: compose-go v2.16.1 tags the `Extensions` of `JobConfig`, `TriggerConfig` and `ScheduleConfig` with `json:"-"` ([types/jobs.go](https://github.com/compose-spec/compose-go/blob/v2.16.1/types/jobs.go)). The default YAML form keeps them.
 
-### Initial trigger subset
+### Trigger support
+
+Project registration and the loader are implemented. [ADR-005](./ADR-005-durable-schedule-state.md)
+extends the initial subset below with `missed_fires: one` (including its default)
+and `concurrency: queue`. Both require `--state-file`; without that flag the
+project is rejected. `missed_fires: skip` with `concurrency: forbid` still works
+without a state file. The [jobs reference](../jobs.md#supported-triggers) lists
+the current supported inputs.
+
+The following initial subset records the starting point of this decision;
+ADR-005 supersedes the rejection of `one` and `queue`. The restrictions on
+`manual: false` and multiple schedule entries still apply.
 
 Ofelia accepts a documented subset and rejects everything else with an error that names the unsupported setting. Silently mapping a setting to a different behavior is a compatibility bug.
 
@@ -83,14 +94,14 @@ Rejected until the deferred work below exists:
 ### Negative
 
 - compose-go is a new dependency of substantial size.
-- The specification's default schedule (`missed_fires: one`) is rejected in the first version, so the shortest valid Compose schedule does not load.
+- The specification's default schedule (`missed_fires: one`) needs a state file under ADR-005. Projects without one must explicitly select `missed_fires: skip` and `concurrency: forbid`.
 - Two configuration paths for Compose workloads exist side by side: `job-compose` and registered projects.
 
 ### Neutral
 
 - Execution keeps delegating to the Compose CLI. Reimplementing Compose's container lifecycle is out of scope.
 - Deferred to later decisions:
-  - Durable scheduling and dispatch state (activation time, accepted occurrence, dispatch started, one queued occurrence), which `missed_fires: one` and `concurrency: queue` need.
+  - Durable scheduling and dispatch state was subsequently accepted and implemented in [ADR-005](./ADR-005-durable-schedule-state.md).
   - A native Engine backend: production support requires a released Engine capability, a compatibility matrix and runtime detection; observation of Engine-owned jobs comes first.
   - Cancellation semantics for commands executed inside existing containers (`job-exec`, `job-compose` with `exec`): the Engine has no way to stop an exec'd process, so the client can stop waiting while the command keeps running.
 

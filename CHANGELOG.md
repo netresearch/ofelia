@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Register Compose projects through `[compose-project "name"]` and import
+  their top-level `jobs:` schedules with compose-go. Project registrations
+  select Compose files, profiles, env files, project name and working directory;
+  container configuration remains in Compose. See [the jobs reference](docs/jobs.md#compose-projects).
+- Support Compose `missed_fires: one` and `concurrency: queue` with
+  `--state-file`. Durable schedule records admit at most one start per
+  occurrence, retain one pending fire, and let admitted runs wait for the global
+  concurrency limit. Explicit `skip` with `forbid` needs no state file.
+- Add an optional `compose` Docker build target and release workflow for
+  `-compose` image tags containing the Compose CLI. These tags are published
+  with the next release; the default image remains unchanged.
+
+### Fixed
+
+- Bound Compose run executions by their own `max-runtime` or the current global
+  value, and stop/remove their labelled workload containers on cancellation.
+  Compose exec cancellation remains limited by Docker's exec API.
+- Keep replacement jobs from starting beside a removed job that is still
+  stopping. Manual starts return `409 Conflict` during that interval; a deferred
+  `run-on-startup` fire runs after it ends and waits for a global slot if needed.
+
 ## [1.0.2] - 2026-10-23
 
 The binaries and the `ghcr.io` image are built with Go 1.27.3. Go 1.27.3
