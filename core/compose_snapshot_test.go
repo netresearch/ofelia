@@ -216,3 +216,33 @@ func TestComposeJobSnapshot_PreservesLargeIntegerValues(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "9007199254740993")
 }
+
+func TestComposeJobSnapshot_RejectsUnsafeInputDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permissions and symlinks are required")
+	}
+	t.Parallel()
+	for _, symlink := range []bool{false, true} {
+		name := "shared writable directory"
+		if symlink {
+			name = "symlink"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := filepath.Join(t.TempDir(), "inputs")
+			target := dir
+			if symlink {
+				target = t.TempDir()
+				require.NoError(t, os.Symlink(target, dir))
+			} else {
+				require.NoError(t, os.Mkdir(dir, 0o777))
+				require.NoError(t, os.Chmod(dir, 0o777))
+			}
+			_, err := retainSnapshotInput(dir, snapshotTestFile("accepted-private-input"))
+			require.ErrorIs(t, err, errInvalidComposeSnapshot)
+			entries, err := os.ReadDir(target)
+			require.NoError(t, err)
+			assert.Empty(t, entries, "no input may be written through an unsafe pre-created cache path")
+		})
+	}
+}

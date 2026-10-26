@@ -15,6 +15,8 @@ import (
 	"github.com/netresearch/ofelia/core/domain"
 )
 
+const secretResourcePrefix = "secrets/"
+
 // snapshotProject resolves inputs once, before either revisions or the
 // execution model are accepted. Inactive definitions stay in the snapshot:
 // an explicitly run job can activate a dependency behind another profile.
@@ -145,7 +147,9 @@ func captureFileObjects(project *types.Project) (map[string]domain.ComposeSnapsh
 		project.Configs[name] = types.ConfigObjConfig(captured)
 	}
 	for name, secret := range project.Secrets {
-		captured, err := captureFileObject(types.FileObjectConfig(secret), "secrets/"+name, project.Environment, files, environment)
+		captured, err := captureFileObject(
+			types.FileObjectConfig(secret), secretResourcePrefix+name, project.Environment, files, environment,
+		)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -221,31 +225,34 @@ func executionResources(closure map[string]any, project *types.Project,
 		}
 	}
 	for _, spec := range executionSpecifications(closure) {
-		container, workload := spec.ContainerSpec, spec.WorkloadSpec
-		for _, config := range container.Configs {
-			add("configs/"+config.Source, project.Configs[config.Source])
-		}
-		for _, secret := range container.Secrets {
-			add("secrets/"+secret.Source, project.Secrets[secret.Source])
-		}
-		if workload.Build != nil {
-			for _, secret := range workload.Build.Secrets {
-				add("secrets/"+secret.Source, project.Secrets[secret.Source])
+		addContainerResources(spec.ContainerSpec, project, add)
+		if spec.Build != nil {
+			for _, secret := range spec.Build.Secrets {
+				add(secretResourcePrefix+secret.Source, project.Secrets[secret.Source])
 			}
-		}
-		for name := range container.Networks {
-			add("networks/"+name, project.Networks[name])
-		}
-		for _, volume := range container.Volumes {
-			if volume.Type == types.VolumeTypeVolume && volume.Source != "" {
-				add("volumes/"+volume.Source, project.Volumes[volume.Source])
-			}
-		}
-		for name := range container.Models {
-			add("models/"+name, project.Models[name])
 		}
 	}
 	return resources, inputs
+}
+
+func addContainerResources(container types.ContainerSpec, project *types.Project, add func(string, any)) {
+	for _, config := range container.Configs {
+		add("configs/"+config.Source, project.Configs[config.Source])
+	}
+	for _, secret := range container.Secrets {
+		add(secretResourcePrefix+secret.Source, project.Secrets[secret.Source])
+	}
+	for name := range container.Networks {
+		add("networks/"+name, project.Networks[name])
+	}
+	for _, volume := range container.Volumes {
+		if volume.Type == types.VolumeTypeVolume && volume.Source != "" {
+			add("volumes/"+volume.Source, project.Volumes[volume.Source])
+		}
+	}
+	for name := range container.Models {
+		add("models/"+name, project.Models[name])
+	}
 }
 
 func executionSpecifications(closure map[string]any) []types.ServiceConfig {

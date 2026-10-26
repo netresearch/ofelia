@@ -33,14 +33,18 @@ type ComposeExecutionSnapshot struct {
 func (j *ComposeJob) prepareSnapshot(cmd *exec.Cmd) (func(), error) {
 	snapshot := j.Project.Snapshot
 	if snapshot == nil {
-		return func() {}, nil
+		return func() {
+			// A job without an accepted snapshot creates no files to clean up.
+		}, nil
 	}
 	dir, err := os.MkdirTemp("", "ofelia-compose-")
 	if err != nil {
 		return nil, fmt.Errorf("create private directory: %w", err)
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
-	inputDir := filepath.Join(os.TempDir(), "ofelia-compose-inputs")
+	// Surviving dependency bind mounts require a stable cache path.
+	// retainSnapshotInput rejects symlinks and non-private/non-owned Unix directories before writing inputs.
+	inputDir := filepath.Join(os.TempDir(), "ofelia-compose-inputs") // NOSONAR -- private cache verified by retainSnapshotInput
 	model, err := materializeSnapshot(snapshot, inputDir)
 	if err != nil {
 		cleanup()
