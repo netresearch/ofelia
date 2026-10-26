@@ -599,60 +599,41 @@ func TestRemoveJob_DeferredRunOnStartupWaitsForAGlobalSlot(t *testing.T) {
 	}
 }
 
-// A handed-back run-on-startup fire that waits for a global slot does not run
-// when the job is disabled meanwhile: disabling pauses the entry without
-// ending the wait's context, so the wait checks it once it has a slot.
+// Exercise the same entry point used when runGate hands back a deferred
+// run-on-startup fire, with its global slot held until after DisableJob.
+// Queuing a competing sender before releasing an old run does not establish
+// that order: the sender may not run until the startup fire has already run.
 func TestRemoveJob_DeferredRunOnStartupOfADisabledJobDoesNotRun(t *testing.T) {
 	logger, logs := test.NewTestLoggerWithHandler()
 	s := NewScheduler(logger)
-	s.SetMaxConcurrentJobs(2)
+	s.SetMaxConcurrentJobs(1)
 	if err := s.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Stop() })
-	old := newStoppingJob("boot")
-	old.ignoreCancel = true
-	startStoppingJob(t, s, old)
-	if err := s.RemoveJob(old); err != nil {
-		t.Fatalf("RemoveJob: %v", err)
-	}
 	repl := newCountingJob("boot")
-	repl.RunOnStartup = true
 	if err := s.AddJob(repl); err != nil {
 		t.Fatalf("AddJob replacement: %v", err)
 	}
-	eventually(t, func() bool { return logs.HasWarning("defer: the run-on-startup run") },
-		"the replacement's run-on-startup fire was not deferred")
-	other := newStoppingJob("other")
-	other.ignoreCancel = true
-	t.Cleanup(func() { close(other.release) })
-	if err := s.AddJob(other); err != nil {
-		t.Fatalf("AddJob other: %v", err)
-	}
-	eventually(t, func() bool {
-		return s.RunJob(context.Background(), "other") == nil && func() bool {
-			select {
-			case <-other.started:
-				return true
-			case <-time.After(20 * time.Millisecond):
-				return false
-			}
-		}()
-	}, "the other job did not take the free slot")
 
-	// A waiter already queued on the limit takes the slot the old run frees.
+	// Own the only slot before firing. The test, rather than another
+	// competing goroutine, decides when the startup fire may acquire it.
 	slot := s.concurrencySem.getChan()
-	taken := make(chan struct{})
-	go func() { slot <- struct{}{}; close(taken) }()
-	close(old.release)
-	waitFor(t, taken, "the queued waiter did not get the old run's slot")
+	slot <- struct{}{}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { <-slot }) }
+	t.Cleanup(release)
+	s.gate.mu.Lock()
+	w := s.gate.current["boot"]
+	s.gate.mu.Unlock()
+	s.fireDeferredStartup(w)
 	eventually(t, func() bool { return logs.HasMessage("the run-on-startup run waits for a slot") },
 		"the handed-back fire is not waiting for a slot")
 
 	if err := s.DisableJob("boot"); err != nil {
 		t.Fatalf("DisableJob: %v", err)
 	}
-	<-slot
+	release()
 	eventually(t, func() bool { return logs.HasMessage("disabled while its run-on-startup run waited") },
 		"the waiting fire did not notice the disable")
 	if n := repl.runs.Load(); n != 0 {
