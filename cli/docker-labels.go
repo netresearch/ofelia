@@ -50,6 +50,7 @@ var globalLabelAllowList = map[string]bool{
 	"email-from":           true,
 	"email-subject":        true,
 	"mail-only-on-error":   true,
+	"mail-output-in-body":  true,
 
 	// Save middleware
 	"save-only-on-error":      true,

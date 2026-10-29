@@ -139,6 +139,10 @@ func mergeMailEnvelopeGlobals(dst, src *middlewares.MailConfig) bool {
 		dst.EmailSubject = src.EmailSubject
 		changed = true
 	}
+	if dst.MailOutputInBody == 0 && src.MailOutputInBody != 0 {
+		dst.MailOutputInBody = src.MailOutputInBody
+		changed = true
+	}
 	return changed
 }
 
