@@ -22,6 +22,7 @@ jobs:
   go-check:
     uses: netresearch/.github/.github/workflows/go-check.yml@main
     with:
+      enable-tool-build-cache: true
       enable-smoke-fast-feedback: true
       enable-fuzz: true
       enable-license-check: true
