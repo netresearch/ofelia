@@ -92,7 +92,7 @@ gci-fix:
 .PHONY: security-check
 security-check:
 	@if command -v gosec >/dev/null 2>&1; then \
-		gosec ./...; \
+		gosec ./... || exit $$?; \
 		echo "✅ Security check passed"; \
 	else \
 		echo "❌ gosec not found. Install with:"; \
