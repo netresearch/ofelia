@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `-compose` image tags containing the Compose CLI. These tags are published
   with the next release; the default image remains unchanged.
 
+### Changed
+
+- Update go-cron from 0.17.0 to 0.19.0. A schedule whose step or range starts
+  above the field maximum, such as `60/5 * * * *` or `0 25-1 * * *`, is now a
+  configuration error; 0.17.0 accepted both. Schedules that cross a daylight
+  saving transition fire as described in go-cron's
+  [0.18.0](https://github.com/netresearch/go-cron/releases/tag/v0.18.0) and
+  [0.19.0](https://github.com/netresearch/go-cron/releases/tag/v0.19.0) notes.
+
 ### Fixed
 
 - Bound Compose run executions by their own `max-runtime` or the current global
