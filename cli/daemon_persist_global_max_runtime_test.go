@@ -11,17 +11,10 @@ import (
 	"github.com/netresearch/ofelia/core/persist"
 )
 
-// buildPersistedRunJob reads the global off c.config, and boot assigns that
-// field at one point and calls the restore at another. Review read those two
-// as being in the wrong order, which would have made the inheritance a no-op
-// on every real restart while the unit test around the builder stayed green.
-//
-// They are in the right order — c.config is set before initPersistStore runs
-// — but an ordering that a reader can get wrong from the source is not
-// something to leave asserted only in a commit message. This drives the real
-// restore entry point instead of the builder, so a future reordering of boot
-// fails here rather than silently returning every restored job to the 24h
-// default (#806).
+// A restored run job that stored no max-runtime keeps 0 and runs under the
+// scheduler's current [global] max-runtime, as an INI job does; nothing is
+// copied into the job at restore, so a later change of the global reaches it
+// too (#806). This drives the real restore entry point, not the builder.
 func TestInitPersistStore_RestoredRunJobInheritsGlobalMaxRuntime(t *testing.T) {
 	t.Parallel()
 
@@ -37,21 +30,19 @@ func TestInitPersistStore_RestoredRunJobInheritsGlobalMaxRuntime(t *testing.T) {
 		},
 	})
 
-	cfg := &Config{}
-	cfg.Global.MaxRuntime = 2 * time.Hour
-
 	c := newDaemonForPersistTest(t)
 	c.StateFile = path
-	c.config = cfg
+	c.config = &Config{}
 	c.dockerHandler = &DockerHandler{dockerProvider: &mockDockerProvider{}}
+	c.scheduler.SetGlobalMaxRuntime(2 * time.Hour)
 
 	if err := c.initPersistStore(); err != nil {
 		t.Fatalf("initPersistStore: %v", err)
 	}
 
-	for name, want := range map[string]time.Duration{
-		"restored-run":         2 * time.Hour,
-		"restored-run-bounded": 45 * time.Minute,
+	for name, want := range map[string]struct{ own, effective time.Duration }{
+		"restored-run":         {own: 0, effective: 2 * time.Hour},
+		"restored-run-bounded": {own: 45 * time.Minute, effective: 45 * time.Minute},
 	} {
 		job := c.scheduler.GetJob(name)
 		if job == nil {
@@ -61,8 +52,11 @@ func TestInitPersistStore_RestoredRunJobInheritsGlobalMaxRuntime(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s materialized as %T, want *core.RunJob", name, job)
 		}
-		if rj.MaxRuntime != want {
-			t.Errorf("%s: MaxRuntime = %v, want %v", name, rj.MaxRuntime, want)
+		if rj.MaxRuntime != want.own {
+			t.Errorf("%s: MaxRuntime = %v, want %v", name, rj.MaxRuntime, want.own)
+		}
+		if got := c.scheduler.MaxRuntimeFor(rj); got != want.effective {
+			t.Errorf("%s: MaxRuntimeFor = %v, want %v", name, got, want.effective)
 		}
 	}
 }

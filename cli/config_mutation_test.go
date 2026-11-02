@@ -183,7 +183,7 @@ func TestAddNewJob_WithSource(t *testing.T) {
 		j.Name = name
 	}
 
-	addNewJob(cfg, "myjob", newJob, prep, JobSourceINI, current)
+	addNewJob(cfg, "myjob", newJob, prep, JobSourceINI, current, false)
 	assert.Len(t, current, 1, "job should be added to current map")
 	assert.Equal(t, JobSourceINI, current["myjob"].GetJobSource())
 	assert.Len(t, cfg.sh.Entries(), 1, "job should be registered in scheduler")
@@ -210,7 +210,7 @@ func TestAddNewJob_EmptySource(t *testing.T) {
 		j.Name = name
 	}
 
-	addNewJob(cfg, "myjob", newJob, prep, "", current)
+	addNewJob(cfg, "myjob", newJob, prep, "", current, false)
 	assert.Len(t, current, 1)
 	// With empty source, the original JobSource should be preserved
 	assert.Equal(t, JobSourceLabel, current["myjob"].GetJobSource())

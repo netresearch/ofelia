@@ -83,6 +83,15 @@ docker run -it --rm \
 
 When specifying exec jobs via labels, Ofelia prefixes the job name to keep jobs from different containers with the same label from clashing. By default the prefix is the Docker Compose **service** name (falling back to the container name), so the example above yields `nginx.flush-nginx-logs`. This default is collision-prone when one daemon watches several Compose projects that reuse a service name; the `[global]` `job-exec-label-scope` option (`service` / `container` / `container-service`) selects a collision-safe scheme. See [Cross-Container Job References](CONFIGURATION.md#cross-container-job-references-docker-compose) for details.
 
+### Cancellation
+
+The Docker Engine API cannot stop an exec'd process, so canceling an execution
+does not stop the command; enforce a limit inside it, e.g. `timeout 30s ...`.
+After a cancellation Ofelia inspects the exec and records what it finds: a
+command that exited meanwhile is classified by its exit code; one that is still
+running fails the execution with `exec still running` and the exec ID; if the
+inspection fails, the execution fails with `exec outcome unknown`.
+
 ## `run`
 
 This job can be used in 2 situations:
@@ -239,6 +248,18 @@ command = touch test.txt
 dir = /tmp/
 ```
 
+### Cancellation
+
+When an execution is canceled — on scheduler shutdown, when the job is removed,
+or at Ofelia's fixed 24-hour execution limit — Ofelia sends `SIGTERM` to the
+process group the command runs in. Processes the command started belong to that
+group. Whatever is still running after 10 seconds gets `SIGKILL`, and the
+execution fails with `max runtime exceeded`. On Windows, which has no process
+groups, only the command's own process is killed, at once. If the processes are
+still there 10 seconds after the kill — for example because a process changed
+its user and Ofelia may no longer signal it — the execution fails with
+`local job termination unconfirmed` instead of waiting for the command to end.
+
 ## `service-run`
 
 This job can be used to:
@@ -340,6 +361,12 @@ container is started with `docker compose run --rm`.
   - Use `docker compose exec` instead of `run`.
 - `command`: string
   - Command passed to the service (optional).
+- `max-runtime`: duration = `[global] max-runtime`
+  - Maximum time a `run`-mode execution may run before its container is stopped
+    and removed. Without a value of its own the job uses `[global] max-runtime`
+    (default `24h`). Not supported with `exec = true`, because an exec'd
+    command cannot be stopped: the value is ignored with a logged warning, and
+    the job API rejects it.
 - `run-on-startup`: boolean = `false`
   - Run the job once immediately when the scheduler starts, before regular cron-based scheduling begins. Startup executions are dispatched in non-blocking goroutines so they do not delay scheduler startup.
 
@@ -352,3 +379,351 @@ file = docker-compose.yml
 service = db
 command = pg_dumpall -U postgres
 ```
+
+### Image for compose jobs
+
+The default image contains no docker CLI, so `job-compose` fails in it. Each
+release also publishes a compose variant of the image, with the docker CLI and
+the Compose plugin from the image's Alpine release:
+
+| Tag | Points to |
+|---|---|
+| `X.Y.Z-compose` | that release |
+| `X.Y-compose`, `X-compose` | the latest release of that line |
+| `latest-compose` | the latest release |
+
+A prerelease gets only its `X.Y.Z-rc.N-compose` tag. The variant is otherwise
+the default image: same entrypoint, configuration and `ofelia.*` labels; only
+the title and description labels differ. It is built from the release's
+binaries after their checksums were verified against the release's signed
+`checksums.txt`.
+
+The compose CLI runs inside the Ofelia container, but the Docker daemon
+creates the containers. Paths in the compose file, such as relative bind
+mounts, resolve inside the Ofelia container and the daemon then reads them as
+host paths. Mount the project directory at the same path it has on the host:
+
+```yaml
+services:
+  ofelia:
+    image: ghcr.io/netresearch/ofelia:latest-compose
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ofelia.ini:/etc/ofelia/config.ini:ro
+      - /srv/myapp:/srv/myapp:ro   # same path as on the host
+```
+
+For a registered `[compose-project]` that uses file-backed Compose configs or
+secrets, also provide writable private scratch storage at the **same absolute
+path on the Docker host and inside Ofelia**. Compose bind-mounts their captured
+files into the workload, so a container-private `/tmp` is not sufficient:
+
+```yaml
+services:
+  ofelia:
+    environment:
+      TMPDIR: /var/lib/ofelia/compose-snapshots
+    volumes:
+      - /var/lib/ofelia/compose-snapshots:/var/lib/ofelia/compose-snapshots
+```
+
+Create that persistent host directory with mode `0700` and ownership matching
+the Ofelia process. Do not share it with unrelated containers. The same requirement
+applies with a remote Docker daemon: the scratch files must be visible there
+at the same absolute path. Without file-backed configs or secrets, the private
+model file is read only by the Compose CLI and a normal local temporary
+directory is sufficient.
+
+```ini
+[job-compose "backup"]
+schedule = @daily
+file = /srv/myapp/compose.yml
+service = db
+command = pg_dumpall -U postgres
+```
+
+### Cancellation and maximum runtime
+
+In the default `run` mode, Ofelia starts `docker compose run --rm -T` and labels
+the run container with `ofelia.execution=<execution ID>`. When the execution is
+canceled or reaches its `max-runtime` (the job's own value, else
+`[global] max-runtime`), Ofelia stops the containers that
+carry this label (stop signal, 10 seconds grace, then `SIGKILL`), ends the
+compose CLI, removes the labeled containers and checks that none remain.
+Dependency services that Compose started for the run do not carry the label and
+keep running. If the Docker API cannot confirm that the run container is gone,
+the execution fails with `compose run termination unconfirmed`.
+
+The compose CLI uses the same Docker endpoint as Ofelia: `DOCKER_HOST` if set,
+otherwise the default socket. `DOCKER_CONTEXT` is not passed to the CLI in `run`
+mode, because Ofelia's own Docker client does not read Docker contexts and
+could not find the run container on another daemon. When `DOCKER_HOST` is
+unset and a Docker context other than `default` is selected — through
+`DOCKER_CONTEXT` or `currentContext` in the CLI's `config.json` — each `run`
+execution logs a warning that names the ignored context. Set `DOCKER_HOST` to
+the daemon the jobs should run on.
+
+In `exec` mode the command runs inside an existing container, and the Docker
+Engine API cannot stop an exec'd process from outside. Canceling the execution
+does not stop the command, and `max-runtime` has no effect in this mode; enforce
+a limit inside the command, e.g. `timeout 30s ...`.
+
+## Compose projects
+
+A `[compose-project]` section registers a Compose project. Ofelia loads it with
+[compose-go](https://github.com/compose-spec/compose-go), the reference
+implementation of the Compose specification, and schedules every job in its
+top-level `jobs:` section that has a `triggers.schedule` entry. The workload
+stays defined in the Compose files: image, command, environment, mounts and
+networks are not repeated in the Ofelia configuration. The design is recorded
+in [ADR-004](adr/ADR-004-compose-jobs-as-job-source.md).
+
+Compose projects need the Compose CLI 5.6.0 or later, the first release that
+understands top-level `jobs:`; the [compose image variant](#image-for-compose-jobs)
+contains it. Ofelia runs `docker compose version` when it loads the
+configuration. When the CLI is missing or older, it logs an error that names
+the version it found and schedules no job of any Compose project; all other
+jobs run as usual. After a CLI upgrade, the next configuration poll loads the
+projects.
+
+### Parameters
+
+- **`file`: string, repeatable**
+  - A Compose file. Repeat the key for several files; they are merged in the
+    order given, as with `docker compose -f a.yaml -f b.yaml`.
+- `profile`: string, repeatable
+  - A profile to activate. Jobs behind other profiles are not scheduled. Without
+    this key, `COMPOSE_PROFILES` from Ofelia's environment or the env files
+    applies, as for `docker compose`.
+- `env-file`: string, repeatable
+  - An env file for interpolation, replacing the default `.env` of the project
+    directory.
+- `project-name`: string
+  - Overrides the project name Compose would derive, including one set by
+    `COMPOSE_PROJECT_NAME`.
+- `project-directory`: string
+  - Overrides the project's working directory, which is where the default
+    `.env` is read from.
+
+The project is loaded as `docker compose` loads it, with the same order of
+environment, env files, profiles and name. Each run passes the resolved project
+name, profiles and directory explicitly, so it uses the context the job was
+loaded with.
+
+The section is read from the INI file only; container labels cannot register a
+project.
+
+The jobs of a project are bounded by `[global] max-runtime`, like a
+`[job-compose]` without a value of its own.
+
+### Jobs and names
+
+Each scheduled job becomes an Ofelia job named `<registration>.<job>`, for
+example `shop.backup`. It runs through the same adapter as `job-compose`, so it
+needs the docker CLI and the Compose plugin (see
+[Image for compose jobs](#image-for-compose-jobs)), and it is canceled the same
+way (see [Cancellation and maximum runtime](#cancellation-and-maximum-runtime)).
+The registered job runs with a private accepted model and interpolation environment:
+
+```text
+docker compose -f <accepted-model> --all-resources --profile <profile>... --env-file <accepted-env> \
+  -p <project> --project-directory <dir> run --rm -T -l ofelia.execution=<id> <job>
+```
+
+Jobs without a schedule are not scheduled by Ofelia; they stay manual-only and
+can be run with `docker compose run <job>`. When a job name is already used by
+a `[job-compose]` section, the project is rejected with a logged error and the
+`[job-compose]` keeps its name. `ofelia validate` exits with an error when any
+project is rejected. It runs the same Compose CLI check as the daemon, so run it
+where the Compose CLI 5.6.0 or later is installed, for example in the `-compose`
+image variant.
+
+Different registration names must not schedule the same job in the same
+resolved Compose project. Every registration uses Ofelia's Docker endpoint,
+so the pair of the resolved project name and Compose job name identifies a
+workload. If two registrations claim that pair, both projects are rejected
+as a whole; choosing different files, profiles or registration aliases does
+not create a separate workload identity. Distinct projects or distinct jobs
+within one project may be registered separately.
+
+On every configuration poll (`config-poll-interval`), Ofelia loads each
+registered project again and reloads the configuration when the resolved model
+differs. That covers the files the section names as well as the default `.env`,
+files pulled in through `include:` or `extends`, and interpolated values. A
+project that loaded before and is rejected by a reload, for example after a
+broken edit, keeps its last loaded jobs and logs the error; the rest of the
+reload is applied, and the project's jobs are replaced once it loads again.
+Retained jobs undergo the same identity check. Last loaded definitions stay
+scheduled only while their identities remain distinct; a collision between a
+retained definition and a newly loaded project rejects both registrations.
+Each job carries a revision, a hash of its own definition and of every job and
+service in its `depends_on` closure and their referenced Compose resources,
+including captured config and secret contents, which `docker compose run` starts with it:
+only jobs whose revision changed are replaced, and each execution logs the
+revision it ran with. A running execution keeps the definition it started with.
+
+Registered projects run the accepted, resolved Compose model from a private
+temporary file created for each execution.
+Includes, overrides, interpolation, relative paths, and job/service environment
+and label files are resolved when the project loads. File-backed and
+environment-backed Compose configs and secrets are captured at that point.
+Optional dependencies behind inactive profiles do not run and do not require
+their environment or configuration files until their profile is enabled.
+File-backed inputs retain their original file mode and Unix UID/GID; Ofelia
+fails the execution explicitly if its runtime cannot reproduce that ownership.
+An unprivileged Ofelia process can preserve files it owns but needs suitable
+privileges to reproduce another owner's UID/GID. Environment-backed inputs
+keep Compose's native upload behavior and per-reference access settings.
+A rejected reload therefore continues
+running the last accepted workload, even if its original files have changed
+or are no longer readable. Resolved values are kept in memory and are excluded
+from API output and the schedule state file. The private model and interpolation
+environment are removed after each execution.
+
+Captured file inputs are retained in `TMPDIR/ofelia-compose-inputs` with stable
+paths derived from their contents and access settings. They remain there after
+the CLI and Ofelia exit, because dependency service containers can still bind
+them and must be able to restart. The parent directory is private (`0700`);
+mounted file permissions preserve the accepted source. Reuse checks the bytes
+and access settings and rejects symlinks or altered files. Ofelia does not
+automatically prune this directory. Remove its contents only after all containers
+that reference those paths have been removed; retain it across host restarts.
+
+Ofelia reserves the dependency-service label `ofelia.compose.resources` for a
+fingerprint of that service's accepted config and secret inputs, including
+pre-start hooks. This lets Compose recreate an existing dependency when those
+inputs change on a valid reload. Unchanged or unrelated dependency services keep
+their containers; changing a job's command or schedule does not force recreation.
+
+This snapshot covers the Compose definition and these configuration inputs.
+Image tags, build contexts, bind-mounted application data and external Docker
+resources keep their normal runtime behavior; their contents are not pinned.
+Use immutable image digests and versioned build inputs where reproducible
+application contents are required. A plain `[job-compose]` continues reading
+its configured file for each run.
+
+### Supported triggers
+
+Ofelia accepts a subset of the Compose trigger model and rejects everything
+else when it loads the project. The logged error names the job and the
+setting, and the project schedules none of its jobs, because a setting mapped
+silently to a different behavior would be a compatibility bug. Other projects
+and all other jobs are unaffected, and the project is loaded again once its
+files change.
+
+| Setting | Supported | Behavior |
+|---|---|---|
+| `cron` with five fields | yes | Evaluated by Ofelia's scheduler |
+| `cron` with other field counts or `@daily` style shortcuts | no | Rejected |
+| `timezone` | yes | The schedule is evaluated in that zone; an empty value means the local time zone of the Ofelia process, which is logged when the project is loaded. A daylight-saving switch does not count as a change of the job |
+| `concurrency: forbid` (also the default) | yes | A fire while a run is in progress is skipped and logged |
+| `concurrency: queue` | yes, with `--state-file` | A fire while a run is in progress waits in one queue slot and runs when that run ends; a further fire while the slot is full is dropped and logged |
+| `missed_fires: one`, or unset | yes, with `--state-file` | After a downtime, one catch-up run for the most recent missed fire |
+| `missed_fires: skip` | yes | Missed runs are not replayed |
+| more than one schedule entry | no | Rejected |
+| `triggers.manual: false` on the job or on a job it depends on | no | Rejected, because Ofelia runs the job with `docker compose run`, which refuses such jobs |
+
+The plain form `schedule: ["0 2 * * *"]` sets only the cron expression, so
+`missed_fires` stays at its default `one` and the job needs a state file. Without
+`--state-file`, write the structured form with `missed_fires: skip`. Compose
+merges lists across files by appending, so a schedule entry in a second file
+adds a second entry; use `!override` to replace the list.
+
+### Missed fires and the queue
+
+`missed_fires: one` and `concurrency: queue` need state that survives a restart,
+so Ofelia keeps a schedule record per job in the state file
+([`--state-file`](CONFIGURATION.md#state-file---state-file), see
+[ADR-005](adr/ADR-005-durable-schedule-state.md)). Without a state file, a
+project that uses either setting is rejected with an error that names the flag.
+`ofelia validate` applies the same check; pass it `--state-file`, or set
+`OFELIA_STATE_FILE`, as for the daemon.
+
+The record holds the most recent scheduled time the running scheduler
+evaluated, and the run it admitted last. From it:
+
+- **Catch-up.** A fire is missed only when Ofelia was not running at its time.
+  At startup, Ofelia runs one catch-up per job, for the most recent missed fire,
+  however long the downtime was. A job seen for the first time catches up
+  nothing; fires before that are never missed. A fire the scheduler skipped
+  while it was running (`concurrency: forbid`) is not missed either.
+- **Changed schedule.** A changed `cron`, `timezone`, `concurrency` or
+  `missed_fires` starts the record afresh: a time the old schedule produced is
+  not a missed fire of the new one, and a queued run is dropped and logged.
+  A change to the job's definition alone keeps the record.
+- **Disabled job.** A disabled job catches up nothing. Disabling drops a queued
+  run; enabling counts the fires of the disabled period as handled.
+- **Manual runs.** `POST /api/jobs/run` and the web UI are refused with
+  `409 Conflict` while a run of the job is in progress or waiting, so a manual
+  run never runs beside a scheduled one. A manual run does not count as a fire.
+- **Global limit.** For these jobs the global limit of concurrent jobs delays a
+  run instead of dropping it. While the run waits for a slot, the job counts as
+  busy.
+- **At most once.** Ofelia records a run before it starts it. After a crash, a
+  run that had started counts as handled with the outcome `unknown`, and is not
+  started again; check it by hand. While its container (found by the
+  `ofelia.execution` label) still runs, or Docker cannot be queried, the job
+  counts as busy. The workload's execution ID is persisted independently of
+  the execution outcome, so this protection survives repeated restarts and
+  schedule changes. If a canceled run reports `compose run termination
+  unconfirmed`, the job also stays busy until Docker confirms the workload
+  has ended; its execution is not retried and a queued run keeps waiting. In exec mode
+  (`docker compose exec`) Ofelia cannot see the command, so after a crash a
+  second run can start beside one that still runs.
+
+An unresolved workload guard also survives changing the job to `skip`/`forbid`,
+or removing and later re-adding its configuration under the same name. Old
+queued occurrences are dropped when that schedule is removed; the workload
+record stays until its end is confirmed. A fresh `skip`/`forbid` job still needs
+no schedule record. Restoring a durable policy activates a fresh schedule;
+the deliberately inactive interval is not caught up. Keep the existing state
+file configured until these guards are settled. A replacement adapter that cannot observe the previous
+workload keeps the guard until a compatible adapter can confirm its end.
+If the Compose CLI exits with an error while the run context is still healthy,
+Ofelia also stops and removes that execution's labeled workload. The original
+CLI error is preserved; an unconfirmed cleanup retains the same workload guard.
+
+Each fire of such a job writes the state file: two atomic writes per run (start
+and end), a third when the run waits for a slot, and one for a fire that is
+skipped or queued.
+
+An older Ofelia refuses to load a state file that holds schedule records (it
+rejects fields it does not know). Before downgrading, remove the `schedules`
+section from the file.
+Do this only after confirming that all workloads represented by those records
+have ended, so removing the records cannot release a live workload's guard.
+
+### Keep scheduled jobs out of `docker compose up`
+
+Docker Compose 5.6 refuses `docker compose up` when an active job has a
+schedule, because Docker Engine does not run scheduled jobs yet. Put scheduled
+jobs behind a profile that `docker compose up` does not activate, and list that
+profile in the `[compose-project]` section:
+
+```yaml
+# /srv/shop/compose.yaml
+name: shop
+services:
+  web:
+    image: registry.example.com/shop:2026.10
+jobs:
+  backup:
+    image: registry.example.com/shop-maintenance:2026.10
+    command: ["/app/bin/backup"]
+    profiles: ["scheduled-jobs"]
+    triggers:
+      schedule:
+        - cron: "0 2 * * *"
+          timezone: Europe/Berlin
+          concurrency: forbid
+          missed_fires: skip
+```
+
+```ini
+[compose-project "shop"]
+file = /srv/shop/compose.yaml
+profile = scheduled-jobs
+```
+
+This schedules `shop.backup` at 02:00 Berlin time. `docker compose up` in
+`/srv/shop` starts `web` and leaves the job alone.

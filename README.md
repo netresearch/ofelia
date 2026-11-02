@@ -54,6 +54,9 @@ Label your Docker containers and let this Go-powered daemon handle the schedule.
 **Docker Compose**: Version 2.0 or later
 - Required only if using `job-compose` type
 - Must be available in the container's PATH or host system
+- The default image does not contain it; use the `-compose` image tags
+  (e.g. `ghcr.io/netresearch/ofelia:latest-compose`), which add the docker CLI
+  and the Compose plugin — see [Job Types](docs/jobs.md#image-for-compose-jobs)
 
 ### For local jobs only (job-local)
 
@@ -257,13 +260,15 @@ Supported formats:
 - `20 0 1 * * *` (every night, 20 seconds after 1 AM - [Quartz format](http://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/tutorial-lesson-06.html)
 - `0 1 * * *` (every night at 1 AM - standard [cron format](https://en.wikipedia.org/wiki/Cron)).
 
-You can configure four different kinds of jobs:
+You can configure five different kinds of jobs:
 
 - `job-exec`: this job is executed inside of a running container.
 - `job-run`: runs a command inside of a new container, using a specific image.
 - `job-local`: runs the command inside of the host running ofelia.
 - `job-service-run`: runs the command inside a new "run-once" service, for running inside a swarm
 - `job-compose`: runs a command using `docker compose run` or `docker compose exec` based on a compose file
+
+A `[compose-project]` section registers a Compose project instead: Ofelia then schedules the jobs defined in its top-level `jobs:` section (see [Compose projects](docs/jobs.md#compose-projects)).
 
 See [Jobs reference documentation](docs/jobs.md) for all available parameters.
 See [Architecture overview](docs/architecture.md) for details about the scheduler, job types and middleware.
@@ -309,7 +314,7 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `web-address` - address for the web UI server (default `:8081`).
 - `enable-pprof` - enable the pprof debug server.
 - `pprof-address` - address for the pprof server (default `127.0.0.1:8080`).
-- `max-runtime` - default maximum duration a run or service job may run (default `24h`).
+- `max-runtime` - default maximum duration a run, service or `run`-mode compose job may run (default `24h`).
 
 Log output now includes the original file and line of the logging call instead of the adapter location.
 
@@ -425,12 +430,19 @@ Override it with `--docker-poll-interval` or the `poll-interval` option in the
 `[docker]` section of the config file. Set it to `0` to disable both polling and
 automatic reloads. Command-line values only override the configuration when the
 flags are explicitly provided. A reload re-registers a job when one of its
-execution settings changed (for example `user`, `container` or `environment`,
-not only `schedule` and `command`); jobs whose settings are unchanged keep
-running untouched. Changes to `history-limit`, the retry settings, the
-workflow settings `depends-on`, `on-success` and `on-failure`, parallelism and
-`max-runtime` take effect only after a restart. Label-defined jobs pass the
-same security policy on a reload as on first registration.
+execution settings changed (for example `user`, `container`, `environment` or
+`max-runtime`, not only `schedule` and `command`); jobs whose settings are
+unchanged keep running untouched. A changed `[global]` value counts for every
+job that inherits it, such as `default-user`. Re-registering cancels a run of
+that job that is in progress, and the new registration starts without a
+previous run. `[global] max-runtime` is the exception: a job without a value
+of its own reads it while it runs, so a change applies without
+re-registering, to the next run and to a run in progress, measured from that
+run's start.
+Changes to `history-limit`, the retry settings, the workflow settings
+`depends-on`, `on-success` and `on-failure`, and parallelism take effect only
+after a restart. Label-defined jobs pass the same security policy on a reload
+as on first registration.
 
 Because the Docker image defines an `ENTRYPOINT`, pass the scheduler
 arguments as a list in `command:` so Compose does not treat them as a single

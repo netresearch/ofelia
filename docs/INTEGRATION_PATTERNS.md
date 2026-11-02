@@ -590,7 +590,7 @@ command = /scripts/new-feature.sh --dry-run
 
 ### Scheduling
 ✅ Use `no-overlap = true` for long-running or resource-intensive jobs
-✅ Set `max-runtime` on run and service jobs to prevent runaway jobs
+✅ Set `max-runtime` on run, service and compose jobs to prevent runaway jobs
 ✅ Schedule maintenance during low-traffic periods
 ✅ Use cron expressions that distribute load (avoid XX:00 pileups)
 

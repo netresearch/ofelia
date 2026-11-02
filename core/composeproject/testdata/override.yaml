@@ -1,0 +1,4 @@
+name: merged-override
+jobs:
+  sync:
+    command: ["echo", "override"]

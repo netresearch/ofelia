@@ -26,12 +26,15 @@ Ofelia supports multiple configuration methods that can be used independently or
 
 Disable flags from the state file apply on top regardless of where the underlying job came from, so an INI/label job paused via the UI stays paused after restart.
 
+A running daemon keeps a job disabled when a config reload replaces it: a changed INI or label definition, or an INI job taking over a same-named label job, comes back paused, without running first, even with `run-on-startup`. If the scheduler rejects the new definition, for example for an invalid schedule, the corrected definition of a later reload comes back paused. This holds with or without a state file.
+
 ## State File (`--state-file`)
 
 When the daemon runs with `--state-file=/path/to/state.json` (or `OFELIA_STATE_FILE=...`), Ofelia persists API-mutated state to disk so changes survive restarts ([#593](https://github.com/netresearch/ofelia/issues/593)):
 
 - **Jobs created/updated via `POST /api/jobs/create` or `/api/jobs/update`** are recorded on each successful call and reapplied on the next daemon boot
 - **Disable flags** (`POST /api/jobs/disable` / `/enable`) are persisted regardless of the job's origin — operators can pause an INI-defined job from the UI and the pause survives restart
+- **Schedule records** of Compose jobs with `missed_fires: one` or `concurrency: queue` ([catch-up and the queue](jobs.md#missed-fires-and-the-queue)). They are written as the jobs fire; records of jobs that no longer exist are removed when the configuration loads, except for jobs of a project that is currently rejected
 
 **Lifecycle**:
 
@@ -57,9 +60,25 @@ When the daemon runs with `--state-file=/path/to/state.json` (or `OFELIA_STATE_F
       "command": "pg_dump mydb"
     }
   },
-  "disabled": ["paused-job"]
+  "disabled": ["paused-job"],
+  "schedules": {
+    "shop.backup": {
+      "revision": "3f2a9c1b7e04",
+      "activated": "2026-10-20T08:00:00Z",
+      "cursor": "2026-10-25T00:00:00Z",
+      "dispatch": {
+        "scheduled": "2026-10-25T00:00:00Z",
+        "trigger": "scheduled",
+        "execution": "5d1626707da0",
+        "state": "ended",
+        "outcome": "success"
+      }
+    }
+  }
 }
 ```
+
+An older Ofelia refuses a file with a `schedules` section, because it rejects fields it does not know. Remove the section before downgrading.
 
 **Operator workflow** (typical):
 
@@ -368,6 +387,9 @@ command = pg_dump ${DB_NAME:-mydb}
 #       (so the sections are [job-exec], [job-run], [job-local],
 #        [job-service-run] and [job-compose])
 # NAME: Unique job identifier
+
+[compose-project "NAME"]
+# Registers a Compose project; its scheduled jobs become jobs named NAME.<job>
 ```
 
 ### Global Settings
@@ -614,23 +636,64 @@ max-runtime = 1h
 
 ### ComposeJob - Docker Compose Operations
 
-Manages Docker Compose projects.
+Runs a command in a service of a Compose project, through the `docker compose` CLI.
 
 ```ini
-[job-compose "stack-restart"]
+[job-compose "nightly-cleanup"]
 # Required
 schedule = 0 4 * * *        # 4 AM daily
-command = restart           # Compose command
+service = web               # Service (or Compose job) the command runs in
 
 # Optional
+command = php bin/cleanup.php   # Passed to the service; empty runs its default command
 file = /opt/compose/myapp/compose.yml   # Compose file; default compose.yml
-service = web               # Limit the command to one service
 exec = false                # true runs `compose exec` instead of `compose run`
+max-runtime = 1h            # run mode only; default [global] max-runtime
 ```
 
-`file`, `service` and `exec` are the only compose-specific keys. The project
+`file`, `service` and `exec` are the only compose-specific keys; `max-runtime`
+works as for run jobs. The project
 name and the working directory follow from the compose file's location, as they
 do for the `docker compose` CLI.
+
+When a `run`-mode execution is canceled or reaches its `max-runtime` (the job's
+own value, else `[global] max-runtime`), Ofelia stops and removes the run
+container it labeled with the execution ID; dependency services keep running.
+`exec`-mode commands cannot be stopped from outside the container, so
+`max-runtime` together with `exec = true` is ignored with a logged warning. See [jobs.md](jobs.md#cancellation-and-maximum-runtime)
+for details, including which Docker endpoint the compose CLI uses.
+
+### Compose Projects - Jobs Defined in Compose Files
+
+A `[compose-project "NAME"]` section registers a Compose project. Every job in
+its top-level `jobs:` section that has a schedule becomes an Ofelia job named
+`NAME.<job>`; the workload stays defined in the Compose files.
+
+```ini
+[compose-project "shop"]
+# Required, repeatable: merged in this order
+file = /srv/shop/compose.yaml
+file = /srv/shop/compose.jobs.yaml
+
+# Optional
+profile = scheduled-jobs        # repeatable; jobs behind other profiles are not scheduled
+env-file = /srv/shop/.env.prod  # repeatable; replaces the default .env of the project directory
+project-name = shop             # default: derived by Compose
+project-directory = /srv/shop   # default: derived by Compose
+```
+
+Compose projects need the Compose CLI 5.6.0 or later (for example the
+`-compose` image variant); Ofelia checks the version when it loads the
+configuration. Only a subset of the Compose trigger model is accepted: a five-field `cron`,
+`timezone`, `concurrency` and `missed_fires`. `missed_fires: one`, which is the
+default, and `concurrency: queue` need a state file (`--state-file`), which keeps
+a schedule record per job. With other settings, without a state file where one
+is needed, or with a missing or older CLI, the project is rejected: Ofelia
+logs an error that names the job and the setting, the flag or the version, and
+schedules none of the project's jobs, while all other jobs keep running. The
+section is INI-only. See [jobs.md](jobs.md#compose-projects) for the full table,
+[catch-up and the queue](jobs.md#missed-fires-and-the-queue), and the profile
+setup that keeps `docker compose up` working.
 
 ## Docker Labels Configuration
 

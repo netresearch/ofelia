@@ -1,0 +1,27 @@
+name: policies
+jobs:
+  plain:
+    image: alpine:3.22
+    triggers:
+      schedule:
+        - "0 2 * * *"
+  missed_one:
+    image: alpine:3.22
+    triggers:
+      schedule:
+        - cron: "0 2 * * *"
+          missed_fires: one
+  queued:
+    image: alpine:3.22
+    triggers:
+      schedule:
+        - cron: "0 2 * * *"
+          concurrency: queue
+          missed_fires: skip
+  skipped:
+    image: alpine:3.22
+    triggers:
+      schedule:
+        - cron: "0 2 * * *"
+          concurrency: forbid
+          missed_fires: skip

@@ -634,7 +634,9 @@ func (s *Server) computeRunTimes(job core.Job, now time.Time) (next, prev []time
 // including the recent-run summary the jobs table's sparkline and
 // duration cell read.
 func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
-	return s.buildAPIJobList(list, true)
+	return s.buildAPIJobList(list, true, func(j core.Job) bool {
+		return s.scheduler.IsJobRunning(j.GetName())
+	})
 }
 
 // buildAPIRemovedJobs is buildAPIJobs without the recent-run summary.
@@ -642,11 +644,15 @@ func (s *Server) buildAPIJobs(list []core.Job) []apiJob {
 // nothing there reads recentRuns, so computing and marshaling the
 // newest runs of every removed job was work the 5s poll paid for on
 // every tick and threw away.
+//
+// A removed job's running reports its canceled run that is still
+// stopping. Asking by name would report the run of a job registered
+// under the same name since.
 func (s *Server) buildAPIRemovedJobs(list []core.Job) []apiJob {
-	return s.buildAPIJobList(list, false)
+	return s.buildAPIJobList(list, false, s.scheduler.IsRemovedJobRunning)
 }
 
-func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool) []apiJob {
+func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool, running func(core.Job) bool) []apiJob {
 	now := time.Now()
 	jobs := make([]apiJob, 0, len(list))
 	for _, job := range list {
@@ -675,7 +681,7 @@ func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool) []apiJob 
 			Type:       jobType(job),
 			Schedule:   job.GetSchedule(),
 			Command:    job.GetCommand(),
-			Running:    s.scheduler.IsJobRunning(job.GetName()),
+			Running:    running(job),
 			LastRun:    execInfo,
 			NextRuns:   nextRuns,
 			PrevRuns:   prevRuns,
@@ -715,15 +721,16 @@ type jobRequest struct {
 	File      string `json:"file,omitempty"`
 	Service   string `json:"service,omitempty"`
 	ExecFlag  bool   `json:"exec,omitempty"`
-	// MaxRuntime is a Go duration string (e.g. "30m"), run-jobs only —
-	// see core.ParseMaxRuntime. Empty means "no per-job override": the
+	// MaxRuntime is a Go duration string (e.g. "30m"), for run jobs and
+	// compose jobs without exec (rejected with exec) — see
+	// core.ParseMaxRuntime. Empty means "no per-job override": the
 	// job then inherits `[global] max-runtime`, and only falls through
 	// to the scheduler's 24h default (defaultJobMaxRuntime) when there
 	// is no global either. "0s" is equivalent to omitting it: it is not
 	// a way to ask for no bound.
 	//
 	// That is the same ladder a config.ini [job-run] section climbs
-	// (cli/config.go, registerAllJobs). It used to stop one rung short
+	// (core.Scheduler.MaxRuntimeFor, read at run time). It used to stop one rung short
 	// here — an API-created job never saw the global, so an operator who
 	// set one got it for INI run jobs and 24h for API ones — which was
 	// issue #806.
@@ -762,9 +769,12 @@ func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.scheduler.RunJob(r.Context(), req.Name); err != nil {
-		if errors.Is(err, core.ErrJobNotFound) {
+		switch {
+		case errors.Is(err, core.ErrJobNotFound):
 			http.Error(w, msgJobNotFound, http.StatusNotFound)
-		} else {
+		case errors.Is(err, core.ErrJobBusy):
+			http.Error(w, "job is running or waiting to run; try again when it has finished", http.StatusConflict)
+		default:
 			s.scheduler.Logger.Error("run job failed", "job", req.Name, "error", err)
 			http.Error(w, "failed to run job", http.StatusInternalServerError)
 		}
@@ -870,6 +880,7 @@ func (s *Server) persistJob(name string, req *jobRequest) error {
 		j.File = req.File
 		j.Service = req.Service
 		j.Exec = req.ExecFlag
+		j.MaxRuntime = req.MaxRuntime
 	case "", jobTypeLocal:
 		j.Type = persist.JobTypeLocal
 	default:
@@ -906,7 +917,7 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.scheduler.AddJob(job); err != nil {
+	if err := s.scheduler.AddJob(job); err != nil { //nolint:contextcheck // the job outlives the request
 		s.scheduler.Logger.Error("create job failed", "job", req.Name, "error", err)
 		http.Error(w, "failed to create job", http.StatusBadRequest)
 		return
@@ -966,7 +977,7 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		if old := s.scheduler.GetAnyJob(req.Name); old != nil {
 			_ = s.scheduler.RemoveJob(old)
 		}
-		if err := s.scheduler.AddJob(job); err != nil {
+		if err := s.scheduler.AddJob(job); err != nil { //nolint:contextcheck // the job outlives the request
 			s.scheduler.Logger.Error("add job failed during update", "job", req.Name, "error", err)
 			http.Error(w, "failed to create job", http.StatusBadRequest)
 			return
@@ -984,50 +995,6 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(status)
 }
 
-// GlobalMaxRuntimeProvider is satisfied by the configuration the daemon
-// hands NewServer. The server holds that configuration as `any` to keep
-// this package from importing cli, so this is how an API-created run job
-// reaches `[global] max-runtime`.
-//
-// Implemented by *cli.Config; cli asserts the link at compile time so a
-// rename cannot quietly reduce this to the nil case.
-type GlobalMaxRuntimeProvider interface {
-	GlobalMaxRuntime() time.Duration
-}
-
-// globalMaxRuntime returns the operator's `[global] max-runtime`, or zero
-// when the server was built without a configuration that exposes one --
-// which is every test that passes nil, and any embedder that does not
-// implement the interface.
-//
-// The typed-nil check is not ceremony: config arrives as `any` through an
-// exported constructor, and a nil *cli.Config stored in one satisfies the
-// assertion while panicking on the call. Falling back to zero is what a
-// caller who has no configuration meant.
-func (s *Server) globalMaxRuntime() time.Duration {
-	p, ok := s.config.(GlobalMaxRuntimeProvider)
-	if !ok || isNilValue(p) {
-		return 0
-	}
-	return p.GlobalMaxRuntime()
-}
-
-// isNilValue reports whether v holds a nil of any kind that can be nil,
-// which a plain `v == nil` misses once the value carries a type. Limiting
-// it to pointers would be arbitrary: a nil func-backed implementor panics
-// on the call just as a nil *cli.Config does.
-func isNilValue(v any) bool {
-	rv := reflect.ValueOf(v)
-	//nolint:exhaustive // reflect.Kind has many values; only the nil-capable ones matter here
-	switch rv.Kind() {
-	case reflect.Pointer, reflect.Func, reflect.Map, reflect.Chan,
-		reflect.Slice, reflect.Interface, reflect.UnsafePointer:
-		return rv.IsNil()
-	default:
-		return false
-	}
-}
-
 func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 	if s.provider == nil {
 		return nil, fmt.Errorf("docker provider unavailable for run job")
@@ -1042,15 +1009,11 @@ func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
 	}
-	// Same rule registerAllJobs applies to an INI run job: a job that
-	// named no bound of its own inherits the operator's global, and only
-	// falls through to the scheduler's 24h constant when there is no
-	// global either. "0s" parses to zero and therefore inherits too,
-	// which is what makes it equivalent to omitting the field (#789)
-	// rather than a way to ask for no bound. See #806.
-	if maxRuntime == 0 {
-		maxRuntime = s.globalMaxRuntime()
-	}
+	// Same rule as for an INI run job: a job that named no bound of its own
+	// keeps 0 and runs under the scheduler's current [global] max-runtime,
+	// or its 24h constant when there is no global. "0s" parses to zero and
+	// therefore inherits too, which is what makes it equivalent to omitting
+	// the field (#789) rather than a way to ask for no bound. See #806.
 	j.MaxRuntime = maxRuntime
 	return j, nil
 }
@@ -1068,7 +1031,9 @@ func (s *Server) newExecJobFromRequest(req *jobRequest) (core.Job, error) {
 }
 
 // newComposeJobFromRequest validates compose job parameters and builds the job.
-func newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
+// The server's provider may be nil: the job still runs, but a canceled run
+// then cannot confirm that its container stopped.
+func (s *Server) newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
 	validator := config.NewCommandValidator()
 	if req.File != "" {
 		if err := validator.ValidateFilePath(req.File); err != nil {
@@ -1084,13 +1049,23 @@ func newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
 			return nil, fmt.Errorf("invalid command arguments: %w", err)
 		}
 	}
-	j := &core.ComposeJob{}
+	maxRuntime, err := core.ParseMaxRuntime(req.MaxRuntime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
+	}
+	j := &core.ComposeJob{Provider: s.provider}
 	j.Name = req.Name
 	j.Schedule = req.Schedule
 	j.Command = req.Command
 	j.File = req.File
 	j.Service = req.Service
 	j.Exec = req.ExecFlag
+	j.MaxRuntime = maxRuntime
+	if err := j.CheckMaxRuntime(); err != nil {
+		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
+	}
+	// Without a value of its own, a run-mode job runs under the scheduler's
+	// current [global] max-runtime, as a config.ini [job-compose] does.
 	return j, nil
 }
 
@@ -1123,7 +1098,7 @@ func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
 	case jobTypeExec:
 		job, err = s.newExecJobFromRequest(req)
 	case jobTypeCompose:
-		job, err = newComposeJobFromRequest(req)
+		job, err = s.newComposeJobFromRequest(req)
 	case "", jobTypeLocal:
 		job, err = newLocalJobFromRequest(req)
 	default:

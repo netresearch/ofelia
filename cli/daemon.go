@@ -122,7 +122,7 @@ func (c *DaemonCommand) boot() (err error) {
 	c.shutdownManager = core.NewShutdownManager(c.Logger, 30*time.Second)
 
 	// Always try to read the config file, as there are options such as globals or some tasks that can be specified there and not in docker
-	config, err := BuildFromFile(c.ConfigFile, c.Logger)
+	config, err := buildFromFile(c.ConfigFile, c.Logger, scheduleStateFor(c.StateFile))
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
 		// Create an empty config if loading failed
@@ -603,6 +603,7 @@ func (c *DaemonCommand) initPersistStore() error {
 	if err := c.persistStore.Load(); err != nil {
 		return fmt.Errorf("persist load %q: %w", c.persistStore.Path(), err)
 	}
+	c.wireScheduleRecords()
 	snap := c.persistStore.Snapshot()
 	for name, j := range snap.Jobs {
 		job, err := c.persistedJobToScheduler(name, j)
@@ -643,6 +644,20 @@ func (c *DaemonCommand) initPersistStore() error {
 	return nil
 }
 
+// wireScheduleRecords hands the loaded state file to the scheduler as the
+// store of schedule records (ADR-005) and removes the records of jobs that no
+// longer exist. The records are evaluated when the scheduler starts, which is
+// after this.
+func (c *DaemonCommand) wireScheduleRecords() {
+	c.scheduler.SetScheduleStore(c.persistStore)
+	// A configuration that failed to load knows none of its jobs (boot falls
+	// back to an empty one, and only a loaded file sets configPath); pruning
+	// with it would delete every record, unended dispatches included.
+	if c.config != nil && c.config.configPath != "" {
+		c.config.pruneScheduleRecords()
+	}
+}
+
 // persistedJobToScheduler reconstructs a scheduler-ready core.Job
 // from the on-disk persist.Job. Mirrors web.Server.jobFromRequest so
 // the round-trip from API → state-file → load lands the same job
@@ -673,7 +688,7 @@ func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (co
 	case persist.JobTypeExec:
 		job, err = c.buildPersistedExecJob(name, j, provider)
 	case persist.JobTypeCompose:
-		job, err = buildPersistedComposeJob(name, j, validator)
+		job, err = c.buildPersistedComposeJob(name, j, validator, provider)
 	case persist.JobTypeLocal, "":
 		job, err = buildPersistedLocalJob(name, j, validator)
 	default:
@@ -716,16 +731,8 @@ func (c *DaemonCommand) buildPersistedRunJob(name string, j *persist.Job, provid
 	if err != nil {
 		return nil, fmt.Errorf("job %q: %w", name, err)
 	}
-	// The same inheritance web.Server.newRunJobFromRequest applies when
-	// the job is created. It has to be repeated here rather than resolved
-	// once and persisted: the state file keeps what the caller asked for,
-	// so a job that named no bound picks up whatever the global says at
-	// the next start, exactly as an INI job does. Without this, the first
-	// restart would silently move every such job back to the 24h constant
-	// (#806).
-	if maxRuntime == 0 && c.config != nil {
-		maxRuntime = c.config.GlobalMaxRuntime()
-	}
+	// A job that named no bound keeps 0 and runs under the scheduler's
+	// current [global] max-runtime, exactly as an INI job does (#806).
 	rj.MaxRuntime = maxRuntime
 	return rj, nil
 }
@@ -744,7 +751,11 @@ func (c *DaemonCommand) buildPersistedExecJob(name string, j *persist.Job, provi
 }
 
 // buildPersistedComposeJob materializes a persist.JobTypeCompose into a core.ComposeJob.
-func buildPersistedComposeJob(name string, j *persist.Job, validator *cfgvalidator.CommandValidator) (core.Job, error) {
+// provider may be nil: the job still runs, but a canceled run then cannot
+// confirm that its container stopped.
+func (c *DaemonCommand) buildPersistedComposeJob(
+	name string, j *persist.Job, validator *cfgvalidator.CommandValidator, provider core.DockerProvider,
+) (core.Job, error) {
 	if j.File != "" {
 		if err := validator.ValidateFilePath(j.File); err != nil {
 			return nil, fmt.Errorf("invalid compose file path: %w", err)
@@ -758,13 +769,23 @@ func buildPersistedComposeJob(name string, j *persist.Job, validator *cfgvalidat
 			return nil, fmt.Errorf("invalid command arguments: %w", err)
 		}
 	}
-	cj := &core.ComposeJob{}
+	cj := &core.ComposeJob{Provider: provider}
 	cj.Name = name
 	cj.Schedule = j.Schedule
 	cj.Command = j.Command
 	cj.File = j.File
 	cj.Service = j.Service
 	cj.Exec = j.Exec
+	maxRuntime, err := core.ParseMaxRuntime(j.MaxRuntime)
+	if err != nil {
+		return nil, fmt.Errorf("job %q: %w", name, err)
+	}
+	cj.MaxRuntime = maxRuntime
+	if err := cj.CheckMaxRuntime(); err != nil {
+		return nil, fmt.Errorf("job %q: %w", name, err)
+	}
+	// As for a persisted run job, a run-mode job that named no bound runs
+	// under the scheduler's current [global] max-runtime.
 	return cj, nil
 }
 

@@ -21,7 +21,6 @@ import (
 	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
-	"github.com/netresearch/ofelia/web"
 )
 
 const (
@@ -94,22 +93,42 @@ type Config struct {
 		// container's jobs are named.
 		JobExecLabelScope string `gcfg:"job-exec-label-scope" mapstructure:"job-exec-label-scope" validate:"omitempty,oneof=service container container-service" default:"service"` //nolint:revive
 	}
-	ExecJobs          map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
-	RunJobs           map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
-	ServiceJobs       map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
-	LocalJobs         map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
-	ComposeJobs       map[string]*ComposeJobConfig `gcfg:"job-compose" mapstructure:"job-compose,squash"`
-	Docker            DockerConfig
-	mu                sync.RWMutex // protects job map access
-	configPath        string
-	configFiles       []string
-	configModTime     time.Time
-	sh                *core.Scheduler
-	dockerHandler     *DockerHandler
-	logger            *slog.Logger
-	levelVar          *slog.LevelVar
-	notificationDedup *middlewares.NotificationDedup
-	WebhookConfigs    *WebhookConfigs
+	ExecJobs    map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
+	RunJobs     map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`
+	ServiceJobs map[string]*RunServiceConfig `gcfg:"job-service-run" mapstructure:"job-service-run,squash"`
+	LocalJobs   map[string]*LocalJobConfig   `gcfg:"job-local" mapstructure:"job-local,squash"`
+	ComposeJobs map[string]*ComposeJobConfig `gcfg:"job-compose" mapstructure:"job-compose,squash"`
+	// ComposeProjects are the registered Compose projects ([compose-project]
+	// sections, INI only). Their scheduled jobs are expanded into ComposeJobs.
+	ComposeProjects map[string]*ComposeProjectConfig `json:"-" mapstructure:"-"`
+	// composeFiles are the Compose and env files of the registered projects;
+	// a change to one of them reloads the configuration like an INI change.
+	composeFiles []string
+	// composeRevisions are the revisions of the loaded projects by
+	// registration name; a poll that loads a different revision reloads the
+	// configuration, which covers files the registration does not name.
+	composeRevisions map[string]string
+	// composeRejected names the projects rejected by the last load.
+	composeRejected map[string]bool
+	// scheduleState says whether a state file can keep the schedule records
+	// that missed_fires: one and concurrency: queue need (ADR-005).
+	scheduleState scheduleStateMode
+	Docker        DockerConfig
+	mu            sync.RWMutex // protects job map access
+	// disabledUnregistered holds names that were disabled when a reload
+	// removed their job and the scheduler rejected the replacement; the next
+	// definition that registers under such a name is registered disabled.
+	disabledUnregistered map[string]bool
+	disabledMu           sync.Mutex
+	configPath           string
+	configFiles          []string
+	configModTime        time.Time
+	sh                   *core.Scheduler
+	dockerHandler        *DockerHandler
+	logger               *slog.Logger
+	levelVar             *slog.LevelVar
+	notificationDedup    *middlewares.NotificationDedup
+	WebhookConfigs       *WebhookConfigs
 }
 
 // NewConfig returns a Config with empty job maps and every `default:` tag
@@ -120,13 +139,14 @@ type Config struct {
 // No scheduler and no Docker connection exist yet — InitializeApp creates those.
 func NewConfig(logger *slog.Logger) *Config {
 	c := &Config{
-		ExecJobs:       make(map[string]*ExecJobConfig),
-		RunJobs:        make(map[string]*RunJobConfig),
-		ServiceJobs:    make(map[string]*RunServiceConfig),
-		LocalJobs:      make(map[string]*LocalJobConfig),
-		ComposeJobs:    make(map[string]*ComposeJobConfig),
-		WebhookConfigs: NewWebhookConfigs(),
-		logger:         logger,
+		ExecJobs:        make(map[string]*ExecJobConfig),
+		RunJobs:         make(map[string]*RunJobConfig),
+		ServiceJobs:     make(map[string]*RunServiceConfig),
+		LocalJobs:       make(map[string]*LocalJobConfig),
+		ComposeJobs:     make(map[string]*ComposeJobConfig),
+		ComposeProjects: make(map[string]*ComposeProjectConfig),
+		WebhookConfigs:  NewWebhookConfigs(),
+		logger:          logger,
 	}
 
 	_ = defaults.Set(c)
@@ -235,18 +255,33 @@ func loadConfigFile(f string, c *Config, logger *slog.Logger, allUsedKeys map[st
 // The filename may include glob patterns. When multiple files are matched,
 // they are parsed in lexical order and merged.
 func BuildFromFile(filename string, logger *slog.Logger) (*Config, error) {
+	return buildFromFile(filename, logger, scheduleStateUnchecked)
+}
+
+// buildFromFile is BuildFromFile for a caller that knows whether a state file
+// is configured; a Compose project that needs one is rejected without it.
+func buildFromFile(filename string, logger *slog.Logger, state scheduleStateMode) (*Config, error) {
 	files, err := resolveConfigFiles(filename)
 	if err != nil {
 		return nil, err
 	}
 
 	c := NewConfig(logger)
+	c.scheduleState = state
 	var latest time.Time
 	allUsedKeys := make(map[string]bool)
 
 	for _, f := range files {
 		if err := loadConfigFile(f, c, logger, allUsedKeys, &latest); err != nil {
 			return nil, err
+		}
+	}
+	c.expandComposeProjects()
+	// Compose files are watched with the INI files; count their mod times so
+	// the first poll does not see them as changed.
+	for _, f := range c.composeFiles {
+		if info, statErr := os.Stat(f); statErr == nil && info.ModTime().After(latest) {
+			latest = info.ModTime()
 		}
 	}
 	c.configPath = filename
@@ -378,6 +413,8 @@ func getKnownKeysForJobType(jobType string) []string {
 		return extractMapstructureKeys(LocalJobConfig{})
 	case jobCompose:
 		return extractMapstructureKeys(ComposeJobConfig{})
+	case composeProjectSection:
+		return extractMapstructureKeys(ComposeProjectConfig{})
 	default:
 		return nil
 	}
@@ -401,6 +438,7 @@ func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 	if parseErr != nil {
 		return nil, fmt.Errorf("parse ini from string: %w", parseErr)
 	}
+	c.expandComposeProjects()
 
 	// Collect used keys for deprecation detection
 	usedKeys := make(map[string]bool)
@@ -578,28 +616,6 @@ func (c *Config) mergeJobsFromDockerContainers() {
 	c.refreshRuntimeKnobsAfterGlobalMerge(prevLogLevel, prevCooldown)
 }
 
-// The web server holds this configuration as `any`, so nothing links the
-// two sides of #806 except this line. It lives here rather than in a test
-// on purpose: in a _test.go file `go build ./...` would still succeed
-// after a rename, the server's type assertion would start failing at
-// runtime, and every API-created run job would be back on the 24h
-// constant -- the bug, restored silently in exactly the builds that ship.
-var _ web.GlobalMaxRuntimeProvider = (*Config)(nil)
-
-// GlobalMaxRuntime reports the operator's `[global] max-runtime`.
-//
-// It exists for the web server, which holds this configuration as `any`
-// and reads it through web.GlobalMaxRuntimeProvider so an API-created run
-// job inherits the same bound an INI one gets from registerAllJobs (#806).
-//
-// Takes the read lock: the label reconcile writes Global under c.mu while
-// the web server serves requests.
-func (c *Config) GlobalMaxRuntime() time.Duration {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.Global.MaxRuntime
-}
-
 // mergeJobs copies jobs from src into dst while respecting INI precedence.
 func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind string) {
 	for name, j := range src {
@@ -619,11 +635,33 @@ func mergeJobs[T jobConfig](c *Config, dst map[string]T, src map[string]T, kind 
 // discarded with `_ =`, leaving only the scheduler's own warning behind while
 // startup continued and the job count still included it.
 func (c *Config) registerJob(name string, j core.Job) bool {
-	if err := c.sh.AddJob(j); err != nil {
+	return c.registerJobAs(name, j, false)
+}
+
+// registerJobAs is registerJob with the choice to register the job disabled,
+// used when a reload replaces a disabled job. Its cron entry is then added
+// paused, so it cannot start before the pause, not even for run-on-startup.
+// If the scheduler rejects a disabled job, the name is remembered, so that
+// the corrected definition of the next reload is registered disabled too.
+func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
+	add := c.sh.AddJob
+	if disabled {
+		add = c.sh.AddJobDisabled
+	}
+	if err := add(j); err != nil {
 		c.logger.Error("job will not run: the scheduler rejected it",
 			"job", name, "error", err)
+		if disabled {
+			c.disabledMu.Lock()
+			if c.disabledUnregistered == nil {
+				c.disabledUnregistered = make(map[string]bool)
+			}
+			c.disabledUnregistered[name] = true
+			c.disabledMu.Unlock()
+		}
 		return false
 	}
+	c.forgetDisabledName(name)
 	return true
 }
 
@@ -634,11 +672,13 @@ func (c *Config) registerJob(name string, j core.Job) bool {
 //
 // The five loops stay in one function on purpose. Their prologues really
 // do differ (only the Docker-backed kinds take a provider and initialize
-// runtime fields; only run and service inherit the global max-runtime),
+// runtime fields; only compose jobs drop an exec-mode max-runtime),
 // and the config types embed different core jobs, so splitting them into
 // five methods only relocates the similarity into five signatures. What
 // they genuinely share is the tail, and that now lives in finishJob.
 func (c *Config) registerAllJobs() {
+	// Jobs without a max-runtime of their own read this at run time.
+	c.sh.SetGlobalMaxRuntime(c.Global.MaxRuntime)
 	provider := c.dockerHandler.GetDockerProvider()
 	rejected := 0
 
@@ -656,9 +696,6 @@ func (c *Config) registerAllJobs() {
 	for name, j := range c.RunJobs {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -674,9 +711,6 @@ func (c *Config) registerAllJobs() {
 	for name, j := range c.ServiceJobs {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = provider
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -685,6 +719,8 @@ func (c *Config) registerAllJobs() {
 	}
 	for name, j := range c.ComposeJobs {
 		_ = defaults.Set(j)
+		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
+		j.Provider = provider
 		j.Name = name
 		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
 			func() { j.buildMiddlewares(c.logger, wm) })
@@ -983,6 +1019,7 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 		if !ok {
 			_ = c.sh.RemoveJob(j)
 			delete(current, name)
+			c.forgetDisabledName(name)
 			continue
 		}
 		if replaceIfChanged(c, name, j, newJob, prep, source) {
@@ -992,8 +1029,11 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 
 	for name, j := range parsed {
 		cur, curOK := current[name]
+		// reconcileParsedJob may replace an existing job through RemoveJob,
+		// which forgets that the name was disabled.
+		wasDisabled := curOK && c.wasDisabled(name)
 		if reconcileParsedJob(c, name, cur, curOK, source, jobKind) {
-			addNewJob(c, name, j, prep, source, current)
+			addNewJob(c, name, j, prep, source, current, wasDisabled)
 		}
 	}
 }
@@ -1023,13 +1063,49 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 	if newHash == oldHash {
 		return false
 	}
+	// RemoveJob forgets that the job was disabled, so read it first and
+	// register the replacement disabled.
+	wasDisabled := c.wasDisabled(name)
 	_ = c.sh.RemoveJob(oldJob)
 	newJob.buildMiddlewares(c.logger, c.getWebhookManager())
 	// A rejection here is worse than at boot: the old job has already been
 	// removed, so a job that was running stops and nothing takes its place.
-	c.registerJob(name, newJob)
+	c.registerJobAs(name, newJob, wasDisabled)
 	// caller updates current map entry
 	return true
+}
+
+// wasDisabled reports whether name is disabled in the scheduler, or was
+// disabled when a reload removed it and the scheduler rejected its replacement.
+func (c *Config) wasDisabled(name string) bool {
+	if c.sh.IsJobDisabled(name) {
+		return true
+	}
+	c.disabledMu.Lock()
+	defer c.disabledMu.Unlock()
+	_, ok := c.disabledUnregistered[name]
+	return ok
+}
+
+// forgetDisabledName drops a name remembered by registerJobAs, once the job is
+// registered again or removed from the configuration.
+func (c *Config) forgetDisabledName(name string) {
+	c.disabledMu.Lock()
+	defer c.disabledMu.Unlock()
+	delete(c.disabledUnregistered, name)
+}
+
+// dropComposeExecMaxRuntime removes a max-runtime from a compose job in exec
+// mode: its command cannot be stopped. The value is dropped with a warning
+// rather than failing the configuration, because the key loaded (without
+// effect) before compose jobs honored it. A run-mode job keeps its own value;
+// without one it runs under the scheduler's [global] max-runtime.
+func (c *Config) dropComposeExecMaxRuntime(name string, j *core.ComposeJob) {
+	if j.Exec && j.MaxRuntime != 0 {
+		c.logger.Warn("max-runtime is ignored for a compose job with exec = true: an exec'd command cannot be stopped",
+			"job", name, "max-runtime", j.MaxRuntime)
+		j.MaxRuntime = 0
+	}
 }
 
 // validatable is an optional interface for jobs that support validation
@@ -1037,7 +1113,11 @@ type validatable interface {
 	Validate() error
 }
 
-func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J) {
+// addNewJob registers j and records it in current. disabled registers it
+// disabled, for a job that replaces a disabled one of the same name.
+func addNewJob[J jobConfig](
+	c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J, disabled bool,
+) {
 	if source != "" {
 		j.SetJobSource(source)
 	}
@@ -1052,7 +1132,7 @@ func addNewJob[J jobConfig](c *Config, name string, j J, prep func(string, J), s
 	}
 
 	j.buildMiddlewares(c.logger, c.getWebhookManager())
-	c.registerJob(name, j)
+	c.registerJobAs(name, j, disabled)
 	current[name] = j
 }
 
@@ -1074,9 +1154,6 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	runPrep := func(name string, j *RunJobConfig) {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -1094,9 +1171,6 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	servicePrep := func(name string, j *RunServiceConfig) {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -1106,6 +1180,8 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
+		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
+		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
@@ -1125,7 +1201,7 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	// Forward allow-listed non-webhook globals (Slack, Mail, Save,
 	// log-level, max-runtime, notification-cooldown, enable-strict-validation)
 	// BEFORE syncJobMap so the prep closures above — which call
-	// mergeNotificationDefaults / read c.Global.MaxRuntime — naturally pick
+	// mergeNotificationDefaults — naturally pick
 	// up fresh label values for any new or changed job. See #652.
 	//
 	// LIMITATION (documented in cli/config_global_merge.go header): jobs
@@ -1200,9 +1276,6 @@ func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 	runPrep := func(name string, j *RunJobConfig) {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -1222,9 +1295,6 @@ func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 	svcPrep := func(name string, j *RunServiceConfig) {
 		_ = defaults.Set(j)
 		c.applyDefaultUser(&j.User)
-		if j.MaxRuntime == 0 {
-			j.MaxRuntime = c.Global.MaxRuntime
-		}
 		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
@@ -1235,6 +1305,8 @@ func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
 
 	composePrep := func(name string, j *ComposeJobConfig) {
 		_ = defaults.Set(j)
+		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
+		j.Provider = c.dockerHandler.GetDockerProvider()
 		j.Name = name
 		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
 		c.injectDedup(&j.SlackConfig, &j.MailConfig)
@@ -1252,12 +1324,19 @@ func (c *Config) iniConfigUpdate() error {
 		return err
 	}
 
-	latest, changed, err := latestChanged(files, c.configModTime)
+	// The Compose files of registered projects count as configuration: a
+	// change to one reloads it, and changed jobs are replaced (ADR-004).
+	watched := append(append([]string{}, files...), c.composeFiles...)
+	latest, changed, err := latestChanged(watched, c.configModTime)
 	if err != nil {
 		return err
 	}
 	for _, f := range files {
 		c.logger.Debug(fmt.Sprintf("checking config file %s", f))
+	}
+	if !changed && c.composeProjectsChanged() {
+		c.logger.Debug("a registered compose project changed")
+		changed = true
 	}
 	if !changed {
 		c.logger.Debug("config not changed")
@@ -1265,19 +1344,27 @@ func (c *Config) iniConfigUpdate() error {
 	}
 	c.logger.Debug(fmt.Sprintf("reloading config files from %s", strings.Join(files, ", ")))
 
-	parsed, err := BuildFromFile(c.configPath, c.logger)
+	parsed, err := buildFromFile(c.configPath, c.logger, c.scheduleState)
 	if err != nil {
 		return err
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	c.keepLastLoadedComposeJobs(parsed)
 	globalChanged := !reflect.DeepEqual(parsed.Global, c.Global)
 	c.configFiles = files
 	c.configModTime = latest
+	c.composeFiles = parsed.composeFiles
+	c.composeRevisions = parsed.composeRevisions
+	c.composeRejected = parsed.composeRejected
+	// The registrations must match the revisions, or the poll compares a
+	// stale project with a new revision and reloads on every tick.
+	c.ComposeProjects = parsed.ComposeProjects
 	c.logger.Debug(fmt.Sprintf("applied config files from %s", strings.Join(files, ", ")))
 	if globalChanged {
 		c.Global = parsed.Global
+		c.sh.SetGlobalMaxRuntime(c.Global.MaxRuntime)
 		c.rebuildAfterGlobalChange()
 	}
 
@@ -1293,6 +1380,7 @@ func (c *Config) iniConfigUpdate() error {
 	}
 
 	c.syncAllJobMapsFromINI(parsed)
+	c.pruneScheduleRecords()
 	return nil
 }
 
@@ -1452,6 +1540,10 @@ type ComposeJobConfig struct {
 	middlewares.MailConfig    `mapstructure:",squash"`
 	JobWebhookConfig          `mapstructure:",squash"`
 	JobSource                 JobSource `json:"-" mapstructure:"-"`
+	// composeRegistration names the [compose-project] a job was expanded
+	// from, or "" for a [job-compose]. Job names are "<registration>.<job>",
+	// and registrations may contain dots, so the name alone cannot tell.
+	composeRegistration string
 }
 
 // GetJobSource reports where this job was defined, INI or container labels.
@@ -1563,6 +1655,8 @@ func decodeJobSection(section *ini.Section, name string, c *Config, unknownJobs 
 	case strings.HasPrefix(name, jobCompose):
 		return decodeJob(section, &ComposeJobConfig{JobSource: JobSourceINI},
 			func(n string, j *ComposeJobConfig) { c.ComposeJobs[n] = j }, jobCompose, unknownJobs)
+	case strings.HasPrefix(name, composeProjectSection):
+		return decodeComposeProjectSection(section, c, unknownJobs)
 	default:
 		return nil
 	}

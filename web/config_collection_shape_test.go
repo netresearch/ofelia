@@ -50,6 +50,11 @@ func TestConfigJobCollectionsMatchTheClientRule(t *testing.T) {
 	cfgType := reflect.TypeFor[cli.Config]()
 	seen := map[string]bool{}
 	for f := range cfgType.Fields() {
+		// A field that never reaches the client (json:"-") cannot be shown
+		// by it either, so the naming rule does not apply.
+		if f.Tag.Get("json") == "-" {
+			continue
+		}
 		if !isCollectionShaped(f.Type) {
 			if strings.HasSuffix(f.Name, "Jobs") {
 				t.Errorf("%s is named like a job collection but is %s: "+

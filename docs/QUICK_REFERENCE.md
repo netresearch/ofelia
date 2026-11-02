@@ -418,10 +418,10 @@ command = /scripts/task.sh
 no-overlap = true               # ← Add this
 ```
 
-`max-runtime` is not available on `job-exec`. It applies to `job-run` and
-`job-service-run`, and a `[global] max-runtime` seeds only those two — an exec
-job is never bounded by it, because the command runs inside a container ofelia
-did not create. To cap an exec job, put the limit in the command itself:
+`max-runtime` is not available on `job-exec`. It applies to `job-run`,
+`job-service-run` and `job-compose` in `run` mode, and a `[global] max-runtime`
+seeds only those — an exec job is never bounded by it, because the command runs
+inside a container ofelia did not create. To cap an exec job, put the limit in the command itself:
 
 ```ini
 [job-exec "worker-task"]
@@ -659,7 +659,7 @@ mail-only-on-error = false
 - [ ] Set appropriate user for exec/run jobs
 - [ ] Use read-only volume mounts where possible
 - [ ] Enable audit logging (`save-only-on-error = false`)
-- [ ] Set `max-runtime` on run and service jobs to prevent runaway jobs
+- [ ] Set `max-runtime` on run, service and compose jobs to prevent runaway jobs
 - [ ] Use `no-overlap` for resource-intensive tasks
 - [ ] Validate all input in custom scripts
 - [ ] Keep Ofelia image updated

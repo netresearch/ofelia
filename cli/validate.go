@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	defaults "github.com/creasty/defaults"
 
@@ -17,9 +18,12 @@ import (
 // ValidateCommand validates the config file
 type ValidateCommand struct {
 	ConfigFile string `long:"config" env:"OFELIA_CONFIG" description:"configuration file"`
-	LogLevel   string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (overrides config)"`
-	Logger     *slog.Logger
-	LevelVar   *slog.LevelVar
+	// StateFile mirrors the daemon's option. Validation only checks whether one
+	// is set: Compose jobs with missed_fires: one or concurrency: queue need it.
+	StateFile string `long:"state-file" env:"OFELIA_STATE_FILE" description:"the daemon's state file; only checks whether one is set"`
+	LogLevel  string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (overrides config)"`
+	Logger    *slog.Logger
+	LevelVar  *slog.LevelVar
 }
 
 // Execute runs the validation command
@@ -30,7 +34,7 @@ func (c *ValidateCommand) Execute(_ []string) error {
 	}
 
 	c.Logger.Debug(fmt.Sprintf("Validating %q ... ", c.ConfigFile))
-	conf, err := BuildFromFile(c.ConfigFile, c.Logger)
+	conf, err := buildFromFile(c.ConfigFile, c.Logger, scheduleStateFor(c.StateFile))
 	if err != nil {
 		c.Logger.Error("ERROR")
 		return err
@@ -39,6 +43,13 @@ func (c *ValidateCommand) Execute(_ []string) error {
 		if err := ApplyLogLevel(conf.Global.LogLevel, c.LevelVar); err != nil {
 			c.Logger.Warn(fmt.Sprintf("Failed to apply config log level (using default): %v", err))
 		}
+	}
+
+	// The daemon runs without a rejected Compose project and logs why; this
+	// command exists to catch exactly that before deployment.
+	if rejected := conf.rejectedComposeProjects(); len(rejected) > 0 {
+		c.Logger.Error("ERROR")
+		return fmt.Errorf("%w: %s", ErrComposeProjectRejected, strings.Join(rejected, ", "))
 	}
 
 	// Validate regardless of enable-strict-validation. That flag decides

@@ -1,0 +1,32 @@
+name: shop
+services:
+  db:
+    image: alpine:3.22
+jobs:
+  backup:
+    image: alpine:3.22
+    command: ["echo", "backup"]
+    depends_on: [db]
+    triggers:
+      schedule:
+        - cron: "0 2 * * *"
+          timezone: Europe/Berlin
+          concurrency: forbid
+          missed_fires: skip
+  cleanup:
+    image: alpine:3.22
+    triggers:
+      schedule:
+        - cron: "30 3 * * 1"
+          missed_fires: skip
+  report:
+    image: alpine:3.22
+    triggers:
+      manual: true
+  gated:
+    image: alpine:3.22
+    profiles: ["extra"]
+    triggers:
+      schedule:
+        - cron: "0 4 * * *"
+          missed_fires: skip

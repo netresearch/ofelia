@@ -414,18 +414,18 @@ func TestValidateCronStep_BoundaryConditions(t *testing.T) {
 			wantErr: true,
 			desc:    "Step from 58 with step 5 rejected: range size (2) < step",
 		},
-		// go-cron's parser is permissive with out-of-range base values
+		// Since v0.18.0 go-cron rejects a step base above the field maximum
 		{
 			name:    "step_base_above_max_minute",
 			expr:    "60/5 * * * *",
-			wantErr: false,
-			desc:    "go-cron accepts out-of-range base values permissively",
+			wantErr: true,
+			desc:    "Step with base above the field maximum should fail",
 		},
 		{
 			name:    "step_base_above_max_hour",
 			expr:    "* 24/2 * * *",
-			wantErr: false,
-			desc:    "go-cron accepts out-of-range base values permissively",
+			wantErr: true,
+			desc:    "Step with base above the field maximum should fail",
 		},
 		// Test step value validation (line 342: stepVal <= 0)
 		{
@@ -474,8 +474,8 @@ func TestValidateCronStep_BoundaryConditions(t *testing.T) {
 		{
 			name:    "day_step_base_above_max",
 			expr:    "0 0 32/5 * *",
-			wantErr: false,
-			desc:    "go-cron accepts out-of-range base values permissively",
+			wantErr: true,
+			desc:    "Step with base above the field maximum should fail",
 		},
 		// Month field steps
 		{
@@ -493,8 +493,8 @@ func TestValidateCronStep_BoundaryConditions(t *testing.T) {
 		{
 			name:    "month_step_base_above_max",
 			expr:    "0 0 1 13/2 *",
-			wantErr: false,
-			desc:    "go-cron accepts out-of-range base values permissively",
+			wantErr: true,
+			desc:    "Step with base above the field maximum should fail",
 		},
 		// Day of week field steps
 		{
@@ -512,8 +512,8 @@ func TestValidateCronStep_BoundaryConditions(t *testing.T) {
 		{
 			name:    "dow_step_base_above_max",
 			expr:    "0 0 * * 8/2",
-			wantErr: false,
-			desc:    "go-cron accepts out-of-range base values permissively",
+			wantErr: true,
+			desc:    "Step with base above the field maximum should fail",
 		},
 	}
 

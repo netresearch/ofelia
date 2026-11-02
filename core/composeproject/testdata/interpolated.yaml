@@ -1,0 +1,8 @@
+name: interp
+jobs:
+  sync:
+    image: alpine:3.22
+    triggers:
+      schedule:
+        - cron: "${SYNC_CRON}"
+          missed_fires: skip

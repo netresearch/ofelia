@@ -140,6 +140,15 @@ Each returns a JSON **array** of job objects:
 `lastRun` is omitted when the job has never run. `duration` values are Go
 `time.Duration` nanoseconds. `origin` is one of `ini`, `label`, `api`, `web`.
 
+On `/api/jobs/removed`, `running` is `true` while the run that the removal
+canceled is still stopping. A job added under the same name skips its
+scheduled fires until then, refuses a manual run with `409 Conflict`, and runs
+its run-on-startup run once the old run has stopped. The exception is a Compose
+job with `missed_fires: one` or `concurrency: queue` replacing another such
+job: its own check counts the old run as busy, so it applies its concurrency
+policy to scheduled fires and refuses the run-on-startup run like a manual run
+(ADR-005).
+
 `recentRuns` summarises up to the ten newest executions, oldest first, so a list
 view can show outcome history without a history request per job. It is omitted
 for jobs that have not run, and on `/api/jobs/removed`, where nothing reads it.
@@ -164,7 +173,16 @@ Content-Type: application/json
 {"name": "backup"}
 ```
 
-Returns `204 No Content` on success.
+Returns `204 No Content` on success and `404 Not Found` for an unknown or
+disabled job. It returns `409 Conflict` in two cases, and the run is not
+started:
+
+- for a Compose job with `missed_fires: one` or `concurrency: queue` while a run
+  of it is in progress or waiting for a slot: a manual run never runs beside it
+  and never replaces it;
+- for any job while the run of a removed or replaced job of the same name is
+  still stopping (see `running` on `/api/jobs/removed`). Retry once that run
+  has stopped.
 
 ### Disable / enable a job
 
@@ -208,7 +226,7 @@ The request body (`jobRequest`) accepts:
 | `file` | string | `compose` jobs |
 | `service` | string | `compose` jobs: the service to run or exec |
 | `exec` | bool | `compose` jobs: exec in a running service |
-| `maxRuntime` | string | `run` jobs; Go duration, e.g. `30m`. Omitting it inherits `[global] max-runtime`, and falls back to the scheduler's 24h default only when no global is set; `"0s"` means the same and is not a way to ask for no bound. Same ladder an INI `[job-run]` section climbs ([#806](https://github.com/netresearch/ofelia/issues/806)) |
+| `maxRuntime` | string | `run` jobs and `compose` jobs without `exec` (rejected with `exec`); Go duration, e.g. `30m`. Omitting it inherits `[global] max-runtime`, and falls back to the scheduler's 24h default only when no global is set; `"0s"` means the same and is not a way to ask for no bound. Same ladder an INI `[job-run]` section climbs ([#806](https://github.com/netresearch/ofelia/issues/806)) |
 
 Returns `201 Created`. Validation failures return `400 Bad Request`.
 API-created jobs are persisted and survive restarts.
@@ -243,8 +261,10 @@ Content-Type: application/json
 {"name": "cleanup"}
 ```
 
-Returns `204 No Content`. Jobs owned by the INI file or Docker labels return
-`403 Forbidden` — edit the owning configuration to remove them (or use
+Returns `204 No Content` once the job is removed. A run in progress is canceled,
+and the response does not wait for it to stop; the job's entry on
+`/api/jobs/removed` shows `running: true` until it has. Jobs owned by the INI
+file or Docker labels return `403 Forbidden` — edit the owning configuration to remove them (or use
 `/api/jobs/disable` to suppress them); only API/web-created jobs can be deleted
 here.
 

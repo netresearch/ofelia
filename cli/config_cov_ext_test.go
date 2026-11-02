@@ -511,7 +511,7 @@ func TestAddNewJob_EmptySource_Coverage(t *testing.T) {
 	}
 
 	// Empty source should not set job source
-	addNewJob(cfg, "newjob", j, prep, "", current)
+	addNewJob(cfg, "newjob", j, prep, "", current, false)
 	assert.Contains(t, current, "newjob")
 	assert.Equal(t, JobSource(""), current["newjob"].GetJobSource())
 }

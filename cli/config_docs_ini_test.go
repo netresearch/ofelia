@@ -134,7 +134,7 @@ func checkSections(t *testing.T, b docsINIBlock, cfg *ini.File, webhookKeys map[
 		case name == "global", name == "docker":
 		case strings.HasPrefix(name, jobExec), strings.HasPrefix(name, jobServiceRun),
 			strings.HasPrefix(name, jobRun), strings.HasPrefix(name, jobLocal),
-			strings.HasPrefix(name, jobCompose):
+			strings.HasPrefix(name, jobCompose), strings.HasPrefix(name, composeProjectSection):
 		case strings.HasPrefix(name, webhookSection):
 			for _, k := range section.KeyStrings() {
 				if !webhookKeys[strings.ToLower(k)] {
@@ -192,7 +192,7 @@ func allKnownINIKeys(webhookKeys map[string]bool) map[string]bool {
 	}
 	add(globalKnownKeys())
 	add(dockerKnownKeys())
-	for _, jobType := range []string{jobExec, jobRun, jobServiceRun, jobLocal, jobCompose} {
+	for _, jobType := range []string{jobExec, jobRun, jobServiceRun, jobLocal, jobCompose, composeProjectSection} {
 		add(getKnownKeysForJobType(jobType))
 	}
 	return all

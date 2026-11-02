@@ -79,7 +79,7 @@ type RunJob struct {
 	// 5-30s depending on heap size. See #234.
 	StopTimeout time.Duration `gcfg:"stop-timeout" mapstructure:"stop-timeout" hash:"true"`
 
-	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime"`
+	MaxRuntime time.Duration `gcfg:"max-runtime" mapstructure:"max-runtime" hash:"true"`
 
 	containerID string
 	mu          sync.RWMutex // Protect containerID access
@@ -97,11 +97,15 @@ func NewRunJob(provider DockerProvider) *RunJob {
 
 // GetMaxRuntime exposes the configured per-job maximum runtime so the
 // scheduler can wrap the per-run context with a deadline (issue #638).
-// A zero value means "no per-job override"; the scheduler falls back to
-// its default bound (typically 24h, mirroring `[global] max-runtime`).
+// A zero value means "no per-job override"; the run then follows the
+// scheduler's current `[global] max-runtime` (24h without one).
 func (j *RunJob) GetMaxRuntime() time.Duration {
 	return j.MaxRuntime
 }
+
+// InheritsGlobalMaxRuntime reports that a run job without a max-runtime of
+// its own runs under `[global] max-runtime` (MaxRuntimeProvider).
+func (j *RunJob) InheritsGlobalMaxRuntime() bool { return true }
 
 // ParseMaxRuntime parses a `max-runtime` duration string into the value
 // RunJob.MaxRuntime carries.
