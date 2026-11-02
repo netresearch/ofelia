@@ -7,19 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-02
+
+A feature release. Ofelia can schedule the top-level `jobs:` of registered
+Docker Compose projects, and the release publishes `-compose` image tags that
+contain the Compose CLI. go-cron moves from 0.17.0 to 0.19.0: a schedule whose
+step or range starts above the field maximum, such as `60/5 * * * *`, is now
+rejected (see Changed). Run `ofelia validate` or `ofelia doctor` before
+upgrading to find such a schedule.
+
 ### Added
 
 - Register Compose projects through `[compose-project "name"]` and import
   their top-level `jobs:` schedules with compose-go. Project registrations
   select Compose files, profiles, env files, project name and working directory;
-  container configuration remains in Compose. See [the jobs reference](docs/jobs.md#compose-projects).
+  container configuration remains in Compose. A job runs the project model that
+  was accepted at registration, not Compose files edited afterwards, and two
+  registrations that select the same project and job are rejected. See
+  [the jobs reference](docs/jobs.md#compose-projects)
+  ([#891](https://github.com/netresearch/ofelia/pull/891),
+  [#905](https://github.com/netresearch/ofelia/pull/905),
+  [#907](https://github.com/netresearch/ofelia/pull/907)).
 - Support Compose `missed_fires: one` and `concurrency: queue` with
   `--state-file`. Durable schedule records admit at most one start per
   occurrence, retain one pending fire, and let admitted runs wait for the global
-  concurrency limit. Explicit `skip` with `forbid` needs no state file.
-- Add an optional `compose` Docker build target and release workflow for
-  `-compose` image tags containing the Compose CLI. These tags are published
-  with the next release; the default image remains unchanged.
+  concurrency limit. Explicit `skip` with `forbid` needs no state file. A
+  workload whose end Docker has not confirmed blocks the next run, also across
+  restarts
+  ([#897](https://github.com/netresearch/ofelia/pull/897),
+  [#906](https://github.com/netresearch/ofelia/pull/906)).
+- Add an optional `compose` Docker build target and `-compose` image tags
+  containing the Compose CLI. The default image remains unchanged
+  ([#889](https://github.com/netresearch/ofelia/pull/889)).
+- ADR-004 and ADR-005 record the decisions behind Compose jobs and their
+  durable schedule state
+  ([#888](https://github.com/netresearch/ofelia/pull/888),
+  [#892](https://github.com/netresearch/ofelia/pull/892)).
 
 ### Changed
 
@@ -28,19 +51,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rejected; 0.17.0 accepted both. The daemon still starts, logs that job as
   rejected and does not run it. With `[global] enable-strict-validation = true`
   the daemon logs that it could not load the config file and schedules none of
-  its jobs. `ofelia validate` and `ofelia doctor` name the job. Schedules that cross a daylight saving transition fire as described in
-  go-cron's [0.18.0](https://github.com/netresearch/go-cron/releases/tag/v0.18.0)
+  its jobs. `ofelia validate` and `ofelia doctor` name the job. Schedules
+  that cross a daylight saving transition fire as described in go-cron's [0.18.0](https://github.com/netresearch/go-cron/releases/tag/v0.18.0)
   and [0.19.0](https://github.com/netresearch/go-cron/releases/tag/v0.19.0)
   notes ([#914](https://github.com/netresearch/ofelia/pull/914)).
+- The image's Alpine base moves to 3.24.3
+  ([#908](https://github.com/netresearch/ofelia/pull/908)).
 
 ### Fixed
 
 - Bound Compose run executions by their own `max-runtime` or the current global
   value, and stop/remove their labelled workload containers on cancellation.
-  Compose exec cancellation remains limited by Docker's exec API.
+  Compose exec cancellation remains limited by Docker's exec API
+  ([#887](https://github.com/netresearch/ofelia/pull/887),
+  [#894](https://github.com/netresearch/ofelia/pull/894)).
 - Keep replacement jobs from starting beside a removed job that is still
   stopping. Manual starts return `409 Conflict` during that interval; a deferred
-  `run-on-startup` fire runs after it ends and waits for a global slot if needed.
+  `run-on-startup` fire runs after it ends and waits for a global slot if needed
+  ([#896](https://github.com/netresearch/ofelia/pull/896),
+  [#900](https://github.com/netresearch/ofelia/pull/900)).
+- A canceled `job-local` run terminates its command and every process it
+  started (SIGTERM to the process group, SIGKILL after 10 seconds). A canceled
+  `job-exec` run records whether the command is still running, has exited, or
+  could not be inspected
+  ([#890](https://github.com/netresearch/ofelia/pull/890)).
+- A job disabled through the API or the web UI stays disabled when a config
+  reload replaces it ([#893](https://github.com/netresearch/ofelia/pull/893)).
+- `[global] max-runtime` applies at run time: a changed value reaches every job
+  that inherits it on the next reload, and also bounds runs in progress
+  ([#895](https://github.com/netresearch/ofelia/pull/895)).
+- The web API reads a job's last run and history without a data race
+  ([#899](https://github.com/netresearch/ofelia/pull/899)).
 
 ## [1.0.2] - 2026-10-23
 
