@@ -26,8 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update go-cron from 0.17.0 to 0.19.0. A schedule whose step or range starts
   above the field maximum, such as `60/5 * * * *` or `0 25-1 * * *`, is now
   rejected; 0.17.0 accepted both. The daemon still starts, logs that job as
-  rejected and does not run it; `ofelia validate` and `ofelia doctor` name the
-  job. Schedules that cross a daylight saving transition fire as described in
+  rejected and does not run it. With `[global] enable-strict-validation = true`
+  the daemon logs that it could not load the config file and schedules none of
+  its jobs. `ofelia validate` and `ofelia doctor` name the job. Schedules that cross a daylight saving transition fire as described in
   go-cron's [0.18.0](https://github.com/netresearch/go-cron/releases/tag/v0.18.0)
   and [0.19.0](https://github.com/netresearch/go-cron/releases/tag/v0.19.0)
   notes ([#914](https://github.com/netresearch/ofelia/pull/914)).
