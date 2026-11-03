@@ -293,6 +293,7 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `email-from` - mail address of the sender of the mail.
 - `email-subject` - custom subject template for emails. Uses Go template syntax with access to `.Job` and `.Execution`. Example: `[ALERT] Job {{.Job.GetName}} {{status .Execution}}`. If not set, uses default format.
 - `mail-only-on-error` - only send a mail if the execution was not successful.
+- `mail-output-in-body` - put the job output into the mail body instead of attaching it. `0` or unset keeps the `stdout.log`/`stderr.log` attachments (default); a positive number `N` puts the last `N` lines of stdout and of stderr into the body; `-1` puts the whole captured output into the body. When set, the two log attachments are not sent, so output beyond the last `N` lines is not in the mail. A job can set `0` to keep attachments while `[global]` sets a value.
 
 - `save-folder` - directory in which the reports shall be written. The folder is created automatically if it doesn't exist using an equivalent of `mkdir -p`.
 - `save-only-on-error` - only save a report if the execution was not successful.

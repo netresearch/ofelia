@@ -37,12 +37,13 @@ type MailConfig struct {
     EmailTo           string
     EmailFrom         string
     MailOnlyOnError   *bool
+    MailOutputInBody  *int
 }
 ```
 
 **Features**:
 - Sends email after job completion
-- Includes stdout/stderr as attachments
+- Includes stdout/stderr as attachments, or in the body with `mail-output-in-body` (last N lines, `-1` for all)
 - HTML formatted body with job details
 - Optional error-only mode
 - TLS/SSL support
@@ -64,8 +65,8 @@ smtp-password = secret
 
 **Email Format**:
 - **Subject**: `Ofelia executed: job_name [SUCCESS/FAILED]`
-- **Body**: HTML template with execution details
-- **Attachments**: `job_name_execution_id.stdout.log`, `*.stderr.log`
+- **Body**: HTML template with execution details; with `mail-output-in-body` set, also the HTML-escaped stdout and stderr (last N lines each, marked "(truncated)" when lines were dropped)
+- **Attachments**: `job_name_execution_id.stdout.log`, `*.stderr.log` (not sent when `mail-output-in-body` is set), `*.stderr.json`
 
 ### 2. Slack
 
