@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/armon/circbuf"
 	mail "github.com/go-mail/mail/v2"
 
 	"github.com/netresearch/ofelia/core"
@@ -150,6 +151,12 @@ type MailConfig struct {
 	EmailFrom       string        `gcfg:"email-from" mapstructure:"email-from"`
 	EmailSubject    string        `gcfg:"email-subject" mapstructure:"email-subject"`
 	MailOnlyOnError *bool         `gcfg:"mail-only-on-error" mapstructure:"mail-only-on-error"`
+	// MailOutputInBody moves the job output from attachments into the mail
+	// body. nil or 0 keeps the stdout/stderr attachments (default); N > 0
+	// puts the last N lines of each stream into the body; a negative value
+	// (-1) puts the whole captured output into the body. Pointer-typed so a
+	// job can override a global value with an explicit 0.
+	MailOutputInBody *int `gcfg:"mail-output-in-body" mapstructure:"mail-output-in-body"`
 	// Dedup is the notification deduplicator (set by config loader, not INI)
 	Dedup *NotificationDedup `mapstructure:"-" json:"-"`
 
@@ -217,24 +224,9 @@ func (m *Mail) sendMail(ctx *core.Context) error {
 
 	base := fmt.Sprintf("%s_%s", ctx.Job.GetName(), ctx.Execution.ID)
 
-	// Only attach stdout if there's output (some SMTP servers reject zero-sized attachments)
-	if ctx.Execution.OutputStream.TotalWritten() > 0 {
-		msg.Attach(base+".stdout.log", mail.SetCopyFunc(func(w io.Writer) error {
-			if _, err := w.Write(ctx.Execution.OutputStream.Bytes()); err != nil {
-				return fmt.Errorf("write stdout attachment: %w", err)
-			}
-			return nil
-		}))
-	}
-
-	// Only attach stderr if there's output (some SMTP servers reject zero-sized attachments)
-	if ctx.Execution.ErrorStream.TotalWritten() > 0 {
-		msg.Attach(base+".stderr.log", mail.SetCopyFunc(func(w io.Writer) error {
-			if _, err := w.Write(ctx.Execution.ErrorStream.Bytes()); err != nil {
-				return fmt.Errorf("write stderr attachment: %w", err)
-			}
-			return nil
-		}))
+	// With mail-output-in-body the output is in the body; no log attachments.
+	if m.outputInBodyLines() == 0 {
+		attachOutput(msg, ctx, base)
 	}
 
 	msg.Attach(base+".stderr.json", mail.SetCopyFunc(func(w io.Writer) error {
@@ -289,11 +281,103 @@ func (m *Mail) subject(ctx *core.Context) string {
 	return buf.String()
 }
 
+// attachOutput attaches stdout and stderr as log files. A stream without
+// output gets no attachment (some SMTP servers reject zero-sized attachments).
+func attachOutput(msg *mail.Message, ctx *core.Context, base string) {
+	if ctx.Execution.OutputStream.TotalWritten() > 0 {
+		msg.Attach(base+".stdout.log", mail.SetCopyFunc(func(w io.Writer) error {
+			if _, err := w.Write(ctx.Execution.OutputStream.Bytes()); err != nil {
+				return fmt.Errorf("write stdout attachment: %w", err)
+			}
+			return nil
+		}))
+	}
+
+	if ctx.Execution.ErrorStream.TotalWritten() > 0 {
+		msg.Attach(base+".stderr.log", mail.SetCopyFunc(func(w io.Writer) error {
+			if _, err := w.Write(ctx.Execution.ErrorStream.Bytes()); err != nil {
+				return fmt.Errorf("write stderr attachment: %w", err)
+			}
+			return nil
+		}))
+	}
+}
+
+// outputInBodyLines returns the configured mail-output-in-body value:
+// 0 for attachments, N > 0 for the last N lines, < 0 for all lines.
+func (m *Mail) outputInBodyLines() int {
+	if m.MailOutputInBody == nil {
+		return 0
+	}
+	return *m.MailOutputInBody
+}
+
+// mailOutputSection is one output stream rendered into the mail body.
+type mailOutputSection struct {
+	Name string
+	Text string
+	// Truncated is true when lines were dropped, either by the
+	// mail-output-in-body line limit or by the bounded output buffer.
+	Truncated bool
+}
+
+// mailBodyData is the data the mail body template is executed with. It
+// embeds the context so the template keeps reaching .Job and .Execution.
+type mailBodyData struct {
+	*core.Context
+	Output []mailOutputSection
+}
+
 func (m *Mail) body(ctx *core.Context) string {
+	data := mailBodyData{Context: ctx}
+	if lines := m.outputInBodyLines(); lines != 0 {
+		data.Output = outputSections(ctx.Execution, lines)
+	}
+
 	buf := bytes.NewBuffer(nil)
-	_ = mailBodyTemplate.Execute(buf, ctx)
+	_ = mailBodyTemplate.Execute(buf, data)
 
 	return buf.String()
+}
+
+// outputSections returns the non-empty output streams of e, each cut to the
+// given number of trailing lines (all lines when the number is negative).
+func outputSections(e *core.Execution, lines int) []mailOutputSection {
+	streams := []struct {
+		name string
+		buf  *circbuf.Buffer
+	}{
+		{"stdout", e.OutputStream},
+		{"stderr", e.ErrorStream},
+	}
+
+	var sections []mailOutputSection
+	for _, s := range streams {
+		if s.buf == nil || s.buf.TotalWritten() == 0 {
+			continue
+		}
+		text, cut := tailLines(s.buf.String(), lines)
+		sections = append(sections, mailOutputSection{
+			Name:      s.name,
+			Text:      text,
+			Truncated: cut || s.buf.TotalWritten() > s.buf.Size(),
+		})
+	}
+	return sections
+}
+
+// tailLines returns the last n lines of s and whether lines were dropped.
+// A trailing newline does not count as an extra empty line. n < 0 returns
+// s unchanged.
+func tailLines(s string, n int) (string, bool) {
+	if n < 0 {
+		return s, false
+	}
+	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+	if len(lines) <= n {
+		return s, false
+	}
+	return strings.Join(lines[len(lines)-n:], "\n"), true
 }
 
 var mailBodyTemplate, mailSubjectTemplate *template.Template
@@ -314,6 +398,10 @@ func init() {
 			Execution <b>{{status .Execution}}</b> in <b>{{.Execution.Duration}}</b>,
 			command: <pre>{{.Job.GetCommand}}</pre>
 		</p>
+		{{- range .Output}}
+		<p><b>{{.Name}}</b>{{if .Truncated}} (truncated){{end}}:</p>
+		<pre>{{.Text}}</pre>
+		{{- end}}
   `))
 
 	template.Must(mailSubjectTemplate.Parse(

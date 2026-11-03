@@ -255,6 +255,7 @@ smtp-password = secret
 email-to = team@example.com
 email-from = ofelia@example.com
 mail-only-on-error = true      # Only send on failure
+mail-output-in-body = 50       # Last 50 output lines in the body (-1 = all, 0 = attachments)
 ```
 
 ### Slack (Deprecated)

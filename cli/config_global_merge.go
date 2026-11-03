@@ -142,16 +142,23 @@ func mergeMailEnvelopeGlobals(dst, src *middlewares.MailConfig) bool {
 	return changed
 }
 
-// mergeMailFlagGlobals forwards the *bool MailOnlyOnError. Allocates a
-// fresh pointer so the live config does not share storage with the GC'd
-// scratch.
+// mergeMailFlagGlobals forwards the pointer-typed behavior flags
+// MailOnlyOnError (*bool) and MailOutputInBody (*int): INI nil ⇒ take label.
+// Allocates fresh pointers so the live config does not share storage with
+// the GC'd scratch.
 func mergeMailFlagGlobals(dst, src *middlewares.MailConfig) bool {
+	changed := false
 	if dst.MailOnlyOnError == nil && src.MailOnlyOnError != nil {
 		v := *src.MailOnlyOnError
 		dst.MailOnlyOnError = &v
-		return true
+		changed = true
 	}
-	return false
+	if dst.MailOutputInBody == nil && src.MailOutputInBody != nil {
+		v := *src.MailOutputInBody
+		dst.MailOutputInBody = &v
+		changed = true
+	}
+	return changed
 }
 
 // mergeSaveGlobals copies operator-tunable Save globals from src into dst.

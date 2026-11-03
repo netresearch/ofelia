@@ -835,6 +835,11 @@ func (c *Config) mergeMailDefaults(job *middlewares.MailConfig) {
 	if job.MailOnlyOnError == nil && global.MailOnlyOnError != nil {
 		job.MailOnlyOnError = new(*global.MailOnlyOnError)
 	}
+	// MailOutputInBody: same nil-means-unset rule, so a job can set 0 to keep
+	// attachments while the global puts output in the body.
+	if job.MailOutputInBody == nil && global.MailOutputInBody != nil {
+		job.MailOutputInBody = new(*global.MailOutputInBody)
+	}
 }
 
 // mergeSaveDefaults copies global Save settings to job config where job has zero values

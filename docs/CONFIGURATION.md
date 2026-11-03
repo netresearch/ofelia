@@ -445,6 +445,13 @@ smtp-tls-skip-verify = false
 #                   Required for some test fixtures (MailHog); intentionally insecure.
 # See docs/TROUBLESHOOTING.md for the rationale and the security trade-offs.
 smtp-tls-policy = mandatory
+# Put job output into the mail body instead of stdout.log/stderr.log attachments.
+#   0 (or unset) - attachments (default)
+#   N > 0        - last N lines of stdout and of stderr in the body, no log attachments
+#   -1           - whole captured output in the body, no log attachments
+# Output is HTML-escaped. Captured output is bounded by the output buffer, so
+# -1 means "what the buffer holds"; a section that lost lines is marked "(truncated)".
+mail-output-in-body = 0
 
 # Output Settings
 save-folder = /var/log/ofelia
@@ -983,6 +990,8 @@ email-to = ops@example.com,alerts@example.com
 email-subject = Critical Job Report
 email-from = ofelia@example.com
 mail-only-on-error = true
+# Last 50 lines of stdout and stderr in the mail body instead of attachments
+mail-output-in-body = 50
 ```
 
 ### Configuration Inheritance
@@ -993,7 +1002,7 @@ Notification settings support inheritance from global to job-level configuration
 
 | Setting Type | Inherited Fields | Notes |
 |--------------|------------------|-------|
-| **Email** | `smtp-host`, `smtp-port`, `smtp-user`, `smtp-password`, `email-from`, `email-to`, `email-subject`, `mail-only-on-error` | SMTP connection details and behavior flags are inherited |
+| **Email** | `smtp-host`, `smtp-port`, `smtp-user`, `smtp-password`, `email-from`, `email-to`, `email-subject`, `mail-only-on-error`, `mail-output-in-body` | SMTP connection details and behavior flags are inherited |
 | **Slack** | `slack-webhook`, `slack-only-on-error` | Webhook URL and behavior flags are inherited |
 | **Save** | `save-folder`, `save-only-on-error` | Save folder and behavior flags are inherited |
 
@@ -1027,6 +1036,7 @@ email-to = critical-alerts@example.com
 **Important Notes:**
 
 - Boolean fields (`mail-only-on-error`, `slack-only-on-error`, `save-only-on-error`) are fully inherited from global config and can be overridden per-job in both directions (global true + job false, or global false + job true)
+- `mail-output-in-body` is inherited the same way: a job that sets `mail-output-in-body = 0` keeps the attachments even when `[global]` sets a value
 - Job-level settings always take precedence over global settings when explicitly set
 - To enable notifications for a job, at minimum specify `email-to` or `slack-webhook` at either global or job level
 
