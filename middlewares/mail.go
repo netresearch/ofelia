@@ -367,17 +367,24 @@ func outputSections(e *core.Execution, lines int) []mailOutputSection {
 }
 
 // tailLines returns the last n lines of s and whether lines were dropped.
-// A trailing newline does not count as an extra empty line. n < 0 returns
-// s unchanged.
+// A trailing newline does not count as an extra empty line. n <= 0 returns
+// s unchanged (negative means all lines; 0 is the attachment mode, which
+// never renders output). It scans backward, so the cost does not grow with
+// the number of lines in the buffer.
 func tailLines(s string, n int) (string, bool) {
-	if n < 0 {
+	if n <= 0 {
 		return s, false
 	}
-	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
-	if len(lines) <= n {
-		return s, false
+	body := strings.TrimSuffix(s, "\n")
+	end := len(body)
+	for range n {
+		i := strings.LastIndexByte(body[:end], '\n')
+		if i < 0 {
+			return s, false
+		}
+		end = i
 	}
-	return strings.Join(lines[len(lines)-n:], "\n"), true
+	return body[end+1:], true
 }
 
 var mailBodyTemplate, mailSubjectTemplate *template.Template

@@ -195,6 +195,9 @@ func TestTailLines(t *testing.T) {
 		{"more lines than n without trailing newline", "a\nb\nc", 2, "b\nc", true},
 		{"one line", "a\nb\nc\n", 1, "c", true},
 		{"negative means all", "a\nb\nc\n", -1, "a\nb\nc\n", false},
+		{"zero returns input", "a\nb\nc\n", 0, "a\nb\nc\n", false},
+		{"empty lines count", "a\n\n\nb\n", 2, "\nb", true},
+		{"leading newline", "\nb", 1, "b", true},
 		{"empty", "", 3, "", false},
 	}
 	for _, tc := range cases {
