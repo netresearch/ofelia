@@ -164,11 +164,12 @@ type MailConfig struct {
 	subjectTemplate *template.Template
 }
 
-// NewMail returns a Mail middleware if the given configuration is not empty
+// NewMail returns a Mail middleware if the given configuration has a delivery
+// target (email-to) configured and is not empty.
 func NewMail(c *MailConfig) core.Middleware {
 	var m core.Middleware
 
-	if !IsEmpty(c) {
+	if c != nil && !IsEmpty(c) && strings.TrimSpace(c.EmailTo) != "" {
 		// Parse custom subject template if provided
 		if c.EmailSubject != "" {
 			tmpl := template.New("custom-mail-subject")
