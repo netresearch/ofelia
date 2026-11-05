@@ -6,7 +6,7 @@ toolchain go1.27.3
 
 require (
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2
-	github.com/chromedp/chromedp v0.21.0
+	github.com/chromedp/chromedp v0.21.1
 	github.com/compose-spec/compose-go/v2 v2.16.2
 	github.com/containerd/errdefs v1.0.0
 	github.com/creasty/defaults v1.11.0
@@ -37,7 +37,7 @@ require (
 require (
 	github.com/Microsoft/go-winio v0.6.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/chromedp/cdproto v0.158.4 // indirect
+	github.com/chromedp/cdproto v0.159.0 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/docker/docker-credential-helpers v0.9.12 // indirect
