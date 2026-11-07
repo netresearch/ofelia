@@ -72,7 +72,38 @@ func setupMailTest(t *testing.T) *mailTestFixture {
 
 func TestNewMailEmpty(t *testing.T) {
 	t.Parallel()
+	assert.Nil(t, NewMail(nil))
 	assert.Nil(t, NewMail(&MailConfig{}))
+}
+
+func TestNewMailWithoutDeliveryTarget(t *testing.T) {
+	t.Parallel()
+
+	boolVal := true
+	assert.Nil(t, NewMail(&MailConfig{
+		MailOnlyOnError: &boolVal,
+	}))
+
+	intVal := 10
+	assert.Nil(t, NewMail(&MailConfig{
+		MailOutputInBody: &intVal,
+	}))
+
+	assert.Nil(t, NewMail(&MailConfig{
+		SMTPHost: "smtp.example.com",
+		SMTPPort: 587,
+	}))
+
+	assert.Nil(t, NewMail(&MailConfig{
+		EmailTo:         "   ",
+		MailOnlyOnError: &boolVal,
+	}))
+
+	m := NewMail(&MailConfig{
+		EmailTo:         "admin@example.com",
+		MailOnlyOnError: &boolVal,
+	})
+	assert.NotNil(t, m)
 }
 
 func TestMailRunSuccess(t *testing.T) {
