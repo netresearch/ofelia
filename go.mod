@@ -6,7 +6,7 @@ toolchain go1.27.3
 
 require (
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2
-	github.com/chromedp/chromedp v0.22.0
+	github.com/chromedp/chromedp v0.22.1
 	github.com/compose-spec/compose-go/v2 v2.16.2
 	github.com/containerd/errdefs v1.0.0
 	github.com/creasty/defaults v1.11.0
