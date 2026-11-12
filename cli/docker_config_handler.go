@@ -459,7 +459,7 @@ func (c *DockerHandler) filterContainerInfos(conts []domain.Container) []DockerC
 func extractOfeliaLabels(labels map[string]string) map[string]string {
 	result := make(map[string]string)
 	for k, v := range labels {
-		if strings.HasPrefix(k, labelPrefix) || k == dockerComposeServiceLabel {
+		if strings.HasPrefix(k, labelPrefix) || k == dockerComposeServiceLabel || k == dockerComposeProjectLabel {
 			result[k] = v
 		}
 	}

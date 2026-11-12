@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `[global] job-exec-label-scope` accepts the value `project-service`. It names
+  a label-defined `job-exec` job `{project}.{service}.{job}`, from the
+  `com.docker.compose.project` and `com.docker.compose.service` labels, so the
+  job list shows which Compose project a job belongs to when several projects
+  reuse a service name such as `app`. Replicas of one scaled service share the
+  name: one of them runs the job and Ofelia logs the collision warning. A
+  container without both Compose labels is named as under `service`. The
+  default stays `service`
+  ([#927](https://github.com/netresearch/ofelia/issues/927)).
+
 ## [1.1.0] - 2026-11-02
 
 A feature release. Ofelia can schedule the top-level `jobs:` of registered

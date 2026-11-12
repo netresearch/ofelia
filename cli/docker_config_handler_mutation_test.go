@@ -227,10 +227,12 @@ func TestGetDockerContainers_MixedLabels(t *testing.T) {
 			{
 				Name: "mixed",
 				Labels: map[string]string{
-					"ofelia.enabled":             "true",
-					"ofelia.job-run.x.schedule":  "@daily",
-					"not-ofelia":                 "ignored",
-					"com.docker.compose.project": "test",
+					"ofelia.enabled":            "true",
+					"ofelia.job-run.x.schedule": "@daily",
+					"not-ofelia":                "ignored",
+					// com.docker.compose.project itself is kept since #927
+					// (see TestGetDockerContainersValid); this label is not.
+					"com.docker.compose.version": "2.40.0",
 				},
 			},
 		},

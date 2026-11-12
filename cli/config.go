@@ -88,10 +88,15 @@ type Config struct {
 		//   - "container-service": {container}.{service}.{job} — descriptive and
 		//     collision-safe; falls back to {container}.{job} for non-Compose
 		//     containers. See https://github.com/netresearch/ofelia/issues/734.
+		//   - "project-service": {project}.{service}.{job} — tells apart Compose
+		//     projects that reuse a service name; replicas of one scaled service
+		//     still share the name. A container without both Compose labels is
+		//     named as under "service". See
+		//     https://github.com/netresearch/ofelia/issues/927.
 		// INI-only (not exposed via container labels): it is a daemon-wide
 		// naming policy and a single container must not redefine how every other
 		// container's jobs are named.
-		JobExecLabelScope string `gcfg:"job-exec-label-scope" mapstructure:"job-exec-label-scope" validate:"omitempty,oneof=service container container-service" default:"service"` //nolint:revive
+		JobExecLabelScope string `gcfg:"job-exec-label-scope" mapstructure:"job-exec-label-scope" validate:"omitempty,oneof=service container container-service project-service" default:"service"` //nolint:revive
 	}
 	ExecJobs    map[string]*ExecJobConfig    `gcfg:"job-exec" mapstructure:"job-exec,squash"`
 	RunJobs     map[string]*RunJobConfig     `gcfg:"job-run" mapstructure:"job-run,squash"`

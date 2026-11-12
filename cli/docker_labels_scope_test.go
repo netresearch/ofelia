@@ -4,6 +4,8 @@
 package cli
 
 import (
+	"context"
+	"maps"
 	"strings"
 	"testing"
 
@@ -24,6 +26,7 @@ func twoStacksSharingServiceName() []DockerContainerInfo {
 			State: domain.ContainerState{Running: true},
 			Labels: map[string]string{
 				"ofelia.enabled":                     "true",
+				"com.docker.compose.project":         "acme",
 				"com.docker.compose.service":         "web",
 				"ofelia.job-exec.sync-news.schedule": "@every 5m",
 				"ofelia.job-exec.sync-news.command":  "sync-news --tenant acme",
@@ -34,6 +37,7 @@ func twoStacksSharingServiceName() []DockerContainerInfo {
 			State: domain.ContainerState{Running: true},
 			Labels: map[string]string{
 				"ofelia.enabled":                     "true",
+				"com.docker.compose.project":         "globex",
 				"com.docker.compose.service":         "web",
 				"ofelia.job-exec.sync-news.schedule": "@every 5m",
 				"ofelia.job-exec.sync-news.command":  "sync-news --tenant globex",
@@ -46,7 +50,8 @@ func twoStacksSharingServiceName() []DockerContainerInfo {
 // It pins the collision behavior of every job-exec-label-scope mode:
 //   - "service" (the default) still collapses same-named services to one key,
 //     preserving the cross-container depends-on reference contract;
-//   - "container" and "container-service" keep the two stacks' jobs distinct;
+//   - "container", "container-service" and "project-service" keep the two
+//     stacks' jobs distinct;
 //   - an unknown value degrades gracefully to the service default rather than
 //     panicking or dropping every job.
 func TestDockerLabels_JobExecLabelScope(t *testing.T) {
@@ -83,6 +88,12 @@ func TestDockerLabels_JobExecLabelScope(t *testing.T) {
 			name:      "container-service scope keeps both stacks' jobs",
 			scope:     "container-service",
 			wantJobs:  []string{"acme-web.web.sync-news", "globex-web.web.sync-news"},
+			wantCount: 2,
+		},
+		{
+			name:      "project-service scope keeps both stacks' jobs",
+			scope:     "project-service",
+			wantJobs:  []string{"acme.web.sync-news", "globex.web.sync-news"},
 			wantCount: 2,
 		},
 		{
@@ -296,7 +307,7 @@ func TestDockerLabels_UnrecognizedScope_LogsWarning(t *testing.T) {
 	}
 
 	msg := firstWarningContaining(t, h, "unrecognized")
-	for _, want := range []string{"continer", "job-exec-label-scope", "service", "container", "container-service"} {
+	for _, want := range []string{"continer", "job-exec-label-scope", "service", "container", "container-service", "project-service"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("unrecognized-scope warning is missing %q; got: %s", want, msg)
 		}
@@ -357,6 +368,197 @@ func TestDockerLabels_Collision_NilLoggerDoesNotPanic(t *testing.T) {
 	cfg := &Config{} // deliberately no logger
 	if err := cfg.buildFromDockerContainers(twoStacksSharingServiceName()); err != nil {
 		t.Fatalf("buildFromDockerContainers failed: %v", err)
+	}
+}
+
+// TestDockerLabels_ProjectServiceScope_Issue927 replays the report in
+// https://github.com/netresearch/ofelia/issues/927: several Compose projects
+// on one host all name their main service "app", so the default scope shows
+// every job as "app.<job>". The containers go through the Docker handler, the
+// same path the daemon takes, so the test also covers the label prefilter.
+func TestDockerLabels_ProjectServiceScope_Issue927(t *testing.T) {
+	t.Parallel()
+
+	provider := &mockDockerProviderForHandler{
+		containers: []domain.Container{
+			{
+				Name:  "pwpush-app-1",
+				State: domain.ContainerState{Running: true},
+				// The ofelia.* labels are the ones from the report. The Compose
+				// labels are the ones Compose sets on such a container; the two
+				// "project.*" keys must not be mistaken for the project name.
+				Labels: map[string]string{
+					"com.docker.compose.project":                            "pwpush",
+					"com.docker.compose.project.config_files":               "/srv/pwpush/compose.yml",
+					"com.docker.compose.project.working_dir":                "/srv/pwpush",
+					"com.docker.compose.service":                            "app",
+					"ofelia.enabled":                                        "true",
+					"ofelia.job-exec.prod-pwpush-cleanup.command":           "/opt/PasswordPusher/bin/rails 'delete_expired_and_anonymous'",
+					"ofelia.job-exec.prod-pwpush-cleanup.schedule":          "@daily",
+					"ofelia.job-exec.prod-pwpush-cleanup.tty":               "false",
+					"ofelia.job-exec.prod-pwpush-cleanup.user":              "pwpusher",
+					"ofelia.job-exec.prod-pwpush-daily-expiration.command":  "/opt/PasswordPusher/bin/rails 'daily_expiration'",
+					"ofelia.job-exec.prod-pwpush-daily-expiration.schedule": "@daily",
+					"ofelia.job-exec.prod-pwpush-daily-expiration.tty":      "false",
+					"ofelia.job-exec.prod-pwpush-daily-expiration.user":     "pwpusher",
+				},
+			},
+		},
+	}
+	logger, h := test.NewTestLoggerWithHandler()
+	handler := &DockerHandler{filters: []string{}, logger: logger, ctx: context.Background(), dockerProvider: provider}
+	containers, err := handler.GetDockerContainers()
+	if err != nil {
+		t.Fatalf("GetDockerContainers failed: %v", err)
+	}
+
+	cfg := &Config{logger: logger}
+	cfg.Global.JobExecLabelScope = "project-service"
+	if err := cfg.buildFromDockerContainers(containers); err != nil {
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
+	}
+
+	want := []string{"pwpush.app.prod-pwpush-cleanup", "pwpush.app.prod-pwpush-daily-expiration"}
+	if len(cfg.ExecJobs) != len(want) {
+		t.Errorf("expected %d exec jobs, got %d: %v", len(want), len(cfg.ExecJobs), getJobNames(cfg.ExecJobs))
+	}
+	for _, name := range want {
+		job, ok := cfg.ExecJobs[name]
+		if !ok {
+			t.Errorf("expected job %q, not found. Available: %v", name, getJobNames(cfg.ExecJobs))
+			continue
+		}
+		if job.Container != "pwpush-app-1" {
+			t.Errorf("job %q: expected container %q, got %q", name, "pwpush-app-1", job.Container)
+		}
+	}
+	if h.WarningCount() != 0 {
+		t.Errorf("expected no warnings for a single Compose container; messages: %v", h.GetMessages())
+	}
+}
+
+// TestDockerLabels_ProjectServiceScope_Fallback pins the rule for containers
+// that lack one of the two Compose labels: project-service then names the job
+// exactly like the service scope does, so no name has an empty segment.
+func TestDockerLabels_ProjectServiceScope_Fallback(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		labels  map[string]string
+		wantJob string
+	}{
+		{
+			name:    "no Compose labels falls back to the container name",
+			labels:  map[string]string{},
+			wantJob: "standalone-worker.task",
+		},
+		{
+			name:    "service label alone falls back to the service name",
+			labels:  map[string]string{"com.docker.compose.service": "worker"},
+			wantJob: "worker.task",
+		},
+		{
+			name:    "project label alone falls back to the container name",
+			labels:  map[string]string{"com.docker.compose.project": "acme"},
+			wantJob: "standalone-worker.task",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := &Config{logger: test.NewTestLogger()}
+			cfg.Global.JobExecLabelScope = "project-service"
+
+			labels := map[string]string{
+				"ofelia.enabled":                "true",
+				"ofelia.job-exec.task.schedule": "@daily",
+				"ofelia.job-exec.task.command":  "run-task.sh",
+			}
+			maps.Copy(labels, tt.labels)
+			standalone := DockerContainerInfo{
+				Name:   "standalone-worker",
+				State:  domain.ContainerState{Running: true},
+				Labels: labels,
+			}
+			if err := cfg.buildFromDockerContainers([]DockerContainerInfo{standalone}); err != nil {
+				t.Fatalf("buildFromDockerContainers failed: %v", err)
+			}
+			if len(cfg.ExecJobs) != 1 {
+				t.Errorf("expected 1 exec job, got %d: %v", len(cfg.ExecJobs), getJobNames(cfg.ExecJobs))
+			}
+			if _, ok := cfg.ExecJobs[tt.wantJob]; !ok {
+				t.Errorf("expected %q, got %v", tt.wantJob, getJobNames(cfg.ExecJobs))
+			}
+		})
+	}
+}
+
+// TestDockerLabels_ProjectServiceScope_ReplicasCollide pins the limit of the
+// project-service scope: replicas of one scaled service share the project and
+// the service name, so they still produce one job name. One job survives and
+// the collision warning names the dropped replica.
+func TestDockerLabels_ProjectServiceScope_ReplicasCollide(t *testing.T) {
+	t.Parallel()
+	logger, h := test.NewTestLoggerWithHandler()
+	cfg := &Config{logger: logger}
+	cfg.Global.JobExecLabelScope = "project-service"
+
+	replica := func(name string) DockerContainerInfo {
+		return DockerContainerInfo{
+			Name:  name,
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                   "true",
+				"com.docker.compose.project":       "pwpush",
+				"com.docker.compose.service":       "app",
+				"ofelia.job-exec.cleanup.schedule": "@daily",
+				"ofelia.job-exec.cleanup.command":  "cleanup",
+			},
+		}
+	}
+	containers := []DockerContainerInfo{replica("pwpush-app-1"), replica("pwpush-app-2")}
+	if err := cfg.buildFromDockerContainers(containers); err != nil {
+		t.Fatalf("buildFromDockerContainers failed: %v", err)
+	}
+
+	if len(cfg.ExecJobs) != 1 {
+		t.Errorf("expected 1 surviving job, got %d: %v", len(cfg.ExecJobs), getJobNames(cfg.ExecJobs))
+	}
+	if _, ok := cfg.ExecJobs["pwpush.app.cleanup"]; !ok {
+		t.Errorf("expected 'pwpush.app.cleanup', got %v", getJobNames(cfg.ExecJobs))
+	}
+	msg := firstWarningContaining(t, h, "name collision")
+	if want := `"pwpush-app-2" is dropped because container "pwpush-app-1"`; !strings.Contains(msg, want) {
+		t.Errorf("collision warning should name pwpush-app-2 as dropped and pwpush-app-1 as owner; got: %s", msg)
+	}
+}
+
+// TestDockerLabels_ComposeProjectLabel_NotParsedAsJob ensures the Compose
+// project label is treated as an internal label under every scope. Its key has
+// four dot-separated segments, the shape of a job label, so without the skip a
+// non-service container would log "Unknown job type docker" on each reconcile.
+func TestDockerLabels_ComposeProjectLabel_NotParsedAsJob(t *testing.T) {
+	t.Parallel()
+
+	for _, scope := range []string{"service", "container", "container-service", "project-service"} {
+		t.Run(scope, func(t *testing.T) {
+			t.Parallel()
+			logger, h := test.NewTestLoggerWithHandler()
+			cfg := &Config{logger: logger}
+			cfg.Global.JobExecLabelScope = scope
+
+			if err := cfg.buildFromDockerContainers(twoStacksSharingServiceName()[:1]); err != nil {
+				t.Fatalf("buildFromDockerContainers failed: %v", err)
+			}
+			if h.WarningCount() != 0 {
+				t.Errorf("scope %q: expected no warnings, got: %v", scope, h.GetMessages())
+			}
+			if len(cfg.ExecJobs) != 1 {
+				t.Errorf("scope %q: expected 1 exec job, got %d: %v", scope, len(cfg.ExecJobs), getJobNames(cfg.ExecJobs))
+			}
+		})
 	}
 }
 
