@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default stays `service`
   ([#927](https://github.com/netresearch/ofelia/issues/927)).
 
+### Fixed
+
+- `ofelia validate` now rejects an unknown `job-exec-label-scope` value, and
+  the daemon rejects it at startup when `enable-strict-validation = true`.
+  Before, such a value passed both checks and fell back to `service` with a
+  warning at the first container scan. Without strict validation the daemon
+  still starts and falls back with that warning.
+
 ## [1.1.0] - 2026-11-02
 
 A feature release. Ofelia can schedule the top-level `jobs:` of registered

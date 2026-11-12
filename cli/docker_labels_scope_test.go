@@ -562,6 +562,32 @@ func TestDockerLabels_ComposeProjectLabel_NotParsedAsJob(t *testing.T) {
 	}
 }
 
+// TestBuildFromString_JobExecLabelScope_StrictValidation verifies that strict
+// validation accepts every documented scope value and rejects an unknown one.
+func TestBuildFromString_JobExecLabelScope_StrictValidation(t *testing.T) {
+	t.Parallel()
+
+	scopes := []string{jobExecScopeService, jobExecScopeContainer, jobExecScopeContainerService, jobExecScopeProjectService}
+	for _, scope := range scopes {
+		t.Run(scope, func(t *testing.T) {
+			t.Parallel()
+			ini := "[global]\nenable-strict-validation = true\njob-exec-label-scope = " + scope + "\n"
+			cfg, err := BuildFromString(ini, test.NewTestLogger())
+			if err != nil {
+				t.Fatalf("strict validation rejected scope %q: %v", scope, err)
+			}
+			if cfg.Global.JobExecLabelScope != scope {
+				t.Errorf("expected job-exec-label-scope %q, got %q", scope, cfg.Global.JobExecLabelScope)
+			}
+		})
+	}
+
+	ini := "[global]\nenable-strict-validation = true\njob-exec-label-scope = project\n"
+	if _, err := BuildFromString(ini, test.NewTestLogger()); err == nil {
+		t.Error(`expected strict validation to reject the unknown scope "project"`)
+	}
+}
+
 // firstWarningContaining returns the first WARN-level message containing substr,
 // failing the test if none is found.
 func firstWarningContaining(t *testing.T, h *test.Handler, substr string) string {
