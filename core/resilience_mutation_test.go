@@ -472,7 +472,11 @@ func TestCircuitBreaker_SuccessCountIncrement_MultipleSuccesses(t *testing.T) {
 func TestRateLimiter_RefillCapBoundary(t *testing.T) {
 	t.Parallel()
 
-	rl := NewRateLimiter(1000.0, 5) // 1000 tokens/sec, capacity 5
+	// A rate of 0.01 tokens/sec refills one token every 100 s, so the
+	// Allow calls below cannot pick up a token from scheduler delay; a
+	// rate of 1000/sec made the 6th Allow succeed whenever the loop took
+	// longer than 1 ms on a loaded CI runner.
+	rl := NewRateLimiter(0.01, 5)
 
 	// Initially tokens = capacity = 5
 	// Use 1 token
@@ -480,8 +484,12 @@ func TestRateLimiter_RefillCapBoundary(t *testing.T) {
 		t.Fatal("expected first allow to succeed")
 	}
 
-	// Wait enough for more than 1 token to refill (but total < capacity)
-	time.Sleep(10 * time.Millisecond) // should add ~10 tokens at 1000/sec, capped to 5
+	// Simulate 1000 s of elapsed time: 10 tokens at 0.01/sec, capped to 5.
+	// Rewinding lastRefill under the limiter's mutex replaces time.Sleep,
+	// as in TestRateLimiter_RefillDoesNotExceedCapacity.
+	rl.mu.Lock()
+	rl.lastRefill = rl.lastRefill.Add(-1000 * time.Second)
+	rl.mu.Unlock()
 
 	// After refill, tokens should be exactly at capacity (5)
 	// Use all 5 tokens
