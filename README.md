@@ -289,11 +289,11 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `smtp-user` - user name used to connect to the SMTP server.
 - `smtp-password` - password used to connect to the SMTP server.
 - `smtp-tls-skip-verify` - when `true` ignores certificate signed by unknown authority error.
-- `email-to` - mail address of the receiver of the mail.
+- `email-to` - mail address of the receiver of the mail. Mail notifications are active only when `email-to` is set, globally or on the job; the other mail options alone send nothing.
 - `email-from` - mail address of the sender of the mail.
 - `email-subject` - custom subject template for emails. Uses Go template syntax with access to `.Job` and `.Execution`. Example: `[ALERT] Job {{.Job.GetName}} {{status .Execution}}`. If not set, uses default format.
 - `mail-only-on-error` - only send a mail if the execution was not successful.
-- `mail-output-in-body` - put the job output into the mail body instead of attaching it. `0` or unset keeps the `stdout.log`/`stderr.log` attachments (default); a positive number `N` puts the last `N` lines of stdout and of stderr into the body; `-1` puts the whole captured output into the body. When set, the two log attachments are not sent, so output beyond the last `N` lines is not in the mail. A job can set `0` to keep attachments while `[global]` sets a value.
+- `mail-output-in-body` - put the job output into the mail body instead of attaching it. `0` or unset keeps the `stdout.log`/`stderr.log` attachments (default); a positive number `N` puts the last `N` lines of stdout and of stderr into the body; `-1` puts the whole captured output into the body. When the value is not `0`, the two log attachments are not sent, so output beyond the last `N` lines is not in the mail. A job can set `0` to keep attachments while `[global]` sets a value.
 
 - `save-folder` - directory in which the reports shall be written. The folder is created automatically if it doesn't exist using an equivalent of `mkdir -p`.
 - `save-only-on-error` - only save a report if the execution was not successful.
@@ -376,7 +376,7 @@ docker run -it --rm \
 
 Labels format: `ofelia.<JOB_TYPE>.<JOB_NAME>.<JOB_PARAMETER>=<PARAMETER_VALUE>`.
 This type of configuration supports all the capabilities provided by INI files, including the global logging options.
-For `job-exec` labels, Ofelia automatically prefixes the container name to the job name to avoid collisions. A label `ofelia.job-exec.optimize` on a container named `gitlab` will result in a job called `gitlab.optimize`.
+For `job-exec` labels, Ofelia automatically prefixes the job name to avoid collisions. By default the prefix is the Docker Compose service name (label `com.docker.compose.service`), falling back to the container name. Labels such as `ofelia.job-exec.optimize.schedule` and `ofelia.job-exec.optimize.command` on the Compose service `gitlab`, or on a plain container named `gitlab`, will result in a job called `gitlab.optimize`. When one daemon watches several Compose projects that reuse a service name, set `[global] job-exec-label-scope` to `container`, `container-service` or `project-service`; see [Cross-Container Job References](docs/CONFIGURATION.md#cross-container-job-references-docker-compose).
 
 Also, it is possible to configure `job-exec` by setting labels configurations on the target container. To do that, additional label `ofelia.enabled=true` need to be present on the target container.
 
