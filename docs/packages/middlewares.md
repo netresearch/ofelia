@@ -66,7 +66,7 @@ smtp-password = secret
 **Email Format**:
 - **Subject**: `Ofelia executed: job_name [SUCCESS/FAILED]`
 - **Body**: HTML template with execution details; with `mail-output-in-body` set, also the HTML-escaped stdout and stderr (last N lines each, marked "(truncated)" when lines were dropped)
-- **Attachments**: `job_name_execution_id.stdout.log`, `*.stderr.log` (not sent when `mail-output-in-body` is set), `*.stderr.json`
+- **Attachments**: `job_name_execution_id.stdout.log`, `*.stderr.log` (not sent when `mail-output-in-body` is not `0`), `*.stderr.json`
 
 ### 2. Slack
 
