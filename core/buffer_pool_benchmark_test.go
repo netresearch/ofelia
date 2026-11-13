@@ -91,15 +91,16 @@ func TestMemoryUsageComparison(t *testing.T) {
 	var memOldBefore runtime.MemStats
 	runtime.ReadMemStats(&memOldBefore)
 
-	// Keep references to prevent GC
-	oldBuffers := make([]*circbuf.Buffer, 0, iterations*2)
-
+	// TotalAlloc counts every allocation, including buffers the GC has
+	// already freed, so the buffers are not kept alive. Keeping all 200
+	// (2 GB) reserved that much address space and failed with "out of
+	// memory" under the 3 GiB cap the mutation workflow puts on each test
+	// binary.
 	for range iterations {
 		bufOut, _ := circbuf.NewBuffer(maxStreamSize) // 10MB
 		bufErr, _ := circbuf.NewBuffer(maxStreamSize) // 10MB
 		_, _ = bufOut.Write([]byte("test"))
 		_, _ = bufErr.Write([]byte("test"))
-		oldBuffers = append(oldBuffers, bufOut, bufErr)
 	}
 
 	var memOldAfter runtime.MemStats

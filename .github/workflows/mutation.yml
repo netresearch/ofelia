@@ -21,6 +21,13 @@ jobs:
     uses: netresearch/.github/.github/workflows/go-mutation-testing.yml@main
     with:
       diff-only: ${{ github.event_name == 'pull_request' }}
+      # The core tests need between 3.5 and 4 GiB of address space per test
+      # binary on a 4-core runner: each EnhancedBufferPool test prewarms
+      # 10 MB buffers, and several run in parallel. The default of 3 GiB
+      # fails the unmutated core package with "out of memory". 4 GiB passed
+      # 10 of 10 local runs with GOMAXPROCS=4; 4 workers x 4 GiB stays within
+      # the 16 GB of a hosted runner, which the limit exists to protect.
+      test-memory-limit-mb: 4096
     permissions:
       contents: read
       pull-requests: write
