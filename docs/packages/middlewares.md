@@ -42,7 +42,7 @@ type MailConfig struct {
 ```
 
 **Features**:
-- Sends email after job completion
+- Sends email after job completion; active only when `EmailTo` (`email-to`) is set
 - Includes stdout/stderr as attachments, or in the body with `mail-output-in-body` (last N lines, `-1` for all)
 - HTML formatted body with job details
 - Optional error-only mode

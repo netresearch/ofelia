@@ -18,8 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   container without both Compose labels is named as under `service`. The
   default stays `service`
   ([#927](https://github.com/netresearch/ofelia/issues/927)).
+- `mail-output-in-body` puts the job output into the mail body instead of the
+  `stdout.log` and `stderr.log` attachments. A positive number `N` puts the
+  last `N` lines of stdout and of stderr into the body, `-1` puts the whole
+  captured output there, and `0` or unset keeps the attachments. When the
+  option is set, the two log attachments are not sent. A job can set `0` to
+  keep the attachments while `[global]` sets a value
+  ([#916](https://github.com/netresearch/ofelia/pull/916)).
 
 ### Fixed
+
+- The mail middleware is attached only when `email-to` is set. Before, a
+  behaviour flag alone, such as `mail-only-on-error` or `mail-output-in-body`
+  in `[global]` without `email-to`, attached the middleware, and every job run
+  logged a mail error
+  ([#917](https://github.com/netresearch/ofelia/issues/917),
+  [#919](https://github.com/netresearch/ofelia/pull/919)).
 
 - `ofelia validate` now rejects an unknown `job-exec-label-scope` value, and
   the daemon rejects it at startup when `enable-strict-validation = true`.
