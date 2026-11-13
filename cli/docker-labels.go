@@ -22,6 +22,10 @@ const (
 	// dockerComposeServiceLabel is the label Docker Compose sets on containers
 	// to indicate the service name from docker-compose.yml
 	dockerComposeServiceLabel = "com.docker.compose.service"
+
+	// dockerComposeProjectLabel is the label Docker Compose sets on containers
+	// to indicate the project the container belongs to.
+	dockerComposeProjectLabel = "com.docker.compose.project"
 )
 
 // globalLabelAllowList defines global config keys that may be set via Docker labels.
@@ -431,7 +435,7 @@ func (c *Config) warnOnExecJobCollisions(m *dockerLabelJobMaps, cs *containerSca
 // processContainerLabel applies a single Docker label key/value to the
 // appropriate job or config map for the container being scanned.
 func (c *Config) processContainerLabel(m *dockerLabelJobMaps, cs *containerScan, k, jobParamValue string) {
-	if k == requiredLabel || k == serviceLabel || k == dockerComposeServiceLabel {
+	if k == requiredLabel || k == serviceLabel || k == dockerComposeServiceLabel || k == dockerComposeProjectLabel {
 		// Do not track internal labels as global config parameters.
 		return
 	}
@@ -463,8 +467,9 @@ func (c *Config) processContainerLabel(m *dockerLabelJobMaps, cs *containerScan,
 	scopedName := jobName
 	if jobType == jobExec {
 		// Scope the job-exec name per the [global] job-exec-label-scope policy
-		// (service / container / container-service) to keep names collision-safe
-		// across Compose projects while preserving cross-container references.
+		// (service / container / container-service / project-service) to keep
+		// names collision-safe across Compose projects while preserving
+		// cross-container references.
 		scopedName = getJobPrefix(cs.labels, cs.name, c.Global.JobExecLabelScope) + "." + jobName
 	}
 
@@ -549,6 +554,10 @@ const (
 	// jobExecScopeContainerService prefixes with both the container and service
 	// names ("{container}.{service}.{job}") — descriptive and collision-safe.
 	jobExecScopeContainerService = "container-service"
+	// jobExecScopeProjectService prefixes with the Compose project and service
+	// names ("{project}.{service}.{job}") — tells apart projects that reuse a
+	// service name. Replicas of one scaled service still share the name.
+	jobExecScopeProjectService = "project-service"
 )
 
 // getJobPrefix returns the prefix to prepend to a label-defined job-exec job
@@ -565,8 +574,14 @@ const (
 //   - jobExecScopeContainerService: the container name plus the service name.
 //     Produces "acme-web.web.backup"; falls back to the container name alone
 //     for non-Compose containers, avoiding an empty "container..job" segment.
+//   - jobExecScopeProjectService: the Compose project name
+//     (com.docker.compose.project) plus the service name. Produces
+//     "acme.web.backup". A container that lacks either label is named as under
+//     jobExecScopeService, so no segment is ever empty. Replicas of one scaled
+//     service share both names and still collide.
 //
-// See https://github.com/netresearch/ofelia/issues/734.
+// See https://github.com/netresearch/ofelia/issues/734 and
+// https://github.com/netresearch/ofelia/issues/927.
 func getJobPrefix(labels map[string]string, containerName, scope string) string {
 	serviceName := labels[dockerComposeServiceLabel]
 	switch scope {
@@ -577,6 +592,11 @@ func getJobPrefix(labels map[string]string, containerName, scope string) string 
 			return containerName + "." + serviceName
 		}
 		return containerName
+	case jobExecScopeProjectService:
+		if projectName := labels[dockerComposeProjectLabel]; projectName != "" && serviceName != "" {
+			return projectName + "." + serviceName
+		}
+		return getJobPrefix(labels, containerName, jobExecScopeService)
 	case jobExecScopeService:
 		fallthrough
 	default: // empty or any unrecognized value falls back to the service default
@@ -595,17 +615,17 @@ func getJobPrefix(labels map[string]string, containerName, scope string) string 
 // this key is opt-in (enable-strict-validation); this warning fires regardless.
 func (c *Config) warnUnrecognizedJobExecLabelScope() {
 	switch c.Global.JobExecLabelScope {
-	case "", jobExecScopeService, jobExecScopeContainer, jobExecScopeContainerService:
+	case "", jobExecScopeService, jobExecScopeContainer, jobExecScopeContainerService, jobExecScopeProjectService:
 		return
 	}
 	if c.logger == nil {
 		return
 	}
 	c.logger.Warn(fmt.Sprintf(
-		"unrecognized [global] job-exec-label-scope %q — falling back to %q; valid values are %q, %q, %q. "+
+		"unrecognized [global] job-exec-label-scope %q — falling back to %q; valid values are %q, %q, %q, %q. "+
 			"See https://github.com/netresearch/ofelia/issues/734.",
 		c.Global.JobExecLabelScope, jobExecScopeService,
-		jobExecScopeService, jobExecScopeContainer, jobExecScopeContainerService))
+		jobExecScopeService, jobExecScopeContainer, jobExecScopeContainerService, jobExecScopeProjectService))
 }
 
 func ensureJob(m map[string]map[string]any, name string) {

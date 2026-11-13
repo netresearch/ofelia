@@ -221,7 +221,9 @@ func TestGetDockerContainersNoContainers(t *testing.T) {
 	assert.Equal(t, ErrNoContainerWithOfeliaEnabled, err)
 }
 
-// TestGetDockerContainersValid verifies that GetDockerContainers filters and returns only ofelia-prefixed labels as well as "com.docker.compose.service"
+// TestGetDockerContainersValid verifies that GetDockerContainers filters and returns only ofelia-prefixed labels as well as
+// "com.docker.compose.service" and "com.docker.compose.project". Other Compose labels, including those that
+// start with "com.docker.compose.project.", are dropped.
 func TestGetDockerContainersValid(t *testing.T) {
 	t.Parallel()
 	// Mock provider returning one container with mixed labels
@@ -233,11 +235,13 @@ func TestGetDockerContainersValid(t *testing.T) {
 					Running: false,
 				},
 				Labels: map[string]string{
-					"ofelia.enabled":               "true",
-					"ofelia.job-exec.foo.schedule": "@every 1s",
-					"ofelia.job-run.bar.schedule":  "@every 2s",
-					"other.label":                  "ignore",
-					"com.docker.compose.service":   "test-service",
+					"ofelia.enabled":                         "true",
+					"ofelia.job-exec.foo.schedule":           "@every 1s",
+					"ofelia.job-run.bar.schedule":            "@every 2s",
+					"other.label":                            "ignore",
+					"com.docker.compose.service":             "test-service",
+					"com.docker.compose.project":             "test-project",
+					"com.docker.compose.project.working_dir": "/srv/test-project",
 				},
 			},
 		},
@@ -255,6 +259,7 @@ func TestGetDockerContainersValid(t *testing.T) {
 			"ofelia.job-exec.foo.schedule": "@every 1s",
 			"ofelia.job-run.bar.schedule":  "@every 2s",
 			"com.docker.compose.service":   "test-service",
+			"com.docker.compose.project":   "test-project",
 		},
 	}}
 	assert.Equal(t, expected, labels)

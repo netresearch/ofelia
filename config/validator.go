@@ -393,6 +393,8 @@ func (cv *Validator2) validateSpecificStringField(v *Validator, path string, str
 		cv.validateAddressField(v, path, str)
 	case "log-level":
 		cv.validateLogLevelField(v, path, str)
+	case "job-exec-label-scope":
+		v.ValidateEnum(path, str, jobExecLabelScopes)
 	case keyCommand, "cmd":
 		cv.validateCommandField(v, path, str)
 	case keyImage:
@@ -452,6 +454,14 @@ func (cv *Validator2) validateAddressField(v *Validator, path string, str string
 		v.AddError(path, str, "invalid address format")
 	}
 }
+
+// jobExecLabelScopes lists the values [global] job-exec-label-scope accepts.
+// The naming itself lives in cli (getJobPrefix), which falls back to "service"
+// for any other value; this list makes `ofelia validate`, and the daemon
+// under enable-strict-validation, reject such a value instead.
+// TestBuildFromString_JobExecLabelScope_StrictValidation in cli fails when
+// the two drift apart.
+var jobExecLabelScopes = []string{"service", "container", "container-service", "project-service"}
 
 // validateLogLevelField validates log level fields
 func (cv *Validator2) validateLogLevelField(v *Validator, path string, str string) {
