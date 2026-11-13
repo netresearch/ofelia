@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-13
+
+A feature release. Label-defined `job-exec` jobs can carry the Compose project
+in their name, and mail notifications can put the job output into the mail
+body. The binaries and images are built with Go 1.27.4, which fixes
+GO-2026-6859 in `net/http`.
+
 ### Added
 
 - `[global] job-exec-label-scope` accepts the value `project-service`. It names
@@ -17,14 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name: one of them runs the job and Ofelia logs the collision warning. A
   container without both Compose labels is named as under `service`. The
   default stays `service`
-  ([#927](https://github.com/netresearch/ofelia/issues/927)).
+  ([#927](https://github.com/netresearch/ofelia/issues/927),
+  [#932](https://github.com/netresearch/ofelia/pull/932)).
 - `mail-output-in-body` puts the job output into the mail body instead of the
   `stdout.log` and `stderr.log` attachments. A positive number `N` puts the
   last `N` lines of stdout and of stderr into the body, `-1` puts the whole
   captured output there, and `0` or unset keeps the attachments. When the
   value is not `0`, the two log attachments are not sent. A job can set `0` to
   keep the attachments while `[global]` sets a value
-  ([#916](https://github.com/netresearch/ofelia/pull/916)).
+  ([#316](https://github.com/netresearch/ofelia/issues/316),
+  [#916](https://github.com/netresearch/ofelia/pull/916)).
 
 ### Fixed
 
@@ -34,12 +43,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   logged a mail error
   ([#917](https://github.com/netresearch/ofelia/issues/917),
   [#919](https://github.com/netresearch/ofelia/pull/919)).
-
 - `ofelia validate` now rejects an unknown `job-exec-label-scope` value, and
   the daemon rejects it at startup when `enable-strict-validation = true`.
   Before, such a value passed both checks and fell back to `service` with a
   warning at the first container scan. Without strict validation the daemon
-  still starts and falls back with that warning.
+  still starts and falls back with that warning
+  ([#932](https://github.com/netresearch/ofelia/pull/932)).
+
+### Changed
+
+- Go toolchain 1.27.4. Go 1.27.3 carries GO-2026-6859 in `net/http`
+  ([#933](https://github.com/netresearch/ofelia/pull/933)).
+- The image's Alpine base moves to 3.24.4
+  ([#929](https://github.com/netresearch/ofelia/pull/929)).
 
 ## [1.1.0] - 2026-11-02
 
