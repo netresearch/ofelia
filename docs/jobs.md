@@ -81,7 +81,7 @@ docker run -it --rm \
         web-app
 ```
 
-When specifying exec jobs via labels, Ofelia prefixes the job name to keep jobs from different containers with the same label from clashing. By default the prefix is the Docker Compose **service** name (falling back to the container name), so the example above yields `nginx.flush-nginx-logs`. This default is collision-prone when one daemon watches several Compose projects that reuse a service name; the `[global]` `job-exec-label-scope` option (`service` / `container` / `container-service`) selects a collision-safe scheme. See [Cross-Container Job References](CONFIGURATION.md#cross-container-job-references-docker-compose) for details.
+When specifying exec jobs via labels, Ofelia prefixes the job name to keep jobs from different containers with the same label from clashing. By default the prefix is the Docker Compose **service** name (falling back to the container name), so the example above yields `nginx.flush-nginx-logs`. This default is collision-prone when one daemon watches several Compose projects that reuse a service name; the `[global]` `job-exec-label-scope` option (`service` / `container` / `container-service` / `project-service`) selects a collision-safe scheme. See [Cross-Container Job References](CONFIGURATION.md#cross-container-job-references-docker-compose) for details.
 
 ### Cancellation
 

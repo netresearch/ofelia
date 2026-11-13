@@ -612,6 +612,30 @@ func TestValidateLogLevelField_BothBranches(t *testing.T) {
 	}
 }
 
+// TestValidateSpecificStringField_JobExecLabelScope tests that every documented
+// job-exec-label-scope value passes and that any other value is reported.
+func TestValidateSpecificStringField_JobExecLabelScope(t *testing.T) {
+	t.Parallel()
+
+	cv := &Validator2{sanitizer: NewSanitizer()}
+
+	for _, scope := range []string{"service", "container", "container-service", "project-service"} {
+		v := NewValidator()
+		cv.validateSpecificStringField(v, "job-exec-label-scope", scope)
+		if v.HasErrors() {
+			t.Errorf("scope %q should not produce error: %v", scope, v.Errors())
+		}
+	}
+
+	for _, scope := range []string{"project", "Service", "continer"} {
+		v := NewValidator()
+		cv.validateSpecificStringField(v, "job-exec-label-scope", scope)
+		if !v.HasErrors() {
+			t.Errorf("scope %q should produce error", scope)
+		}
+	}
+}
+
 // TestIsOptionalField_BothBranches exercises the isOptionalField method.
 func TestIsOptionalField_BothBranches(t *testing.T) {
 	t.Parallel()

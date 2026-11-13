@@ -406,11 +406,13 @@ default-user = nobody        # For job-exec, job-run and job-service-run; see "T
 
 # How label-defined job-exec names are scoped (see "Cross-Container Job
 # References" below). Default `service` is collision-prone when one daemon
-# watches several Compose projects that reuse a service name; use `container`
-# or `container-service` to keep them distinct.
+# watches several Compose projects that reuse a service name; use `container`,
+# `container-service` or `project-service` to keep them distinct.
 #   service           - {service}.{job} (default; falls back to container name)
 #   container         - {container}.{job} (collision-safe per Docker daemon)
 #   container-service - {container}.{service}.{job} (descriptive + collision-safe)
+#   project-service   - {project}.{service}.{job} (distinct per Compose project;
+#                       replicas of one scaled service share the name)
 job-exec-label-scope = service
 
 # Notification deduplication: suppress duplicate error notifications (Slack, email,
@@ -1212,6 +1214,7 @@ The `[global]` option `job-exec-label-scope` controls how job-exec names are sco
 | `service` (default) | `web.sync-news` | Compose service name (falls back to container name). Required for cross-container `depends-on`/`on-success` references. Collides across projects that reuse a service name. |
 | `container` | `acme-web.sync-news` | Container name, which Docker guarantees unique per daemon. Collision-safe. |
 | `container-service` | `acme-web.web.sync-news` | Container **and** service name — descriptive and collision-safe. Falls back to `{container}.{job}` for non-Compose containers. |
+| `project-service` | `acme.web.sync-news` | Compose project **and** service name (`com.docker.compose.project`, `com.docker.compose.service`) — keeps projects that reuse a service name distinct and shows which project a job belongs to. Replicas of one scaled service share the name, so only one of them runs the job and Ofelia logs the collision warning. A container without both Compose labels is named as under `service`. |
 
 ```ini
 [global]
@@ -1219,7 +1222,7 @@ The `[global]` option `job-exec-label-scope` controls how job-exec names are sco
 job-exec-label-scope = container
 ```
 
-This is a **daemon-wide** setting configured in the Ofelia `[global]` section (INI), not via container labels — a single container must not redefine how every other container's jobs are named. When you switch away from `service`, update any cross-container `depends-on`/`on-success`/`on-failure` references to use the new scoped names (e.g. `acme-database.backup` instead of `database.backup`).
+This is a **daemon-wide** setting configured in the Ofelia `[global]` section (INI), not via container labels — a single container must not redefine how every other container's jobs are named. When you switch away from `service`, update any cross-container `depends-on`/`on-success`/`on-failure` references to use the new scoped names (e.g. `acme-database.backup` instead of `database.backup`, or `acme.database.backup` under `project-service`).
 
 ### Important Notes
 
