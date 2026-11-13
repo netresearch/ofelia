@@ -10,3 +10,9 @@ intentional-drift:
     \ ./e2e/..., -tags=e2e, two of them browser-driven) that run in CI. Plus\
     \ enable-test-results: true, which routes the unit tests through gotestsum so\
     \ Codecov Test Analytics has data (netresearch/.github#333)."
+- path: .github/workflows/mutation.yml
+  reason: "test-memory-limit-mb: 4096 — the unmutated core package needs\
+    \ between 3.5 and 4 GiB of address space per test binary on a 4-core runner\
+    \ (EnhancedBufferPool tests prewarm 10 MB buffers in parallel), so the shared\
+    \ default of 3 GiB (netresearch/.github#598) fails the coverage run with\
+    \ out of memory before any mutant runs."
