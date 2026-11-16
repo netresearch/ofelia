@@ -43,8 +43,12 @@ LABEL ofelia.service=true \
 
 # tini is used as init process (PID 1) to properly reap zombie processes
 # from local jobs. See: https://github.com/krallin/tini
+# zlib: the alpine:3.24.4 image ships 1.3.2-r1 (CVE-2026-4738); the fix,
+# 1.4-r0, is only in the v3.24 repository. Drop the upgrade once a base
+# image digest carries zlib >= 1.4-r0.
 # hadolint ignore=DL3018
-RUN apk add --no-cache ca-certificates tini tzdata
+RUN apk add --no-cache ca-certificates tini tzdata \
+ && apk add --no-cache --upgrade 'zlib>=1.4-r0'
 
 COPY --from=binary-selector /usr/bin/ofelia /usr/bin/ofelia
 
