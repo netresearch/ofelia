@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-16
+
+The `ghcr.io` images, the `-compose` tags included, ship zlib 1.4-r0. The
+Alpine 3.24.4 base image carries zlib 1.3.2-r1, which is affected by
+CVE-2026-4738; 1.2.0 shipped that version.
+
+### Fixed
+
+- The runtime image upgrades zlib to 1.4-r0 (CVE-2026-4738)
+  ([#940](https://github.com/netresearch/ofelia/pull/940)).
+
+### Changed
+
+- Go module dependencies are updated: `docker/cli` 29.10.0,
+  `moby/moby/client` 0.6.3 and `golang.org/x/crypto` 0.59.0
+  ([#938](https://github.com/netresearch/ofelia/pull/938),
+  [#942](https://github.com/netresearch/ofelia/pull/942),
+  [#943](https://github.com/netresearch/ofelia/pull/943)).
+- `docs/SECURITY.md` describes running the container as a non-root user with
+  `--user 65534:<docker socket GID>`; the image default stays root
+  ([#941](https://github.com/netresearch/ofelia/pull/941)).
+
 ## [1.2.0] - 2026-11-13
 
 A feature release. Label-defined `job-exec` jobs can carry the Compose project
