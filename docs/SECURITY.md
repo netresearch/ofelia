@@ -689,6 +689,38 @@ DOCKER_TLS_VERIFY=1
 DOCKER_CERT_PATH=/certs
 ```
 
+**Running Ofelia itself as a non-root user**: the image has no `USER`
+directive, so Ofelia runs as root by default. A non-root default would break
+the standard setup: the socket is `root:docker` with mode `660`, and the GID of
+the `docker` group differs from host to host, so no GID baked into the image
+fits everywhere. Without that group the daemon exits at startup with
+`permission denied while trying to connect to the docker API`.
+
+To run as a non-root user, pass a UID together with the socket's group ID of
+your host:
+
+```bash
+DOCKER_GID=$(stat -c %g /var/run/docker.sock)
+
+docker run -d --user "65534:${DOCKER_GID}" \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v "$PWD/ofelia.ini:/etc/ofelia/config.ini:ro" \
+  ghcr.io/netresearch/ofelia:latest
+```
+
+In Compose, set `user: "65534:${DOCKER_GID}"` on the `ofelia` service and
+export `DOCKER_GID` before `docker compose up`. `job-run`, `job-exec`,
+`job-local` and `job-compose` (with the `-compose` image) work in this mode, as
+does the health check. That user must be able to read the configuration file
+and write to `save-folder` if you use one, and `job-local` commands run as that
+user.
+
+This limits what the Ofelia process and `job-local` commands can do inside the
+Ofelia container. It does not limit what Ofelia can do on the host: access to
+the Docker socket is equivalent to root on the host, whichever user holds it
+(see [ADR-002](./adr/ADR-002-security-boundaries.md)). A default non-root user
+is tracked in [#721](https://github.com/netresearch/ofelia/issues/721).
+
 **Host-Job Restrictions**:
 ```ini
 [global]
