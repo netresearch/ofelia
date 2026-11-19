@@ -219,6 +219,7 @@ Ofelia includes presets for popular notification services:
 | `gotify` | Gotify | `url`, `secret` (app token) |
 | `healthchecks` | Healthchecks.io | `id` (uuid or pingkey/slug) |
 | `healthchecks-selfhosted` | Healthchecks (self-hosted) | `url` (full ping URL) |
+| `spooky` | Spooky Particles check-ins | `id` (check-in token) |
 
 ## Configuration Reference
 
@@ -490,6 +491,27 @@ trigger = error
 Other suffixes such as `/start` or `/<exit-status>` work the same way. See the
 [Healthchecks signaling failures docs](https://healthchecks.io/docs/signaling_failures/)
 for the full list.
+
+### Spooky Particles
+
+[Spooky Particles](https://spookyparticles.com) pages the owner when a
+scheduled job fails or stops checking in. The ping link accepts `/start`,
+`/fail` and `/<exit-status>` endings, and keeps the POST body as the run's note.
+
+```ini
+[webhook "spooky-ok"]
+preset = spooky
+id = your-checkin-token
+trigger = success
+
+[webhook "spooky-fail"]
+preset = spooky
+id = your-checkin-token/fail
+trigger = error
+```
+
+As with Healthchecks, the ending decides the state, so use two webhooks to
+report failures. See the [check-ins docs](https://spookyparticles.com/docs/check-ins).
 
 ## Custom Webhooks (URL-only, no custom preset)
 

@@ -222,6 +222,59 @@ func TestPreset_RenderBody_Healthchecks_Failed(t *testing.T) {
 	assert.Contains(t, body, "Link:     View logs -> https://logs.example.com")
 }
 
+func TestPresetLoader_LoadBundledPreset_Spooky(t *testing.T) {
+	t.Parallel()
+
+	loader := NewPresetLoader(nil)
+	preset, err := loader.Load("spooky")
+
+	require.NoError(t, err)
+	assert.NotNil(t, preset)
+	assert.Equal(t, "spooky", preset.Name)
+	assert.Equal(t, "https://spookyparticles.com/api/ping/{id}", preset.URLScheme)
+}
+
+// TestPreset_BuildURL_Spooky verifies the {id} substitution, including the
+// documented pattern of appending a "/fail" ending to the id so an on-error
+// webhook reports a failed run to Spooky Particles.
+func TestPreset_BuildURL_Spooky(t *testing.T) {
+	t.Parallel()
+
+	loader := NewPresetLoader(nil)
+	preset, err := loader.Load("spooky")
+	require.NoError(t, err)
+
+	url, err := preset.BuildURL(&WebhookConfig{ID: "abc123token"})
+	require.NoError(t, err)
+	assert.Equal(t, "https://spookyparticles.com/api/ping/abc123token", url)
+
+	failURL, err := preset.BuildURL(&WebhookConfig{ID: "abc123token/fail"})
+	require.NoError(t, err)
+	assert.Equal(t, "https://spookyparticles.com/api/ping/abc123token/fail", failURL)
+}
+
+// TestPreset_RenderBody_Spooky_Failed checks the failed-execution body (kept
+// by Spooky Particles as the run's note) includes the error output.
+func TestPreset_RenderBody_Spooky_Failed(t *testing.T) {
+	t.Parallel()
+
+	loader := NewPresetLoader(nil)
+	preset, err := loader.Load("spooky")
+	require.NoError(t, err)
+
+	data := map[string]any{
+		"Job":       WebhookJobData{Name: "backup", Command: "/run-backup.sh"},
+		"Execution": WebhookExecutionData{Status: "failed", Failed: true, Error: "exit status 1", Duration: time.Second},
+		"Host":      WebhookHostData{Hostname: "test-host"},
+		"Ofelia":    WebhookOfeliaData{Version: "1.0.0"},
+		"Preset":    PresetDataForTemplate{ID: "abc"},
+	}
+
+	body, err := preset.RenderBodyWithPreset(data)
+	require.NoError(t, err)
+	assert.Contains(t, body, "Error:    exit status 1")
+}
+
 func TestPresetLoader_LoadNonExistent(t *testing.T) {
 	t.Parallel()
 
