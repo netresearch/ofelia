@@ -1045,7 +1045,9 @@ and which ones is a matter of timing.
    ```
    The key is INI-only: the limit is shared by every job, so a container label
    cannot set it. A change in the INI file is applied on reload; runs already
-   in progress finish under the previous limit.
+   in progress finish under the previous limit. New runs are counted against
+   the new limit only, so until those runs end, the total can reach the
+   previous limit plus the new one.
 
 2. **Spread the start times**. A six-field schedule starts with a seconds
    field, so jobs that share a minute can start at different seconds:
