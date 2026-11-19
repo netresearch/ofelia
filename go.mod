@@ -7,7 +7,7 @@ toolchain go1.27.4
 require (
 	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2
 	github.com/chromedp/chromedp v0.23.1
-	github.com/compose-spec/compose-go/v2 v2.16.2
+	github.com/compose-spec/compose-go/v2 v2.17.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/creasty/defaults v1.11.0
 	github.com/distribution/reference v0.6.0
@@ -65,7 +65,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	go.yaml.in/yaml/v4 v4.0.0-rc.4 // indirect
+	go.yaml.in/yaml/v4 v4.0.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
