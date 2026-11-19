@@ -148,9 +148,16 @@ func (cs *concurrencySemaphore) getCap() int {
 	return cs.cap
 }
 
+// DefaultMaxConcurrentJobs is how many jobs a new Scheduler runs at once. A
+// fire that finds every slot taken does not run; it is recorded as a skipped
+// run. `[global] max-concurrent-jobs` sets the limit through
+// SetMaxConcurrentJobs.
+const DefaultMaxConcurrentJobs = 10
+
 // NewScheduler returns a Scheduler with default settings: no metrics recorder,
 // go-cron's default minimum @every interval (1s), the real clock, and a limit
-// of 10 concurrent jobs. It does not start the cron loop — call Start for that.
+// of DefaultMaxConcurrentJobs concurrent jobs. It does not start the cron loop
+// — call Start for that.
 // Use NewSchedulerWithMetrics, NewSchedulerWithOptions or NewSchedulerWithClock
 // to change those defaults.
 func NewScheduler(l *slog.Logger) *Scheduler {
@@ -188,8 +195,8 @@ func newSchedulerInternal(
 	// can capture it by reference; the variable is assigned after cron.New().
 	var cronInstance *cron.Cron
 
-	// Default to 10 concurrent jobs, can be configured via SetMaxConcurrentJobs
-	maxConcurrent := 10
+	// Configurable via SetMaxConcurrentJobs ([global] max-concurrent-jobs).
+	maxConcurrent := DefaultMaxConcurrentJobs
 	sem := newConcurrencySemaphore(maxConcurrent)
 
 	// Build the go-cron middleware chain. Concurrency limiting uses a
@@ -287,7 +294,8 @@ func (m *maxConcurrentSkipJob) Run() {
 
 // RunWithContext attempts to acquire a slot from the shared concurrencySemaphore
 // before delegating execution to the wrapped job. If no slot is immediately
-// available, the invocation is skipped and logged via cron.Logger.
+// available, the invocation is skipped and recorded as a skipped run of the
+// job (jobWrapper.skipOverLimit).
 func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 	// A job with durable schedule state runs its per-entry check first and
 	// then waits for a slot instead of being dropped here (ADR-005).
@@ -318,11 +326,12 @@ func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 			m.inner.Run()
 		}
 	default:
-		// cron.Logger only exposes Info and Error; use Info since skipping
-		// is non-fatal.  Via CronUtils, cron.Logger.Info maps to slog.Debug,
-		// so cron-scheduled skips appear at Debug level while the scheduler's
-		// own RunJob/Start paths log at Warn via slog directly.  This is
-		// intentional: frequent cron skips stay quiet, manual skips are visible.
+		// A dropped fire is a run that does not happen, so it is recorded
+		// like a no-overlap skip rather than left to a Debug line.
+		if w, ok := m.inner.(*jobWrapper); ok {
+			w.skipOverLimit(ctx, m.sem.getCap())
+			return
+		}
 		m.logger.Info("skip", "reason", "max concurrent reached",
 			"limit", m.sem.getCap())
 	}
@@ -345,6 +354,13 @@ func (s *Scheduler) SetMaxConcurrentJobs(maxJobs int) {
 	}
 	s.maxConcurrentJobs = maxJobs
 	s.concurrencySem.resize(maxJobs)
+}
+
+// MaxConcurrentJobs returns how many jobs the scheduler runs at once.
+func (s *Scheduler) MaxConcurrentJobs() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.maxConcurrentJobs
 }
 
 // SetMetricsRecorder installs the recorder used for retry metrics and stores it
@@ -1509,6 +1525,29 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 		success := err == nil && !jctx.Execution.Failed
 		onComplete(w.j.GetName(), success)
 	}
+}
+
+// skipOverLimit records a fire that the global job limit dropped. The job does
+// not run. The fire becomes a skipped run in the job's history, the
+// middlewares that run after an execution stopped (notifications, save)
+// receive it as they receive a no-overlap skip, and a Warn line names the job,
+// so the drop is visible at the default log level.
+func (w *jobWrapper) skipOverLimit(ctx context.Context, limit int) {
+	w.s.Logger.Warn("skip: the global job limit is reached",
+		"job", w.j.GetName(), "max-concurrent-jobs", limit)
+
+	e, err := NewExecution()
+	if err != nil {
+		w.s.Logger.Error(fmt.Sprintf("failed to create execution: %v", err))
+		return
+	}
+	defer e.Cleanup()
+
+	jctx := NewContextWithContext(ctx, w.s, w.j, e)
+	jctx.Start()
+	jctx.Stop(ErrSkippedExecution)
+	_ = jctx.Next() // runs only the middlewares that continue on stop
+	w.publish(jctx)
 }
 
 func (w *jobWrapper) start(ctx *Context) {
