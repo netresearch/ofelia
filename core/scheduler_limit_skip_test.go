@@ -236,6 +236,53 @@ func TestLimitSkip_NotificationMiddlewaresSeeTheSkippedRun(t *testing.T) {
 	}
 }
 
+// TestLimitSkip_RemovedJobRecordsNothing covers a fire that go-cron dispatched
+// before the job was removed and that reaches the full limit only afterwards.
+// The run path refuses such a fire at the name lock (passGate) and records
+// nothing; the drop path does the same, so the removed job gets no skipped
+// run, no Warn line and no notification.
+func TestLimitSkip_RemovedJobRecordsNothing(t *testing.T) {
+	t.Parallel()
+
+	capture := &attrCapture{}
+	notifier := &skipRecordingMiddleware{continueOnStop: true}
+	limited := newLimitedJob("limited")
+	limited.Use(notifier)
+	s, holder := startWithFullLimit(t, slog.New(capture), limited)
+	defer close(holder.release)
+
+	s.gate.mu.Lock()
+	w := s.gate.current[limited.GetName()]
+	s.gate.mu.Unlock()
+	if w == nil {
+		t.Fatal("the limited job has no live registration")
+	}
+	if err := s.RemoveJob(limited); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	dropped := &maxConcurrentSkipJob{inner: w, sem: s.concurrencySem, logger: NewCronUtils(newDiscardLogger())}
+	dropped.RunWithContext(context.Background())
+
+	if last := limited.GetLastRun(); last != nil {
+		t.Errorf("the removed job got a last run: %+v", last)
+	}
+	if n := len(limited.GetHistory()); n != 0 {
+		t.Errorf("history length = %d, want 0", n)
+	}
+	if n := len(notifier.executions()); n != 0 {
+		t.Errorf("a notification middleware saw %d executions of the removed job, want 0", n)
+	}
+	for _, r := range capture.snapshot() {
+		if r.level == slog.LevelWarn && r.attrs["job"] == "limited" {
+			t.Errorf("Warn record for the removed job: %q", r.message)
+		}
+	}
+	if limited.Called() != 0 {
+		t.Errorf("the removed job ran %d times", limited.Called())
+	}
+}
+
 func TestScheduler_MaxConcurrentJobsReportsTheLimit(t *testing.T) {
 	t.Parallel()
 

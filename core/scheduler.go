@@ -1532,7 +1532,14 @@ func (w *jobWrapper) runWithCtx(ctx context.Context) {
 // middlewares that run after an execution stopped (notifications, save)
 // receive it as they receive a no-overlap skip, and a Warn line names the job,
 // so the drop is visible at the default log level.
+//
+// A fire of a registration that was removed or replaced after go-cron
+// dispatched it records nothing, as passGate refuses it on the run path.
 func (w *jobWrapper) skipOverLimit(ctx context.Context, limit int) {
+	if w.s.gate.isRetired(w) {
+		w.s.Logger.Debug("skip: the job was removed or replaced", "job", w.j.GetName())
+		return
+	}
 	w.s.Logger.Warn("skip: the global job limit is reached",
 		"job", w.j.GetName(), "max-concurrent-jobs", limit)
 
