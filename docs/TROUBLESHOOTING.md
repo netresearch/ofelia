@@ -1006,6 +1006,60 @@ docker exec <container> ps aux | grep defunct
 - Add timeouts to external API calls and database queries
 - Use process supervisors for complex jobs
 
+### Jobs Skipped: Global Job Limit Reached
+
+**Symptoms**:
+- Runs are missing at the minutes when many jobs are due together, for example
+  every fifth minute, while `no-overlap` is not set
+- A job's history shows skipped runs it did not cause itself
+- Log shows `skip: the global job limit is reached` with `job=<name>` and
+  `max-concurrent-jobs=<limit>`
+
+**Root Cause**:
+
+Ofelia runs at most `max-concurrent-jobs` jobs at once (default `10`), counted
+across every job of the daemon. A job that becomes due while every slot is
+taken does not wait: that run is skipped, recorded as a skipped run in the
+job's history and passed to its notifications. Cron schedules fire at second 0,
+so jobs that share a minute start together: a `* * * * *` job, a `*/5` job and
+a `*/15` job all start at :00, :15, :30 and :45. Compose jobs with
+`concurrency: queue` or `missed_fires: one` wait for a slot instead (see
+[jobs.md](jobs.md#missed-fires-and-the-queue)).
+
+**Diagnosis**:
+```bash
+# Which runs were skipped, and when
+docker logs ofelia 2>&1 | grep "global job limit"
+```
+
+Count the jobs due in the same minute: every job above the limit is skipped,
+and which ones is a matter of timing.
+
+**Solutions**:
+
+1. **Raise the limit** above the number of jobs that can be due at the same
+   moment:
+   ```ini
+   [global]
+   max-concurrent-jobs = 30
+   ```
+   The key is INI-only: the limit is shared by every job, so a container label
+   cannot set it. A change in the INI file is applied on reload; runs already
+   in progress finish under the previous limit.
+
+2. **Spread the start times**. A six-field schedule starts with a seconds
+   field, so jobs that share a minute can start at different seconds:
+   ```ini
+   [job-exec "sync"]
+   schedule = 30 */5 * * * *   # second 30 of every fifth minute
+   ```
+
+3. **Keep slow frequent jobs from stacking**: `no-overlap = true` stops a slow
+   run from holding a second slot on its own next tick.
+
+4. **Get notified**: a webhook with `trigger = skipped` (or `always`) receives
+   the skipped runs.
+
 ### Job Execution Fails
 
 **Symptoms**:
@@ -1120,9 +1174,11 @@ docker inspect ofelia | grep Memory
              memory: 1G  # Increase from 512M
    ```
 
-2. **Optimize memory usage**: ofelia has no cap on how many jobs run at once,
-   so spread the schedules apart rather than looking for a concurrency setting.
-   What it does offer is per-job overlap prevention and container cleanup:
+2. **Optimize memory usage**: `[global] max-concurrent-jobs` (default `10`)
+   caps how many jobs run at once; a run beyond the cap is skipped, not queued
+   (see [Jobs Skipped: Global Job Limit Reached](#jobs-skipped-global-job-limit-reached)),
+   so spread the schedules apart rather than lowering it far. Ofelia also offers
+   per-job overlap prevention and container cleanup:
    ```ini
    no-overlap = true
 
@@ -1774,9 +1830,11 @@ OOMKilled errors
    go tool pprof heap.out
    ```
 
-2. **Limit concurrent execution**: there is no setting for this. Stagger the
-   schedules of the heaviest jobs so they do not fire together, and set
-   `no-overlap = true` so a slow run does not stack on its own next tick.
+2. **Limit concurrent execution**: `[global] max-concurrent-jobs` (default
+   `10`) caps how many jobs run at once. A run beyond the cap is skipped, not
+   queued, so also stagger the schedules of the heaviest jobs so they do not
+   fire together, and set `no-overlap = true` so a slow run does not stack on
+   its own next tick.
 
 3. **Monitor and alert**:
    ```bash

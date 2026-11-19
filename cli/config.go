@@ -76,6 +76,14 @@ type Config struct {
 		// suppressed until this cooldown period expires. Set to 0 to disable deduplication.
 		// Default: 0 (disabled - all notifications sent)
 		NotificationCooldown time.Duration `gcfg:"notification-cooldown" mapstructure:"notification-cooldown" validate:"gte=0" default:"0"`
+		// MaxConcurrentJobs is how many jobs run at once, across all jobs of
+		// the daemon. A fire that finds every slot taken does not run; it is
+		// recorded as a skipped run. A value below 1 is refused with a warning
+		// and the default (core.DefaultMaxConcurrentJobs) is kept.
+		// INI-only (not exposed via container labels): the limit is shared by
+		// every job, so a single container must not decide how many of every
+		// other container's jobs run.
+		MaxConcurrentJobs int `gcfg:"max-concurrent-jobs" mapstructure:"max-concurrent-jobs" validate:"gte=1" default:"10"`
 		// JobExecLabelScope controls how label-defined job-exec job names are
 		// scoped to avoid collisions when one daemon watches multiple Compose
 		// projects. Values:
@@ -670,6 +678,22 @@ func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
 	return true
 }
 
+// applyMaxConcurrentJobs hands [global] max-concurrent-jobs to the scheduler.
+// A value below 1 would let no job run, so it is refused with a warning and the
+// default is kept. The scheduler is only resized when the limit changes: a
+// resize while jobs run lets them finish under the previous limit.
+func (c *Config) applyMaxConcurrentJobs() {
+	limit := c.Global.MaxConcurrentJobs
+	if limit < 1 {
+		c.logger.Warn(fmt.Sprintf("[global] max-concurrent-jobs = %d is refused: it must be at least 1; using %d",
+			limit, core.DefaultMaxConcurrentJobs))
+		limit = core.DefaultMaxConcurrentJobs
+	}
+	if c.sh.MaxConcurrentJobs() != limit {
+		c.sh.SetMaxConcurrentJobs(limit)
+	}
+}
+
 // registerAllJobs materializes every configured job and hands it to the
 // scheduler. The kinds are processed in the order below; within a kind
 // the order is Go's map iteration order, i.e. unspecified — nothing here
@@ -684,6 +708,7 @@ func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
 func (c *Config) registerAllJobs() {
 	// Jobs without a max-runtime of their own read this at run time.
 	c.sh.SetGlobalMaxRuntime(c.Global.MaxRuntime)
+	c.applyMaxConcurrentJobs()
 	provider := c.dockerHandler.GetDockerProvider()
 	rejected := 0
 
@@ -1371,6 +1396,7 @@ func (c *Config) iniConfigUpdate() error {
 	if globalChanged {
 		c.Global = parsed.Global
 		c.sh.SetGlobalMaxRuntime(c.Global.MaxRuntime)
+		c.applyMaxConcurrentJobs()
 		c.rebuildAfterGlobalChange()
 	}
 
