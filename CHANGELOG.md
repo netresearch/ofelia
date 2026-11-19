@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `[global] max-concurrent-jobs` sets how many jobs run at once, counted across
   every job of the daemon. The default stays `10`, the limit Ofelia has applied
   since v0.10.1 without a way to change it. The key is INI-only and is applied
-  on reload.
+  on reload ([#949](https://github.com/netresearch/ofelia/pull/949)).
 
 ### Fixed
 
@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recorded as a skipped run: it shows in the job's history, reaches the job's
   notifications (a webhook with `trigger = skipped` included) and is logged at
   Warn with the job's name and the limit. The documentation stated that Ofelia
-  has no such limit; it now describes it.
+  has no such limit; it now describes it
+  ([#949](https://github.com/netresearch/ofelia/pull/949)).
 
 ## [1.2.1] - 2026-11-16
 
