@@ -14,6 +14,7 @@ import (
 
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/persist"
+	"github.com/netresearch/ofelia/middlewares"
 )
 
 // The web server builds jobs on its request goroutines while a reload
@@ -33,7 +34,10 @@ func TestBuildAPIJob_ConcurrentWithReload(t *testing.T) {
 			cfg.mu.Lock()
 			cfg.Global.SaveFolder = fmt.Sprintf("/var/log/ofelia-%d", i)
 			cfg.Global.NotificationCooldown = time.Duration(i%2) * time.Minute
-			cfg.initNotificationDedup()
+			// What initNotificationDedup does to the configuration, without its
+			// write to the package-wide middlewares.DefaultNotificationDedup,
+			// which parallel tests share.
+			cfg.notificationDedup = middlewares.NewNotificationDedup(cfg.Global.NotificationCooldown)
 			cfg.mu.Unlock()
 		}
 	}()
