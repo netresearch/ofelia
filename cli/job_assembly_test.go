@@ -118,7 +118,7 @@ func TestAssembleJob(t *testing.T) {
 			assemblyConfig(t).assembleJob("job1", j)
 			user, ok := userOf(j)
 			if !ok {
-				return
+				t.Skipf("%s jobs have no user", k.kind)
 			}
 			assert.Equal(t, "nobody", user, "a job without a user runs as [global] default-user")
 
@@ -142,7 +142,7 @@ func TestAssembleJob(t *testing.T) {
 			cfg.assembleJob("job1", j)
 			p, ok := providerOf(j)
 			if !ok {
-				return
+				t.Skipf("%s jobs have no Docker provider", k.kind)
 			}
 			assert.Same(t, cfg.dockerHandler.GetDockerProvider(), p)
 		})

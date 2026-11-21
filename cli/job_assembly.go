@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 Netresearch DTT GmbH
+// SPDX-License-Identifier: MIT
+
 package cli
 
 import (
@@ -8,11 +11,10 @@ import (
 	"github.com/netresearch/ofelia/middlewares"
 )
 
-// assembleJob turns a job definition into a job: it applies Ofelia's
-// struct-tag defaults and the global settings every job of that kind takes,
-// the same way for every job source. The kind-specific rules live in the
-// switch, so a rule added here reaches boot, INI reload and label reload at
-// once. Middlewares and registration are left to the caller.
+// assembleJob turns a job definition from the INI file or container labels
+// into a job: it applies Ofelia's struct-tag defaults and the global settings
+// every job of that kind takes. The kind-specific rules live in the switch,
+// so a rule added here reaches boot, INI reload and label reload at once. Middlewares and registration are left to the caller.
 func (c *Config) assembleJob(name string, j jobConfig) {
 	_ = defaults.Set(j)
 	switch j := j.(type) {
