@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Jobs created through the web API take an optional `user` for `run` and
+  `exec` jobs, with the meaning an INI job's `user` has: omitted takes
+  `[global] default-user`, `default` selects the container's own user. The
+  state file stores it. An older version refuses to load a state file that
+  holds `user`, so a downgrade needs the field removed from the file first
+  ([#956](https://github.com/netresearch/ofelia/pull/956)).
 - `[global] max-concurrent-jobs` sets how many jobs run at once, counted across
   every job of the daemon. The default stays `10`, the limit Ofelia has applied
   since v0.10.1 without a way to change it. The key is INI-only and is applied

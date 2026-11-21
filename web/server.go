@@ -754,6 +754,9 @@ type jobRequest struct {
 	File      string `json:"file,omitempty"`
 	Service   string `json:"service,omitempty"`
 	ExecFlag  bool   `json:"exec,omitempty"`
+	// User is the user a run or exec job runs as; empty takes
+	// [global] default-user, "default" the container's own user.
+	User string `json:"user,omitempty"`
 	// MaxRuntime is a Go duration string (e.g. "30m"), for run jobs and
 	// compose jobs without exec (rejected with exec) — see
 	// core.ParseMaxRuntime. Empty means "no per-job override": the
@@ -916,10 +919,12 @@ func (req *jobRequest) definition() (persist.Job, error) {
 		j.Type = persist.JobTypeRun
 		j.Image = req.Image
 		j.Container = req.Container
+		j.User = req.User
 		j.MaxRuntime = req.MaxRuntime
 	case jobTypeExec:
 		j.Type = persist.JobTypeExec
 		j.Container = req.Container
+		j.User = req.User
 	case jobTypeCompose:
 		j.Type = persist.JobTypeCompose
 		j.File = req.File

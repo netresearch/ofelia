@@ -226,6 +226,7 @@ The request body (`jobRequest`) accepts:
 | `file` | string | `compose` jobs |
 | `service` | string | `compose` jobs: the service to run or exec |
 | `exec` | bool | `compose` jobs: exec in a running service |
+| `user` | string | `run` and `exec` jobs: the user the container runs as. Omitting it takes `[global] default-user`; `default` selects the container's own user, as for an INI job's `user` |
 | `maxRuntime` | string | `run` jobs and `compose` jobs without `exec` (rejected with `exec`); Go duration, e.g. `30m`. Omitting it inherits `[global] max-runtime`, and falls back to the scheduler's 24h default only when no global is set; `"0s"` means the same and is not a way to ask for no bound. Same ladder an INI `[job-run]` section climbs ([#806](https://github.com/netresearch/ofelia/issues/806)) |
 
 Returns `201 Created`. Validation failures return `400 Bad Request`.

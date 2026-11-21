@@ -52,6 +52,7 @@ func (c *Config) BuildAPIJob(name string, def persist.Job) (core.Job, error) {
 		j := &RunJobConfig{}
 		j.Schedule, j.Command = def.Schedule, def.Command
 		j.Image, j.Container = def.Image, def.Container
+		j.User = def.User
 		j.MaxRuntime = maxRuntime
 		c.assembleJob(name, j)
 		return &j.RunJob, nil
@@ -61,7 +62,7 @@ func (c *Config) BuildAPIJob(name string, def persist.Job) (core.Job, error) {
 		}
 		j := &ExecJobConfig{}
 		j.Schedule, j.Command = def.Schedule, def.Command
-		j.Container = def.Container
+		j.Container, j.User = def.Container, def.User
 		c.assembleJob(name, j)
 		return &j.ExecJob, nil
 	case persist.JobTypeCompose:
