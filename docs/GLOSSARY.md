@@ -13,7 +13,7 @@ The description of a job as one job source states it, before Ofelia's own rules 
 _Avoid_: job config, raw job
 
 **Job source**:
-Where a job definition comes from: the INI file, container labels, a Compose project, or the web API. A job restored from the state file keeps the job source it was created from.
+Where a job definition comes from: the INI file, container labels, or the web API. A job from a Compose project section of the INI file has the INI file as its job source. A job restored from the state file keeps the job source it was created from.
 _Avoid_: origin, provenance
 
 **Job assembly**:
