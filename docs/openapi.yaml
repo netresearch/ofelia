@@ -375,7 +375,7 @@ components:
           description: >-
             run and exec jobs created through the API: the user the job's
             definition names, empty when it names none. config.User is the user
-            the job runs as. Omitted for other jobs.
+            the job runs as. Omitted for other jobs and on /api/jobs/removed.
         recentRuns:
           type: array
           description: >-
