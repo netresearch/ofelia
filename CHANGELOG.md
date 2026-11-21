@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The web UI can no longer crash the daemon during a reload.** `GET
+  /api/jobs`, `/api/config` and `/api/dashboard` read the configuration's job
+  maps without a lock while a label or INI reload rewrote them; the Go
+  runtime can stop the process on such a read. They now read under the lock
+  the reload holds ([#959](https://github.com/netresearch/ofelia/pull/959)).
 - **A run dropped by the job limit is no longer invisible.** When more jobs
   were due at once than the limit allows, the extra runs were skipped with only
   a debug log line that did not name the job, and nothing in the job's history;
