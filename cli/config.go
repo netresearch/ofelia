@@ -144,6 +144,13 @@ type Config struct {
 	WebhookConfigs       *WebhookConfigs
 }
 
+// RLock takes the read lock that guards the job maps, for a reader on
+// another goroutine such as the web server; a reload holds it for writing.
+func (c *Config) RLock() { c.mu.RLock() }
+
+// RUnlock releases the read lock RLock took.
+func (c *Config) RUnlock() { c.mu.RUnlock() }
+
 // NewConfig returns a Config with empty job maps and every `default:` tag
 // applied, ready to be populated from an INI file or from container labels. The
 // webhook globals are seeded with their defaults and aliased into
@@ -1176,10 +1183,10 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, assembleAs[*LocalJobConfig](c), JobSourceLabel, "local")
 	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, assembleAs[*RunServiceConfig](c), JobSourceLabel, "service")
 	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, assembleAs[*ComposeJobConfig](c), JobSourceLabel, "compose")
-	c.mu.Unlock()
-
-	// Sync webhook configs from labels
+	// Sync webhook configs from labels. Under c.mu like the job maps: the web
+	// server serializes WebhookConfigs under the read lock.
 	c.syncWebhookConfigs(parsedLabelConfig.WebhookConfigs)
+	c.mu.Unlock()
 
 	// Handle deprecated configuration options in parsed labels: migrate then warn
 	ResetDeprecationWarnings()
