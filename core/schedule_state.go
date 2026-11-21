@@ -169,16 +169,6 @@ func (s *Scheduler) entryLocked(name string) *durableEntry {
 
 func (s *Scheduler) now() time.Time { return s.clock.Now().UTC() }
 
-// busyLocked reports whether the entry counts as busy: a run of it is in
-// progress or waits for a slot, in this process or, after a crash, as an
-// orphan. Caller holds durableMu.
-func busyLocked(rec persist.Schedule, e *durableEntry) bool {
-	if e.inFlight || e.orphan != "" || rec.Workload != "" {
-		return true
-	}
-	return rec.Dispatch != nil && rec.Dispatch.State == dispatchWaiting
-}
-
 // pendingLaunch is an occurrence the scheduler starts through its own
 // dispatch path once the go-cron entry is live.
 type pendingLaunch struct {
@@ -297,7 +287,7 @@ func (s *Scheduler) chooseLaunchLocked(name string, rec *persist.Schedule, e *du
 	if latest.After(rec.Cursor) {
 		defer func() { rec.Cursor = latest }()
 	}
-	if e.inFlight || e.orphan != "" || rec.Workload != "" {
+	if busyStateLocked(*rec, e).running() {
 		if !latest.After(rec.Cursor) {
 			return nil
 		}
@@ -480,7 +470,7 @@ func (s *Scheduler) startPendingLocked(name string, e *durableEntry) *pendingLau
 	rec, ok := s.records.GetSchedule(name)
 	// A stopping scheduler starts nothing; the queued occurrence stays in the
 	// slot and starts at the next registration.
-	if !ok || rec.Pending == nil || busyLocked(rec, e) || !s.cron.IsRunning() || !s.liveAndEnabled(name) {
+	if !ok || rec.Pending == nil || busyStateLocked(rec, e).busy() || !s.cron.IsRunning() || !s.liveAndEnabled(name) {
 		return nil
 	}
 	occ := *rec.Pending
@@ -656,7 +646,7 @@ func (s *Scheduler) arrivalLocked(name string, rec *persist.Schedule, e *durable
 ) (persist.Occurrence, bool) {
 	// An occurrence the scheduler started itself (launch): the record holds
 	// it as a waiting dispatch nobody in this process owns yet.
-	if d := rec.Dispatch; d != nil && d.State == dispatchWaiting && !e.inFlight && e.orphan == "" && rec.Workload == "" &&
+	if d := rec.Dispatch; d != nil && d.State == dispatchWaiting && !busyStateLocked(*rec, e).running() &&
 		d.Scheduled.Equal(t) && occurrenceInfo(d.Occurrence).Trigger == info.Trigger {
 		return d.Occurrence, true
 	}
@@ -665,7 +655,7 @@ func (s *Scheduler) arrivalLocked(name string, rec *persist.Schedule, e *durable
 		// A manual run, one started by another job's dependency chain, and
 		// the run-on-startup run are no fires of the schedule: they do not
 		// move the cursor and are refused while the entry is busy.
-		if busyLocked(*rec, e) {
+		if busyStateLocked(*rec, e).busy() {
 			s.Logger.Warn("a run is in progress; the manual run is refused", "job", name)
 			return persist.Occurrence{}, false
 		}
@@ -681,7 +671,7 @@ func (s *Scheduler) arrivalLocked(name string, rec *persist.Schedule, e *durable
 		}
 		rec.Cursor = t
 		occ := persist.Occurrence{Scheduled: t, Trigger: kind}
-		if busyLocked(*rec, e) {
+		if busyStateLocked(*rec, e).busy() {
 			s.busyFireLocked(name, rec, policy, occ)
 			return persist.Occurrence{}, false
 		}
@@ -785,13 +775,10 @@ func (s *Scheduler) resumeAfterRegistration(name string) {
 // Caller holds durableMu.
 func (s *Scheduler) resumeLocked(name string) *pendingLaunch {
 	e := s.entryLocked(name)
+	rec, ok := s.records.GetSchedule(name)
 	// A stopping scheduler starts nothing; the occurrence stays in the record
 	// and starts at the next registration.
-	if e.inFlight || e.orphan != "" || !s.cron.IsRunning() || !s.liveAndEnabled(name) {
-		return nil
-	}
-	rec, ok := s.records.GetSchedule(name)
-	if rec.Workload != "" {
+	if busyStateLocked(rec, e).running() || !s.cron.IsRunning() || !s.liveAndEnabled(name) {
 		return nil
 	}
 	if ok && rec.Dispatch != nil && rec.Dispatch.State == dispatchWaiting {
@@ -857,7 +844,7 @@ func (s *Scheduler) durableBusy(name string) bool {
 	s.durableMu.Lock()
 	defer s.durableMu.Unlock()
 	rec, _ := s.records.GetSchedule(name)
-	return busyLocked(rec, s.entryLocked(name))
+	return busyStateLocked(rec, s.entryLocked(name)).busy()
 }
 
 // durableDisabled drops a queued and a waiting occurrence of a job that was
