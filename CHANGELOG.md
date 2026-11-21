@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A state-file job that fails to restore no longer makes a config job
+  deletable.** The web server marked every job in the state file as an API
+  job, including jobs the daemon skipped on restore. An INI or label job of the
+  same name could then be deleted or replaced through the API, and a record the
+  scheduler refused left that job unscheduled until the next reload. Only
+  restored jobs are marked now, and a refused record leaves the config job
+  running
+  ([#965](https://github.com/netresearch/ofelia/issues/965)).
 - **The web UI can no longer crash the daemon during a reload.** `GET
   /api/jobs`, `/api/config` and `/api/dashboard` read the configuration's job
   maps and webhooks without a lock while a label or INI reload rewrote them;

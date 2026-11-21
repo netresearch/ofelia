@@ -74,6 +74,10 @@ type DaemonCommand struct {
 	shutdownManager *core.ShutdownManager
 	healthChecker   *web.HealthChecker
 	persistStore    *persist.Store // #593; nil when --state-file is empty
+	// restoredJobs holds the state-file jobs initPersistStore scheduled; a
+	// record it skipped is not among them, so the web server does not take
+	// its name for an API job.
+	restoredJobs map[string]*persist.Job
 }
 
 // registeredJobCount returns how many jobs the scheduler holds, enabled or
@@ -242,12 +246,12 @@ func (c *DaemonCommand) setupWebServer() error {
 	// the store mirrors live mutations forward to disk.
 	if c.persistStore != nil {
 		c.webServer.SetPersistStore(c.persistStore)
-		// Re-establish origin="api" for every persisted job so the
+		// Re-establish origin="api" for every restored persisted job so the
 		// delete-gate (web/server.go) recognizes them as
 		// API-deletable after restart — otherwise jobOrigin() would
 		// return "" and any future tightening of the gate would
 		// silently break delete for persisted jobs.
-		for name, j := range c.persistStore.Snapshot().Jobs {
+		for name, j := range c.restoredJobs {
 			c.webServer.MarkOriginAPI(name)
 			c.webServer.RememberAPIUser(name, j.User)
 		}
@@ -619,7 +623,8 @@ func (c *DaemonCommand) initPersistStore() error {
 		// job already vanished between GetAnyJob and RemoveJob (race
 		// with label sync); the subsequent AddJob will either succeed
 		// or hit a duplicate-name path, both of which are surfaced.
-		if existing := c.scheduler.GetAnyJob(name); existing != nil {
+		existing := c.scheduler.GetAnyJob(name)
+		if existing != nil {
 			if rmErr := c.scheduler.RemoveJob(existing); rmErr != nil {
 				c.Logger.Warn("could not remove existing job to apply persisted state",
 					"job", name, "error", rmErr)
@@ -627,7 +632,20 @@ func (c *DaemonCommand) initPersistStore() error {
 		}
 		if err := c.scheduler.AddJob(job); err != nil {
 			c.Logger.Warn("could not apply persisted job", "job", name, "error", err)
+			// The job from INI or labels that the record was to replace keeps
+			// running; a record that cannot be scheduled must not take it down.
+			if existing != nil {
+				if reErr := c.scheduler.AddJob(existing); reErr != nil {
+					c.Logger.Warn("could not restore the job the persisted state was to replace",
+						"job", name, "error", reErr)
+				}
+			}
+			continue
 		}
+		if c.restoredJobs == nil {
+			c.restoredJobs = make(map[string]*persist.Job)
+		}
+		c.restoredJobs[name] = j
 	}
 	for _, name := range snap.Disabled {
 		if err := c.scheduler.DisableJob(name); err != nil {
