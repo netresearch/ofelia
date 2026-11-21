@@ -17,7 +17,7 @@ Where a job definition comes from: the INI file, container labels, a Compose pro
 _Avoid_: origin, provenance
 
 **Job assembly**:
-The step that turns a job definition into a job, the same way for every job source. It applies the global settings, such as the default user, and the rules that every job must meet.
+The step that turns a job definition into a job. It applies the global settings, such as the default user, and the rules a job must meet.
 _Avoid_: job preparation, finishing, prep
 
 **Default user**:
