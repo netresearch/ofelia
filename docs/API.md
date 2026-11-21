@@ -183,7 +183,8 @@ start, and the run is not triggered:
 - for a Compose job with `missed_fires: one` or `concurrency: queue` while a run
   of it is in progress or waiting for a slot: a manual run never runs beside it
   and never replaces it;
-- for a job with `no-overlap` while a run of it is in progress;
+- for a job with `no-overlap`, or a Compose job with `concurrency: forbid` and
+  `missed_fires: skip`, while a run of it is in progress;
 - for any other job while every slot of `[global] max-concurrent-jobs` is
   taken. Those Compose jobs wait for a slot instead;
 - for a job that replaced such a Compose job of the same name while the

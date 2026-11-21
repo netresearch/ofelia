@@ -25,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A manual run that would be skipped is refused with `409 Conflict`.**
   `POST /api/jobs/run` and the web UI's run button answered `204` for a job
   whose run the global limit (`[global] max-concurrent-jobs`) or `no-overlap`
-  then skipped, so the run showed up only as a skipped run in the job's
+  (which a Compose job with `concurrency: forbid` and `missed_fires: skip`
+  gets as well) then skipped, so the run showed up only as a skipped run in the job's
   history. Such a run is now refused and not triggered: it leaves no history
   entry and sends no notification. Compose jobs with `missed_fires: one` or
   `concurrency: queue` still wait for a slot. Scheduled runs are skipped and

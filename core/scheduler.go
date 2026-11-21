@@ -345,7 +345,9 @@ func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 
 // SetMaxConcurrentJobs configures the maximum number of concurrent jobs.
 // The limit is enforced by the go-cron middleware chain (MaxConcurrentSkip
-// pattern). When the limit is reached, new job invocations are skipped.
+// pattern). When the limit is reached, new job invocations are skipped, and
+// RunJob refuses a manual run of a job without durable schedule state with
+// ErrJobLimitReached.
 //
 // This should be called before Start(); calling it on a running scheduler
 // resizes the semaphore but in-flight jobs retain the previous channel.

@@ -616,7 +616,7 @@ files change.
 | `cron` with five fields | yes | Evaluated by Ofelia's scheduler |
 | `cron` with other field counts or `@daily` style shortcuts | no | Rejected |
 | `timezone` | yes | The schedule is evaluated in that zone; an empty value means the local time zone of the Ofelia process, which is logged when the project is loaded. A daylight-saving switch does not count as a change of the job |
-| `concurrency: forbid` (also the default) | yes | A fire while a run is in progress is skipped and logged |
+| `concurrency: forbid` (also the default) | yes | A fire while a run is in progress is skipped and logged; a manual run is refused with `409 Conflict` |
 | `concurrency: queue` | yes, with `--state-file` | A fire while a run is in progress waits in one queue slot and runs when that run ends; a further fire while the slot is full is dropped and logged |
 | `missed_fires: one`, or unset | yes, with `--state-file` | After a downtime, one catch-up run for the most recent missed fire |
 | `missed_fires: skip` | yes | Missed runs are not replayed |
