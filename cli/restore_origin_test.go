@@ -48,3 +48,35 @@ func TestSetupWebServer_SkippedRecordDoesNotClaimAnINIJob(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code, "the INI job is not deletable through the API: %s", rec.Body.String())
 	assert.NotNil(t, c.scheduler.GetAnyJob("dup"), "the INI job is still scheduled")
 }
+
+// The second way a record is skipped: it assembles, but the scheduler refuses
+// it. The INI job it was to replace stays scheduled and stays INI-owned.
+func TestSetupWebServer_RefusedRecordKeepsTheINIJob(t *testing.T) {
+	t.Parallel()
+	c := newDaemonForPersistTest(t)
+	cfg, err := BuildFromString("[job-local \"dup\"]\nschedule = @hourly\ncommand = echo ini\n", c.Logger)
+	require.NoError(t, err)
+	c.config = cfg
+	attachRestoreConfig(t, c, &mockDockerProviderForHandler{})
+	cfg.sh = c.scheduler
+	cfg.registerAllJobs()
+	ini := c.scheduler.GetAnyJob("dup")
+	require.NotNil(t, ini, "the INI job is registered")
+
+	// A local job with a malformed schedule assembles, but AddJob refuses it.
+	c.StateFile = writePersistFile(t, persist.State{Jobs: map[string]*persist.Job{
+		"dup": {Type: persist.JobTypeLocal, Schedule: "not a schedule", Command: "echo api"},
+	}})
+	require.NoError(t, c.initPersistStore())
+	assert.Same(t, ini, c.scheduler.GetAnyJob("dup"), "the INI job is scheduled again")
+
+	c.WebAddr = "127.0.0.1:0"
+	c.shutdownManager = core.NewShutdownManager(c.Logger, time.Second)
+	require.NoError(t, c.setupWebServer())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs/create",
+		strings.NewReader(`{"name":"dup","type":"local","schedule":"@daily","command":"echo api"}`))
+	req.Header.Set("Content-Type", "application/json")
+	c.webServer.HTTPServer().Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusForbidden, rec.Code, "the INI job cannot be replaced through the API: %s", rec.Body.String())
+}

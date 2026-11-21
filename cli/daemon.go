@@ -623,7 +623,8 @@ func (c *DaemonCommand) initPersistStore() error {
 		// job already vanished between GetAnyJob and RemoveJob (race
 		// with label sync); the subsequent AddJob will either succeed
 		// or hit a duplicate-name path, both of which are surfaced.
-		if existing := c.scheduler.GetAnyJob(name); existing != nil {
+		existing := c.scheduler.GetAnyJob(name)
+		if existing != nil {
 			if rmErr := c.scheduler.RemoveJob(existing); rmErr != nil {
 				c.Logger.Warn("could not remove existing job to apply persisted state",
 					"job", name, "error", rmErr)
@@ -631,6 +632,14 @@ func (c *DaemonCommand) initPersistStore() error {
 		}
 		if err := c.scheduler.AddJob(job); err != nil {
 			c.Logger.Warn("could not apply persisted job", "job", name, "error", err)
+			// The job from INI or labels that the record was to replace keeps
+			// running; a record that cannot be scheduled must not take it down.
+			if existing != nil {
+				if reErr := c.scheduler.AddJob(existing); reErr != nil {
+					c.Logger.Warn("could not restore the job the persisted state was to replace",
+						"job", name, "error", reErr)
+				}
+			}
 			continue
 		}
 		if c.restoredJobs == nil {
