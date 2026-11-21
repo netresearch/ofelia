@@ -225,7 +225,7 @@ The request body (`jobRequest`) accepts:
 | `schedule` | string | cron expression or `@shortcut` |
 | `command` | string | |
 | `image` | string | `run` jobs; a `run` job needs `image` or `container` |
-| `container` | string | `exec` jobs |
+| `container` | string | `run` and `exec` jobs |
 | `file` | string | `compose` jobs |
 | `service` | string | `compose` jobs: the service to run or exec |
 | `exec` | bool | `compose` jobs: exec in a running service |
