@@ -80,8 +80,9 @@ func (s *Scheduler) retainedWorkloadBusy(name string) bool {
 		return false
 	}
 	rec, _ := s.records.GetSchedule(name)
-	e := s.durable[name]
-	return rec.Workload != "" || e != nil && e.orphan != ""
+	// s.durable, not entryLocked: a replacement without a record has no entry
+	// of its own, and the check must not create one.
+	return busyStateLocked(rec, s.durable[name]).retained()
 }
 
 // pruneIdleRecordLocked removes a retained tombstone only after its workload
