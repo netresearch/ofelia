@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Jobs created through the web API take an optional `user` for `run` and
-  `exec` jobs, with the meaning an INI job's `user` has: omitted takes
+- Jobs created through the web API or the web UI take an optional `user` for
+  `run` and `exec` jobs, with the meaning an INI job's `user` has: omitted takes
   `[global] default-user`, `default` selects the container's own user. The
   state file stores it. An older version refuses to load a state file that
   holds `user`, so a downgrade needs the field removed from the file first

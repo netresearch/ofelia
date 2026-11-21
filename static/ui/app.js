@@ -1236,6 +1236,8 @@ function updateTypeFields() {
   document.querySelectorAll('.type-fields').forEach(el => el.classList.remove('visible'));
   const panel = document.getElementById('fields-' + type);
   if (panel) panel.classList.add('visible');
+  // run and exec jobs run in a container, as a user.
+  if (type === 'run' || type === 'exec') document.getElementById('fields-user').classList.add('visible');
   document.getElementById('typeDesc').textContent = typeDescriptions[type] || '';
 }
 document.getElementById('jobType').addEventListener('change', updateTypeFields);
@@ -1274,12 +1276,13 @@ document.getElementById('jobForm').addEventListener('submit', async e => {
   const service = document.getElementById('jobService').value;
   const execEl = document.getElementById('jobExec');
   const exec = execEl ? execEl.checked : false;
+  const user = document.getElementById('jobUser').value;
   const url = editing ? '/api/jobs/update' : '/api/jobs/create';
   // A paused job stays paused across an update: the scheduler updates
   // disabled entries in place. Restoring the pause from here would take a
   // second, non-atomic request and would re-pause a job another tab had
   // deliberately resumed mid-edit.
-  const ok = await apiPost(url, {name,type,schedule,command,image,container,file,service,exec});
+  const ok = await apiPost(url, {name,type,schedule,command,image,container,file,service,exec,user});
   if (!ok) return; // keep the form as-is so the user can correct and retry
   editing = null;
   resetForm();
@@ -1319,6 +1322,11 @@ function editJob(name) {
   document.getElementById('jobContainer').value = j.config.Container || '';
   document.getElementById('jobFile').value = j.config.File || '';
   document.getElementById('jobService').value = j.config.Service || '';
+  // config shows the user the job runs as. An empty one there means the
+  // container's own user, which the request spells "default"; sending it
+  // empty would hand the job [global] default-user instead.
+  const runsInContainer = j.type === 'run' || j.type === 'exec';
+  document.getElementById('jobUser').value = runsInContainer && j.config.User === '' ? 'default' : (j.config.User || '');
   setExecSwitch(j.config.Exec || false);
   editing = name;
   updateFormChrome();
