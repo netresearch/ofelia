@@ -253,6 +253,10 @@ func TestScheduleState_FailedStartWriteDoesNotLeaveAWorkloadBusy(t *testing.T) {
 					return r.Dispatch != nil && r.Dispatch.State == dispatchWaiting
 				}, "the admitted execution waits for its slot")
 			}
+			// The attempted start is recorded by the write itself: the in-memory
+			// Workload it leaves lasts only until the orphan poll clears it again.
+			attempts := &startAttempts{Store: h.store, seen: make(chan struct{})}
+			h.s.SetScheduleStore(attempts)
 			// Rename over a directory fails after Store has updated its in-memory
 			// record. This exercises the real store's failed-write behavior.
 			path := h.store.Path()
@@ -263,7 +267,11 @@ func TestScheduleState_FailedStartWriteDoesNotLeaveAWorkloadBusy(t *testing.T) {
 			} else {
 				h.fire(j.Name, at(23, 2))
 			}
-			h.eventually(j.Name, func(r persist.Schedule) bool { return r.Workload != "" }, "the attempted start updated memory")
+			select {
+			case <-attempts.seen:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the run attempted no start write")
+			}
 			noRun(t, j)
 			require.NoError(t, os.Remove(path))
 			require.Eventually(t, func() bool { return !h.s.durableBusy(j.Name) }, time.Second, 5*time.Millisecond,
@@ -273,4 +281,23 @@ func TestScheduleState_FailedStartWriteDoesNotLeaveAWorkloadBusy(t *testing.T) {
 			assert.True(t, run.info.ScheduledTime.Equal(at(23, 3)))
 		})
 	}
+}
+
+// startAttempts passes every write to the real store and, once that write has
+// returned, reports the first one that records a workload, whether or not the
+// disk write succeeded.
+type startAttempts struct {
+	*persist.Store
+	once sync.Once
+	seen chan struct{}
+}
+
+func (s *startAttempts) PutSchedule(name string, r persist.Schedule) error {
+	// Signal after the write has failed, so the test cannot restore the
+	// directory while the write is still on its way.
+	err := s.Store.PutSchedule(name, r)
+	if r.Workload != "" {
+		s.once.Do(func() { close(s.seen) })
+	}
+	return err
 }
