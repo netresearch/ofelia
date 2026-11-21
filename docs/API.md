@@ -176,16 +176,26 @@ Content-Type: application/json
 {"name": "backup"}
 ```
 
-Returns `204 No Content` on success and `404 Not Found` for an unknown or
-disabled job. It returns `409 Conflict` in two cases, and the run is not
-started:
+Returns `204 No Content` when the run is triggered and `404 Not Found` for an
+unknown or disabled job. It returns `409 Conflict` when the run would not
+start, and the run is not triggered:
 
 - for a Compose job with `missed_fires: one` or `concurrency: queue` while a run
   of it is in progress or waiting for a slot: a manual run never runs beside it
   and never replaces it;
+- for a job with `no-overlap` while a run of it is in progress;
+- for any other job while every slot of `[global] max-concurrent-jobs` is
+  taken. Those Compose jobs wait for a slot instead;
+- for a job that replaced such a Compose job of the same name while the
+  container of that job has not confirmed its end;
 - for any job while the run of a removed or replaced job of the same name is
   still stopping (see `running` on `/api/jobs/removed`). Retry once that run
   has stopped.
+
+A refused run leaves no entry in the job's history and sends no notification.
+The check is made when the request arrives. A run that another job's run
+overtakes for the last slot after that is still skipped and recorded as a
+skipped run.
 
 ### Disable / enable a job
 

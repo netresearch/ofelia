@@ -337,6 +337,13 @@ type Middleware interface {
 	ContinueOnStop() bool
 }
 
+// OverlapGuard is implemented by a middleware that skips a run while another
+// run of the same job is in progress (no-overlap). RunJob reads it to refuse
+// a manual run that the middleware would skip.
+type OverlapGuard interface {
+	SkipsOverlap() bool
+}
+
 // keyedMiddleware is an OPTIONAL interface that middleware implementations
 // can satisfy to opt into per-instance dedup keys in middlewareContainer.
 // Implementers that legitimately need multiple instances per job (e.g.

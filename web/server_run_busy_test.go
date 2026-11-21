@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,62 @@ func (j *busyDurableJob) Run(ctx *core.Context) error {
 	case <-ctx.RunContext().Done():
 	}
 	return nil
+}
+
+// holdJob takes a slot of the global limit until released.
+type holdJob struct {
+	core.BareJob
+	started chan struct{}
+	release chan struct{}
+}
+
+func (j *holdJob) Run(_ *core.Context) error {
+	close(j.started)
+	<-j.release
+	return nil
+}
+
+// A manual run that the global limit would skip is refused with 409 and a
+// message that names the limit.
+func TestRunJobHandler_FullLimitIsConflict(t *testing.T) {
+	sc := core.NewScheduler(newDiscardLogger())
+	sc.SetMaxConcurrentJobs(1)
+	holder := &holdJob{started: make(chan struct{}), release: make(chan struct{})}
+	holder.Name, holder.Schedule, holder.Command = "holder", "@every 1h", "hold"
+	other := &holdJob{started: make(chan struct{}), release: make(chan struct{})}
+	other.Name, other.Schedule, other.Command = "other", "@every 1h", "other"
+	for _, j := range []core.Job{holder, other} {
+		if err := sc.AddJob(j); err != nil {
+			t.Fatalf("AddJob: %v", err)
+		}
+	}
+	if err := sc.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { close(holder.release); close(other.release); _ = sc.StopWithTimeout(5 * time.Second) })
+	httpSrv := NewServer("", sc, nil, nil).HTTPServer()
+
+	run := func(name string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]string{"name": name})
+		w := httptest.NewRecorder()
+		httpSrv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/jobs/run", bytes.NewReader(body)))
+		return w
+	}
+	if w := run("holder"); w.Code != http.StatusNoContent {
+		t.Fatalf("run holder: status %d, want 204", w.Code)
+	}
+	select {
+	case <-holder.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the holder did not start")
+	}
+	w := run("other")
+	if w.Code != http.StatusConflict {
+		t.Fatalf("run at a full limit: status %d, want 409", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "max-concurrent-jobs") {
+		t.Errorf("409 body = %q, want it to name max-concurrent-jobs", w.Body.String())
+	}
 }
 
 // A manual run of a job with a schedule record is refused with 409 while a

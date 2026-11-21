@@ -142,6 +142,12 @@ func (cs *concurrencySemaphore) getChan() chan struct{} {
 	return cs.ch
 }
 
+// full reports whether every slot is taken at the moment of the call.
+func (cs *concurrencySemaphore) full() bool {
+	ch := cs.getChan()
+	return len(ch) >= cap(ch)
+}
+
 func (cs *concurrencySemaphore) getCap() int {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
@@ -747,6 +753,20 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 		if s.gate.blocked(jobName, durable) {
 			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
 		}
+		// A run without durable state would be skipped by a no-overlap
+		// middleware while another run of the job is in progress, and by
+		// the global limit (maxConcurrentSkipJob) while every slot is taken.
+		// The check is best-effort: a slot or a run that ends between the
+		// check and the trigger refuses a run a retry starts, and a slot
+		// taken in that time still records the run as skipped.
+		if !durable {
+			if skipsOverlap(j) && j.Running() > 0 {
+				return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
+			}
+			if s.concurrencySem.full() {
+				return fmt.Errorf("%w: %s", ErrJobLimitReached, jobName)
+			}
+		}
 	}
 
 	// Delegate to go-cron's TriggerEntryByName for proper middleware chain execution.
@@ -758,6 +778,17 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 	}
 
 	return nil
+}
+
+// skipsOverlap reports whether a middleware of j skips a run while another
+// run of j is in progress (OverlapGuard).
+func skipsOverlap(j Job) bool {
+	for _, m := range j.Middlewares() {
+		if g, ok := m.(OverlapGuard); ok && g.SkipsOverlap() {
+			return true
+		}
+	}
+	return false
 }
 
 // fireDeferredStartup fires the run-on-startup run of w that the name lock

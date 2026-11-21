@@ -31,6 +31,12 @@ func (m *Overlap) ContinueOnStop() bool {
 	return false
 }
 
+// SkipsOverlap implements core.OverlapGuard: it reports whether Run skips a
+// run while another run of the job is in progress.
+func (m *Overlap) SkipsOverlap() bool {
+	return m.NoOverlap
+}
+
 // Run stops the execution if the another execution is already running
 func (m *Overlap) Run(ctx *core.Context) error {
 	if m.NoOverlap && ctx.Job.Running() > 1 {

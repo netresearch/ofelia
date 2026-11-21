@@ -424,8 +424,9 @@ notification-cooldown = 0
 # How many jobs run at once, counted across every job of the daemon (default 10).
 # A job that is due while every slot is taken does not run: that run is skipped
 # and recorded as a skipped run (job history, notifications, a Warn log line
-# naming the job). Set it above the number of jobs that can be due at the same
-# moment. INI-only: a container label cannot set it. Applied on reload.
+# naming the job). A manual run through the web API or UI is refused with
+# 409 Conflict instead. Set it above the number of jobs that can be due at the
+# same moment. INI-only: a container label cannot set it. Applied on reload.
 max-concurrent-jobs = 10
 
 # Notification Settings (deprecated Slack middleware - prefer the webhook system below)
