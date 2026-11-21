@@ -1017,7 +1017,7 @@ func reconcileParsedJob[J jobConfig](c *Config, name string, cur J, curOK bool, 
 // registration to set fields such as Name or Client and apply defaults; a job
 // it returns an error for is not registered.
 func syncJobMap[J jobConfig](
-	c *Config, current map[string]J, parsed map[string]J, prep func(string, J) error, source JobSource, jobKind string,
+	c *Config, current, parsed map[string]J, prep func(string, J) error, source JobSource, jobKind string,
 ) {
 	for name, j := range current {
 		if source != "" && j.GetJobSource() != source && j.GetJobSource() != "" {
