@@ -117,9 +117,11 @@ func TestEnhancedBufferPoolGetSized(t *testing.T) {
 // TestEnhancedBufferPoolMetrics verifies metrics are being tracked
 func TestEnhancedBufferPoolMetrics(t *testing.T) {
 	t.Parallel()
-	// Create a new pool with metrics enabled for testing
+	// Create a new pool with metrics enabled for testing. Pre-warming the
+	// default config allocates about 888 MB, which this test does not need.
 	config := DefaultEnhancedBufferPoolConfig()
 	config.EnableMetrics = true
+	config.EnablePrewarming = false
 	ebp := NewEnhancedBufferPool(config, nil)
 
 	// Reset metrics to start fresh
@@ -207,10 +209,12 @@ func TestEnhancedBufferPoolConcurrent(t *testing.T) {
 // TestEnhancedBufferPoolPrewarming verifies pool pre-warming
 func TestEnhancedBufferPoolPrewarming(t *testing.T) {
 	t.Parallel()
-	// Create a new pool with pre-warming enabled
+	// Create a new pool with pre-warming enabled. A 1 MB MaxSize keeps the
+	// pre-warmed buffers at about 20 MB instead of about 178 MB.
 	config := DefaultEnhancedBufferPoolConfig()
 	config.EnablePrewarming = true
 	config.PoolSize = 10
+	config.MaxSize = 1024 * 1024
 
 	ebp := NewEnhancedBufferPool(config, nil)
 
@@ -244,6 +248,7 @@ func TestEnhancedBufferPoolShutdown(t *testing.T) {
 	t.Parallel()
 	config := DefaultEnhancedBufferPoolConfig()
 	config.ShrinkInterval = 10 * time.Millisecond
+	config.EnablePrewarming = false // about 888 MB this test does not need
 
 	ebp := NewEnhancedBufferPool(config, nil)
 	ebp.Shutdown()
