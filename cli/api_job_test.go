@@ -42,7 +42,9 @@ func newAPIJobFixture(t *testing.T, provider core.DockerProvider) *apiJobFixture
 
 // newAPIJobServer builds the web server the way the daemon does.
 func newAPIJobServer(cfg *Config, provider core.DockerProvider) *web.Server {
-	return web.NewServer("", cfg.sh, cfg, provider)
+	srv := web.NewServer("", cfg.sh, cfg, provider)
+	srv.SetJobBuilder(cfg.BuildAPIJob)
+	return srv
 }
 
 func (f *apiJobFixture) create(t *testing.T, body map[string]any) *httptest.ResponseRecorder {

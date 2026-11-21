@@ -15,11 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/creasty/defaults"
-	"github.com/gobs/args"
 	cron "github.com/netresearch/go-cron"
 
-	"github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/persist"
 )
@@ -51,6 +48,23 @@ type Server struct {
 	// when the store wasn't constructed with a path, so handlers don't
 	// have to branch on configuration.
 	persistStore *persist.Store
+	// buildJob builds the job of a create or update request; see JobBuilder.
+	buildJob JobBuilder
+}
+
+// JobBuilder turns the definition of a job created or updated through the
+// API into a scheduler-ready job. The daemon passes cli.Config.BuildAPIJob,
+// which applies the same job assembly as for every other job source; the
+// state file stores the same definition.
+type JobBuilder func(name string, def persist.Job) (core.Job, error)
+
+// errNoJobBuilder answers a create or update when no JobBuilder is set.
+var errNoJobBuilder = errors.New("job creation is not available: no job builder is set")
+
+// SetJobBuilder sets how create and update requests build their job.
+// Without one, both are refused.
+func (s *Server) SetJobBuilder(b JobBuilder) {
+	s.buildJob = b
 }
 
 // SetPersistStore wires the daemon-owned persistence store into the
@@ -877,13 +891,25 @@ func (s *Server) persistEnable(name string) error {
 }
 
 // persistJob writes the create/update job into the state-file via
-// the persist.Store. Translates the API request struct into a
-// persist.Job (omitting fields irrelevant to the job type so the
-// on-disk shape stays clean). nil-safe.
+// the persist.Store, as the definition the job was built from. nil-safe.
 func (s *Server) persistJob(name string, req *jobRequest) error {
 	if s.persistStore == nil {
 		return nil
 	}
+	j, err := req.definition()
+	if err != nil {
+		return err
+	}
+	if err := s.persistStore.PutJob(name, j); err != nil {
+		return fmt.Errorf("persist job %q: %w", name, err)
+	}
+	return nil
+}
+
+// definition translates the API request into the job definition the job is
+// built from and the state file stores. Fields irrelevant to the job type
+// are left out, so the on-disk shape stays clean.
+func (req *jobRequest) definition() (persist.Job, error) {
 	j := persist.Job{Schedule: req.Schedule, Command: req.Command}
 	switch req.Type {
 	case jobTypeRun:
@@ -903,12 +929,9 @@ func (s *Server) persistJob(name string, req *jobRequest) error {
 	case "", jobTypeLocal:
 		j.Type = persist.JobTypeLocal
 	default:
-		return fmt.Errorf("unknown job type %q", req.Type)
+		return persist.Job{}, fmt.Errorf("unknown job type %q", req.Type)
 	}
-	if err := s.persistStore.PutJob(name, j); err != nil {
-		return fmt.Errorf("persist job %q: %w", name, err)
-	}
-	return nil
+	return j, nil
 }
 
 func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
@@ -1014,127 +1037,20 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(status)
 }
 
-func (s *Server) newRunJobFromRequest(req *jobRequest) (core.Job, error) {
-	if s.provider == nil {
-		return nil, fmt.Errorf("docker provider unavailable for run job")
-	}
-	j := core.NewRunJob(s.provider)
-	j.Name = req.Name
-	j.Schedule = req.Schedule
-	j.Command = req.Command
-	j.Image = req.Image
-	j.Container = req.Container
-	maxRuntime, err := core.ParseMaxRuntime(req.MaxRuntime)
-	if err != nil {
-		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
-	}
-	// Same rule as for an INI run job: a job that named no bound of its own
-	// keeps 0 and runs under the scheduler's current [global] max-runtime,
-	// or its 24h constant when there is no global. "0s" parses to zero and
-	// therefore inherits too, which is what makes it equivalent to omitting
-	// the field (#789) rather than a way to ask for no bound. See #806.
-	j.MaxRuntime = maxRuntime
-	return j, nil
-}
-
-func (s *Server) newExecJobFromRequest(req *jobRequest) (core.Job, error) {
-	if s.provider == nil {
-		return nil, fmt.Errorf("docker provider unavailable for exec job")
-	}
-	j := core.NewExecJob(s.provider)
-	j.Name = req.Name
-	j.Schedule = req.Schedule
-	j.Command = req.Command
-	j.Container = req.Container
-	return j, nil
-}
-
-// newComposeJobFromRequest validates compose job parameters and builds the job.
-// The server's provider may be nil: the job still runs, but a canceled run
-// then cannot confirm that its container stopped.
-func (s *Server) newComposeJobFromRequest(req *jobRequest) (core.Job, error) {
-	validator := config.NewCommandValidator()
-	if req.File != "" {
-		if err := validator.ValidateFilePath(req.File); err != nil {
-			return nil, fmt.Errorf("invalid compose file path: %w", err)
-		}
-	}
-	if err := validator.ValidateServiceName(req.Service); err != nil {
-		return nil, fmt.Errorf("invalid service name: %w", err)
-	}
-	if req.Command != "" {
-		cmdArgs := args.GetArgs(req.Command)
-		if err := validator.ValidateCommandArgs(cmdArgs); err != nil {
-			return nil, fmt.Errorf("invalid command arguments: %w", err)
-		}
-	}
-	maxRuntime, err := core.ParseMaxRuntime(req.MaxRuntime)
-	if err != nil {
-		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
-	}
-	j := &core.ComposeJob{Provider: s.provider}
-	j.Name = req.Name
-	j.Schedule = req.Schedule
-	j.Command = req.Command
-	j.File = req.File
-	j.Service = req.Service
-	j.Exec = req.ExecFlag
-	j.MaxRuntime = maxRuntime
-	if err := j.CheckMaxRuntime(); err != nil {
-		return nil, fmt.Errorf("invalid maxRuntime: %w", err)
-	}
-	// Without a value of its own, a run-mode job runs under the scheduler's
-	// current [global] max-runtime, as a config.ini [job-compose] does.
-	return j, nil
-}
-
-// newLocalJobFromRequest validates local job command and builds the job.
-// Note: Empty commands will be caught at runtime by LocalJob.buildCommand()
-func newLocalJobFromRequest(req *jobRequest) (core.Job, error) {
-	if req.Command != "" {
-		// Validate local job command if provided to prevent injection attacks
-		validator := config.NewCommandValidator()
-		cmdArgs := args.GetArgs(req.Command)
-		if err := validator.ValidateCommandArgs(cmdArgs); err != nil {
-			return nil, fmt.Errorf("invalid command arguments: %w", err)
-		}
-	}
-	j := &core.LocalJob{}
-	j.Name = req.Name
-	j.Schedule = req.Schedule
-	j.Command = req.Command
-	return j, nil
-}
-
+// jobFromRequest builds the job a create or update request describes,
+// through the JobBuilder the daemon set.
 func (s *Server) jobFromRequest(req *jobRequest) (core.Job, error) {
-	var (
-		job core.Job
-		err error
-	)
-	switch req.Type {
-	case jobTypeRun:
-		job, err = s.newRunJobFromRequest(req)
-	case jobTypeExec:
-		job, err = s.newExecJobFromRequest(req)
-	case jobTypeCompose:
-		job, err = s.newComposeJobFromRequest(req)
-	case "", jobTypeLocal:
-		job, err = newLocalJobFromRequest(req)
-	default:
-		return nil, fmt.Errorf("unknown job type %q", req.Type)
-	}
+	def, err := req.definition()
 	if err != nil {
 		return nil, err
 	}
-	// Struct-tag defaults are applied by the config decoder, not by the
-	// constructors, so an API-built job used to keep every zero value —
-	// most damagingly HistoryLimit 0, which makes BareJob.GetHistory
-	// retain every Execution (up to 2×10 MB of output buffers each) for
-	// the lifetime of the daemon. Only the run-job constructor applied
-	// them; doing it here covers every type and every future one.
-	// creasty/defaults fills initial values only, so the fields the
-	// request set above are left alone.
-	_ = defaults.Set(job)
+	if s.buildJob == nil {
+		return nil, errNoJobBuilder
+	}
+	job, err := s.buildJob(req.Name, def)
+	if err != nil {
+		return nil, fmt.Errorf("build job: %w", err)
+	}
 	return job, nil
 }
 

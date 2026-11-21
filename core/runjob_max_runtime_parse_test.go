@@ -8,10 +8,8 @@ import (
 	"time"
 )
 
-// TestParseMaxRuntime covers the single parser shared by the API
-// (web.newRunJobFromRequest) and the state-file reload path
-// (cli.buildPersistedRunJob) so their validation cannot drift apart the
-// way RunJob.Delete once did across those same two call sites.
+// TestParseMaxRuntime covers the parser that jobs from the API and from
+// the state file go through (cli.Config.BuildAPIJob).
 func TestParseMaxRuntime(t *testing.T) {
 	t.Parallel()
 

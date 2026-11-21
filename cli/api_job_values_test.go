@@ -18,4 +18,6 @@ var apiJobMiddlewares = []string{}
 // assembled against.
 func attachRestoreConfig(_ interface{ Helper() }, c *DaemonCommand, provider core.DockerProvider) {
 	c.dockerHandler = &DockerHandler{dockerProvider: provider}
+	c.config.Global.DefaultUser = "nobody"
+	c.config.dockerHandler = c.dockerHandler
 }

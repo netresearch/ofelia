@@ -8,6 +8,7 @@ import (
 
 	defaults "github.com/creasty/defaults"
 
+	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/middlewares"
 )
 
@@ -20,24 +21,24 @@ func (c *Config) assembleJob(name string, j jobConfig) {
 	switch j := j.(type) {
 	case *ExecJobConfig:
 		c.applyDefaultUser(&j.User)
-		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.Provider = c.dockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
 	case *RunJobConfig:
 		c.applyDefaultUser(&j.User)
-		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.Provider = c.dockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
 	case *RunServiceConfig:
 		c.applyDefaultUser(&j.User)
-		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.Provider = c.dockerProvider()
 		j.InitializeRuntimeFields()
 		j.Name = name
 	case *LocalJobConfig:
 		j.Name = name
 	case *ComposeJobConfig:
 		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
-		j.Provider = c.dockerHandler.GetDockerProvider()
+		j.Provider = c.dockerProvider()
 		j.Name = name
 	default:
 		panic(fmt.Sprintf("assembleJob: unknown job config type %T", j))
@@ -45,6 +46,15 @@ func (c *Config) assembleJob(name string, j jobConfig) {
 	slack, mail, save := j.notificationConfigs()
 	c.mergeNotificationDefaults(slack, mail, save)
 	c.injectDedup(slack, mail)
+}
+
+// dockerProvider returns the Docker provider jobs are assembled with, or nil
+// when the daemon has no Docker handler.
+func (c *Config) dockerProvider() core.DockerProvider {
+	if c.dockerHandler == nil {
+		return nil
+	}
+	return c.dockerHandler.GetDockerProvider()
 }
 
 // assembleAs adapts assembleJob to the prep callback that syncJobMap,

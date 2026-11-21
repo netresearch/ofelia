@@ -34,7 +34,7 @@ func TestCreateJob_ForbiddenForConfigOwnedName(t *testing.T) {
 	}}
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, cfg, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, cfg, nil))
 
 	// The config job has an empty schedule, so it was refused and holds no
 	// cron entry — exactly the state in which create used to succeed.
@@ -65,7 +65,7 @@ func TestCreateJob_AllowedForUnknownName(t *testing.T) {
 	t.Parallel()
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 	resp := postJSON(t, srv, "/api/jobs/create",
 		`{"name":"api-owned","type":"local","schedule":"@daily","command":"echo hi"}`)

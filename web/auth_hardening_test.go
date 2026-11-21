@@ -87,6 +87,7 @@ func TestCrossOriginWritesAreRejectedWithoutAuth(t *testing.T) {
 	srv := NewServerWithAuth("", core.NewScheduler(newDiscardLogger()), nil, nil, nil)
 	require.NotNil(t, srv)
 	t.Cleanup(srv.rl.close)
+	srv.SetJobBuilder(stubJobBuilder(nil))
 
 	w := postJob(srv, jobBody("no-auth-cross-site"), nil, map[string]string{"Sec-Fetch-Site": "cross-site"})
 	assert.Equal(t, http.StatusForbidden, w.Code)
