@@ -1180,7 +1180,8 @@ docker inspect ofelia | grep Memory
 
 2. **Optimize memory usage**: `[global] max-concurrent-jobs` (default `10`)
    caps how many jobs run at once; a scheduled run beyond the cap is skipped,
-   not queued, and a manual run is refused with `409 Conflict` (see [Jobs Skipped: Global Job Limit Reached](#jobs-skipped-global-job-limit-reached)),
+   not queued, and a manual run is refused with `409 Conflict`; only Compose
+   jobs with `missed_fires: one` or `concurrency: queue` wait for a slot (see [Jobs Skipped: Global Job Limit Reached](#jobs-skipped-global-job-limit-reached)),
    so spread the schedules apart rather than lowering it far. Ofelia also offers
    per-job overlap prevention and container cleanup:
    ```ini
@@ -1836,7 +1837,8 @@ OOMKilled errors
 
 2. **Limit concurrent execution**: `[global] max-concurrent-jobs` (default
    `10`) caps how many jobs run at once. A scheduled run beyond the cap is
-   skipped, not queued, and a manual run is refused, so also stagger the schedules of the heaviest jobs so they do not
+   skipped, not queued, and a manual run is refused (only Compose jobs with
+   `missed_fires: one` or `concurrency: queue` wait for a slot), so also stagger the schedules of the heaviest jobs so they do not
    fire together, and set `no-overlap = true` so a slow run does not stack on
    its own next tick.
 

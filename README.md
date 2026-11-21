@@ -316,7 +316,7 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `enable-pprof` - enable the pprof debug server.
 - `pprof-address` - address for the pprof server (default `127.0.0.1:8080`).
 - `max-runtime` - default maximum duration a run, service or `run`-mode compose job may run (default `24h`).
-- `max-concurrent-jobs` - how many jobs run at once, across all jobs of the daemon (default `10`). A scheduled run that finds every slot taken is skipped and recorded as a skipped run; a manual run through the web API or UI is refused with `409 Conflict` instead. INI-only; container labels cannot set it.
+- `max-concurrent-jobs` - how many jobs run at once, across all jobs of the daemon (default `10`). A scheduled run that finds every slot taken is skipped and recorded as a skipped run; a manual run through the web API or UI is refused with `409 Conflict` instead. Compose jobs with `missed_fires: one` or `concurrency: queue` wait for a slot in both cases. INI-only; container labels cannot set it.
 
 Log output now includes the original file and line of the logging call instead of the adapter location.
 
