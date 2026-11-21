@@ -224,7 +224,7 @@ The request body (`jobRequest`) accepts:
 | `type` | string | `run`, `exec`, `local`, `compose`; omitted means `local`. Anything else is rejected with `unknown job type`. Service jobs cannot be created over the API — see [#816](https://github.com/netresearch/ofelia/issues/816) |
 | `schedule` | string | cron expression or `@shortcut` |
 | `command` | string | |
-| `image` | string | `run` jobs |
+| `image` | string | `run` jobs; a `run` job needs `image` or `container` |
 | `container` | string | `exec` jobs |
 | `file` | string | `compose` jobs |
 | `service` | string | `compose` jobs: the service to run or exec |

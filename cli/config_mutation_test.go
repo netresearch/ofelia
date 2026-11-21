@@ -123,9 +123,10 @@ func TestReplaceIfChanged_DifferentHash(t *testing.T) {
 
 	newJob := &ExecJobConfig{Schedule: "@every 10s", Command: "echo new"}
 
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	updated := replaceIfChanged(cfg, "testjob", oldJob, newJob, prep, JobSourceLabel)
@@ -152,9 +153,10 @@ func TestReplaceIfChanged_SameHash(t *testing.T) {
 
 	newJob := &ExecJobConfig{Schedule: "@every 5s", Command: "echo test"}
 
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	updated := replaceIfChanged(cfg, "testjob", oldJob, newJob, prep, JobSourceLabel)
@@ -178,9 +180,10 @@ func TestAddNewJob_WithSource(t *testing.T) {
 	current := make(map[string]*ExecJobConfig)
 	newJob := &ExecJobConfig{Schedule: "@every 5s", Command: "echo test"}
 
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	addNewJob(cfg, "myjob", newJob, prep, JobSourceINI, current, false)
@@ -205,9 +208,10 @@ func TestAddNewJob_EmptySource(t *testing.T) {
 		JobSource: JobSourceLabel, // pre-set source
 	}
 
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	addNewJob(cfg, "myjob", newJob, prep, "", current, false)
@@ -243,9 +247,10 @@ func TestSyncJobMap_RemovesStaleLabelJobs(t *testing.T) {
 
 	// Sync with empty parsed map - the old job must be removed
 	parsed := make(map[string]*ExecJobConfig)
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	syncJobMap(cfg, cfg.ExecJobs, parsed, prep, JobSourceLabel, "exec")
@@ -276,9 +281,10 @@ func TestSyncJobMap_SkipsINIJobsWhenSyncingLabels(t *testing.T) {
 
 	// Label sync with empty parsed - should NOT remove the INI job
 	parsed := make(map[string]*ExecJobConfig)
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	syncJobMap(cfg, cfg.ExecJobs, parsed, prep, JobSourceLabel, "exec")
@@ -314,9 +320,10 @@ func TestSyncJobMap_INIOverridesLabel(t *testing.T) {
 		},
 	}
 
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	syncJobMap(cfg, cfg.ExecJobs, parsed, prep, JobSourceINI, "exec")
@@ -355,9 +362,10 @@ func TestSyncJobMap_LabelIgnoredWhenINIExists(t *testing.T) {
 		},
 	}
 
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	syncJobMap(cfg, cfg.ExecJobs, parsed, prep, JobSourceLabel, "exec")
@@ -498,9 +506,10 @@ func TestReplaceIfChanged_ValidationFailReturnsEarlyFalse(t *testing.T) {
 		// No Image set - Validate() should fail
 	}
 
-	prep := func(name string, j *RunJobConfig) {
+	prep := func(name string, j *RunJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	updated := replaceIfChanged(cfg, "testjob", oldJob, newJob, prep, JobSourceINI)

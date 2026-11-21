@@ -506,8 +506,9 @@ func TestAddNewJob_EmptySource_Coverage(t *testing.T) {
 	j.Schedule = "@daily"
 	j.Command = "echo test"
 
-	prep := func(name string, j *LocalJobConfig) {
+	prep := func(name string, j *LocalJobConfig) error {
 		j.Name = name
+		return nil
 	}
 
 	// Empty source should not set job source

@@ -749,7 +749,10 @@ func (c *Config) registerAllJobs() {
 // registers it, and reports 1 when the scheduler refused it so callers can
 // accumulate without a branch of their own.
 func (c *Config) finishJob(name string, j jobConfig, wm *middlewares.WebhookManager) int {
-	c.assembleJob(name, j)
+	if err := c.assembleJob(name, j); err != nil {
+		c.logger.Error("Job configuration error", "job", name, "error", err)
+		return 1
+	}
 	j.buildMiddlewares(c.logger, wm)
 	if c.registerJob(name, j) {
 		return 0
@@ -1011,8 +1014,11 @@ func reconcileParsedJob[J jobConfig](c *Config, name string, cur J, curOK bool, 
 
 // syncJobMap updates the scheduler and the provided job map based on the parsed
 // configuration. The prep function is called on each job before comparison or
-// registration to set fields such as Name or Client and apply defaults.
-func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]J, prep func(string, J), source JobSource, jobKind string) {
+// registration to set fields such as Name or Client and apply defaults; a job
+// it returns an error for is not registered.
+func syncJobMap[J jobConfig](
+	c *Config, current map[string]J, parsed map[string]J, prep func(string, J) error, source JobSource, jobKind string,
+) {
 	for name, j := range current {
 		if source != "" && j.GetJobSource() != source && j.GetJobSource() != "" {
 			continue
@@ -1040,17 +1046,12 @@ func syncJobMap[J jobConfig](c *Config, current map[string]J, parsed map[string]
 	}
 }
 
-func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, prep func(string, J), source JobSource) bool {
-	prep(name, newJob)
-	newJob.SetJobSource(source)
-
-	// Validate job configuration if the job type supports it
-	if v, ok := any(newJob).(validatable); ok {
-		if err := v.Validate(); err != nil {
-			c.logger.Error("Job configuration error", "job", name, "error", err)
-			return false
-		}
+func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, prep func(string, J) error, source JobSource) bool {
+	if err := prep(name, newJob); err != nil {
+		c.logger.Error("Job configuration error", "job", name, "error", err)
+		return false
 	}
+	newJob.SetJobSource(source)
 
 	newHash, err1 := newJob.Hash()
 	if err1 != nil {
@@ -1118,19 +1119,14 @@ type validatable interface {
 // addNewJob registers j and records it in current. disabled registers it
 // disabled, for a job that replaces a disabled one of the same name.
 func addNewJob[J jobConfig](
-	c *Config, name string, j J, prep func(string, J), source JobSource, current map[string]J, disabled bool,
+	c *Config, name string, j J, prep func(string, J) error, source JobSource, current map[string]J, disabled bool,
 ) {
 	if source != "" {
 		j.SetJobSource(source)
 	}
-	prep(name, j)
-
-	// Validate job configuration if the job type supports it
-	if v, ok := any(j).(validatable); ok {
-		if err := v.Validate(); err != nil {
-			c.logger.Error(fmt.Sprintf("Job %q configuration error: %v", name, err))
-			return
-		}
+	if err := prep(name, j); err != nil {
+		c.logger.Error(fmt.Sprintf("Job %q configuration error: %v", name, err))
+		return
 	}
 
 	j.buildMiddlewares(c.logger, c.getWebhookManager())
