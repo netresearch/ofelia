@@ -506,22 +506,11 @@ func TestReplaceIfChanged_ValidationFailReturnsEarlyFalse(t *testing.T) {
 		// No Image set - Validate() should fail
 	}
 
-	prep := func(name string, j *RunJobConfig) error {
-		_ = defaults.Set(j)
-		j.Name = name
-		return nil
-	}
-
-	updated := replaceIfChanged(cfg, "testjob", oldJob, newJob, prep, JobSourceINI)
-	// Depending on whether RunJobConfig implements validatable and returns error,
-	// the function should either return false (validation error) or proceed to hash comparison.
-	// In either case, verify old job is still in scheduler
-	assert.Len(t, cfg.sh.Entries(), 1)
-
-	// If validation passed (RunJob may not implement validatable), check hash-based logic
-	if !updated {
-		assert.Equal(t, "@every 5s", oldJob.GetSchedule(), "old job should be unchanged")
-	}
+	// The real prep: job assembly ends with the job's own Validate.
+	updated := replaceIfChanged(cfg, "testjob", oldJob, newJob, assembleAs[*RunJobConfig](cfg), JobSourceINI)
+	require.False(t, updated, "a replacement that fails validation is rejected")
+	require.Len(t, cfg.sh.Entries(), 1)
+	assert.Equal(t, "@every 5s", cfg.sh.GetJob("testjob").GetSchedule(), "the old job keeps running")
 }
 
 // =============================================================================
