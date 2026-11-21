@@ -1322,11 +1322,13 @@ function editJob(name) {
   document.getElementById('jobContainer').value = j.config.Container || '';
   document.getElementById('jobFile').value = j.config.File || '';
   document.getElementById('jobService').value = j.config.Service || '';
-  // config shows the user the job runs as. An empty one there means the
-  // container's own user, which the request spells "default"; sending it
-  // empty would hand the job [global] default-user instead.
+  // j.user is the user the job's definition names ("" inherits [global]
+  // default-user), so an edit keeps exactly what was stored. Without it,
+  // config.User is the user the job runs as, where an empty one means the
+  // container's own user, which the request spells "default".
   const runsInContainer = j.type === 'run' || j.type === 'exec';
-  document.getElementById('jobUser').value = runsInContainer && j.config.User === '' ? 'default' : (j.config.User || '');
+  document.getElementById('jobUser').value = typeof j.user === 'string' ? j.user
+    : (runsInContainer && j.config.User === '' ? 'default' : (j.config.User || ''));
   setExecSwitch(j.config.Exec || false);
   editing = name;
   updateFormChrome();

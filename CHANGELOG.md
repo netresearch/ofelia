@@ -33,8 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   root, while the same job in `config.ini` or a label ran as `nobody`. Such
   jobs now run as `default-user`, which is `nobody` unless configured.
   **Upgrade note:** existing API jobs change user on the first start of this
-  version. To keep the container's user, set `default-user = default`
-  (or `default-user =`) in `[global]`
+  version. To keep the container's user for one job, set its `user` to
+  `default` through the API or the web UI. `default-user = default` in
+  `[global]` does it for every job without a user of its own, INI and label
+  jobs included, which then run as the container's user instead of `nobody`
   ([#956](https://github.com/netresearch/ofelia/pull/956)).
 - **A run dropped by the job limit is no longer invisible.** When more jobs
   were due at once than the limit allows, the extra runs were skipped with only

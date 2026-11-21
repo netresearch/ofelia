@@ -370,6 +370,12 @@ components:
           items: {type: string, format: date-time}
         origin: {type: string, enum: [ini, label, api, web]}
         config: {type: object, description: full job configuration}
+        user:
+          type: string
+          description: >-
+            run and exec jobs created through the API: the user the job's
+            definition names, empty when it names none. config.User is the user
+            the job runs as. Omitted for other jobs.
         recentRuns:
           type: array
           description: >-

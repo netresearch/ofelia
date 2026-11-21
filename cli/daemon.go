@@ -247,8 +247,9 @@ func (c *DaemonCommand) setupWebServer() error {
 		// API-deletable after restart — otherwise jobOrigin() would
 		// return "" and any future tightening of the gate would
 		// silently break delete for persisted jobs.
-		for name := range c.persistStore.Snapshot().Jobs {
+		for name, j := range c.persistStore.Snapshot().Jobs {
 			c.webServer.MarkOriginAPI(name)
+			c.webServer.RememberAPIUser(name, j.User)
 		}
 	}
 

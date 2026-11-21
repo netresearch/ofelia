@@ -29,11 +29,15 @@ import (
 //
 // Build one with NewServer or NewServerWithAuth; the zero value is not usable.
 type Server struct {
-	addr         string
-	scheduler    *core.Scheduler
-	config       any
-	srv          *http.Server
-	origins      map[string]string
+	addr      string
+	scheduler *core.Scheduler
+	config    any
+	srv       *http.Server
+	origins   map[string]string
+	// apiUsers holds, per API job, the user its definition names ("" when it
+	// names none), so the edit form can show what was stored rather than the
+	// user job assembly resolved. Guarded by originsMu.
+	apiUsers     map[string]string
 	originsMu    sync.RWMutex
 	authConfig   *SecureAuthConfig
 	tokenManager *SecureTokenManager
@@ -164,6 +168,30 @@ func (s *Server) MarkOriginAPI(name string) {
 	}
 	s.origins[name] = originAPI
 	s.originsMu.Unlock()
+}
+
+// RememberAPIUser records the user the definition of API job name names,
+// for a job restored from the state file. Safe to call only before Start.
+func (s *Server) RememberAPIUser(name, user string) {
+	s.originsMu.Lock()
+	s.rememberAPIUserLocked(name, user)
+	s.originsMu.Unlock()
+}
+
+func (s *Server) rememberAPIUserLocked(name, user string) {
+	if s.apiUsers == nil {
+		s.apiUsers = make(map[string]string)
+	}
+	s.apiUsers[name] = user
+}
+
+// apiUser returns the user the definition of API job name names, and whether
+// the server knows that definition.
+func (s *Server) apiUser(name string) (string, bool) {
+	s.originsMu.RLock()
+	defer s.originsMu.RUnlock()
+	u, ok := s.apiUsers[name]
+	return u, ok
 }
 
 // HTTPServer returns the underlying http.Server used by the web interface. It
@@ -457,6 +485,10 @@ type apiJob struct {
 	PrevRuns []time.Time     `json:"prevRuns"`
 	Origin   string          `json:"origin"`
 	Config   json.RawMessage `json:"config"`
+	// User is the user the definition of an API run or exec job names, ""
+	// when it names none; config.User holds the user the job runs as.
+	// Omitted for every other job.
+	User *string `json:"user,omitempty"`
 	// RecentRuns is a light outcome summary of the job's newest
 	// executions (oldest first, at most recentRunCount entries) so list
 	// views can show a result sparkline without fetching each job's full
@@ -707,7 +739,14 @@ func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool, running f
 		nextRuns, prevRuns := s.computeRunTimes(job, now)
 		origin := s.jobOrigin(job.GetName())
 		cfgBytes, _ := json.Marshal(job)
+		var user *string
+		if t := jobType(job); t == jobTypeRun || t == jobTypeExec {
+			if u, ok := s.apiUser(job.GetName()); ok {
+				user = &u
+			}
+		}
 		jobs = append(jobs, apiJob{
+			User:       user,
 			Name:       job.GetName(),
 			Type:       jobType(job),
 			Schedule:   job.GetSchedule(),
@@ -969,6 +1008,7 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.originsMu.Lock()
 	s.origins[req.Name] = requestOrigin(r)
+	s.rememberAPIUserLocked(req.Name, req.User)
 	s.originsMu.Unlock()
 	// Persist (#593) any successful API mutation — origin only gates
 	// what the delete handler can later remove, not whether the
@@ -1032,6 +1072,7 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.originsMu.Lock()
 	s.origins[req.Name] = requestOrigin(r)
+	s.rememberAPIUserLocked(req.Name, req.User)
 	s.originsMu.Unlock()
 	// Persist (#593) any successful API update — same rationale as create.
 	if err := s.persistJob(req.Name, &req); err != nil {
@@ -1089,6 +1130,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	_ = s.scheduler.RemoveJob(j)
 	s.originsMu.Lock()
 	delete(s.origins, req.Name)
+	delete(s.apiUsers, req.Name)
 	s.originsMu.Unlock()
 	if s.persistStore != nil {
 		if err := s.persistStore.RemoveJob(req.Name); err != nil {

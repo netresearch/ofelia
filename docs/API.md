@@ -139,6 +139,9 @@ Each returns a JSON **array** of job objects:
 
 `lastRun` is omitted when the job has never run. `duration` values are Go
 `time.Duration` nanoseconds. `origin` is one of `ini`, `label`, `api`, `web`.
+For a `run` or `exec` job created through the API, `user` is the user its
+definition names, `""` when it names none; `config.User` is the user the job
+runs as. Other jobs have no `user`.
 
 On `/api/jobs/removed`, `running` is `true` while the run that the removal
 canceled is still stopping. A job added under the same name skips its
