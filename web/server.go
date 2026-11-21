@@ -487,10 +487,27 @@ func mapJobSource(m reflect.Value, name string) (string, bool) {
 	return src.String(), true
 }
 
+// configLocker is implemented by a configuration that a reload changes while
+// the server runs (cli.Config): the server reads it under that read lock.
+type configLocker interface {
+	RLock()
+	RUnlock()
+}
+
+// lockConfig takes cfg's read lock when it has one and returns the unlock.
+func lockConfig(cfg any) func() {
+	if l, ok := cfg.(configLocker); ok {
+		l.RLock()
+		return l.RUnlock
+	}
+	return func() {}
+}
+
 func jobOrigin(cfg any, name string) string {
 	if cfg == nil {
 		return ""
 	}
+	defer lockConfig(cfg)()
 	v := reflect.ValueOf(cfg)
 	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
@@ -1193,6 +1210,7 @@ func stripJobs(cfg any) any {
 	if cfg == nil {
 		return nil
 	}
+	defer lockConfig(cfg)()
 	v := reflect.ValueOf(cfg)
 	isPtr := false
 	if v.Kind() == reflect.Pointer {

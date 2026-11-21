@@ -144,6 +144,13 @@ type Config struct {
 	WebhookConfigs       *WebhookConfigs
 }
 
+// RLock takes the read lock that guards the job maps, for a reader on
+// another goroutine such as the web server; a reload holds it for writing.
+func (c *Config) RLock() { c.mu.RLock() }
+
+// RUnlock releases the read lock RLock took.
+func (c *Config) RUnlock() { c.mu.RUnlock() }
+
 // NewConfig returns a Config with empty job maps and every `default:` tag
 // applied, ready to be populated from an INI file or from container labels. The
 // webhook globals are seeded with their defaults and aliased into
