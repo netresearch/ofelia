@@ -1327,8 +1327,13 @@ function editJob(name) {
   // config.User is the user the job runs as, where an empty one means the
   // container's own user, which the request spells "default".
   const runsInContainer = j.type === 'run' || j.type === 'exec';
-  document.getElementById('jobUser').value = typeof j.user === 'string' ? j.user
-    : (runsInContainer && j.config.User === '' ? 'default' : (j.config.User || ''));
+  let user = j.config.User || '';
+  if (typeof j.user === 'string') {
+    user = j.user;
+  } else if (runsInContainer && j.config.User === '') {
+    user = 'default';
+  }
+  document.getElementById('jobUser').value = user;
   setExecSwitch(j.config.Exec || false);
   editing = name;
   updateFormChrome();

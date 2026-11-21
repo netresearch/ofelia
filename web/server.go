@@ -194,6 +194,19 @@ func (s *Server) apiUser(name string) (string, bool) {
 	return u, ok
 }
 
+// definedUser returns the user the definition of an API run or exec job
+// names, for GET /api/jobs; nil for every other job.
+func (s *Server) definedUser(job core.Job) *string {
+	if t := jobType(job); t != jobTypeRun && t != jobTypeExec {
+		return nil
+	}
+	u, ok := s.apiUser(job.GetName())
+	if !ok {
+		return nil
+	}
+	return &u
+}
+
 // HTTPServer returns the underlying http.Server used by the web interface. It
 // is exposed for tests and may change if the Server struct evolves.
 func (s *Server) HTTPServer() *http.Server { return s.srv }
@@ -739,14 +752,8 @@ func (s *Server) buildAPIJobList(list []core.Job, withRecentRuns bool, running f
 		nextRuns, prevRuns := s.computeRunTimes(job, now)
 		origin := s.jobOrigin(job.GetName())
 		cfgBytes, _ := json.Marshal(job)
-		var user *string
-		if t := jobType(job); t == jobTypeRun || t == jobTypeExec {
-			if u, ok := s.apiUser(job.GetName()); ok {
-				user = &u
-			}
-		}
 		jobs = append(jobs, apiJob{
-			User:       user,
+			User:       s.definedUser(job),
 			Name:       job.GetName(),
 			Type:       jobType(job),
 			Schedule:   job.GetSchedule(),
