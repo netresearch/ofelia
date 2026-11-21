@@ -139,6 +139,9 @@ Each returns a JSON **array** of job objects:
 
 `lastRun` is omitted when the job has never run. `duration` values are Go
 `time.Duration` nanoseconds. `origin` is one of `ini`, `label`, `api`, `web`.
+For a `run` or `exec` job created through the API, `user` is the user its
+definition names, `""` when it names none; `config.User` is the user the job
+runs as. Other jobs have no `user`, and `/api/jobs/removed` shows none.
 
 On `/api/jobs/removed`, `running` is `true` while the run that the removal
 canceled is still stopping. A job added under the same name skips its
@@ -226,6 +229,7 @@ The request body (`jobRequest`) accepts:
 | `file` | string | `compose` jobs |
 | `service` | string | `compose` jobs: the service to run or exec |
 | `exec` | bool | `compose` jobs: exec in a running service |
+| `user` | string | `run` and `exec` jobs: the user the container runs as. Omitting it takes `[global] default-user`; `default` selects the container's own user, as for an INI job's `user` |
 | `maxRuntime` | string | `run` jobs and `compose` jobs without `exec` (rejected with `exec`); Go duration, e.g. `30m`. Omitting it inherits `[global] max-runtime`, and falls back to the scheduler's 24h default only when no global is set; `"0s"` means the same and is not a way to ask for no bound. Same ladder an INI `[job-run]` section climbs ([#806](https://github.com/netresearch/ofelia/issues/806)) |
 
 Returns `201 Created`. Validation failures return `400 Bad Request`.

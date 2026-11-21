@@ -21,5 +21,5 @@ The step that turns a job definition into a job. It applies the global settings,
 _Avoid_: job preparation, finishing, prep
 
 **Default user**:
-The user a container job runs as when its definition names none, set by `[global] default-user`.
+The user a container job runs as when its definition names none, set by `[global] default-user`. It applies to every job source.
 _Avoid_: fallback user

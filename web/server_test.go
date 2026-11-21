@@ -82,7 +82,7 @@ func TestHistoryEndpoint(t *testing.T) {
 	e.Failed = true
 	job.SetLastRun(e)
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs/job1/history", nil)
 	w := httptest.NewRecorder()
@@ -140,7 +140,7 @@ func TestJobsEndpointWithRuntimeData(t *testing.T) {
 
 	// Create scheduler and server
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 	// Test with live buffers
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
@@ -223,7 +223,7 @@ func TestJobsEndpointAfterBufferCleanup(t *testing.T) {
 
 	// Create scheduler and server
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 	// Test with cleaned buffers (should use captured content)
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
@@ -296,7 +296,7 @@ func TestHistoryEndpointWithCapturedOutput(t *testing.T) {
 
 	job.SetLastRun(e)
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs/history-job/history", nil)
 	rr := httptest.NewRecorder()
@@ -346,7 +346,7 @@ func TestJobsHandlerIncludesOutput(t *testing.T) {
 	e.Failed = true
 	job.SetLastRun(e)
 	sched := &core.Scheduler{Jobs: []core.Job{job}, Logger: stubDiscardLogger()}
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 	w := httptest.NewRecorder()
@@ -392,7 +392,7 @@ func TestJobsHandlerOrigin(t *testing.T) {
 		},
 	}
 
-	srv := webpkg.NewServer("", sched, cfg, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, cfg, nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 	w := httptest.NewRecorder()
@@ -450,7 +450,7 @@ func TestRemovedJobsHandlerOrigin(t *testing.T) {
 		},
 	}
 
-	srv := webpkg.NewServer("", sched, cfg, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, cfg, nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs/removed", nil)
 	w := httptest.NewRecorder()
@@ -505,7 +505,7 @@ func TestDisabledJobsHandlerOrigin(t *testing.T) {
 		},
 	}
 
-	srv := webpkg.NewServer("", sched, cfg, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, cfg, nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs/disabled", nil)
 	w := httptest.NewRecorder()
@@ -535,7 +535,7 @@ func TestCreateJobTypes(t *testing.T) {
 	t.Parallel()
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	httpSrv := srv.HTTPServer()
 
 	cases := []struct {
@@ -581,7 +581,7 @@ func TestRunJobHandler(t *testing.T) {
 	_ = sched.AddJob(job)
 	_ = sched.Start() // Start the scheduler to initialize workflow orchestrator
 
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	httpSrv := srv.HTTPServer()
 
 	t.Run("success", func(t *testing.T) {
@@ -631,7 +631,7 @@ func TestDisableJobHandler(t *testing.T) {
 	job.Command = cmdEcho
 	_ = sched.AddJob(job)
 
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	httpSrv := srv.HTTPServer()
 
 	t.Run("success", func(t *testing.T) {
@@ -688,7 +688,7 @@ func TestEnableJobHandler(t *testing.T) {
 	_ = sched.AddJob(job)
 	_ = sched.DisableJob("test-enable-job")
 
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	httpSrv := srv.HTTPServer()
 
 	t.Run("success", func(t *testing.T) {
@@ -737,7 +737,7 @@ func TestHistoryHandler_NotFound(t *testing.T) {
 	t.Parallel()
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	httpSrv := srv.HTTPServer()
 
 	t.Run("job_not_found", func(t *testing.T) {
@@ -765,7 +765,7 @@ func TestShutdown(t *testing.T) {
 	t.Parallel()
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer(":0", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer(":0", sched, nil, nil))
 
 	// Start the server
 	err := srv.Start()
@@ -790,7 +790,7 @@ func TestRegisterHealthEndpoints(t *testing.T) {
 	t.Parallel()
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 	hc := webpkg.NewHealthChecker(nil, nil, "test-version")
 	// Give the health checker time to run initial checks
@@ -860,7 +860,7 @@ func TestJobFromRequest_EdgeCases(t *testing.T) {
 	t.Parallel()
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	httpSrv := srv.HTTPServer()
 
 	t.Run("unknown_job_type", func(t *testing.T) {
@@ -924,7 +924,7 @@ func TestGetHTTPServer(t *testing.T) {
 	t.Parallel()
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 	httpSrv := srv.GetHTTPServer()
 	if httpSrv == nil {
@@ -951,7 +951,7 @@ func TestJobsEndpointNextPrevRuns(t *testing.T) {
 		t.Fatalf("AddJob error: %v", err)
 	}
 
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 	rr := httptest.NewRecorder()
 	srv.HTTPServer().Handler.ServeHTTP(rr, req)
@@ -1015,7 +1015,7 @@ func TestJobsEndpointTriggeredJobEmptyRuns(t *testing.T) {
 		t.Fatalf("AddJob error: %v", err)
 	}
 
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 	rr := httptest.NewRecorder()
 	srv.HTTPServer().Handler.ServeHTTP(rr, req)
@@ -1061,7 +1061,7 @@ func TestDisabledJobsEndpointEmptyRuns(t *testing.T) {
 	_ = sched.AddJob(job)
 	_ = sched.DisableJob("disabled-job")
 
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs/disabled", nil)
 	rr := httptest.NewRecorder()
 	srv.HTTPServer().Handler.ServeHTTP(rr, req)
@@ -1101,7 +1101,7 @@ func TestRemovedJobsEndpointEmptyRuns(t *testing.T) {
 	_ = sched.AddJob(job)
 	_ = sched.RemoveJob(job)
 
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs/removed", nil)
 	rr := httptest.NewRecorder()
 	srv.HTTPServer().Handler.ServeHTTP(rr, req)
@@ -1142,7 +1142,7 @@ func TestJobsEndpointNextPrevRunsJSONFormat(t *testing.T) {
 		t.Fatalf("AddJob error: %v", err)
 	}
 
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	req := httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
 	rr := httptest.NewRecorder()
 	srv.HTTPServer().Handler.ServeHTTP(rr, req)

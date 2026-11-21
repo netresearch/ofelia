@@ -209,6 +209,8 @@ func newDaemonForPersistTest(t *testing.T) *DaemonCommand {
 	return &DaemonCommand{
 		Logger:    logger,
 		scheduler: core.NewScheduler(logger),
+		// Restored jobs are assembled against the configuration, as at boot.
+		config: NewConfig(logger),
 	}
 }
 
@@ -231,8 +233,9 @@ func writePersistFile(t *testing.T, state persist.State) string {
 // coming back from the state file gets the same struct-tag defaults the
 // config decoder applies — the boundary twin of the API-side fix.
 //
-// Only buildPersistedRunJob called defaults.Set, so an API-created exec,
-// compose or local job returned from disk with HistoryLimit 0, which
+// The restore path once applied defaults.Set to run jobs only, so an
+// API-created exec, compose or local job returned from disk with
+// HistoryLimit 0, which
 // makes BareJob.GetHistory retain every Execution (up to two 10 MB
 // output buffers each) for the lifetime of the daemon. The leak fixed on
 // the API path came back on the first restart.

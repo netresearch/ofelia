@@ -19,12 +19,11 @@ import (
 // TestPersist_CreateRunJob_WritesMaxRuntime closes the one link of the
 // maxRuntime persistence chain that nothing else reaches.
 //
-// The API-side test drives newRunJobFromRequest and stops at the job; the
-// cli-side test hand-builds a persist.Job and starts from there. Neither
-// crosses the handler's own `j.MaxRuntime = req.MaxRuntime` in persistJob,
-// so deleting that line left the whole suite green while a restart
-// silently lost every override — the exact drift this PR exists to
-// prevent, one link further along.
+// The builder tests in cli start from a persist.Job. None of them crosses
+// the request's translation into the stored definition
+// (`j.MaxRuntime = req.MaxRuntime` in jobRequest.definition), so deleting
+// that line would leave them green while a restart silently lost every
+// override.
 //
 // This drives the real create handler against a real on-disk store and
 // reads the value back through a fresh Store, so the handler hook, the
@@ -36,7 +35,9 @@ func TestPersist_CreateRunJob_WritesMaxRuntime(t *testing.T) {
 	store := persist.NewStore(path)
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := NewServer("", core.NewScheduler(logger), nil, newHangingDockerProvider())
+	provider := newHangingDockerProvider()
+	srv := NewServer("", core.NewScheduler(logger), nil, provider)
+	srv.SetJobBuilder(stubJobBuilder(provider))
 	srv.SetPersistStore(store)
 
 	body := `{"name":"bounded","type":"run","schedule":"@hourly","image":"busybox","maxRuntime":"30m"}`

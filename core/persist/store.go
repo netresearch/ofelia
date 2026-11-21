@@ -57,15 +57,19 @@ const (
 
 // Job is the per-entry on-disk representation. Carries the union of
 // fields the web API accepts (web.jobRequest); fields not relevant to
-// a given Type stay zero-value and are omitted by `omitempty`. Adding
-// a new field is backward-compatible (older builds drop it on read,
-// new builds round-trip it).
+// a given Type stay zero-value and are omitted by `omitempty`. Load
+// rejects unknown fields, so a file that holds a field added later does
+// not load in an older build; `omitempty` keeps such a field out of the
+// file until a job sets it.
 type Job struct {
 	Type     JobType `json:"type"`
 	Schedule string  `json:"schedule"`
 	Command  string  `json:"command,omitempty"`
 	// Run + Exec
 	Container string `json:"container,omitempty"`
+	// User the container runs as; empty takes [global] default-user, and
+	// "default" the container's own user.
+	User string `json:"user,omitempty"`
 	// Run-only
 	Image      string `json:"image,omitempty"`
 	MaxRuntime string `json:"maxRuntime,omitempty"`

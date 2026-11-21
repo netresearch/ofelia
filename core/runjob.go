@@ -110,11 +110,9 @@ func (j *RunJob) InheritsGlobalMaxRuntime() bool { return true }
 // ParseMaxRuntime parses a `max-runtime` duration string into the value
 // RunJob.MaxRuntime carries.
 //
-// Its callers are the two paths that build a run job from untyped input:
-// web.newRunJobFromRequest, for the API's `maxRuntime` field, and
-// cli.buildPersistedRunJob, for the same value coming back out of the
-// state file. One parser for both keeps them from drifting apart the way
-// the API and state-file paths once disagreed on RunJob.Delete (PR #745).
+// Its caller is cli.Config.BuildAPIJob, which builds run and compose jobs
+// from the API's `maxRuntime` field and from the same value coming back
+// out of the state file.
 // The `[job-run]` config section and Docker labels do NOT come through
 // here — gcfg and mapstructure decode `max-runtime` into the field
 // directly.

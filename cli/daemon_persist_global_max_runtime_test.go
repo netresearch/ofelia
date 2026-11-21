@@ -32,8 +32,8 @@ func TestInitPersistStore_RestoredRunJobInheritsGlobalMaxRuntime(t *testing.T) {
 
 	c := newDaemonForPersistTest(t)
 	c.StateFile = path
-	c.config = &Config{}
 	c.dockerHandler = &DockerHandler{dockerProvider: &mockDockerProvider{}}
+	c.config.dockerHandler = c.dockerHandler
 	c.scheduler.SetGlobalMaxRuntime(2 * time.Hour)
 
 	if err := c.initPersistStore(); err != nil {

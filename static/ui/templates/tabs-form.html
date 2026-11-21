@@ -72,6 +72,20 @@
         </div>
       </div>
 
+      <!-- Section: run and exec — the user the container runs as -->
+      <div id="fields-user" class="type-fields">
+        <div class="form-section">
+          <div class="form-section-title">Container User</div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="jobUser">User</label>
+              <input id="jobUser" placeholder="[global] default-user" class="mono">
+              <p class="hint">Empty takes <code>[global] default-user</code>; <code>default</code> runs as the container's own user.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Section: type-specific — compose -->
       <div id="fields-compose" class="type-fields">
         <div class="form-section">

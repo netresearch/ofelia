@@ -32,7 +32,7 @@ func TestUpdateJob_ForbiddenForConfigOwnedOrigin(t *testing.T) {
 	}}
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, cfg, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, cfg, nil))
 
 	job := &deletableLocalJob{}
 	job.Name = "ini-owned"
@@ -64,7 +64,7 @@ func TestUpdateJob_PausedJobStaysPaused(t *testing.T) {
 	t.Parallel()
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 	job := &deletableLocalJob{}
 	job.Name = "paused-edit"

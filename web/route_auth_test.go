@@ -50,6 +50,7 @@ func newAuthTestServer(t *testing.T) (*Server, *HealthChecker) {
 	}
 	srv := NewServerWithAuth("", core.NewScheduler(newDiscardLogger()), nil, nil, authCfg)
 	require.NotNil(t, srv, "NewServerWithAuth returned nil")
+	srv.SetJobBuilder(stubJobBuilder(nil))
 
 	hc := NewHealthChecker(nil, nil, "test")
 	srv.RegisterHealthEndpoints(hc)

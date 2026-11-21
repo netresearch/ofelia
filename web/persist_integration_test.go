@@ -71,7 +71,7 @@ func TestPersist_DeleteJob_ForbiddenForNonAPIOrigin(t *testing.T) {
 	}}
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, cfg, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, cfg, nil))
 	srv.SetPersistStore(store)
 
 	// Add the matching job directly to the scheduler so the delete
@@ -146,7 +146,7 @@ func TestPersist_EnableJob_ClearsFromStateFile(t *testing.T) {
 	require.NoError(t, store.SetDisabled("pre-disabled"))
 
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	srv.SetPersistStore(store)
 
 	// Need the job to exist in the scheduler for enable to succeed.
@@ -251,7 +251,7 @@ func (*deletableLocalJob) Run(*core.Context) error { return nil }
 func newWebServerWithStore(t *testing.T, store *persist.Store) *webpkg.Server {
 	t.Helper()
 	sched := core.NewScheduler(stubDiscardLogger())
-	srv := webpkg.NewServer("", sched, nil, nil)
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 	srv.SetPersistStore(store)
 	return srv
 }

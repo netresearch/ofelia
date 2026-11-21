@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Jobs created through the web API or the web UI take an optional `user` for
+  `run` and `exec` jobs, with the meaning an INI job's `user` has: omitted takes
+  `[global] default-user`, `default` selects the container's own user. The
+  state file stores it. An older version refuses to load a state file that
+  holds `user`, so a downgrade needs the field removed from the file first
+  ([#956](https://github.com/netresearch/ofelia/pull/956)).
 - `[global] max-concurrent-jobs` sets how many jobs run at once, counted across
   every job of the daemon. The default stays `10`, the limit Ofelia has applied
   since v0.10.1 without a way to change it. The key is INI-only and is applied
@@ -21,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maps and webhooks without a lock while a label or INI reload rewrote them;
   the Go runtime can stop the process on such a read. They now read under the
   lock the reload holds, and a label reload updates the webhooks under it too ([#959](https://github.com/netresearch/ofelia/pull/959)).
+- **Jobs created through the web API now respect `[global] default-user`.**
+  A `run` or `exec` job created through the API, or restored from the state
+  file, ignored the setting and ran as the container's default user, often
+  root, while the same job in `config.ini` or a label ran as `nobody`. Such
+  jobs now run as `default-user`, which is `nobody` unless configured.
+  **Upgrade note:** existing API jobs change user on the first start of this
+  version. To keep the container's user for one job, set its `user` to
+  `default` through the API or the web UI. `default-user = default` in
+  `[global]` does it for every job without a user of its own, INI and label
+  jobs included, which then run as the container's user instead of `nobody`
+  ([#956](https://github.com/netresearch/ofelia/pull/956)).
 - **A run dropped by the job limit is no longer invisible.** When more jobs
   were due at once than the limit allows, the extra runs were skipped with only
   a debug log line that did not name the job, and nothing in the job's history;

@@ -53,7 +53,7 @@ func TestCreatedJobsCarryStructTagDefaults(t *testing.T) {
 			t.Parallel()
 
 			sched := core.NewScheduler(stubDiscardLogger())
-			srv := webpkg.NewServer("", sched, nil, nil)
+			srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
 
 			resp := postJSON(t, srv, "/api/jobs/create", tc.body)
 			require.Equal(t, http.StatusCreated, resp.Code, resp.Body.String())

@@ -14,10 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/creasty/defaults"
-	"github.com/gobs/args"
-
-	cfgvalidator "github.com/netresearch/ofelia/config"
 	"github.com/netresearch/ofelia/core"
 	"github.com/netresearch/ofelia/core/persist"
 	"github.com/netresearch/ofelia/middlewares"
@@ -234,6 +230,9 @@ func (c *DaemonCommand) setupWebServer() error {
 	if c.webServer == nil {
 		return fmt.Errorf("failed to initialize web server (check logs for details)")
 	}
+	if c.config != nil {
+		c.webServer.SetJobBuilder(c.config.BuildAPIJob)
+	}
 
 	// #593: wire the persist store into the web server so API
 	// create/update/delete/disable/enable handlers record their
@@ -248,8 +247,9 @@ func (c *DaemonCommand) setupWebServer() error {
 		// API-deletable after restart — otherwise jobOrigin() would
 		// return "" and any future tightening of the gate would
 		// silently break delete for persisted jobs.
-		for name := range c.persistStore.Snapshot().Jobs {
+		for name, j := range c.persistStore.Snapshot().Jobs {
 			c.webServer.MarkOriginAPI(name)
+			c.webServer.RememberAPIUser(name, j.User)
 		}
 	}
 
@@ -658,149 +658,23 @@ func (c *DaemonCommand) wireScheduleRecords() {
 	}
 }
 
-// persistedJobToScheduler reconstructs a scheduler-ready core.Job
-// from the on-disk persist.Job. Mirrors web.Server.jobFromRequest so
-// the round-trip from API → state-file → load lands the same job
-// shape. Returns an error on unknown type, when a job kind needs a
-// Docker provider that isn't available on this daemon, or when a
-// validation parity check fails — the state file is operator-trusted
-// but the same input validators that gate the API path also run on
-// load so a malformed hand-edit can't bypass the safety net.
-//
-// CONTRACT: any field web.jobFromRequest sets on a job MUST also be
-// captured here (and in persist.Job) — otherwise the round-trip
-// from API → state-file → load silently drops the field. When
-// jobRequest gains a field, mirror it in persist.Job and add the
-// matching switch arm here in the same commit.
+// persistedJobToScheduler turns a job restored from the state file into a
+// scheduler-ready job. The state file is operator-trusted, but the job
+// goes through the same checks and the same job assembly as a job the web
+// API creates (Config.BuildAPIJob), so a hand-edited file cannot bypass
+// them and a restored job is the job the API created.
 func (c *DaemonCommand) persistedJobToScheduler(name string, j *persist.Job) (core.Job, error) {
 	if err := validatePersistedJobName(name); err != nil {
 		return nil, err
 	}
-	provider := c.dockerProviderOrNil()
-	validator := cfgvalidator.NewCommandValidator()
-	var (
-		job core.Job
-		err error
-	)
-	switch j.Type {
-	case persist.JobTypeRun:
-		job, err = c.buildPersistedRunJob(name, j, provider)
-	case persist.JobTypeExec:
-		job, err = c.buildPersistedExecJob(name, j, provider)
-	case persist.JobTypeCompose:
-		job, err = c.buildPersistedComposeJob(name, j, validator, provider)
-	case persist.JobTypeLocal, "":
-		job, err = buildPersistedLocalJob(name, j, validator)
-	default:
-		return nil, fmt.Errorf("unknown job type %q", j.Type)
+	if c.config == nil {
+		return nil, errNoConfigForRestore
 	}
+	job, err := c.config.BuildAPIJob(name, *j)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("job %q: %w", name, err)
 	}
-	// The struct-tag defaults, for every type — the same reason and the
-	// same placement as web.Server.jobFromRequest. Only the run-job
-	// builder applied them, so an API-created exec, compose or local job
-	// came back from the state file with HistoryLimit 0 and retained
-	// every Execution for the lifetime of the daemon: the leak the API
-	// path was just fixed for, reintroduced by the first restart.
-	// creasty/defaults fills initial values only, so the fields the
-	// builders set above are left alone.
-	_ = defaults.Set(job)
 	return job, nil
-}
-
-// buildPersistedRunJob materializes a persist.JobTypeRun into a core.RunJob.
-func (c *DaemonCommand) buildPersistedRunJob(name string, j *persist.Job, provider core.DockerProvider) (core.Job, error) {
-	if provider == nil {
-		return nil, fmt.Errorf("docker provider unavailable for run job")
-	}
-	rj := core.NewRunJob(provider)
-	// Also applied centrally in persistedJobToScheduler, which is the
-	// only caller. Kept here because RunJob is the one type whose
-	// defaults are load-bearing rather than cosmetic — Delete "true" is
-	// what stops every restored run job leaking its container — and
-	// creasty/defaults fills initial values only, so the second call is
-	// a no-op.
-	_ = defaults.Set(rj)
-	rj.Name = name
-	rj.Schedule = j.Schedule
-	rj.Command = j.Command
-	rj.Image = j.Image
-	rj.Container = j.Container
-	maxRuntime, err := core.ParseMaxRuntime(j.MaxRuntime)
-	if err != nil {
-		return nil, fmt.Errorf("job %q: %w", name, err)
-	}
-	// A job that named no bound keeps 0 and runs under the scheduler's
-	// current [global] max-runtime, exactly as an INI job does (#806).
-	rj.MaxRuntime = maxRuntime
-	return rj, nil
-}
-
-// buildPersistedExecJob materializes a persist.JobTypeExec into a core.ExecJob.
-func (c *DaemonCommand) buildPersistedExecJob(name string, j *persist.Job, provider core.DockerProvider) (core.Job, error) {
-	if provider == nil {
-		return nil, fmt.Errorf("docker provider unavailable for exec job")
-	}
-	ej := core.NewExecJob(provider)
-	ej.Name = name
-	ej.Schedule = j.Schedule
-	ej.Command = j.Command
-	ej.Container = j.Container
-	return ej, nil
-}
-
-// buildPersistedComposeJob materializes a persist.JobTypeCompose into a core.ComposeJob.
-// provider may be nil: the job still runs, but a canceled run then cannot
-// confirm that its container stopped.
-func (c *DaemonCommand) buildPersistedComposeJob(
-	name string, j *persist.Job, validator *cfgvalidator.CommandValidator, provider core.DockerProvider,
-) (core.Job, error) {
-	if j.File != "" {
-		if err := validator.ValidateFilePath(j.File); err != nil {
-			return nil, fmt.Errorf("invalid compose file path: %w", err)
-		}
-	}
-	if err := validator.ValidateServiceName(j.Service); err != nil {
-		return nil, fmt.Errorf("invalid service name: %w", err)
-	}
-	if j.Command != "" {
-		if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
-			return nil, fmt.Errorf("invalid command arguments: %w", err)
-		}
-	}
-	cj := &core.ComposeJob{Provider: provider}
-	cj.Name = name
-	cj.Schedule = j.Schedule
-	cj.Command = j.Command
-	cj.File = j.File
-	cj.Service = j.Service
-	cj.Exec = j.Exec
-	maxRuntime, err := core.ParseMaxRuntime(j.MaxRuntime)
-	if err != nil {
-		return nil, fmt.Errorf("job %q: %w", name, err)
-	}
-	cj.MaxRuntime = maxRuntime
-	if err := cj.CheckMaxRuntime(); err != nil {
-		return nil, fmt.Errorf("job %q: %w", name, err)
-	}
-	// As for a persisted run job, a run-mode job that named no bound runs
-	// under the scheduler's current [global] max-runtime.
-	return cj, nil
-}
-
-// buildPersistedLocalJob materializes a persist.JobTypeLocal into a core.LocalJob.
-func buildPersistedLocalJob(name string, j *persist.Job, validator *cfgvalidator.CommandValidator) (core.Job, error) {
-	if j.Command != "" {
-		if err := validator.ValidateCommandArgs(args.GetArgs(j.Command)); err != nil {
-			return nil, fmt.Errorf("invalid command arguments: %w", err)
-		}
-	}
-	lj := &core.LocalJob{}
-	lj.Name = name
-	lj.Schedule = j.Schedule
-	lj.Command = j.Command
-	return lj, nil
 }
 
 // validatePersistedJobName mirrors web.validateJobName but lives in
@@ -822,11 +696,4 @@ func validatePersistedJobName(name string) error {
 		}
 	}
 	return nil
-}
-
-func (c *DaemonCommand) dockerProviderOrNil() core.DockerProvider {
-	if c.dockerHandler == nil {
-		return nil
-	}
-	return c.dockerHandler.GetDockerProvider()
 }

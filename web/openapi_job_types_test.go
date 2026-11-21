@@ -13,12 +13,12 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/core/persist"
 )
 
 // The published OpenAPI description of a job-create request and the switch
 // that implements it drifted apart without anything objecting: the schema
-// advertised a type "service-run" that jobFromRequest rejects and jobType
+// advertised a type "service-run" that definition rejects and jobType
 // never emits, and it listed "type" as required although an omitted type is
 // a valid request. Both were found by a reviewer reading the diff, which is
 // not a mechanism (issue #816).
@@ -32,7 +32,7 @@ const openAPIRelPath = "../docs/openapi.yaml"
 // handlerFile is read from the package directory the test runs in.
 const handlerFile = "server.go"
 
-// unknownTypeMarker is the substring of the error jobFromRequest's default
+// unknownTypeMarker is the substring of the error definition's default
 // arm returns. It is the only signal that separates "the switch refused this
 // token" from "the switch dispatched and construction failed later".
 //
@@ -42,7 +42,7 @@ const handlerFile = "server.go"
 // sentinel in candidateJobTypes is for. Reflect the new wording here.
 const unknownTypeMarker = "unknown job type"
 
-// handlerJobTypes reads the tokens jobFromRequest dispatches on straight out
+// handlerJobTypes reads the tokens definition dispatches on straight out
 // of its type switch, resolving the jobType* constants from the same file.
 //
 // A hand-kept list would have left the guard's main case open: a new arm in
@@ -66,7 +66,7 @@ func handlerJobTypes(t *testing.T) []string {
 	var found []string
 	ast.Inspect(file, func(n ast.Node) bool {
 		fn, ok := n.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "jobFromRequest" {
+		if !ok || fn.Name.Name != "definition" {
 			return true
 		}
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
@@ -85,7 +85,7 @@ func handlerJobTypes(t *testing.T) []string {
 	})
 
 	if len(found) == 0 {
-		t.Fatalf("no case tokens found in jobFromRequest in %s — the handler "+
+		t.Fatalf("no case tokens found in definition in %s — the handler "+
 			"was restructured and this test no longer reads it", handlerFile)
 	}
 	sort.Strings(found)
@@ -205,10 +205,9 @@ func readOpenAPIJobRequest(t *testing.T) openAPIJobRequest {
 func acceptedJobTypes(t *testing.T, documented []string) []string {
 	t.Helper()
 
-	s := &Server{}
 	var accepted []string
 	for _, typ := range candidateJobTypes(t, documented) {
-		_, err := s.jobFromRequest(&jobRequest{Name: "guard", Type: typ})
+		_, err := (&jobRequest{Name: "guard", Type: typ}).definition()
 		if err != nil && strings.Contains(err.Error(), unknownTypeMarker) {
 			continue
 		}
@@ -226,7 +225,7 @@ func TestOpenAPI_JobTypeEnumMatchesHandler(t *testing.T) {
 	accepted := acceptedJobTypes(t, documented)
 
 	if strings.Join(documented, ",") != strings.Join(accepted, ",") {
-		t.Errorf("docs/openapi.yaml documents job types %v, jobFromRequest accepts %v.\n"+
+		t.Errorf("docs/openapi.yaml documents job types %v, definition accepts %v.\n"+
 			"Whichever is wrong, the two have to say the same thing — see issue #816.",
 			documented, accepted)
 	}
@@ -240,7 +239,7 @@ func TestOpenAPI_JobTypeNotRequired(t *testing.T) {
 
 	for _, field := range spec.Components.Schemas.JobRequest.Required {
 		if field == "type" {
-			t.Errorf("docs/openapi.yaml marks type as required, but jobFromRequest "+
+			t.Errorf("docs/openapi.yaml marks type as required, but definition "+
 				"has a `case \"\", %s` arm — an omitted type is a valid body", jobTypeLocal)
 		}
 	}
@@ -249,12 +248,12 @@ func TestOpenAPI_JobTypeNotRequired(t *testing.T) {
 	// and yield a local job, which is what "omitted means local" claims. The
 	// weaker form accepted any failure that was not `unknown job type`, so a
 	// local constructor that started erroring would have passed it.
-	job, err := (&Server{}).jobFromRequest(&jobRequest{Name: "guard"})
+	def, err := (&jobRequest{Name: "guard"}).definition()
 	if err != nil {
 		t.Fatalf("an empty type is not accepted: %v — the spec's "+
 			"%q description no longer holds", err, "omitted means local")
 	}
-	if _, ok := job.(*core.LocalJob); !ok {
-		t.Errorf("an empty type produced %T, want *core.LocalJob", job)
+	if def.Type != persist.JobTypeLocal {
+		t.Errorf("an empty type produced a %q definition, want %q", def.Type, persist.JobTypeLocal)
 	}
 }

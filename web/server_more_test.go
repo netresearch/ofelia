@@ -32,7 +32,7 @@ func TestJobTypeCoversKnown(t *testing.T) {
 }
 
 func TestJobFromRequestLocal(t *testing.T) {
-	s := &Server{}
+	s := &Server{buildJob: stubJobBuilder(nil)}
 	req := &jobRequest{Name: "n", Type: "local", Schedule: "@daily", Command: "echo"}
 	j, err := s.jobFromRequest(req)
 	if err != nil {
@@ -116,6 +116,7 @@ func TestDisableEnableHandlers(t *testing.T) {
 func TestCreateUpdateDeleteHandlers_Local(t *testing.T) {
 	sc := core.NewScheduler(newDiscardLogger())
 	srv := NewServer("", sc, nil, nil)
+	srv.SetJobBuilder(stubJobBuilder(nil))
 	httpSrv := srv.HTTPServer()
 
 	// create local
@@ -179,6 +180,7 @@ func TestConfigHandlerStripsJobs(t *testing.T) {
 func TestCreateUpdateDeleteHandlers_ComposeAndErrors(t *testing.T) {
 	sc := core.NewScheduler(newDiscardLogger())
 	srv := NewServer("", sc, nil, nil)
+	srv.SetJobBuilder(stubJobBuilder(nil))
 	httpSrv := srv.HTTPServer()
 
 	// bad json
