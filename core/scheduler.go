@@ -746,28 +746,8 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 		return fmt.Errorf("%w: %s", ErrJobNotFound, jobName)
 	}
 	if j := s.GetAnyJob(jobName); j != nil {
-		_, durable := s.durablePolicy(j)
-		if durable && s.durableBusy(jobName) || !durable && s.retainedWorkloadBusy(jobName) {
-			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
-		}
-		// The run would be skipped by the name lock (runGate) while a
-		// removed or replaced job's canceled run stops.
-		if s.gate.blocked(jobName, durable) {
-			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
-		}
-		// A run without durable state would be skipped by a no-overlap
-		// middleware while another run of the job is in progress, and by
-		// the global limit (maxConcurrentSkipJob) while every slot is taken.
-		// The check is best-effort: a slot or a run that ends between the
-		// check and the trigger refuses a run a retry starts, and a slot
-		// taken in that time still records the run as skipped.
-		if !durable {
-			if skipsOverlap(j) && j.Running() > 0 {
-				return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
-			}
-			if s.concurrencySem.full() {
-				return fmt.Errorf("%w: %s", ErrJobLimitReached, jobName)
-			}
+		if err := s.refuseManualRun(j, jobName); err != nil {
+			return err
 		}
 	}
 
@@ -779,6 +759,34 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 		return fmt.Errorf("trigger job %s: %w", jobName, err)
 	}
 
+	return nil
+}
+
+// refuseManualRun returns the ErrJobBusy that RunJob answers when a manual run
+// of j would not start, or nil when the run may be triggered.
+func (s *Scheduler) refuseManualRun(j Job, jobName string) error {
+	_, durable := s.durablePolicy(j)
+	busy := fmt.Errorf("%w: %s", ErrJobBusy, jobName)
+	switch {
+	case durable && s.durableBusy(jobName), !durable && s.retainedWorkloadBusy(jobName):
+		return busy
+	case s.gate.blocked(jobName, durable):
+		// The run would be skipped by the name lock (runGate) while a
+		// removed or replaced job's canceled run stops.
+		return busy
+	case durable:
+		// A durable job waits for a global slot instead of being skipped.
+		return nil
+	case skipsOverlap(j) && j.Running() > 0:
+		// A no-overlap middleware would skip the run. This check and the
+		// next are best-effort: a slot or a run that ends between the
+		// check and the trigger refuses a run a retry starts, and a slot
+		// taken in that time still records the run as skipped.
+		return busy
+	case s.concurrencySem.full():
+		// The global limit (maxConcurrentSkipJob) would skip the run.
+		return fmt.Errorf("%w: %s", ErrJobLimitReached, jobName)
+	}
 	return nil
 }
 
