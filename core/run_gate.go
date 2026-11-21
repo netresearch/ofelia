@@ -156,6 +156,14 @@ func (g *runGate) enter(w *jobWrapper, ownBusyCheck, startup bool) gateVerdict {
 	return gateRun
 }
 
+// isRetired reports whether w was removed or replaced. Unlike enter, it counts
+// no run, so the caller does not call leave.
+func (g *runGate) isRetired(w *jobWrapper) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return w.retired
+}
+
 // blocked reports whether a fire of name would be skipped because a stopping
 // run of a removed or replaced job of that name still runs; ownBusyCheck as
 // for enter.

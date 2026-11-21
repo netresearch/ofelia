@@ -242,7 +242,7 @@ Ofelia merges options from multiple sources in the following order. Values from 
 The daemon watches `config.ini` and reloads it automatically when the file changes.
 
 Job definitions and most `[global]` middleware options (`slack-*`, `save-*`,
-`mail-*`, `log-level`, `max-runtime`) are applied on reload. Options that start
+`mail-*`, `log-level`, `max-runtime`, `max-concurrent-jobs`) are applied on reload. Options that start
 servers (`enable-web`, `web-address`, `enable-pprof`, `pprof-address`) and all
 `[docker]` settings require restarting the daemon.
 
@@ -316,6 +316,7 @@ See [Architecture overview](docs/architecture.md) for details about the schedule
 - `enable-pprof` - enable the pprof debug server.
 - `pprof-address` - address for the pprof server (default `127.0.0.1:8080`).
 - `max-runtime` - default maximum duration a run, service or `run`-mode compose job may run (default `24h`).
+- `max-concurrent-jobs` - how many jobs run at once, across all jobs of the daemon (default `10`). A run that finds every slot taken is skipped and recorded as a skipped run. INI-only; container labels cannot set it.
 
 Log output now includes the original file and line of the logging call instead of the adapter location.
 
