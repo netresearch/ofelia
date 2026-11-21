@@ -90,8 +90,11 @@ go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
 # Run full mutation testing (unit tests only)
 gremlins unleash --config=.gremlins.yaml
 
-# Run diff-based mutation testing (only changed files)
-gremlins unleash --config=.gremlins.yaml --diff
+# Run diff-based mutation testing (only lines changed since origin/main).
+# With no change against origin/main, gremlins treats every line as changed
+# and runs the full suite, so check for a diff first.
+git diff --quiet --merge-base origin/main -- '*.go' ||
+  gremlins unleash --config=.gremlins.yaml --diff origin/main
 
 # Run Docker adapter mutation testing with integration tests
 # Requires Docker daemon - takes ~10 minutes
@@ -121,7 +124,8 @@ mutation requires running tests that connect to the Docker daemon.
 
 The `.gremlins.yaml` configuration defines:
 
-- **Test packages**: cli, config, core, logging, metrics, middlewares, web
+- **Scope**: every Go package of the module, without test files and without
+  files under `test/`, `static/` or `mock/` directories
 - **Mutators enabled**:
   - `CONDITIONALS_BOUNDARY` - Change `<` to `<=`, `>` to `>=`, etc.
   - `CONDITIONALS_NEGATION` - Negate conditions (`==` to `!=`)
@@ -129,8 +133,10 @@ The `.gremlins.yaml` configuration defines:
   - `INVERT_LOGICAL` - Invert `&&` to `||`, `||` to `&&`
   - `INVERT_NEGATIVES` - Remove negation operators
   - `INVERT_LOOPCTRL` - Change `break` to `continue` and vice versa
-- **Threshold**: 60% mutation score required
-- **Coverage-aware**: Only mutates code covered by tests
+- **Threshold**: gremlins exits with code 10 when the test efficacy is 60% or
+  lower; the CI workflow reports the score and does not fail on it
+- **Coverage-aware**: mutants on lines no test covers are reported as
+  `NOT COVERED` and not run
 
 ### CI Integration
 

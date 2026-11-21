@@ -21,6 +21,9 @@ jobs:
     uses: netresearch/.github/.github/workflows/go-mutation-testing.yml@main
     with:
       diff-only: ${{ github.event_name == 'pull_request' }}
+      # The weekly full run tested 2384 mutants in 1 h 57 min on 2026-10-18 and
+      # hit the default 2-hour job limit on every schedule since 2026-10-25.
+      timeout-minutes: 240
       # The core tests used to need between 3.5 and 4 GiB of address space per
       # test binary: two parallel EnhancedBufferPool tests each prewarmed the
       # default pool, about 888 MB. Even 4 GiB failed 1 of about 20 CI runs.

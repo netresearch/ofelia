@@ -1,75 +1,53 @@
 # Gremlins Mutation Testing Configuration
-# https://github.com/go-gremlins/gremlins
-
-# Packages to test (default: all in ./...)
-test-packages:
-  - .
-  - ./cli/...
-  - ./config/...
-  - ./core/...
-  - ./logging/...
-  - ./metrics/...
-  - ./middlewares/...
-  - ./web/...
-
-# Mutator types to enable
-# Available: CONDITIONALS_BOUNDARY, CONDITIONALS_NEGATION, INCREMENT_DECREMENT,
-#            INVERT_ASSIGNMENTS, INVERT_BITWISE, INVERT_BWASSIGN, INVERT_LOGICAL,
-#            INVERT_LOOPCTRL, INVERT_NEGATIVES, REMOVE_SELF_ASSIGNMENTS
-mutators:
-  - CONDITIONALS_BOUNDARY    # Change < to <=, > to >=, etc.
-  - CONDITIONALS_NEGATION    # Negate conditions (== to !=)
-  - INCREMENT_DECREMENT      # Change ++ to -- and vice versa
-  - INVERT_LOGICAL           # Invert && to ||, || to &&
-  - INVERT_NEGATIVES         # Remove negation operators
-  - INVERT_LOOPCTRL          # Change break to continue and vice versa
-
-# Files/patterns to exclude from mutation
-exclude:
-  - "**/*_test.go"           # Test files
-  - "**/test/**"             # Test helpers
-  - "**/static/**"           # Static assets
-  - "**/mock/**"             # Mock implementations
-  - "**/adapters/mock/**"    # Mock adapters
-
-# Coverage mode: only mutate code covered by tests
-# This significantly speeds up mutation testing
-coverage: true
-
-# Threshold for mutation score (percentage of mutants killed)
-# Build fails if score is below this value
-threshold: 60
-
-# Timeout multiplier for individual test runs
-# Helps with tests that may take longer due to mutations
-# Increased for integration tests which connect to real Docker daemon
-timeout-coefficient: 5
-
-# Number of parallel workers (0 = auto-detect based on CPU)
-workers: 0
-
-# Output format options
-output:
-  # Generate JSON report for CI integration
-  json: mutation-report.json
-  # Generate HTML report for detailed analysis
-  html: mutation-report.html
-
-# Diff mode: only test mutations in changed files (for CI efficiency)
-# Set via CLI flag --diff for PR workflows
-diff: false
-
-# Tags for conditional compilation
-# Note: Integration tests are NOT included in the main mutation test run because
-# they connect to real Docker daemon and would cause timeouts for all packages.
+# https://gremlins.dev/latest/usage/configuration/
 #
-# For Docker adapter mutation testing WITH integration tests, use:
-#   gremlins unleash --config .gremlins-docker.yaml
-#
-# This achieves ~69% test efficacy vs ~50% without integration tests.
-tags: ""
+# gremlins reads only the keys of its reference configuration: settings
+# for "gremlins unleash" go under "unleash:", mutators under "mutants:".
+# Unknown keys are ignored without a warning.
 
-# Additional test flags
-test-cpu: 0
-# Increased timeout for integration tests with real Docker daemon
-test-timeout: 120s
+unleash:
+  # Build tags. Integration tests are NOT part of the main run, because they
+  # connect to a real Docker daemon and would time out every package.
+  #
+  # For Docker adapter mutation testing WITH integration tests, use:
+  #   gremlins unleash ./core/adapters/docker --config .gremlins-docker.yaml --tags integration
+  tags: ""
+
+  # Machine-readable report, uploaded by the CI workflow as an artifact.
+  output: mutation-report.json
+
+  # 0 = one worker per CPU.
+  workers: 0
+  # 0 = no CPU limit for each test process.
+  test-cpu: 0
+  # Multiplier for the per-mutant test timeout.
+  timeout-coefficient: 5
+
+  # gremlins exits with code 10 when the efficacy is at or below this value.
+  # The shared CI workflow accepts that code, so it marks the score and does
+  # not fail the job.
+  threshold:
+    efficacy: 60
+
+  # Regular expressions matched against the path relative to the module
+  # root. Test files (_test.go) are always excluded.
+  exclude-files:
+    - "(^|/)test/"       # Test helpers
+    - "(^|/)static/"     # Static assets
+    - "(^|/)mock/"       # Mock implementations and mock adapters
+
+mutants:
+  arithmetic-base:
+    enabled: false
+  conditionals-boundary:
+    enabled: true        # < to <=, > to >=, ...
+  conditionals-negation:
+    enabled: true        # == to !=, ...
+  increment-decrement:
+    enabled: true        # ++ to -- and back
+  invert-logical:
+    enabled: true        # && to ||, || to &&
+  invert-negatives:
+    enabled: true        # -x to x
+  invert-loopctrl:
+    enabled: true        # break to continue and back
