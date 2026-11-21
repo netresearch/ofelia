@@ -30,7 +30,8 @@ var (
 // error, where a config file only gets a warning. The checks are the
 // command-injection checks of config.CommandValidator for compose and
 // local jobs, a parsable maxRuntime, and no maxRuntime for a compose job
-// in exec mode. Run and exec jobs need a Docker provider.
+// in exec mode. Run and exec jobs need a Docker provider. Job assembly then
+// runs the job's own Validate, as for every other job source.
 //
 // It returns the core job, so the scheduler, GET /api/jobs and the state
 // file see the same job type as before. The job carries no middlewares of
@@ -54,7 +55,9 @@ func (c *Config) BuildAPIJob(name string, def persist.Job) (core.Job, error) {
 		j.Image, j.Container = def.Image, def.Container
 		j.User = def.User
 		j.MaxRuntime = maxRuntime
-		c.assembleJob(name, j)
+		if err := c.assembleJob(name, j); err != nil {
+			return nil, err
+		}
 		return &j.RunJob, nil
 	case persist.JobTypeExec:
 		if provider == nil {
@@ -63,14 +66,18 @@ func (c *Config) BuildAPIJob(name string, def persist.Job) (core.Job, error) {
 		j := &ExecJobConfig{}
 		j.Schedule, j.Command = def.Schedule, def.Command
 		j.Container, j.User = def.Container, def.User
-		c.assembleJob(name, j)
+		if err := c.assembleJob(name, j); err != nil {
+			return nil, err
+		}
 		return &j.ExecJob, nil
 	case persist.JobTypeCompose:
 		j, err := composeJobFromDefinition(def)
 		if err != nil {
 			return nil, err
 		}
-		c.assembleJob(name, j)
+		if err := c.assembleJob(name, j); err != nil {
+			return nil, err
+		}
 		return &j.ComposeJob, nil
 	case persist.JobTypeLocal, "":
 		if err := checkCommandArgs(def.Command); err != nil {
@@ -78,7 +85,9 @@ func (c *Config) BuildAPIJob(name string, def persist.Job) (core.Job, error) {
 		}
 		j := &LocalJobConfig{}
 		j.Schedule, j.Command = def.Schedule, def.Command
-		c.assembleJob(name, j)
+		if err := c.assembleJob(name, j); err != nil {
+			return nil, err
+		}
 		return &j.LocalJob, nil
 	default:
 		return nil, fmt.Errorf("%w %q", errUnknownJobType, def.Type)

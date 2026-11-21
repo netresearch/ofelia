@@ -27,6 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maps and webhooks without a lock while a label or INI reload rewrote them;
   the Go runtime can stop the process on such a read. They now read under the
   lock the reload holds, and a label reload updates the webhooks under it too ([#959](https://github.com/netresearch/ofelia/pull/959)).
+- **An invalid job from container labels is no longer scheduled at boot.** A
+  label `job-run` without `image` or `container`, or a label
+  `job-service-run` without `image`, was registered at startup although it
+  could never run; the same job was rejected in `config.ini` and on a label
+  reload. Every job is now checked at the same point, whatever its source, and
+  such a job is logged as a configuration error and not scheduled. The web API
+  now refuses a `run` job without `image` or `container` with
+  `400 Bad Request`. Such a job created through the API before this version is
+  skipped when the daemon restores it from the state file, with a warning on
+  every start; re-create it with an image or container, or remove its entry
+  from the state file. A pause set through the web UI on a rejected label job
+  is kept, so the job stays paused once its labels are fixed
+  ([#957](https://github.com/netresearch/ofelia/pull/957)).
 - **Jobs created through the web API now respect `[global] default-user`.**
   A `run` or `exec` job created through the API, or restored from the state
   file, ignored the setting and ran as the container's default user, often

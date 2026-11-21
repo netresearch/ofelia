@@ -16,8 +16,10 @@ import (
 // struct-tag defaults and the global settings every job of that kind takes.
 // The kind-specific rules live in the switch, so a rule added here reaches
 // boot, INI reload, label reload and BuildAPIJob (web API and state file) at
-// once. Middlewares and registration are left to the caller.
-func (c *Config) assembleJob(name string, j jobConfig) {
+// once. Last it checks the job with its own Validate, so a job that can never
+// run is rejected the same way from every source. Middlewares and
+// registration are left to the caller.
+func (c *Config) assembleJob(name string, j jobConfig) error {
 	_ = defaults.Set(j)
 	switch j := j.(type) {
 	case *ExecJobConfig:
@@ -47,6 +49,12 @@ func (c *Config) assembleJob(name string, j jobConfig) {
 	slack, mail, save := j.notificationConfigs()
 	c.mergeNotificationDefaults(slack, mail, save)
 	c.injectDedup(slack, mail)
+	if v, ok := j.(validatable); ok {
+		if err := v.Validate(); err != nil {
+			return fmt.Errorf("invalid job configuration: %w", err)
+		}
+	}
+	return nil
 }
 
 // dockerProvider returns the Docker provider jobs are assembled with, or nil
@@ -60,8 +68,8 @@ func (c *Config) dockerProvider() core.DockerProvider {
 
 // assembleAs adapts assembleJob to the prep callback that syncJobMap,
 // addNewJob and replaceIfChanged take for one job kind.
-func assembleAs[J jobConfig](c *Config) func(string, J) {
-	return func(name string, j J) { c.assembleJob(name, j) }
+func assembleAs[J jobConfig](c *Config) func(string, J) error {
+	return func(name string, j J) error { return c.assembleJob(name, j) }
 }
 
 // notificationConfigs returns the job's own Slack, mail and save settings,

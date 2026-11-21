@@ -631,6 +631,13 @@ func (c *DaemonCommand) initPersistStore() error {
 	}
 	for _, name := range snap.Disabled {
 		if err := c.scheduler.DisableJob(name); err != nil {
+			// A configured job the scheduler does not hold, such as one boot
+			// rejected, keeps its pause for when it is registered later.
+			if c.config != nil && c.config.keepDisabledIfConfigured(name) {
+				c.Logger.Warn("persisted disable kept for a job that is not scheduled",
+					"job", name, "error", err)
+				continue
+			}
 			// Not an error worth failing boot on — the job may have
 			// been removed from INI/labels between snapshot and now.
 			c.Logger.Info("persisted disable target not present",

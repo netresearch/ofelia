@@ -36,9 +36,10 @@ func TestReplaceIfChanged_KeepsDisabledState(t *testing.T) {
 	require.NoError(t, cfg.sh.DisableJob("testjob"))
 
 	newJob := &ExecJobConfig{Schedule: "@every 10s", Command: "echo new"}
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	require.True(t, replaceIfChanged(cfg, "testjob", oldJob, newJob, prep, JobSourceINI))
@@ -69,9 +70,10 @@ func TestSyncJobMap_INIOverridingDisabledLabelJobStaysDisabled(t *testing.T) {
 
 	current := map[string]*ExecJobConfig{"testjob": labelJob}
 	parsed := map[string]*ExecJobConfig{"testjob": {Schedule: "@every 10s", Command: "echo ini"}}
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	syncJobMap(cfg, current, parsed, prep, JobSourceINI, "exec")
@@ -102,9 +104,10 @@ func TestSyncJobMap_INIOverridingEnabledLabelJobStaysEnabled(t *testing.T) {
 
 	current := map[string]*ExecJobConfig{"testjob": labelJob}
 	parsed := map[string]*ExecJobConfig{"testjob": {Schedule: "@every 10s", Command: "echo ini"}}
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	syncJobMap(cfg, current, parsed, prep, JobSourceINI, "exec")
@@ -139,9 +142,10 @@ func TestReplaceIfChanged_DisabledRunOnStartupDoesNotRun(t *testing.T) {
 	newJob := &LocalJobConfig{LocalJob: core.LocalJob{BareJob: core.BareJob{
 		Schedule: "@every 2h", Command: "touch " + marker, RunOnStartup: true,
 	}}}
-	prep := func(name string, j *LocalJobConfig) {
+	prep := func(name string, j *LocalJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	require.True(t, replaceIfChanged(cfg, "testjob", oldJob, newJob, prep, JobSourceINI))
@@ -170,9 +174,10 @@ func TestReplaceIfChanged_DisabledSurvivesRejectedReplacement(t *testing.T) {
 	require.NoError(t, cfg.sh.AddJob(oldJob))
 	require.NoError(t, cfg.sh.DisableJob("testjob"))
 
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	badJob := &ExecJobConfig{Schedule: "not a schedule", Command: "echo bad"}
@@ -214,9 +219,10 @@ func TestReplaceIfChanged_KeepsEnabledState(t *testing.T) {
 	require.NoError(t, cfg.sh.AddJob(oldJob))
 
 	newJob := &ExecJobConfig{Schedule: "@every 10s", Command: "echo new"}
-	prep := func(name string, j *ExecJobConfig) {
+	prep := func(name string, j *ExecJobConfig) error {
 		_ = defaults.Set(j)
 		j.Name = name
+		return nil
 	}
 
 	require.True(t, replaceIfChanged(cfg, "testjob", oldJob, newJob, prep, JobSourceINI))
