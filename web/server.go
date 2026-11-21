@@ -35,7 +35,6 @@ type Server struct {
 	srv          *http.Server
 	origins      map[string]string
 	originsMu    sync.RWMutex
-	provider     core.DockerProvider
 	authConfig   *SecureAuthConfig
 	tokenManager *SecureTokenManager
 	loginLimiter *RateLimiter
@@ -176,8 +175,8 @@ func (s *Server) GetHTTPServer() *http.Server { return s.srv }
 
 // NewServer builds an unauthenticated Server on addr for scheduler s. cfg is
 // the parsed configuration served by /api/config and reflected over to tell
-// config-owned jobs from API-created ones; provider is the Docker client the
-// handlers use.
+// config-owned jobs from API-created ones. The Docker provider is unused: jobs
+// are built by the JobBuilder set with SetJobBuilder, which brings its own.
 //
 // This is NewServerWithAuth with no auth config: every route, including the
 // job create/update/delete endpoints, is reachable without credentials, so
@@ -236,13 +235,12 @@ func setupAuth(server *Server, authCfg *SecureAuthConfig) error {
 // Returns nil, after logging the reason, when the token manager cannot be
 // created or the embedded UI assets cannot be opened — callers must check for
 // nil rather than assume a usable server. Nothing is listening until Start.
-func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, provider core.DockerProvider, authCfg *SecureAuthConfig) *Server {
+func NewServerWithAuth(addr string, s *core.Scheduler, cfg any, _ core.DockerProvider, authCfg *SecureAuthConfig) *Server {
 	server := &Server{
 		addr:       addr,
 		scheduler:  s,
 		config:     cfg,
 		origins:    make(map[string]string),
-		provider:   provider,
 		authConfig: authCfg,
 	}
 
