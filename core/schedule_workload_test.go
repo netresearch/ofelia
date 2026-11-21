@@ -283,8 +283,9 @@ func TestScheduleState_FailedStartWriteDoesNotLeaveAWorkloadBusy(t *testing.T) {
 	}
 }
 
-// startAttempts passes every write to the real store and reports the first
-// one that records a workload, whether or not the disk write then succeeds.
+// startAttempts passes every write to the real store and, once that write has
+// returned, reports the first one that records a workload, whether or not the
+// disk write succeeded.
 type startAttempts struct {
 	*persist.Store
 	once sync.Once
@@ -292,8 +293,11 @@ type startAttempts struct {
 }
 
 func (s *startAttempts) PutSchedule(name string, r persist.Schedule) error {
+	// Signal after the write has failed, so the test cannot restore the
+	// directory while the write is still on its way.
+	err := s.Store.PutSchedule(name, r)
 	if r.Workload != "" {
 		s.once.Do(func() { close(s.seen) })
 	}
-	return s.Store.PutSchedule(name, r)
+	return err
 }
