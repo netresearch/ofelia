@@ -11,8 +11,8 @@ intentional-drift:
     \ enable-test-results: true, which routes the unit tests through gotestsum so\
     \ Codecov Test Analytics has data (netresearch/.github#333)."
 - path: .github/workflows/mutation.yml
-  reason: "test-memory-limit-mb: 4096 — the unmutated core package needs\
-    \ between 3.5 and 4 GiB of address space per test binary on a 4-core runner\
-    \ (EnhancedBufferPool tests prewarm 10 MB buffers in parallel), so the shared\
-    \ default of 3 GiB (netresearch/.github#598) fails the coverage run with\
-    \ out of memory before any mutant runs."
+  reason: "test-memory-limit-mb: 4096 and timeout-minutes: 240. The memory limit\
+    \ stays above the shared default of 3 GiB (netresearch/.github#598) as margin\
+    \ for the coverage run of the core package (netresearch/ofelia#961). The weekly\
+    \ full run hit the default 2-hour job limit on every schedule from 2026-10-25\
+    \ to 2026-11-15 (netresearch/ofelia#962)."
