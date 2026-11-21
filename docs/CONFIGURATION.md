@@ -426,8 +426,8 @@ notification-cooldown = 0
 # and recorded as a skipped run (job history, notifications, a Warn log line
 # naming the job). A manual run through the web API or UI is refused with
 # 409 Conflict instead. Compose jobs with missed_fires: one or
-# concurrency: queue wait for a slot in both cases. Set it above the number of jobs that can be due at the
-# same moment. INI-only: a container label cannot set it. Applied on reload.
+# concurrency: queue wait for a slot in both cases. Set it above the number of
+# jobs that can be due at the same moment. INI-only: a container label cannot set it. Applied on reload.
 max-concurrent-jobs = 10
 
 # Notification Settings (deprecated Slack middleware - prefer the webhook system below)
