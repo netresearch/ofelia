@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New bundled webhook preset `spooky` for [Spooky Particles](https://spookyparticles.com) check-in links. It POSTs the job summary to `https://spookyparticles.com/api/ping/{id}`; append `/fail` to the `id` on an `error` webhook to report a failed run.
+
 ## [1.2.1] - 2026-11-16
 
 The `ghcr.io` images, the `-compose` tags included, ship zlib 1.4-r0. The

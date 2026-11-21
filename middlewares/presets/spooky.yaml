@@ -1,0 +1,41 @@
+name: spooky
+description: "Spooky Particles check-in ping preset using simple HTTP pings with optional ending (success/fail)"
+version: "1.0.0"
+
+url_scheme: "https://spookyparticles.com/api/ping/{id}"
+
+method: POST
+
+headers:
+  Content-Type: "text/plain; charset=utf-8"
+
+variables:
+  id:
+    description: >
+      use {id} to configure a check-in token with an optional ending like /start, /fail or /<exit-status>
+      # example: abc123token
+      # example: abc123token/fail
+      # Spooky Particles docs for endings: https://spookyparticles.com/docs/check-ins
+    required: true
+
+body: |
+
+  Job:      {{ .Job.Name }}
+  Status:   {{if .Execution.Failed}}🔴{{else if .Execution.Skipped}}🟡{{else}}🟢{{end}} {{.Execution.Status}}
+  Duration: {{ formatDuration .Execution.Duration }}
+  Schedule: {{ .Job.Schedule }}
+  Command:  {{ .Job.Command }}
+
+  Started:  {{ isoTime .Execution.StartTime }}
+  Ended:    {{ isoTime .Execution.EndTime }}
+
+  Host:     {{ .Host.Hostname }}
+  Ofelia:   {{ .Ofelia.Version }}
+
+  {{- if .Execution.Failed }}
+  Error:    {{ .Execution.Error }}
+  {{- end }}
+
+  {{- if .Preset.Link }}
+  Link:     {{ .Preset.LinkText }} -> {{ .Preset.Link }}
+  {{- end }}
