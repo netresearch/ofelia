@@ -746,8 +746,8 @@ func (c *Config) registerAllJobs() {
 }
 
 // finishJob assembles a job (see assembleJob), builds its middleware chain,
-// registers it, and reports 1 when the scheduler refused it so callers can
-// accumulate without a branch of their own.
+// registers it, and reports 1 when assembly rejected the job or the scheduler
+// refused it, so callers can accumulate without a branch of their own.
 func (c *Config) finishJob(name string, j jobConfig, wm *middlewares.WebhookManager) int {
 	if err := c.assembleJob(name, j); err != nil {
 		c.logger.Error("Job configuration error", "job", name, "error", err)
@@ -1088,6 +1088,31 @@ func (c *Config) wasDisabled(name string) bool {
 	defer c.disabledMu.Unlock()
 	_, ok := c.disabledUnregistered[name]
 	return ok
+}
+
+// keepDisabledIfConfigured remembers name as disabled when the configuration
+// defines a job of that name that the scheduler does not hold, such as one
+// boot rejected. A persisted pause then still applies when that job is
+// registered later, as for a replacement the scheduler rejected. It reports
+// whether the name was kept.
+func (c *Config) keepDisabledIfConfigured(name string) bool {
+	c.mu.RLock()
+	_, run := c.RunJobs[name]
+	_, exec := c.ExecJobs[name]
+	_, svc := c.ServiceJobs[name]
+	_, local := c.LocalJobs[name]
+	_, compose := c.ComposeJobs[name]
+	c.mu.RUnlock()
+	if !run && !exec && !svc && !local && !compose {
+		return false
+	}
+	c.disabledMu.Lock()
+	defer c.disabledMu.Unlock()
+	if c.disabledUnregistered == nil {
+		c.disabledUnregistered = make(map[string]bool)
+	}
+	c.disabledUnregistered[name] = true
+	return true
 }
 
 // forgetDisabledName drops a name remembered by registerJobAs, once the job is

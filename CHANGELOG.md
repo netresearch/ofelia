@@ -34,7 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reload. Every job is now checked at the same point, whatever its source, and
   such a job is logged as a configuration error and not scheduled. The web API
   now refuses a `run` job without `image` or `container` with
-  `400 Bad Request` ([#957](https://github.com/netresearch/ofelia/pull/957)).
+  `400 Bad Request`. Such a job created through the API before this version is
+  skipped when the daemon restores it from the state file, with a warning on
+  every start; re-create it with an image or container, or remove its entry
+  from the state file. A pause set through the web UI on a rejected label job
+  is kept, so the job stays paused once its labels are fixed
+  ([#957](https://github.com/netresearch/ofelia/pull/957)).
 - **Jobs created through the web API now respect `[global] default-user`.**
   A `run` or `exec` job created through the API, or restored from the state
   file, ignored the setting and ran as the container's default user, often

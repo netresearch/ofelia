@@ -30,7 +30,8 @@ var (
 // error, where a config file only gets a warning. The checks are the
 // command-injection checks of config.CommandValidator for compose and
 // local jobs, a parsable maxRuntime, and no maxRuntime for a compose job
-// in exec mode. Run and exec jobs need a Docker provider.
+// in exec mode. Run and exec jobs need a Docker provider. Job assembly then
+// runs the job's own Validate, as for every other job source.
 //
 // It returns the core job, so the scheduler, GET /api/jobs and the state
 // file see the same job type as before. The job carries no middlewares of
