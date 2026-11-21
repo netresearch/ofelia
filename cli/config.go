@@ -709,51 +709,24 @@ func (c *Config) registerAllJobs() {
 	// Jobs without a max-runtime of their own read this at run time.
 	c.sh.SetGlobalMaxRuntime(c.Global.MaxRuntime)
 	c.applyMaxConcurrentJobs()
-	provider := c.dockerHandler.GetDockerProvider()
 	rejected := 0
 
 	wm := c.getWebhookManager()
 
 	for name, j := range c.ExecJobs {
-		_ = defaults.Set(j)
-		c.applyDefaultUser(&j.User)
-		j.Provider = provider
-		j.InitializeRuntimeFields()
-		j.Name = name
-		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
-			func() { j.buildMiddlewares(c.logger, wm) })
+		rejected += c.finishJob(name, j, wm)
 	}
 	for name, j := range c.RunJobs {
-		_ = defaults.Set(j)
-		c.applyDefaultUser(&j.User)
-		j.Provider = provider
-		j.InitializeRuntimeFields()
-		j.Name = name
-		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
-			func() { j.buildMiddlewares(c.logger, wm) })
+		rejected += c.finishJob(name, j, wm)
 	}
 	for name, j := range c.LocalJobs {
-		_ = defaults.Set(j)
-		j.Name = name
-		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
-			func() { j.buildMiddlewares(c.logger, wm) })
+		rejected += c.finishJob(name, j, wm)
 	}
 	for name, j := range c.ServiceJobs {
-		_ = defaults.Set(j)
-		c.applyDefaultUser(&j.User)
-		j.Provider = provider
-		j.InitializeRuntimeFields()
-		j.Name = name
-		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
-			func() { j.buildMiddlewares(c.logger, wm) })
+		rejected += c.finishJob(name, j, wm)
 	}
 	for name, j := range c.ComposeJobs {
-		_ = defaults.Set(j)
-		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
-		j.Provider = provider
-		j.Name = name
-		rejected += c.finishJob(name, j, &j.SlackConfig, &j.MailConfig, &j.SaveConfig,
-			func() { j.buildMiddlewares(c.logger, wm) })
+		rejected += c.finishJob(name, j, wm)
 	}
 
 	// One line an operator can act on. Without it the only trace of a rejected
@@ -765,22 +738,12 @@ func (c *Config) registerAllJobs() {
 	}
 }
 
-// finishJob applies the settings every job kind shares — the notification
-// defaults, the dedup hook, the middleware chain — registers the job, and
-// reports 1 when the scheduler refused it so callers can accumulate
-// without a branch of their own.
-//
-// The notification configs come in as pointers and the middleware wiring
-// as a closure because the five *JobConfig types embed different core
-// jobs and share no interface. Inventing one to pass them implicitly
-// would be more machinery than this saves.
-func (c *Config) finishJob(name string, j core.Job,
-	slack *middlewares.SlackConfig, mail *middlewares.MailConfig, save *middlewares.SaveConfig,
-	buildMiddlewares func(),
-) int {
-	c.mergeNotificationDefaults(slack, mail, save)
-	c.injectDedup(slack, mail)
-	buildMiddlewares()
+// finishJob assembles a job (see assembleJob), builds its middleware chain,
+// registers it, and reports 1 when the scheduler refused it so callers can
+// accumulate without a branch of their own.
+func (c *Config) finishJob(name string, j jobConfig, wm *middlewares.WebhookManager) int {
+	c.assembleJob(name, j)
+	j.buildMiddlewares(c.logger, wm)
 	if c.registerJob(name, j) {
 		return 0
 	}
@@ -1013,6 +976,7 @@ type jobConfig interface {
 	GetJobSource() JobSource
 	SetJobSource(JobSource)
 	ResetMiddlewares(...core.Middleware)
+	notificationConfigs() (*middlewares.SlackConfig, *middlewares.MailConfig, *middlewares.SaveConfig)
 }
 
 // reconcileParsedJob decides whether a parsed job should be added to current.
@@ -1173,51 +1137,6 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	parsedLabelConfig := newScratchConfig(c)
 	_ = parsedLabelConfig.buildFromDockerContainers(containers)
 
-	execPrep := func(name string, j *ExecJobConfig) {
-		_ = defaults.Set(j)
-		c.applyDefaultUser(&j.User)
-		j.Provider = c.dockerHandler.GetDockerProvider()
-		j.InitializeRuntimeFields()
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-	runPrep := func(name string, j *RunJobConfig) {
-		_ = defaults.Set(j)
-		c.applyDefaultUser(&j.User)
-		j.Provider = c.dockerHandler.GetDockerProvider()
-		j.InitializeRuntimeFields()
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-
-	localPrep := func(name string, j *LocalJobConfig) {
-		_ = defaults.Set(j)
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-
-	servicePrep := func(name string, j *RunServiceConfig) {
-		_ = defaults.Set(j)
-		c.applyDefaultUser(&j.User)
-		j.Provider = c.dockerHandler.GetDockerProvider()
-		j.InitializeRuntimeFields()
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-
-	composePrep := func(name string, j *ComposeJobConfig) {
-		_ = defaults.Set(j)
-		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
-		j.Provider = c.dockerHandler.GetDockerProvider()
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-
 	// Security: Log consolidated warning when syncing host-based jobs from container labels
 	if c.Global.AllowHostJobsFromLabels {
 		localCount := len(parsedLabelConfig.LocalJobs)
@@ -1231,8 +1150,8 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	c.mu.Lock()
 	// Forward allow-listed non-webhook globals (Slack, Mail, Save,
 	// log-level, max-runtime, notification-cooldown, enable-strict-validation)
-	// BEFORE syncJobMap so the prep closures above — which call
-	// mergeNotificationDefaults — naturally pick
+	// BEFORE syncJobMap so job assembly — which calls
+	// mergeNotificationDefaults — naturally picks
 	// up fresh label values for any new or changed job. See #652.
 	//
 	// LIMITATION (documented in cli/config_global_merge.go header): jobs
@@ -1244,19 +1163,19 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	prevCooldown := c.Global.NotificationCooldown
 	_ = c.applyAllowListedGlobals(parsedLabelConfig)
 	// Re-apply process-wide knobs (log level, notification deduplicator)
-	// BEFORE syncJobMap so prep closures (which inject the dedup pointer
-	// into per-job middlewares via c.injectDedup) see the freshly-rebuilt
+	// BEFORE syncJobMap so job assembly (which injects the dedup pointer
+	// into per-job middlewares via c.injectDedup) sees the freshly-rebuilt
 	// dedup state. Otherwise a label changing notification-cooldown 0 → >0
-	// rebuilds the dedup AFTER the prep closure had already snapshotted
+	// rebuilds the dedup AFTER assembly had already snapshotted
 	// the stale dedup pointer for the new job — Copilot review of #661.
 	// Held under c.mu to mirror the INI live-reload path; ApplyLogLevel
 	// and initNotificationDedup do not re-enter c.mu. No deadlock risk.
 	c.refreshRuntimeKnobsAfterGlobalMerge(prevLogLevel, prevCooldown)
-	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, execPrep, JobSourceLabel, "exec")
-	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, runPrep, JobSourceLabel, "run")
-	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, localPrep, JobSourceLabel, "local")
-	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, servicePrep, JobSourceLabel, "service")
-	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, composePrep, JobSourceLabel, "compose")
+	syncJobMap(c, c.ExecJobs, parsedLabelConfig.ExecJobs, assembleAs[*ExecJobConfig](c), JobSourceLabel, "exec")
+	syncJobMap(c, c.RunJobs, parsedLabelConfig.RunJobs, assembleAs[*RunJobConfig](c), JobSourceLabel, "run")
+	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, assembleAs[*LocalJobConfig](c), JobSourceLabel, "local")
+	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, assembleAs[*RunServiceConfig](c), JobSourceLabel, "service")
+	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, assembleAs[*ComposeJobConfig](c), JobSourceLabel, "compose")
 	c.mu.Unlock()
 
 	// Sync webhook configs from labels
@@ -1293,56 +1212,11 @@ func (c *Config) rebuildAfterGlobalChange() {
 // syncAllJobMapsFromINI propagates parsed INI job maps into the live job maps
 // via syncJobMap for all five job types.
 func (c *Config) syncAllJobMapsFromINI(parsed *Config) {
-	execPrep := func(name string, j *ExecJobConfig) {
-		_ = defaults.Set(j)
-		c.applyDefaultUser(&j.User)
-		j.Provider = c.dockerHandler.GetDockerProvider()
-		j.InitializeRuntimeFields()
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, execPrep, JobSourceINI, "exec")
-
-	runPrep := func(name string, j *RunJobConfig) {
-		_ = defaults.Set(j)
-		c.applyDefaultUser(&j.User)
-		j.Provider = c.dockerHandler.GetDockerProvider()
-		j.InitializeRuntimeFields()
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-	syncJobMap(c, c.RunJobs, parsed.RunJobs, runPrep, JobSourceINI, "run")
-
-	localPrep := func(name string, j *LocalJobConfig) {
-		_ = defaults.Set(j)
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, localPrep, JobSourceINI, "local")
-
-	svcPrep := func(name string, j *RunServiceConfig) {
-		_ = defaults.Set(j)
-		c.applyDefaultUser(&j.User)
-		j.Provider = c.dockerHandler.GetDockerProvider()
-		j.InitializeRuntimeFields()
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, svcPrep, JobSourceINI, "service")
-
-	composePrep := func(name string, j *ComposeJobConfig) {
-		_ = defaults.Set(j)
-		c.dropComposeExecMaxRuntime(name, &j.ComposeJob)
-		j.Provider = c.dockerHandler.GetDockerProvider()
-		j.Name = name
-		c.mergeNotificationDefaults(&j.SlackConfig, &j.MailConfig, &j.SaveConfig)
-		c.injectDedup(&j.SlackConfig, &j.MailConfig)
-	}
-	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, composePrep, JobSourceINI, "compose")
+	syncJobMap(c, c.ExecJobs, parsed.ExecJobs, assembleAs[*ExecJobConfig](c), JobSourceINI, "exec")
+	syncJobMap(c, c.RunJobs, parsed.RunJobs, assembleAs[*RunJobConfig](c), JobSourceINI, "run")
+	syncJobMap(c, c.LocalJobs, parsed.LocalJobs, assembleAs[*LocalJobConfig](c), JobSourceINI, "local")
+	syncJobMap(c, c.ServiceJobs, parsed.ServiceJobs, assembleAs[*RunServiceConfig](c), JobSourceINI, "service")
+	syncJobMap(c, c.ComposeJobs, parsed.ComposeJobs, assembleAs[*ComposeJobConfig](c), JobSourceINI, "compose")
 }
 
 func (c *Config) iniConfigUpdate() error {

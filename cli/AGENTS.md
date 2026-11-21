@@ -27,6 +27,7 @@
 - Docker integration follows Docker API best practices
 - Error handling: wrap errors with context using `fmt.Errorf`
 - Validation: comprehensive validation with clear error messages
+- Job assembly: the rules that turn an INI or label job definition into a job (struct defaults, `[global] default-user`, Docker provider, runtime fields, name, the compose exec max-runtime drop, notification inheritance, dedup) live in `assembleJob` in `job_assembly.go`, used at boot, on INI reload and on label reload; add a new rule there, not at one entry point. Jobs created through the web API and restored from the state file do not go through it yet. Terms: `docs/GLOSSARY.md`
 
 ## Security & safety
 - Never log sensitive configuration values (passwords, tokens)

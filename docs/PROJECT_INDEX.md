@@ -261,6 +261,7 @@ go test -bench=. ./core         # Run benchmarks
 - [Git Hooks System](./GIT_HOOKS.md)
 - [Security Considerations](./SECURITY.md)
 - [Troubleshooting](./TROUBLESHOOTING.md)
+- [Glossary](./GLOSSARY.md): the terms for how a job comes into being
 
 ---
 *Last Updated: 2025-11-21 | Enhanced with architecture diagrams, integration patterns, and quick reference*
