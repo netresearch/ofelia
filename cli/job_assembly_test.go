@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/middlewares"
 	"github.com/netresearch/ofelia/test"
 )
 
@@ -24,8 +24,9 @@ func assemblyConfig(t *testing.T) *Config {
 	cfg.Global.DefaultUser = "nobody"
 	cfg.Global.SaveFolder = "/var/log/ofelia"
 	cfg.Global.NotificationCooldown = time.Minute
-	cfg.initNotificationDedup()
-	require.NotNil(t, cfg.notificationDedup)
+	// Not initNotificationDedup: it also replaces the package-wide
+	// middlewares.DefaultNotificationDedup, which parallel tests share.
+	cfg.notificationDedup = middlewares.NewNotificationDedup(time.Minute)
 	return cfg
 }
 
