@@ -12,10 +12,11 @@ import (
 	"github.com/netresearch/ofelia/middlewares"
 )
 
-// assembleJob turns a job definition from the INI file or container labels
-// into a job: it applies Ofelia's struct-tag defaults and the global settings
-// every job of that kind takes. The kind-specific rules live in the switch,
-// so a rule added here reaches boot, INI reload and label reload at once. Middlewares and registration are left to the caller.
+// assembleJob turns a job definition into a job: it applies Ofelia's
+// struct-tag defaults and the global settings every job of that kind takes.
+// The kind-specific rules live in the switch, so a rule added here reaches
+// boot, INI reload, label reload and BuildAPIJob (web API and state file) at
+// once. Middlewares and registration are left to the caller.
 func (c *Config) assembleJob(name string, j jobConfig) {
 	_ = defaults.Set(j)
 	switch j := j.(type) {
