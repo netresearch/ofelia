@@ -27,6 +27,7 @@
 - Docker integration follows Docker API best practices
 - Error handling: wrap errors with context using `fmt.Errorf`
 - Validation: comprehensive validation with clear error messages
+- Job assembly: every rule that turns a job definition into a job (struct defaults, `[global] default-user`, Docker provider, notification inheritance, dedup) lives in `assembleJob` in `job_assembly.go`; add a new rule there, not at one entry point. Terms: `GLOSSARY.md`
 
 ## Security & safety
 - Never log sensitive configuration values (passwords, tokens)
