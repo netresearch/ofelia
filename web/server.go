@@ -500,7 +500,9 @@ func lockConfig(cfg any) func() {
 		l.RLock()
 		return l.RUnlock
 	}
-	return func() {}
+	return func() {
+		// No lock to release: cfg has none.
+	}
 }
 
 func jobOrigin(cfg any, name string) string {
