@@ -1183,10 +1183,10 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	syncJobMap(c, c.LocalJobs, parsedLabelConfig.LocalJobs, assembleAs[*LocalJobConfig](c), JobSourceLabel, "local")
 	syncJobMap(c, c.ServiceJobs, parsedLabelConfig.ServiceJobs, assembleAs[*RunServiceConfig](c), JobSourceLabel, "service")
 	syncJobMap(c, c.ComposeJobs, parsedLabelConfig.ComposeJobs, assembleAs[*ComposeJobConfig](c), JobSourceLabel, "compose")
-	c.mu.Unlock()
-
-	// Sync webhook configs from labels
+	// Sync webhook configs from labels. Under c.mu like the job maps: the web
+	// server serializes WebhookConfigs under the read lock.
 	c.syncWebhookConfigs(parsedLabelConfig.WebhookConfigs)
+	c.mu.Unlock()
 
 	// Handle deprecated configuration options in parsed labels: migrate then warn
 	ResetDeprecationWarnings()

@@ -1204,10 +1204,12 @@ func isJobCollection(t reflect.Type) bool {
 	return elem.Kind() == reflect.Struct
 }
 
-// stripJobs returns a copy of cfg with every job collection zeroed. Job
-// definitions carry commands and credential-bearing fields, and the jobs API
-// already exposes what the UI needs, so they must not ride along in the config
-// payload of /api/config and /api/dashboard.
+// stripJobs returns cfg, encoded as JSON, with every job collection zeroed.
+// Job definitions carry commands and credential-bearing fields, and the jobs
+// API already exposes what the UI needs, so they must not ride along in the
+// config payload of /api/config and /api/dashboard. The copy shares maps such
+// as the webhooks with the live configuration, so it is encoded while the
+// configuration's read lock is still held; nil when it cannot be encoded.
 func stripJobs(cfg any) any {
 	if cfg == nil {
 		return nil
@@ -1229,12 +1231,17 @@ func stripJobs(cfg any) any {
 			fv.Set(reflect.Zero(fv.Type()))
 		}
 	}
+	stripped := out.Interface()
 	if isPtr {
 		p := reflect.New(out.Type())
 		p.Elem().Set(out)
-		return p.Interface()
+		stripped = p.Interface()
 	}
-	return out.Interface()
+	raw, err := json.Marshal(stripped)
+	if err != nil {
+		return nil
+	}
+	return json.RawMessage(raw)
 }
 
 // buildAPIHistory converts the named job's execution history into API

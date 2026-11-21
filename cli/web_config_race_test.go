@@ -18,7 +18,7 @@ import (
 )
 
 // GET /api/jobs, /api/config and /api/dashboard read the configuration's
-// job maps, while a label reload rewrites those maps on the Docker
+// job maps and webhooks, while a label reload rewrites them on the Docker
 // handler's goroutine. Run with -race.
 func TestWebJobList_ConcurrentWithLabelReload(t *testing.T) {
 	t.Parallel()
@@ -38,6 +38,10 @@ func TestWebJobList_ConcurrentWithLabelReload(t *testing.T) {
 				"ofelia.service": "true",
 				fmt.Sprintf("ofelia.job-local.l%d.schedule", i%3): "@daily",
 				fmt.Sprintf("ofelia.job-local.l%d.command", i%3):  "echo hi",
+				// Webhooks come and go too: /api/config serializes them.
+				fmt.Sprintf("ofelia.webhook.w%d.preset", i%3): "slack",
+				fmt.Sprintf("ofelia.webhook.w%d.id", i%3):     "T00/B00",
+				fmt.Sprintf("ofelia.webhook.w%d.url", i%3):    "https://hooks.slack.com/services/T00/B00/x",
 			},
 		}}
 	}
