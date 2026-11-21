@@ -90,8 +90,11 @@ go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
 # Run full mutation testing (unit tests only)
 gremlins unleash --config=.gremlins.yaml
 
-# Run diff-based mutation testing (only lines changed since origin/main)
-gremlins unleash --config=.gremlins.yaml --diff origin/main
+# Run diff-based mutation testing (only lines changed since origin/main).
+# With no change against origin/main, gremlins treats every line as changed
+# and runs the full suite, so check for a diff first.
+git diff --quiet --merge-base origin/main -- '*.go' ||
+  gremlins unleash --config=.gremlins.yaml --diff origin/main
 
 # Run Docker adapter mutation testing with integration tests
 # Requires Docker daemon - takes ~10 minutes
