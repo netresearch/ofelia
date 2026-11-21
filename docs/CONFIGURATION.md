@@ -509,7 +509,8 @@ enable-strict-validation = false
 #### The default-user setting
 
 `default-user` supplies the user for `job-exec`, `job-run` and `job-service-run`
-jobs that do not name one themselves. Four spellings resolve to three
+jobs that do not name one themselves, and for `exec` and `run` jobs created
+through the web API or restored from the state file. Four spellings resolve to three
 outcomes — an empty value and `default` mean the same thing:
 
 | `[global] default-user` | A job without its own `user` runs as |

@@ -54,8 +54,6 @@ func (c *Config) BuildAPIJob(name string, def persist.Job) (core.Job, error) {
 		j.Image, j.Container = def.Image, def.Container
 		j.MaxRuntime = maxRuntime
 		c.assembleJob(name, j)
-		// A job from the web API does not take [global] default-user yet.
-		j.User = ""
 		return &j.RunJob, nil
 	case persist.JobTypeExec:
 		if provider == nil {
@@ -65,8 +63,6 @@ func (c *Config) BuildAPIJob(name string, def persist.Job) (core.Job, error) {
 		j.Schedule, j.Command = def.Schedule, def.Command
 		j.Container = def.Container
 		c.assembleJob(name, j)
-		// A job from the web API does not take [global] default-user yet.
-		j.User = ""
 		return &j.ExecJob, nil
 	case persist.JobTypeCompose:
 		j, err := composeJobFromDefinition(def)

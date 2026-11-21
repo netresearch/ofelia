@@ -8,7 +8,7 @@ import "github.com/netresearch/ofelia/core"
 // apiJobUser is the user a run or exec job created through the web API, or
 // restored from the state file, runs as when [global] default-user is
 // "nobody".
-const apiJobUser = ""
+const apiJobUser = "nobody"
 
 // apiJobMiddlewares is the middleware chain of such a job right after it
 // was added: the job carries none of its own.
