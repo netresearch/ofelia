@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"slices"
 	"testing"
 
 	"github.com/armon/circbuf"
@@ -77,28 +78,45 @@ func TestPooledCopyWriterKeepsTheBufferLimit(t *testing.T) {
 // TestPooledCopyWriterReusesTheCopyBuffer guards the reason the wrapper
 // exists: without ReadFrom, io.Copy allocates outputCopyBufferSize bytes for
 // every copy.
+//
+// The allocation counter is process-wide, so other tests' goroutines add
+// noise. The test therefore compares medians of single copies, interleaved
+// with a control copy into the bare buffer, which must show the allocation.
 func TestPooledCopyWriterReusesTheCopyBuffer(t *testing.T) {
 	// Not parallel: the measurement reads process-wide allocation counters.
 	buf, err := circbuf.NewBuffer(1024)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dst := newPooledCopyWriter(buf)
+	wrapped := newPooledCopyWriter(buf)
 	data := []byte("hello\n")
-	copyFromPipe(t, dst, data) // fill the pool
+	copyFromPipe(t, wrapped, data) // fill the pool
 
-	const runs = 20
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	for range runs {
+	allocated := func(dst io.Writer) uint64 {
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
 		copyFromPipe(t, dst, data)
+		runtime.ReadMemStats(&after)
+		return after.TotalAlloc - before.TotalAlloc
 	}
-	runtime.ReadMemStats(&after)
 
-	// A garbage collection empties the pool, so one refill may happen; a
-	// fresh buffer per copy would put the average at outputCopyBufferSize.
-	perCopy := (after.TotalAlloc - before.TotalAlloc) / runs
-	if perCopy >= outputCopyBufferSize/4 {
-		t.Fatalf("each copy allocated %d bytes on average, want well below %d", perCopy, outputCopyBufferSize)
+	const runs = 21
+	pooled := make([]uint64, 0, runs)
+	bare := make([]uint64, 0, runs)
+	for range runs {
+		pooled = append(pooled, allocated(wrapped))
+		bare = append(bare, allocated(buf))
+	}
+	slices.Sort(pooled)
+	slices.Sort(bare)
+	pooledMedian, bareMedian := pooled[runs/2], bare[runs/2]
+
+	if bareMedian < outputCopyBufferSize {
+		t.Fatalf("control copy allocated %d bytes (median), want at least %d: the measurement cannot see the copy buffer",
+			bareMedian, outputCopyBufferSize)
+	}
+	if pooledMedian >= outputCopyBufferSize/2 {
+		t.Fatalf("copy through the wrapper allocated %d bytes (median), want well below %d (control: %d)",
+			pooledMedian, outputCopyBufferSize, bareMedian)
 	}
 }
