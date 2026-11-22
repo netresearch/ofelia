@@ -37,3 +37,29 @@ func TestRegisterAllJobs_RefusalDoesNotHideARunningJob(t *testing.T) {
 	require.NotNil(t, cfg.sh.GetAnyJob("x"))
 	assert.NotContains(t, cfg.sh.GetUnschedulableJobs(), "x", "a running job is listed as not scheduled")
 }
+
+// Removing one refused definition keeps the report of another refused
+// definition of the same name.
+func TestReload_ReportStaysWhileAnotherDefinitionOfTheNameIsRefused(t *testing.T) {
+	t.Parallel()
+	cfg, reload := iniReloadConfig(t, okLocalJob)
+	reload(okLocalJob + "[job-exec \"x\"]\nschedule = @daily\ncommand = id\n[job-local \"x\"]\nschedule = @daily\n")
+	require.Contains(t, cfg.sh.GetUnschedulableJobs(), "x")
+
+	reload(okLocalJob + "[job-exec \"x\"]\nschedule = @daily\ncommand = id\n")
+	assert.Contains(t, cfg.sh.GetUnschedulableJobs(), "x", "the exec definition is still refused")
+}
+
+// A definition that assembles again but that the scheduler never accepted
+// stays reported.
+func TestReload_RestoredDefinitionTheSchedulerRefusedStaysReported(t *testing.T) {
+	t.Parallel()
+	bad := okLocalJob + "[job-local \"sched\"]\nschedule = not a schedule\ncommand = true\n"
+	cfg, reload := iniReloadConfig(t, bad)
+	require.Contains(t, cfg.sh.GetUnschedulableJobs(), "sched")
+
+	reload(okLocalJob + "[job-local \"sched\"]\nschedule = not a schedule\n")
+	reload(bad)
+	assert.Nil(t, cfg.sh.GetAnyJob("sched"))
+	assert.Contains(t, cfg.sh.GetUnschedulableJobs(), "sched", "an unscheduled job lost its report")
+}

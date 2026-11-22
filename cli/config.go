@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -248,12 +249,9 @@ func resolveConfigFiles(pattern string) ([]string, error) {
 // comment only after a space, so a value such as the schedule "0 12 * * FRI#3"
 // or the command "echo a;echo b" is kept whole, as labels and the web API
 // keep it; "key = value # note" still ends at the comment. A tab before the
-// # or ; does not start a comment.
+// # or ; does not start a comment. Read a config with loadINI, which also
+// empties a value that is only a comment.
 var iniLoadOptions = ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true, SpaceBeforeInlineComment: true}
-
-// INILoadOptions returns the options every INI config is read with, for a
-// reader outside this package that must parse the file as the daemon does.
-func INILoadOptions() ini.LoadOptions { return iniLoadOptions }
 
 // loadConfigFile reads one INI config file, parses it into c, merges used keys
 // into allUsedKeys, logs unknown-key warnings, and updates latest with the file
@@ -264,7 +262,7 @@ func loadConfigFile(f string, c *Config, logger *slog.Logger, allUsedKeys map[st
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
 		return fmt.Errorf("failed to load config file %q: %w\n  → Check file exists and is readable: ls -l %q\n  → Verify file path is correct\n  → Check file permissions (should be readable)", f, err, f)
 	}
-	cfg, err := ini.LoadSources(iniLoadOptions, data)
+	cfg, err := loadINI(data)
 	if err != nil {
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
 		return fmt.Errorf("failed to parse config file %q: %w\n  → Check INI syntax is valid\n  → Verify environment variable substitutions resolve correctly", f, err)
@@ -473,7 +471,7 @@ var newDockerHandler = NewDockerHandler
 // creates a scheduler — call InitializeApp on the result for that.
 func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 	c := NewConfig(logger)
-	cfg, err := ini.LoadSources(iniLoadOptions, []byte(configStr))
+	cfg, err := loadINI([]byte(configStr))
 	if err != nil {
 		return nil, fmt.Errorf("load ini from string: %w", err)
 	}
@@ -729,11 +727,14 @@ func reportLoadRefusals[J jobConfig](c *Config, prep func(string, J) error, kind
 			}
 			c.loadRefusals[key] = struct{}{}
 		}
+		refusedElsewhere := c.loadRefusedLocked(name)
 		c.refusedMu.Unlock()
 		switch {
 		case report:
 			c.sh.RecordRefusal(name, err)
-		case err == nil && had:
+		// Only a running job settles the report here; a new job settles it
+		// when the scheduler accepts or refuses it.
+		case err == nil && had && !refusedElsewhere && c.sh.GetAnyJob(name) != nil:
 			c.sh.DiscardRefusal(name)
 		}
 		return err
@@ -751,10 +752,24 @@ func (c *Config) dropLoadRefusalsNotIn(kind string, source JobSource, defined fu
 			delete(c.loadRefusals, key)
 		}
 	}
+	// The scheduler keeps one report per name: a definition of another kind
+	// or source that is still refused keeps it.
+	gone = slices.DeleteFunc(gone, c.loadRefusedLocked)
 	c.refusedMu.Unlock()
 	for _, name := range gone {
 		c.sh.DiscardRefusal(name)
 	}
+}
+
+// loadRefusedLocked reports whether a refused definition of any kind or
+// source is called name. The caller holds refusedMu.
+func (c *Config) loadRefusedLocked(name string) bool {
+	for key := range c.loadRefusals {
+		if key.name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // msgJobConfigError is logged for a job whose definition does not assemble or

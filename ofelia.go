@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/jessevdk/go-flags"
-	ini "gopkg.in/ini.v1"
 
 	"github.com/netresearch/ofelia/cli"
 )
@@ -101,7 +100,7 @@ func run(args []string) int {
 	}
 
 	if pre.LogLevel == "" {
-		cfg, err := ini.LoadSources(cli.INILoadOptions(), configFile)
+		cfg, err := cli.LoadINIFile(configFile)
 		if err == nil {
 			if sec, err := cfg.GetSection("global"); err == nil {
 				pre.LogLevel = cli.ExpandEnvVars(sec.Key("log-level").String())

@@ -61,3 +61,18 @@ func TestRegisterAllJobs_RefusesJobsThatCannotRun(t *testing.T) {
 	}
 	assert.NotNil(t, cfg.sh.GetAnyJob("ok"))
 }
+
+// A value that is only a comment is empty, as before SpaceBeforeInlineComment;
+// a quoted value and a """ block keep their # and ;.
+func TestLoadINI_ValueThatIsOnlyACommentIsEmpty(t *testing.T) {
+	t.Parallel()
+	f, err := loadINI([]byte("[global]\nlog-level = # use default\nsemi = ; none\n" +
+		"quoted = \"# kept\"\nkeep = a # note\nblock = \"\"\"\nx = # kept\n\"\"\"\n"))
+	require.NoError(t, err)
+	s := f.Section("global")
+	assert.Empty(t, s.Key("log-level").String())
+	assert.Empty(t, s.Key("semi").String())
+	assert.Equal(t, "# kept", s.Key("quoted").String())
+	assert.Equal(t, "a", s.Key("keep").String())
+	assert.Equal(t, "\nx = # kept\n", s.Key("block").String())
+}

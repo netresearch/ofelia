@@ -53,10 +53,7 @@ func TestDocumentedINIParses(t *testing.T) {
 	for _, b := range blocks {
 		name := b.file + ":" + strconv.Itoa(b.line)
 		t.Run(name, func(t *testing.T) {
-			cfg, err := ini.LoadSources(
-				iniLoadOptions,
-				[]byte(b.body),
-			)
+			cfg, err := loadINI([]byte(b.body))
 			if err != nil {
 				t.Fatalf("%s: INI does not load: %v", name, err)
 			}
