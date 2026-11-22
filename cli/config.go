@@ -1066,6 +1066,13 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 	if newHash == oldHash {
 		return false
 	}
+	// Another job holds the name, such as a job from the state file, which
+	// takes precedence over the INI and label job it replaced at boot. The
+	// new definition is kept in the config, unregistered, as at boot.
+	if holder := c.sh.GetAnyJob(name); holder != nil && holder != core.Job(oldJob) {
+		c.logger.Info("the changed job is not registered: another job holds its name", "job", name)
+		return true
+	}
 	// RemoveJob forgets that the job was disabled, so read it first and
 	// register the replacement disabled.
 	wasDisabled := c.wasDisabled(name)

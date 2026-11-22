@@ -597,6 +597,42 @@ func waitForServerWithErrChan(ctx context.Context, addr string, errChan <-chan e
 // regardless of origin so an INI/label job an operator paused via the
 // UI stays paused after restart.
 //
+// applyPersistedJob registers a job from the state file. It replaces a
+// same-named job from INI or labels, because persisted API state is
+// authoritative for its own jobs.
+//
+// UpdateJob replaces that job in place: it is still configured, so it is not
+// listed as removed, and when the scheduler refuses the record it keeps
+// running. Before Start, UpdateJob and AddJob register alike, and Start
+// evaluates every job, with one exception: go-cron keeps the run-on-startup
+// flag of the entry UpdateJob swaps a job into. A record replacing a
+// run-on-startup job is therefore registered by RemoveJob and AddJob, and
+// the old job is registered again when the scheduler refuses the record.
+func (c *DaemonCommand) applyPersistedJob(name string, job core.Job) error {
+	existing := c.scheduler.GetAnyJob(name)
+	switch {
+	case existing == nil:
+		if err := c.scheduler.AddJob(job); err != nil {
+			return fmt.Errorf("add: %w", err)
+		}
+		return nil
+	case existing.ShouldRunOnStartup() == job.ShouldRunOnStartup():
+		if err := c.scheduler.UpdateJob(name, job.GetSchedule(), job); err != nil {
+			return fmt.Errorf("replace: %w", err)
+		}
+		return nil
+	}
+	_ = c.scheduler.RemoveJob(existing)
+	if err := c.scheduler.AddJob(job); err != nil {
+		if reErr := c.scheduler.AddJob(existing); reErr != nil {
+			c.Logger.Warn("could not restore the job the persisted state was to replace",
+				"job", name, "error", reErr)
+		}
+		return fmt.Errorf("replace a run-on-startup job: %w", err)
+	}
+	return nil
+}
+
 // Empty StateFile is a no-op (persistence disabled), keeping the
 // pre-#593 behavior for operators who haven't opted in.
 func (c *DaemonCommand) initPersistStore() error {
@@ -616,18 +652,7 @@ func (c *DaemonCommand) initPersistStore() error {
 				"job", name, "error", err)
 			continue
 		}
-		// Replace any same-named job from INI/labels — persisted API
-		// state is authoritative for its own jobs. UpdateJob replaces it in
-		// place: the INI or label job is still configured, so it is not
-		// listed as removed, and when the scheduler refuses the record the
-		// job it was to replace keeps running. Before Start, UpdateJob and
-		// AddJob register alike; Start evaluates every job.
-		if c.scheduler.GetAnyJob(name) != nil {
-			err = c.scheduler.UpdateJob(name, job.GetSchedule(), job)
-		} else {
-			err = c.scheduler.AddJob(job)
-		}
-		if err != nil {
+		if err := c.applyPersistedJob(name, job); err != nil {
 			c.Logger.Warn("could not apply persisted job", "job", name, "error", err)
 			continue
 		}

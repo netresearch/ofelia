@@ -5,7 +5,10 @@ package cli
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,4 +53,30 @@ func TestInitPersistStore_ReplacesTheConfigJobInPlace(t *testing.T) {
 			assert.Empty(t, cfg.sh.GetRemovedJobs(), "the INI job is listed as removed")
 		})
 	}
+}
+
+// A state-file job that replaces a run-on-startup INI job at boot does not
+// inherit the startup run: the state file has no run-on-startup setting.
+func TestInitPersistStore_ReplacedStartupJobDoesNotRunTheRecordAtStart(t *testing.T) {
+	t.Parallel()
+	logger := test.NewTestLogger()
+	cfg := NewConfig(logger)
+	cfg.sh = core.NewScheduler(logger)
+	cfg.dockerHandler = &DockerHandler{ctx: context.Background(), logger: logger}
+	ini := &LocalJobConfig{}
+	ini.Name, ini.Schedule, ini.Command, ini.RunOnStartup = "shop.report", "@daily", "true", true
+	require.NoError(t, cfg.sh.AddJob(ini))
+
+	marker := filepath.Join(t.TempDir(), "ran")
+	c := &DaemonCommand{Logger: logger, scheduler: cfg.sh, config: cfg}
+	c.StateFile = writePersistFile(t, persist.State{Jobs: map[string]*persist.Job{
+		"shop.report": {Type: persist.JobTypeLocal, Schedule: "@hourly", Command: "touch " + marker},
+	}})
+	require.NoError(t, c.initPersistStore())
+	require.NoError(t, cfg.sh.Start())
+	t.Cleanup(func() { _ = cfg.sh.StopWithTimeout(5 * time.Second) })
+
+	time.Sleep(300 * time.Millisecond)
+	_, err := os.Stat(marker)
+	assert.True(t, os.IsNotExist(err), "the state-file job ran at start")
 }

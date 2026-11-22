@@ -534,11 +534,10 @@ func (s *Scheduler) RemoveJob(j Job) error {
 	defer s.regMu.Unlock()
 	if !s.gate.holds(j) {
 		s.Logger.Debug("not removing a job that is not registered under its name", "job", name)
-		// A refused job that leaves the config is no longer expected to run.
+		// A refused job that leaves the config is no longer expected to
+		// run; a job registered under the name is not affected by that.
 		s.mu.Lock()
-		if s.jobsByName[name] == nil {
-			delete(s.unschedulable, name)
-		}
+		delete(s.unschedulable, name)
 		s.mu.Unlock()
 		return nil
 	}

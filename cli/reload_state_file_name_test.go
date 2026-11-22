@@ -66,6 +66,7 @@ func TestReload_StateFileJobKeepsItsNameAgainstTheINIJob(t *testing.T) {
 			require.Len(t, active, 1, "the name is listed more than once")
 			assert.Same(t, live, active[0])
 			assert.True(t, cfg.sh.EntryByName("shop.report").Valid(), "the state-file job lost its cron entry")
+			assert.Empty(t, cfg.sh.GetUnschedulableJobs(), "the reload reports the shadowed INI job as not scheduled")
 		})
 	}
 }
