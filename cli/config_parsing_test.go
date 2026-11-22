@@ -221,7 +221,10 @@ command = echo updated
 	}
 }
 
-// TestBuildFromString_JobValidation tests job configuration validation
+// TestBuildFromString_JobValidation tests job configuration validation. An
+// invalid job does not fail the file (#374 asked for a clear message, not for
+// losing the other jobs): it stays unregistered, and its validation error
+// carries the message.
 func TestBuildFromString_JobValidation(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -284,18 +287,28 @@ command = echo hello
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			logger := test.NewTestLogger()
-			_, err := BuildFromString(tt.config, logger)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("Expected error but got nil")
-					return
-				}
-				if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
-					t.Errorf("Expected error to contain %q, got %q", tt.errSubstr, err.Error())
-				}
-			} else if err != nil {
-				t.Errorf("Expected no error but got: %v", err)
+			cfg, err := BuildFromString(tt.config, logger)
+			if err != nil {
+				t.Fatalf("Expected no error but got: %v", err)
+			}
+			cfg.sh = core.NewScheduler(logger)
+			cfg.registerAllJobs()
+			registered := len(cfg.sh.GetActiveJobs()) == 1
+			if tt.wantErr == registered {
+				t.Fatalf("registered = %v, want %v", registered, !tt.wantErr)
+			}
+			if !tt.wantErr {
+				return
+			}
+			var verr error
+			for _, j := range cfg.RunJobs {
+				verr = j.Validate()
+			}
+			for _, j := range cfg.ServiceJobs {
+				verr = j.Validate()
+			}
+			if verr == nil || !strings.Contains(verr.Error(), tt.errSubstr) {
+				t.Errorf("Expected validation error to contain %q, got %v", tt.errSubstr, verr)
 			}
 		})
 	}

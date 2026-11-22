@@ -221,11 +221,19 @@ func (s *Sanitizer) ValidateCronExpression(expr string) error {
 		return nil
 	}
 
-	parseOpts := cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor
-	if err := cron.ValidateSpec(expr, parseOpts); err != nil {
+	if err := validateCronSpec(expr); err != nil {
 		return fmt.Errorf("invalid cron expression: %w", err)
 	}
 	return nil
+}
+
+// validateCronSpec parses expr with the parser the scheduler uses
+// (cron.FullParser in core/scheduler.go), so validation accepts exactly the
+// syntax a job can be registered with: optional seconds and year, L, W, #n
+// and H. The hash key stands in for the job name an H expression is
+// evaluated with.
+func validateCronSpec(expr string) error {
+	return cron.ValidateSpecWith(expr, cron.FullParser().WithHashKey("validate")) //nolint:wrapcheck // callers wrap it
 }
 
 // SanitizeHTML performs HTML escaping to prevent XSS

@@ -125,8 +125,7 @@ func (c *DaemonCommand) boot() (err error) {
 	config, err := buildFromFile(c.ConfigFile, c.Logger, scheduleStateFor(c.StateFile))
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
-		// Create an empty config if loading failed
-		config = NewConfig(c.Logger)
+		config = fallbackConfig(c.Logger, c.ConfigFile)
 	}
 	config.levelVar = c.LevelVar
 	c.applyOptions(config)
@@ -600,6 +599,15 @@ func waitForServerWithErrChan(ctx context.Context, addr string, errChan <-chan e
 // regardless of origin so an INI/label job an operator paused via the
 // UI stays paused after restart.
 //
+// fallbackConfig is the empty config the daemon runs with when the config file
+// does not load at boot. It keeps the file's path, so the config watcher loads
+// the file once it has been fixed instead of never reading it again.
+func fallbackConfig(logger *slog.Logger, path string) *Config {
+	config := NewConfig(logger)
+	config.configPath = path
+	return config
+}
+
 // applyPersistedJob registers a job from the state file. It replaces a
 // same-named job from INI or labels, because persisted API state is
 // authoritative for its own jobs.

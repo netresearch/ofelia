@@ -1849,14 +1849,10 @@ func decodeJob[T jobConfig](section *ini.Section, job T, set func(string, T), pr
 		})
 	}
 
-	// Validate job configuration if the job type supports it
-	if v, ok := any(job).(validatable); ok {
-		if err := v.Validate(); err != nil {
-			//nolint:revive // Error message intentionally verbose for UX
-			return fmt.Errorf("job %q configuration error: %w\n  → Check required fields for this job type\n  → job-run requires 'image' OR 'container'\n  → job-service-run requires 'image'", jobName, err)
-		}
-	}
-
+	// A job that fails its own validation is not an error of the file: job
+	// assembly validates it again and leaves it unregistered with a log
+	// entry, as for labels and the web API, so one broken section does not
+	// take the other jobs and [global] down with it.
 	set(jobName, job)
 	return nil
 }

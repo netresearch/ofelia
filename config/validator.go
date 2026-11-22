@@ -11,8 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/netresearch/go-cron"
 )
 
 // ValidationError represents a configuration validation error
@@ -142,8 +140,7 @@ func (v *Validator) ValidateCronExpression(field, value string) {
 		return
 	}
 
-	parseOpts := cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor
-	if err := cron.ValidateSpec(value, parseOpts); err != nil {
+	if err := validateCronSpec(value); err != nil {
 		v.AddError(field, value, fmt.Sprintf("invalid cron expression: %v", err))
 	}
 }
@@ -681,8 +678,9 @@ var jobRequirements = map[string][]jobRequirement{
 	"job-service-run": {
 		{fields: []string{keyImage}, why: "the image to create the swarm service from"},
 	},
+	// file is not required: an empty file defaults to compose.yml
+	// (core.ComposeJob), as the daemon runs it.
 	"job-compose": {
-		{fields: []string{"file"}, why: "the compose file"},
 		{fields: []string{"service"}, why: "the service to run"},
 	},
 }
