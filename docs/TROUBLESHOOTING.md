@@ -1848,6 +1848,38 @@ OOMKilled errors
    # Alert when memory usage >80% for 5 minutes
    ```
 
+### CPU Limit and GOMAXPROCS
+
+At startup the daemon logs the CPU settings of the Go runtime:
+
+```
+msg="Go runtime CPU settings" gomaxprocs=2 gomaxprocsSource=default cpus=32
+```
+
+`gomaxprocs` is the number of threads that run Go code at the same time,
+`cpus` the number of CPUs the process may use. Since Go 1.25 the runtime
+derives `gomaxprocs` from the CPU limit of Ofelia's cgroup. It rounds the
+limit up and raises a limit below 2 to 2, unless the machine or the CPU
+affinity offers fewer CPUs. A container limited to 1 CPU on a larger host
+therefore runs Ofelia with 2 threads. When `gomaxprocs` is lower than `cpus`
+and the source is `default`, a CPU limit applies; `docker inspect` shows the
+container's limit (`HostConfig.NanoCpus`).
+
+With 2 threads under a 1-CPU limit, a busy Go process can use up its CPU
+quota early in each scheduling period and then wait until the next one.
+Check whether that happens before you change anything:
+
+```bash
+docker exec ofelia cat /sys/fs/cgroup/cpu.stat              # cgroup v2
+docker exec ofelia cat /sys/fs/cgroup/cpu,cpuacct/cpu.stat  # cgroup v1
+```
+
+If `nr_throttled` grows with `nr_periods`, set the environment variable
+`GOMAXPROCS=1` on the Ofelia container. A set `GOMAXPROCS` turns off the
+runtime's automatic adjustment when the CPU limit changes. In a measurement
+with 30 local jobs per second under `--cpus=1`, Ofelia was throttled in no
+period, so the default needs no change for typical schedules.
+
 ## Debugging Tips
 
 ### Enable Debug Logging
