@@ -80,6 +80,32 @@ func TestBoot_GlobWithADanglingMatchKeepsUnauthenticatedWebOff(t *testing.T) {
 	assert.Nil(t, cmd.webServer, "a matched file that could not be read may hold the web auth settings")
 }
 
+func TestBoot_ConfigInAnUnreadableDirectoryKeepsUnauthenticatedWebOff(t *testing.T) {
+	// Not parallel - modifies global newDockerHandler
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every directory")
+	}
+	for name, tc := range map[string]struct {
+		mode    os.FileMode
+		pattern string
+	}{
+		"literal path, directory not enterable": {0o000, "config.ini"},
+		"glob, directory not listable":          {0o311, "*.ini"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "etc")
+			require.NoError(t, os.Mkdir(dir, 0o700))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.ini"), []byte("[global]\nweb-auth-enabled = true\n"), 0o600))
+			require.NoError(t, os.Chmod(dir, tc.mode))
+			t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+			cmd, _ := bootWithWebFlag(t, filepath.Join(dir, tc.pattern), false)
+
+			assert.Nil(t, cmd.webServer, "a config the daemon cannot see may hold the web auth settings")
+		})
+	}
+}
+
 func TestBoot_MissingConfigStillServesWeb(t *testing.T) {
 	// Not parallel - modifies global newDockerHandler
 	for name, path := range map[string]string{

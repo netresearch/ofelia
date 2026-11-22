@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // #nosec G108
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -131,7 +132,7 @@ func (c *DaemonCommand) boot() (err error) {
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
 		config = fallbackConfig(c.Logger, c.ConfigFile, scheduleStateFor(c.StateFile))
-		c.configUnreadable = configNamesAFile(c.ConfigFile) || !errors.Is(err, fs.ErrNotExist)
+		c.configUnreadable = configNamesAFile(c.ConfigFile)
 	}
 	config.levelVar = c.LevelVar
 	c.applyOptions(config)
@@ -761,13 +762,21 @@ func validatePersistedJobName(name string) error {
 	return nil
 }
 
-// configNamesAFile reports whether the config path, a file or a glob, names at
-// least one directory entry. A load that fails with "not exist" although it
-// does (a dangling symlink among glob matches, a file removed after the
-// glob) did not read a file that exists, so its settings are unknown.
+// configNamesAFile reports whether the config path, a file or a glob, may name
+// a file: it names at least one directory entry, or its directory exists but
+// cannot be read. A failed load is "no config file" only when this is false;
+// otherwise the load missed a file that may exist (one that does not parse, a
+// dangling symlink among glob matches, a directory the daemon cannot read),
+// so the settings in it are unknown.
 func configNamesAFile(pattern string) bool {
 	matches, err := filepath.Glob(pattern)
-	return err == nil && len(matches) > 0
+	if err == nil && len(matches) > 0 {
+		return true
+	}
+	// Glob drops the error of a directory it cannot list, so a directory
+	// that exists but cannot be read may hold the files.
+	_, err = os.ReadDir(filepath.Dir(pattern))
+	return err != nil && !errors.Is(err, fs.ErrNotExist)
 }
 
 // fallbackConfig is the empty config the daemon runs with when the config file
