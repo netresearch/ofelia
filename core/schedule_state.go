@@ -62,7 +62,9 @@ const defaultOrphanPollInterval = 15 * time.Second
 const orphanCheckTimeout = 10 * time.Second
 
 // ScheduleRecordStore keeps the schedule records of ADR-005. persist.Store
-// implements it; each PutSchedule is one atomic write of the state file.
+// implements it; each PutSchedule is one atomic write of the state file. A
+// failed write still changes the record in memory, so the process goes on
+// with the new record and the next successful write persists it.
 type ScheduleRecordStore interface {
 	GetSchedule(name string) (persist.Schedule, bool)
 	PutSchedule(name string, r persist.Schedule) error
@@ -489,9 +491,10 @@ func (s *Scheduler) startPendingLocked(name string, e *durableEntry) *pendingLau
 	occ := *rec.Pending
 	rec.Pending = nil
 	rec.Dispatch = &persist.Dispatch{Occurrence: occ, State: dispatchWaiting}
-	if !s.putLocked(name, rec) {
-		return nil
-	}
+	// The record holds the waiting dispatch in memory even when the write
+	// failed, so it is launched either way: otherwise nothing owns it and
+	// the entry stays busy. The write of its start decides whether it runs.
+	s.putLocked(name, rec)
 	return &pendingLaunch{name: name, info: occurrenceInfo(occ)}
 }
 
@@ -627,19 +630,17 @@ func (s *Scheduler) admit(ctx context.Context, j Job, policy SchedulePolicy, exe
 		rec.WorkloadEnded = false
 	}
 	rec.Dispatch = d
-	if !s.putLocked(name, rec) {
-		if gotSlot {
-			// Store may have updated memory before its disk write failed.
-			// Reconcile the unlaunched workload before admitting another run.
-			s.watchOrphanLocked(ctx, j, e, executionID)
-		}
+	if !s.putLocked(name, rec) && gotSlot {
+		// Store may have updated memory before its disk write failed.
+		// Reconcile the unlaunched workload before admitting another run.
+		s.watchOrphanLocked(ctx, j, e, executionID)
 		s.durableMu.Unlock()
-		if gotSlot {
-			<-slot
-		}
+		<-slot
 		s.Logger.Error("the run is not started: its dispatch could not be recorded", "job", name)
 		return nil
 	}
+	// A waiting dispatch that could not be written still waits: it has not
+	// started, and the write of its start decides whether it runs.
 	e.inFlight = true
 	e.drop = make(chan struct{})
 	drop := e.drop

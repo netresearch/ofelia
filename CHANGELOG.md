@@ -34,6 +34,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A failed write of the state file no longer stops a Compose job until the
+  next reload.** For a Compose job with `missed_fires: one` or
+  `concurrency: queue`, a failed write while a fire waited for a slot, or
+  while a queued run was about to start, left a waiting run that nothing
+  started. Every later fire of the job was then skipped or queued behind it
+  until the configuration was reloaded or the daemon restarted. Such a run now
+  goes on: it starts if the write of its start succeeds. If that write fails
+  too, the run does not start and is not retried. The job is free again once
+  a container check, which runs every 15 seconds, has confirmed that the run
+  is not running and that result could be written
+  ([#971](https://github.com/netresearch/ofelia/pull/971)).
 - **A state-file job that fails to restore no longer makes a config job
   deletable.** The web server marked every job in the state file as an API
   job, including jobs the daemon skipped on restore. An INI or label job of the
