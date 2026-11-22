@@ -930,8 +930,7 @@ func (s *Scheduler) recordUnschedulable(name string, reason error) {
 // schedule, or nil, and records a refusal for name as AddJob does. It changes
 // no registration, so a caller that replaces a running job can check the
 // replacement before it removes the job: the job then keeps running, and the
-// health check reports the refused replacement. name is passed on its own
-// because a parsed job may not carry its name yet.
+// health check reports the refused replacement.
 func (s *Scheduler) Precheck(name, schedule string) error {
 	err := ErrEmptySchedule
 	if schedule != "" {

@@ -1130,7 +1130,11 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 		// A label reload runs on every container event; the same refused
 		// definition is logged once.
 		if c.rememberRefusedChange(name, newHash) {
-			c.logger.Error("the changed job is refused; the previous definition keeps running", "job", name, "error", err)
+			msg := "the changed job is refused; the previous definition keeps running"
+			if c.sh.GetAnyJob(name) != core.Job(oldJob) {
+				msg = "the changed job is refused; nothing runs under its name"
+			}
+			c.logger.Error(msg, "job", name, "error", err)
 		}
 		return false
 	}
