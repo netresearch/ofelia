@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- At startup the daemon logs the Go runtime's CPU settings: `gomaxprocs`,
+  where it came from, and the CPU count. Under a CPU limit of 1 on a host with
+  2 or more CPUs, Go 1.25 and later set GOMAXPROCS to 2 (2 threads run Go code
+  at once); the line shows that, and the troubleshooting guide describes how
+  to check for CPU throttling.
 - Jobs created through the web API or the web UI take an optional `user` for
   `run` and `exec` jobs, with the meaning an INI job's `user` has: omitted takes
   `[global] default-user`, `default` selects the container's own user. The

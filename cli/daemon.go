@@ -334,6 +334,8 @@ func (c *DaemonCommand) start() error {
 		c.closeDone()
 	}()
 
+	c.logRuntimeCPU()
+
 	// Start scheduler with progress feedback
 	c.Logger.Info("Starting scheduler...")
 
