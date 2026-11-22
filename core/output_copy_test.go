@@ -75,6 +75,21 @@ func TestPooledCopyWriterKeepsTheBufferLimit(t *testing.T) {
 	}
 }
 
+func TestPooledCopyWriterWritePassesThrough(t *testing.T) {
+	t.Parallel()
+	buf, err := circbuf.NewBuffer(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := newPooledCopyWriter(buf).Write([]byte("direct"))
+	if err != nil || n != len("direct") {
+		t.Fatalf("Write = %d, %v; want %d, nil", n, err, len("direct"))
+	}
+	if got := buf.String(); got != "direct" {
+		t.Fatalf("buffer holds %q, want %q", got, "direct")
+	}
+}
+
 // TestPooledCopyWriterReusesTheCopyBuffer guards the reason the wrapper
 // exists: without ReadFrom, io.Copy allocates outputCopyBufferSize bytes for
 // every copy.
