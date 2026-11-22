@@ -27,7 +27,7 @@ func TestSetupWebServer_CreatesJobsThroughJobAssembly(t *testing.T) {
 	c.shutdownManager = core.NewShutdownManager(c.Logger, time.Second)
 	require.NoError(t, c.setupWebServer())
 
-	body := `{"name":"wired","type":"exec","schedule":"@hourly","container":"c1"}`
+	body := `{"name":"wired","type":"exec","schedule":"@hourly","container":"c1","command":"true"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

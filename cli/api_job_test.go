@@ -195,7 +195,7 @@ func TestAPIJob_Rejected(t *testing.T) {
 		},
 		{
 			name:     "exec job without a Docker provider",
-			body:     map[string]any{"name": "e", "type": "exec", "schedule": "@hourly", "container": "c1"},
+			body:     map[string]any{"name": "e", "type": "exec", "schedule": "@hourly", "container": "c1", "command": "true"},
 			wantBody: "docker provider unavailable",
 		},
 		{
@@ -235,7 +235,7 @@ func TestAPIJob_RestoredJobs(t *testing.T) {
 	c := newDaemonForPersistTest(t)
 	c.StateFile = writePersistFile(t, persist.State{Jobs: map[string]*persist.Job{
 		"p-run":  {Type: persist.JobTypeRun, Schedule: "@hourly", Image: "alpine"},
-		"p-exec": {Type: persist.JobTypeExec, Schedule: "@hourly", Container: "c1"},
+		"p-exec": {Type: persist.JobTypeExec, Schedule: "@hourly", Container: "c1", Command: "true"},
 	}})
 	attachRestoreConfig(t, c, &mockDockerProviderForHandler{})
 	require.NoError(t, c.initPersistStore())

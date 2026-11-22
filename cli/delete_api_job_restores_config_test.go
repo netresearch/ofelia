@@ -127,6 +127,7 @@ func TestDeleteAPIJob_InvalidConfigJobStaysUnregistered(t *testing.T) {
 	deleteThroughAPI(t, c, "job")
 
 	assert.Nil(t, c.scheduler.GetAnyJob("job"), "the rejected label job was registered")
+	assert.Contains(t, c.scheduler.GetUnschedulableJobs(), "job", "the rejected label job is not reported")
 }
 
 // When the first job kind defining the name is refused, the next kind is

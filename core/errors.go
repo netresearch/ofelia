@@ -40,12 +40,15 @@ var (
 	ErrWorkflowInvalid    = errors.New("invalid workflow configuration")
 
 	// Validation errors
-	ErrEmptyCommand         = errors.New("command cannot be empty")
-	ErrUnsupportedFieldType = errors.New("unsupported field type")
-	ErrImageOrContainer     = errors.New("job-run requires either 'image' or 'container'")
-	ErrImageRequired        = errors.New("job-service-run requires 'image' to create a new swarm service")
-	ErrInvalidVolume        = errors.New("invalid volume: expected source:target[:ro|rw]")
-	ErrMaxRuntimeNegative   = errors.New("max-runtime must not be negative")
+	ErrEmptyCommand = errors.New("command cannot be empty")
+	// ErrExecContainerRequired is the error of a job-exec without the
+	// container to exec in.
+	ErrExecContainerRequired = errors.New("job-exec requires 'container'")
+	ErrUnsupportedFieldType  = errors.New("unsupported field type")
+	ErrImageOrContainer      = errors.New("job-run requires either 'image' or 'container'")
+	ErrImageRequired         = errors.New("job-service-run requires 'image' to create a new swarm service")
+	ErrInvalidVolume         = errors.New("invalid volume: expected source:target[:ro|rw]")
+	ErrMaxRuntimeNegative    = errors.New("max-runtime must not be negative")
 
 	// Scheduler errors
 	ErrSchedulerTimeout        = errors.New("scheduler stop timed out")

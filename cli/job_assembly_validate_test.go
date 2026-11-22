@@ -56,8 +56,16 @@ func TestAssembleJob_Validates(t *testing.T) {
 	run := &RunJobConfig{}
 	run.Image = "alpine"
 	require.NoError(t, cfg.assembleJob("run-ok", run))
-	require.NoError(t, cfg.assembleJob("exec", &ExecJobConfig{}))
-	require.NoError(t, cfg.assembleJob("local", &LocalJobConfig{}))
+	// An exec job without a container or a command and a local job without
+	// a command cannot run, so assembly refuses them as well.
+	require.ErrorIs(t, cfg.assembleJob("exec", &ExecJobConfig{}), core.ErrExecContainerRequired)
+	require.ErrorIs(t, cfg.assembleJob("local", &LocalJobConfig{}), core.ErrEmptyCommand)
+	execOK := &ExecJobConfig{}
+	execOK.Container, execOK.Command = "app", "true"
+	require.NoError(t, cfg.assembleJob("exec-ok", execOK))
+	localOK := &LocalJobConfig{}
+	localOK.Command = "true"
+	require.NoError(t, cfg.assembleJob("local-ok", localOK))
 }
 
 // A reload rejects an invalid job through the same assembly: it is

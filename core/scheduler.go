@@ -967,6 +967,14 @@ func (s *Scheduler) Precheck(name, schedule string) error {
 	return nil
 }
 
+// RecordRefusal records that a job called name is configured but cannot be
+// registered, for a refusal that happens before the scheduler sees the job,
+// such as a definition that fails its validation. The health check reports
+// it like a job the scheduler refused.
+func (s *Scheduler) RecordRefusal(name string, reason error) {
+	s.recordUnschedulable(name, reason)
+}
+
 // DiscardRefusal forgets that the scheduler refused a job of name. It is for
 // a caller whose refused job belongs to no configuration, such as a rejected
 // API request: the health check counts refusals as configured jobs that are
