@@ -754,6 +754,8 @@ func (cv *Validator2) checkJobRequirement(
 // fieldValueByKey returns the string value of the field carrying the given
 // config key, searching embedded structs because a job's schedule and command
 // live on the BareJob it embeds rather than on the job type itself.
+//
+//nolint:gocognit // predates the gocognit gate; SonarCloud does not report it (go:S3776)
 func fieldValueByKey(val reflect.Value, key string) string {
 	if val.Kind() != reflect.Struct {
 		return ""

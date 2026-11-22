@@ -528,6 +528,8 @@ func cliDockerHost(host string) (string, bool) {
 // projectArgs returns the global compose flags that select the project: one
 // -f per file, then --profile, --env-file, -p and --project-directory for a
 // job from a registered project, or the single -f File of a [job-compose].
+//
+//nolint:gocognit // predates the gocognit gate; SonarCloud does not report it (go:S3776)
 func (j *ComposeJob) projectArgs(validator *config.CommandValidator) ([]string, error) {
 	p := j.Project
 	if len(p.Files) == 0 {

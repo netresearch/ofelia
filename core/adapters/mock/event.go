@@ -84,6 +84,8 @@ func (s *EventService) Subscribe(ctx context.Context, filter domain.EventFilter)
 // silently swallowed on a coin flip. Measured at 89 losses in 200 runs once
 // the goroutine got there first, which is what a loaded CI runner arranges
 // (#820).
+//
+//nolint:gocognit // predates the gocognit gate; SonarCloud does not report it (go:S3776)
 func (s *EventService) SubscribeWithCallback(ctx context.Context, filter domain.EventFilter, callback ports.EventCallback) error {
 	events, errs := s.Subscribe(ctx, filter)
 

@@ -65,6 +65,8 @@ func Eventually(t testing.TB, condition func() bool, opts ...Option) bool {
 // EventuallyWithT is like Eventually but passes a *testing.T to the condition.
 // This allows the condition to make assertions that won't fail the test until
 // the timeout is reached.
+//
+//nolint:gocognit // predates the gocognit gate; SonarCloud does not report it (go:S3776)
 func EventuallyWithT(t testing.TB, condition func(collect *T) bool, opts ...Option) bool {
 	t.Helper()
 

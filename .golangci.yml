@@ -28,6 +28,7 @@ linters:
     - exhaustive
     - fatcontext
     - forbidigo
+    - gocognit
     - goconst
     - gocritic
     - gocyclo
@@ -65,6 +66,10 @@ linters:
         - pattern: ^fmt\.Print.*$
     goconst:
       min-occurrences: 6
+    # gocognit reproduces SonarCloud go:S3776 (cognitive complexity), which
+    # gocyclo (cyclomatic) does not catch; same threshold as SonarCloud.
+    gocognit:
+      min-complexity: 15
     gocyclo:
       min-complexity: 15
     misspell:
@@ -106,6 +111,7 @@ linters:
     rules:
       # Test files have relaxed linting for practical reasons
       - linters:
+          - gocognit
           - gocyclo
           - revive
           - wrapcheck
