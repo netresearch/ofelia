@@ -53,6 +53,9 @@ type Server struct {
 	persistStore *persist.Store
 	// buildJob builds the job of a create or update request; see JobBuilder.
 	buildJob JobBuilder
+	// nameReleased is called with the name of a deleted API job, so the
+	// configuration can register a job of its own under that name.
+	nameReleased func(name string)
 }
 
 // JobBuilder turns the definition of a job created or updated through the
@@ -68,6 +71,13 @@ var errNoJobBuilder = errors.New("job creation is not available: no job builder 
 // Without one, both are refused.
 func (s *Server) SetJobBuilder(b JobBuilder) {
 	s.buildJob = b
+}
+
+// SetNameReleasedHook sets what runs after an API job is deleted: an INI or
+// label job of the same name that the API job took the name of is registered
+// again there. Safe to call only before Start.
+func (s *Server) SetNameReleasedHook(f func(name string)) {
+	s.nameReleased = f
 }
 
 // SetPersistStore wires the daemon-owned persistence store into the
@@ -1149,6 +1159,9 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 		if err := s.persistStore.RemoveJob(req.Name); err != nil {
 			s.scheduler.Logger.Warn("persist remove job failed", "job", req.Name, "error", err)
 		}
+	}
+	if s.nameReleased != nil {
+		s.nameReleased(req.Name)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

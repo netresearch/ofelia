@@ -236,6 +236,7 @@ func (c *DaemonCommand) setupWebServer() error {
 	}
 	if c.config != nil {
 		c.webServer.SetJobBuilder(c.config.BuildAPIJob)
+		c.webServer.SetNameReleasedHook(c.config.RegisterConfiguredJob)
 	}
 
 	// #593: wire the persist store into the web server so API

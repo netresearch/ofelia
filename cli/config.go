@@ -715,6 +715,34 @@ func (c *Config) forgetRefusedChange(name string) bool {
 	return ok
 }
 
+// RegisterConfiguredJob registers the INI or label job called name when no
+// job holds that name, for example after the API job that had taken the name
+// was deleted. Such a job stays in the config unregistered while the API job
+// runs, and an unchanged definition is not registered again by a reload.
+func (c *Config) RegisterConfiguredJob(name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.sh == nil || c.sh.GetAnyJob(name) != nil {
+		return
+	}
+	_ = registerConfigured(c, c.ExecJobs, name) ||
+		registerConfigured(c, c.RunJobs, name) ||
+		registerConfigured(c, c.ServiceJobs, name) ||
+		registerConfigured(c, c.LocalJobs, name) ||
+		registerConfigured(c, c.ComposeJobs, name)
+}
+
+// registerConfigured registers the job called name from m, if m holds one.
+func registerConfigured[J jobConfig](c *Config, m map[string]J, name string) bool {
+	j, ok := m[name]
+	if !ok {
+		return false
+	}
+	j.buildMiddlewares(c.logger, c.getWebhookManager())
+	c.registerJobAs(name, j, c.wasDisabled(name))
+	return true
+}
+
 // heldByAPIJob reports whether a job that does not come from the INI file or
 // from labels, such as a job from the state file or the web API, holds name.
 func (c *Config) heldByAPIJob(name string) bool {
