@@ -45,7 +45,8 @@ func (p pooledCopyWriter) Write(b []byte) (int, error) {
 func (p pooledCopyWriter) ReadFrom(src io.Reader) (int64, error) {
 	bufp, _ := outputCopyBuffers.Get().(*[]byte)
 	defer outputCopyBuffers.Put(bufp)
-	// The wrapper hides the wrapped writer's own methods, so CopyBuffer
-	// cannot call ReadFrom on it and recurse; it uses the buffer.
+	// Hiding the wrapped writer's methods keeps CopyBuffer from handing the
+	// copy to a ReadFrom of its own, which would skip the pooled buffer. src
+	// arrives from os/exec without a WriteTo, so CopyBuffer reads with buf.
 	return io.CopyBuffer(struct{ io.Writer }{p.w}, src, *bufp) //nolint:wrapcheck // errors belong to the caller's copy
 }
