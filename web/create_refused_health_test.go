@@ -38,3 +38,18 @@ func TestCreateJob_RefusedCreateLeavesNoUnschedulableJob(t *testing.T) {
 		})
 	}
 }
+
+// An update that creates a job the scheduler refuses is a rejected request
+// as well.
+func TestUpdateJob_RefusedCreateLeavesNoUnschedulableJob(t *testing.T) {
+	t.Parallel()
+	sched := core.NewScheduler(stubDiscardLogger())
+	srv := withJobBuilder(webpkg.NewServer("", sched, nil, nil))
+
+	resp := postJSON(t, srv, "/api/jobs/update",
+		`{"name":"api-new","type":"local","schedule":"not-a-schedule","command":"echo hi"}`)
+	require.Equal(t, http.StatusBadRequest, resp.Code)
+
+	assert.Empty(t, sched.GetUnschedulableJobs())
+	assert.Nil(t, sched.GetAnyJob("api-new"))
+}
