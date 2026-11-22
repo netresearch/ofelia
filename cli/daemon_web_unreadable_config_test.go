@@ -91,6 +91,7 @@ func TestBoot_ConfigInAnUnreadableDirectoryKeepsUnauthenticatedWebOff(t *testing
 	}{
 		"literal path, directory not enterable": {0o000, "config.ini"},
 		"glob, directory not listable":          {0o311, "*.ini"},
+		"glob in a directory component":         {0o311, "../*/config.ini"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "etc")
@@ -116,12 +117,19 @@ func TestBoot_MalformedConfigGlobKeepsUnauthenticatedWebOff(t *testing.T) {
 	assert.Nil(t, cmd.webServer, "a path the daemon cannot resolve may name the file with the web auth settings")
 }
 
+func TestBoot_GlobWithoutMatchKeepsUnauthenticatedWebOff(t *testing.T) {
+	// Not parallel - modifies global newDockerHandler
+	cmd, _ := bootWithWebFlag(t, filepath.Join(t.TempDir(), "*.ini"), false)
+
+	assert.Nil(t, cmd.webServer, "a glob may match files the daemon cannot see")
+}
+
 func TestBoot_MissingConfigStillServesWeb(t *testing.T) {
 	// Not parallel - modifies global newDockerHandler
 	for name, path := range map[string]string{
-		"missing file":     filepath.Join(t.TempDir(), "none.ini"),
-		"no glob match":    filepath.Join(t.TempDir(), "*.ini"),
-		"empty config arg": "",
+		"missing file":      filepath.Join(t.TempDir(), "none.ini"),
+		"missing directory": filepath.Join(t.TempDir(), "absent", "config.ini"),
+		"empty config arg":  "",
 	} {
 		t.Run(name, func(t *testing.T) {
 			cmd, _ := bootWithWebFlag(t, path, false)

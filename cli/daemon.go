@@ -13,7 +13,7 @@ import (
 	"net/http"
 	_ "net/http/pprof" // #nosec G108
 	"os"
-	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -81,8 +81,8 @@ type DaemonCommand struct {
 	// record it skipped is not among them, so the web server does not take
 	// its name for an API job.
 	restoredJobs map[string]*persist.Job
-	// configUnreadable is true when the config file exists but did not load
-	// at boot, so the settings it holds, web auth included, are unknown.
+	// configUnreadable is true when the config did not load at boot although
+	// it may exist, so the settings it holds, web auth included, are unknown.
 	configUnreadable bool
 }
 
@@ -132,7 +132,7 @@ func (c *DaemonCommand) boot() (err error) {
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
 		config = fallbackConfig(c.Logger, c.ConfigFile, scheduleStateFor(c.StateFile))
-		c.configUnreadable = configNamesAFile(c.ConfigFile) || !errors.Is(err, fs.ErrNotExist)
+		c.configUnreadable = configMayExist(c.ConfigFile)
 	}
 	config.levelVar = c.LevelVar
 	c.applyOptions(config)
@@ -762,22 +762,17 @@ func validatePersistedJobName(name string) error {
 	return nil
 }
 
-// configNamesAFile reports whether the config path, a file or a glob, may name
-// a file: it names at least one directory entry, or its directory exists but
-// cannot be read. A failed load is "no config file" only when this is false;
-// otherwise the load missed a file that may exist (one that does not parse, a
-// dangling symlink among glob matches, a directory the daemon cannot read),
-// so the settings in it are unknown. boot also counts every error other than
-// "not exist" as unreadable, such as a malformed glob.
-func configNamesAFile(pattern string) bool {
-	matches, err := filepath.Glob(pattern)
-	if err == nil && len(matches) > 0 {
+// configMayExist reports whether a config path whose load failed may still
+// name a file whose settings were not read. Only a literal path that the
+// system reports as not existing names no file. A glob may match a file the
+// daemon cannot see, such as one in a directory it cannot list, so a failed
+// load of a glob always counts.
+func configMayExist(pattern string) bool {
+	if strings.ContainsAny(pattern, `*?[\`) {
 		return true
 	}
-	// Glob drops the error of a directory it cannot list, so a directory
-	// that exists but cannot be read may hold the files.
-	_, err = os.ReadDir(filepath.Dir(pattern))
-	return err != nil && !errors.Is(err, fs.ErrNotExist)
+	_, err := os.Lstat(pattern)
+	return !errors.Is(err, fs.ErrNotExist)
 }
 
 // fallbackConfig is the empty config the daemon runs with when the config file
