@@ -68,6 +68,18 @@ func TestBoot_UnreadableConfigKeepsUnauthenticatedWebOff(t *testing.T) {
 	assert.True(t, handler.HasError("Web UI and API not started"))
 }
 
+func TestBoot_GlobWithADanglingMatchKeepsUnauthenticatedWebOff(t *testing.T) {
+	// Not parallel - modifies global newDockerHandler
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a-auth.ini"), []byte(
+		"[global]\nweb-auth-enabled = true\nweb-username = admin\nweb-password-hash = x\n"), 0o600))
+	require.NoError(t, os.Symlink(filepath.Join(dir, "gone.ini"), filepath.Join(dir, "z-extra.ini")))
+
+	cmd, _ := bootWithWebFlag(t, filepath.Join(dir, "*.ini"), false)
+
+	assert.Nil(t, cmd.webServer, "a matched file that could not be read may hold the web auth settings")
+}
+
 func TestBoot_MissingConfigStillServesWeb(t *testing.T) {
 	// Not parallel - modifies global newDockerHandler
 	for name, path := range map[string]string{

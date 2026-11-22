@@ -3,5 +3,5 @@
   only in the config file, a config file that failed to load at startup left
   the web UI and API running without authentication. The daemon now keeps the
   web UI off in that case and logs why; the scheduler keeps running. Setting
-  `web-auth-enabled` by flag or environment, or a config file that does not
-  exist at all, starts the web UI as before.
+  `web-auth-enabled` by flag or environment, or a config path that names no
+  file at all, starts the web UI as before.
