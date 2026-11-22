@@ -96,8 +96,9 @@ func TestScheduleWriteFailure_UnrecordedQueuedStartDoesNotBlock(t *testing.T) {
 	restore := breakStateFile(t, h)
 	release()
 	// The end of the run, the queued occurrence's move into the dispatch and
-	// its start each fail to be written.
-	require.Eventually(t, func() bool { return writes.count() == 3 }, 5*time.Second, 5*time.Millisecond,
+	// its start each fail to be written; the watcher of the unstarted run
+	// then retries its own write.
+	require.Eventually(t, func() bool { return writes.count() >= 3 }, 5*time.Second, 5*time.Millisecond,
 		"the queued occurrence was not attempted")
 	noRun(t, j)
 	restore()
