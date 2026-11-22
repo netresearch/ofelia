@@ -329,7 +329,7 @@ func rank(heading string) int {
 func insertionPoint(heads []string, heading string) int {
 	want := rank(heading)
 	for i := 1; i < len(heads); i++ {
-		if have := rank(heads[i]); have > want {
+		if rank(heads[i]) > want {
 			return i
 		}
 	}
