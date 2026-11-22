@@ -66,8 +66,9 @@ linters:
         - pattern: ^fmt\.Print.*$
     goconst:
       min-occurrences: 6
-    # gocognit reproduces SonarCloud go:S3776 (cognitive complexity), which
-    # gocyclo (cyclomatic) does not catch; same threshold as SonarCloud.
+    # gocognit counts cognitive complexity like SonarCloud go:S3776, which
+    # gocyclo (cyclomatic) does not catch; same threshold as SonarCloud, but
+    # the two tools count differently (one function: 18 here, 16 there).
     gocognit:
       min-complexity: 15
     gocyclo:
