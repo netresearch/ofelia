@@ -129,6 +129,7 @@ func TestBoot_MissingConfigStillServesWeb(t *testing.T) {
 	for name, path := range map[string]string{
 		"missing file":      filepath.Join(t.TempDir(), "none.ini"),
 		"missing directory": filepath.Join(t.TempDir(), "absent", "config.ini"),
+		"directory at path": t.TempDir(),
 		"empty config arg":  "",
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -763,15 +763,19 @@ func validatePersistedJobName(name string) error {
 }
 
 // configMayExist reports whether a config path whose load failed may still
-// name a file whose settings were not read. Only a literal path that the
-// system reports as not existing names no file. A glob may match a file the
-// daemon cannot see, such as one in a directory it cannot list, so a failed
-// load of a glob always counts.
+// name a file whose settings were not read. A plain path names no such file
+// when the system reports it as not existing, or when it is a directory, which
+// is what a container runtime mounts for a bind source that does not exist. A
+// glob may match a file the daemon cannot see, such as one in a directory it
+// cannot list, so a failed load of a glob always counts.
 func configMayExist(pattern string) bool {
-	if strings.ContainsAny(pattern, `*?[\`) {
+	if strings.ContainsAny(pattern, globMeta) {
 		return true
 	}
-	_, err := os.Lstat(pattern)
+	info, err := os.Lstat(pattern)
+	if err == nil {
+		return !info.IsDir()
+	}
 	return !errors.Is(err, fs.ErrNotExist)
 }
 

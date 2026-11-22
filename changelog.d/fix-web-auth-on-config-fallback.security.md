@@ -4,4 +4,4 @@
   web UI and API running without authentication. The daemon now keeps the
   web UI off in that case and logs why; the scheduler keeps running. Setting
   `web-auth-enabled` by flag or environment, or a plain config path (no glob)
-  that does not exist, starts the web UI as before.
+  that does not exist or is a directory, starts the web UI as before.
