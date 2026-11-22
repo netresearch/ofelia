@@ -620,7 +620,7 @@ func (j *ComposeJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 	return &exec.Cmd{
 		Path:   bin,
 		Args:   cmdArgs,
-		Stdout: ctx.Execution.OutputStream,
-		Stderr: ctx.Execution.ErrorStream,
+		Stdout: newPooledCopyWriter(ctx.Execution.OutputStream),
+		Stderr: newPooledCopyWriter(ctx.Execution.ErrorStream),
 	}, nil
 }

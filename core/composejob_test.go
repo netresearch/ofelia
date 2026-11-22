@@ -75,10 +75,10 @@ func TestComposeJobBuildCommand(t *testing.T) {
 			if !reflect.DeepEqual(cmd.Args, tt.wantArgs) {
 				t.Errorf("unexpected args: %v, want %v", cmd.Args, tt.wantArgs)
 			}
-			if cmd.Stdout != exec.OutputStream {
+			if copyTarget(cmd.Stdout) != exec.OutputStream {
 				t.Errorf("expected stdout to be execution output buffer")
 			}
-			if cmd.Stderr != exec.ErrorStream {
+			if copyTarget(cmd.Stderr) != exec.ErrorStream {
 				t.Errorf("expected stderr to be execution error buffer")
 			}
 		})
