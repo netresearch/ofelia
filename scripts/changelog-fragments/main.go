@@ -63,7 +63,11 @@ var (
 	namePattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*\.(added|changed|deprecated|removed|fixed|security)\.md$`)
 	releasedPattern = regexp.MustCompile(`(?m)^## \[(\d[^\]]*)\]`)
 	sectionEnd      = regexp.MustCompile(`(?m)^(## \[|\[[^\]]+\]: \S)`)
-	headingLine     = regexp.MustCompile(`(?m)^#`)
+	// An ATX heading may be indented by up to three spaces (CommonMark).
+	headingLine = regexp.MustCompile(`(?m)^ {0,3}#{1,6}(?:[ \t]|$)`)
+	// unreleasedLine is the [Unreleased] heading as a whole line, so the same
+	// text in prose does not match.
+	unreleasedLine = regexp.MustCompile(`(?m)^## \[Unreleased\][ \t]*\r?$`)
 )
 
 // fragment is one validated file in changelog.d/.
@@ -245,10 +249,11 @@ func tagLookupFor(url string) tagLookup {
 // the end of the block with its heading; a missing heading is inserted before
 // the first heading that follows it in sections order.
 func collect(changelog string, fragments []fragment) (string, bool) {
-	start := strings.Index(changelog, "## [Unreleased]")
-	if start < 0 {
+	loc := unreleasedLine.FindStringIndex(changelog)
+	if loc == nil {
 		return "", false
 	}
+	start := loc[0]
 	rest := changelog[start:]
 	end := len(rest)
 	// Skip the [Unreleased] heading itself when looking for the next section.

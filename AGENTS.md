@@ -77,7 +77,7 @@ This file explains repo‑wide conventions and where to find scoped rules.
   permanently. The order is: cut the release PR, merge it, tag `main`'s merge
   commit with `git tag -s vX.Y.Z`, push the tag, wait.
 - **The release PR runs `make changelog-collect` before it renames
-  `[Unreleased]`.** The command appends every `changelog.d/` fragment under
+  `[Unreleased]`** (CONTRIBUTING.md, "Creating a Release", has the steps). The command appends every `changelog.d/` fragment under
   its heading and deletes the fragment. `make changelog-check` fails while
   fragments remain and the topmost released section has no tag yet, so a
   release PR that skips the step does not pass CI.

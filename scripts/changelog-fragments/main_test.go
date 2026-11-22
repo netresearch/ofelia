@@ -104,6 +104,19 @@ func TestCollectMatchesHeadingWithTrailingSpace(t *testing.T) {
 	}
 }
 
+func TestCollectIgnoresUnreleasedInProse(t *testing.T) {
+	t.Parallel()
+	changelog := "# Changelog\n\nNew entries go under `## [Unreleased]` below.\n\n## [Unreleased]\n\n## [1.0.0]\n"
+	got, ok := collect(changelog, []fragment{{kind: "fixed", text: "- f"}})
+	want := "# Changelog\n\nNew entries go under `## [Unreleased]` below.\n\n## [Unreleased]\n\n### Fixed\n\n- f\n\n## [1.0.0]\n"
+	if !ok || got != want {
+		t.Fatalf("collect = %v\n%s\nwant\n%s", ok, got, want)
+	}
+	if _, ok := collect("# Changelog\n\nSee `## [Unreleased]`.\n", []fragment{{kind: "fixed", text: "- f"}}); ok {
+		t.Fatal("collect used [Unreleased] in prose as the section")
+	}
+}
+
 func TestCollectWithoutUnreleased(t *testing.T) {
 	t.Parallel()
 	if _, ok := collect(header+"## [1.0.0]\n", []fragment{{kind: "fixed", text: "- b"}}); ok {
@@ -122,6 +135,8 @@ func TestReadFragmentsValidates(t *testing.T) {
 		"unknown.upgrading.md":    "- x\n",
 		"prose.changed.md":        "Text without a bullet\n",
 		"heading.security.md":     "- x\n\n### Security\n",
+		"indented.deprecated.md":  "- x\n\n   ## Extra\n",
+		"issue-ref.changed.md":    "- x\n  #123 stays text\n",
 		"star-bullet.removed.md":  "* x\n",
 		".DS_Store":               "binary",
 		".a-feature.added.md.swp": "binary",
@@ -135,20 +150,20 @@ func TestReadFragmentsValidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(fragments) != 2 || fragments[0].kind != "added" || fragments[0].text != "- first" ||
-		fragments[1].kind != "fixed" || fragments[1].text != "- second" {
-		t.Fatalf("fragments = %+v, want the added and the fixed fragment in name order", fragments)
+	if len(fragments) != 3 || fragments[0].kind != "added" || fragments[0].text != "- first" ||
+		fragments[1].kind != "fixed" || fragments[1].text != "- second" || fragments[2].kind != "changed" {
+		t.Fatalf("fragments = %+v, want the added, fixed and changed fragments in name order", fragments)
 	}
 	for _, name := range []string{
 		"Bad-Name.fixed.md", "no-section.md", "unknown.upgrading.md", "prose.changed.md",
-		"heading.security.md", "star-bullet.removed.md", "dir.fixed.md",
+		"heading.security.md", "star-bullet.removed.md", "dir.fixed.md", "indented.deprecated.md",
 	} {
 		if !strings.Contains(strings.Join(problems, "\n"), "  "+name+"  ") {
 			t.Errorf("no problem reported for %s; problems:\n%s", name, strings.Join(problems, "\n"))
 		}
 	}
-	if len(problems) != 7 {
-		t.Errorf("got %d problems, want 7:\n%s", len(problems), strings.Join(problems, "\n"))
+	if len(problems) != 8 {
+		t.Errorf("got %d problems, want 8:\n%s", len(problems), strings.Join(problems, "\n"))
 	}
 }
 
