@@ -220,6 +220,7 @@ const (
 	ExitCodeTimeout = -998
 )
 
+//nolint:gocognit // predates the gocognit gate; SonarCloud does not report it (go:S3776)
 func (j *RunServiceJob) watchContainer(ctx context.Context, jobCtx *Context, svcID string) error {
 	exitCode := ExitCodeSwarmError
 

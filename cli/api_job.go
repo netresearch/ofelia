@@ -36,6 +36,8 @@ var (
 // It returns the core job, so the scheduler, GET /api/jobs and the state
 // file see the same job type as before. The job carries no middlewares of
 // its own; the scheduler's global ones apply when it is added.
+//
+//nolint:gocognit // predates the gocognit gate; SonarCloud does not report it (go:S3776)
 func (c *Config) BuildAPIJob(name string, def persist.Job) (core.Job, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

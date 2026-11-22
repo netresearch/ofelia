@@ -639,6 +639,8 @@ func (c *DaemonCommand) applyPersistedJob(name string, job core.Job) error {
 
 // Empty StateFile is a no-op (persistence disabled), keeping the
 // pre-#593 behavior for operators who haven't opted in.
+//
+//nolint:gocognit // predates the gocognit gate; SonarCloud does not report it (go:S3776)
 func (c *DaemonCommand) initPersistStore() error {
 	c.persistStore = persist.NewStore(c.StateFile)
 	if !c.persistStore.Enabled() {

@@ -37,6 +37,8 @@ func parseUITemplates(fsys fs.FS) (*template.Template, error) {
 // visible on the next reload without rebuilding the binary. A template
 // parse error is returned as a 500 with the error text so the developer
 // sees what broke. Unset in production; embedded assets are the default.
+//
+//nolint:gocognit // predates the gocognit gate; SonarCloud does not report it (go:S3776)
 func uiHandler() (http.Handler, error) {
 	if dir := os.Getenv("OFELIA_UI_DEV_DIR"); dir != "" {
 		files := http.FileServer(http.Dir(dir))
