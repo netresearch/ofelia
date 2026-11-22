@@ -350,8 +350,10 @@ func (s *Store) GetSchedule(name string) (Schedule, bool) {
 	return copySchedule(r), true
 }
 
-// PutSchedule inserts or replaces a schedule record and persists it in the
-// same atomic write. No-op if the store is disabled.
+// PutSchedule inserts or replaces a schedule record in memory and then
+// writes the state file in one atomic write. When the write fails, memory
+// keeps the new record and the next successful write persists it. No-op if
+// the store is disabled.
 func (s *Store) PutSchedule(name string, r Schedule) error {
 	if !s.Enabled() {
 		return nil
