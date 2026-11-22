@@ -135,9 +135,12 @@ type Config struct {
 	disabledMu           sync.Mutex
 	// refusedChanges holds, per job name, the hash of a changed definition
 	// the scheduler refused while the previous definition keeps running.
-	refusedChanges    map[string]string
-	refusedMu         sync.Mutex
-	configPath        string
+	refusedChanges map[string]string
+	refusedMu      sync.Mutex
+	configPath     string
+	// configLoaded is true for a config built from its file, and false for
+	// the fallback boot runs with when the file does not load.
+	configLoaded      bool
 	configFiles       []string
 	configModTime     time.Time
 	sh                *core.Scheduler
@@ -309,6 +312,7 @@ func buildFromFile(filename string, logger *slog.Logger, state scheduleStateMode
 		}
 	}
 	c.configPath = filename
+	c.configLoaded = true
 	c.configFiles = files
 	c.configModTime = latest
 
