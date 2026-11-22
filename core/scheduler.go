@@ -142,6 +142,12 @@ func (cs *concurrencySemaphore) getChan() chan struct{} {
 	return cs.ch
 }
 
+// full reports whether every slot is taken at the moment of the call.
+func (cs *concurrencySemaphore) full() bool {
+	ch := cs.getChan()
+	return len(ch) >= cap(ch)
+}
+
 func (cs *concurrencySemaphore) getCap() int {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
@@ -339,7 +345,9 @@ func (m *maxConcurrentSkipJob) RunWithContext(ctx context.Context) {
 
 // SetMaxConcurrentJobs configures the maximum number of concurrent jobs.
 // The limit is enforced by the go-cron middleware chain (MaxConcurrentSkip
-// pattern). When the limit is reached, new job invocations are skipped.
+// pattern). When the limit is reached, new job invocations are skipped, and
+// RunJob refuses a manual run of a job without durable schedule state with
+// ErrJobLimitReached.
 //
 // This should be called before Start(); calling it on a running scheduler
 // resizes the semaphore but in-flight jobs retain the previous channel.
@@ -738,14 +746,8 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 		return fmt.Errorf("%w: %s", ErrJobNotFound, jobName)
 	}
 	if j := s.GetAnyJob(jobName); j != nil {
-		_, durable := s.durablePolicy(j)
-		if durable && s.durableBusy(jobName) || !durable && s.retainedWorkloadBusy(jobName) {
-			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
-		}
-		// The run would be skipped by the name lock (runGate) while a
-		// removed or replaced job's canceled run stops.
-		if s.gate.blocked(jobName, durable) {
-			return fmt.Errorf("%w: %s", ErrJobBusy, jobName)
+		if err := s.refuseManualRun(j, jobName); err != nil {
+			return err
 		}
 	}
 
@@ -758,6 +760,45 @@ func (s *Scheduler) RunJob(_ context.Context, jobName string) error {
 	}
 
 	return nil
+}
+
+// refuseManualRun returns the ErrJobBusy that RunJob answers when a manual run
+// of j would not start, or nil when the run may be triggered.
+func (s *Scheduler) refuseManualRun(j Job, jobName string) error {
+	_, durable := s.durablePolicy(j)
+	busy := fmt.Errorf("%w: %s", ErrJobBusy, jobName)
+	switch {
+	case durable && s.durableBusy(jobName), !durable && s.retainedWorkloadBusy(jobName):
+		return busy
+	case s.gate.blocked(jobName, durable):
+		// The run would be skipped by the name lock (runGate) while a
+		// removed or replaced job's canceled run stops.
+		return busy
+	case durable:
+		// A durable job waits for a global slot instead of being skipped.
+		return nil
+	case skipsOverlap(j) && j.Running() > 0:
+		// A no-overlap middleware would skip the run. This check and the
+		// next are best-effort: a slot or a run that ends between the
+		// check and the trigger refuses a run a retry starts, and a slot
+		// taken in that time still records the run as skipped.
+		return busy
+	case s.concurrencySem.full():
+		// The global limit (maxConcurrentSkipJob) would skip the run.
+		return fmt.Errorf("%w: %s", ErrJobLimitReached, jobName)
+	}
+	return nil
+}
+
+// skipsOverlap reports whether a middleware of j skips a run while another
+// run of j is in progress (OverlapGuard).
+func skipsOverlap(j Job) bool {
+	for _, m := range j.Middlewares() {
+		if g, ok := m.(OverlapGuard); ok && g.SkipsOverlap() {
+			return true
+		}
+	}
+	return false
 }
 
 // fireDeferredStartup fires the run-on-startup run of w that the name lock

@@ -15,7 +15,8 @@ import (
 // without the job's name. These tests pin what an operator sees instead: a
 // skipped run in the job's history, a Warn line naming the job and the limit,
 // and the notification middlewares (the ones that run after an execution
-// stopped) receiving that skipped run.
+// stopped) receiving that skipped run. The fires go through go-cron directly,
+// because RunJob refuses a manual run at a full limit (ErrJobLimitReached).
 
 // limitHolderJob takes a slot of the global limit and keeps it until released.
 type limitHolderJob struct {
@@ -157,8 +158,8 @@ func TestLimitSkip_RecordsSkippedRunInHistory(t *testing.T) {
 	s, holder := startWithFullLimit(t, newDiscardLogger(), limited)
 	defer close(holder.release)
 
-	if err := s.RunJob(context.Background(), limited.GetName()); err != nil {
-		t.Fatalf("run limited: %v", err)
+	if err := s.cron.TriggerEntryByName(limited.GetName()); err != nil {
+		t.Fatalf("fire limited: %v", err)
 	}
 
 	last := waitForLastRun(t, limited)
@@ -190,8 +191,8 @@ func TestLimitSkip_LogsWarnWithJobNameAndLimit(t *testing.T) {
 	s, holder := startWithFullLimit(t, slog.New(capture), limited)
 	defer close(holder.release)
 
-	if err := s.RunJob(context.Background(), limited.GetName()); err != nil {
-		t.Fatalf("run limited: %v", err)
+	if err := s.cron.TriggerEntryByName(limited.GetName()); err != nil {
+		t.Fatalf("fire limited: %v", err)
 	}
 	waitForLastRun(t, limited)
 
@@ -216,8 +217,8 @@ func TestLimitSkip_NotificationMiddlewaresSeeTheSkippedRun(t *testing.T) {
 	s, holder := startWithFullLimit(t, newDiscardLogger(), limited)
 	defer close(holder.release)
 
-	if err := s.RunJob(context.Background(), limited.GetName()); err != nil {
-		t.Fatalf("run limited: %v", err)
+	if err := s.cron.TriggerEntryByName(limited.GetName()); err != nil {
+		t.Fatalf("fire limited: %v", err)
 	}
 	waitForLastRun(t, limited)
 

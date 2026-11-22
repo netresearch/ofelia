@@ -17,11 +17,24 @@ import (
 	"github.com/netresearch/ofelia/core/persist"
 )
 
-// ErrJobBusy is returned by RunJob for a job with durable schedule state
-// while a run of it is in progress or waiting for a global slot (ADR-005),
-// and for any job while the canceled run of a removed or replaced job of the
-// same name is still stopping (runGate).
+// ErrJobBusy is returned by RunJob when the manual run would not start, and
+// the run is not triggered:
+//   - for a job with durable schedule state while a run of it is in progress
+//     or waiting for a global slot (ADR-005);
+//   - for a job without durable state while a run of it is in progress and a
+//     middleware skips overlapping runs (OverlapGuard, no-overlap), or while
+//     the workload of a former registration has not confirmed its end;
+//   - as ErrJobLimitReached, for a job without durable state while every slot
+//     of the global job limit is taken;
+//   - for any job while the canceled run of a removed or replaced job of the
+//     same name is still stopping (runGate).
 var ErrJobBusy = errors.New("job is busy")
+
+// ErrJobLimitReached is the ErrJobBusy that RunJob returns for a job without
+// durable schedule state while every slot of the global job limit
+// (max-concurrent-jobs) is taken, because the run would be skipped. A job
+// with durable state waits for a slot instead and is not refused for it.
+var ErrJobLimitReached = fmt.Errorf("%w: every slot of the global job limit is taken", ErrJobBusy)
 
 // The values of persist.Occurrence.Trigger and persist.Dispatch.State and
 // Outcome.

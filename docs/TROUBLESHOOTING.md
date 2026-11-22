@@ -935,7 +935,7 @@ docker logs ofelia | grep "backup-db"
 
 **Root Cause**:
 
-When `no-overlap = true` (or `no-overlap: 'true'` in Docker labels), Ofelia prevents concurrent executions of the same job. If a previous execution appears to still be running (e.g., a hung process that never terminated), subsequent scheduled runs will be skipped.
+When `no-overlap = true` (or `no-overlap: 'true'` in Docker labels), Ofelia prevents concurrent executions of the same job. If a previous execution appears to still be running (e.g., a hung process that never terminated), subsequent scheduled runs will be skipped, and a manual run through the web API or UI is refused with `409 Conflict`.
 
 Common causes of "stuck" jobs:
 - **Node.js**: Unhandled promise rejections don't exit by default
@@ -1020,7 +1020,9 @@ docker exec <container> ps aux | grep defunct
 Ofelia runs at most `max-concurrent-jobs` jobs at once (default `10`), counted
 across every job of the daemon. A job that becomes due while every slot is
 taken does not wait: that run is skipped, recorded as a skipped run in the
-job's history and passed to its notifications. Cron schedules fire at second 0,
+job's history and passed to its notifications. A manual run through the web
+API or UI is refused with `409 Conflict` instead and leaves no entry. Cron
+schedules fire at second 0,
 so jobs that share a minute start together: a `* * * * *` job, a `*/5` job and
 a `*/15` job all start at :00, :15, :30 and :45. Compose jobs with
 `concurrency: queue` or `missed_fires: one` wait for a slot instead (see
@@ -1177,8 +1179,9 @@ docker inspect ofelia | grep Memory
    ```
 
 2. **Optimize memory usage**: `[global] max-concurrent-jobs` (default `10`)
-   caps how many jobs run at once; a run beyond the cap is skipped, not queued
-   (see [Jobs Skipped: Global Job Limit Reached](#jobs-skipped-global-job-limit-reached)),
+   caps how many jobs run at once; a scheduled run beyond the cap is skipped,
+   not queued, and a manual run is refused with `409 Conflict`; only Compose
+   jobs with `missed_fires: one` or `concurrency: queue` wait for a slot (see [Jobs Skipped: Global Job Limit Reached](#jobs-skipped-global-job-limit-reached)),
    so spread the schedules apart rather than lowering it far. Ofelia also offers
    per-job overlap prevention and container cleanup:
    ```ini
@@ -1833,8 +1836,9 @@ OOMKilled errors
    ```
 
 2. **Limit concurrent execution**: `[global] max-concurrent-jobs` (default
-   `10`) caps how many jobs run at once. A run beyond the cap is skipped, not
-   queued, so also stagger the schedules of the heaviest jobs so they do not
+   `10`) caps how many jobs run at once. A scheduled run beyond the cap is
+   skipped, not queued, and a manual run is refused (only Compose jobs with
+   `missed_fires: one` or `concurrency: queue` wait for a slot), so also stagger the schedules of the heaviest jobs so they do not
    fire together, and set `no-overlap = true` so a slow run does not stack on
    its own next tick.
 

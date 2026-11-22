@@ -145,10 +145,17 @@ paths:
         "405": {$ref: "#/components/responses/PlainError"}
         "409":
           description: >-
-            The manual run is refused and not started: a Compose job with
-            `missed_fires: one` or `concurrency: queue` has a run in progress
-            or waiting for a slot, or the run of a removed or replaced job of
-            the same name is still stopping.
+            The manual run is refused and not triggered, because it would not
+            start: a Compose job with `missed_fires: one` or
+            `concurrency: queue` has a run in progress or waiting for a slot; a
+            job with `no-overlap`, or a Compose job with
+            `concurrency: forbid` and `missed_fires: skip`, has a run in
+            progress; every slot of
+            `[global] max-concurrent-jobs` is taken (except for those Compose
+            jobs, which wait for a slot); the container of a replaced Compose
+            job of the same name has not confirmed its end; or the run of a
+            removed or replaced job of the same name is still stopping. A
+            refused run is not recorded in the job's history.
           content:
             text/plain:
               schema: {type: string}

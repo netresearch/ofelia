@@ -852,6 +852,8 @@ func (s *Server) runJobHandler(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, core.ErrJobNotFound):
 			http.Error(w, msgJobNotFound, http.StatusNotFound)
+		case errors.Is(err, core.ErrJobLimitReached):
+			http.Error(w, "every slot of max-concurrent-jobs is taken; try again when a run has finished", http.StatusConflict)
 		case errors.Is(err, core.ErrJobBusy):
 			http.Error(w, "job is running or waiting to run; try again when it has finished", http.StatusConflict)
 		default:

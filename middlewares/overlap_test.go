@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/netresearch/ofelia/core"
 )
 
 func TestNewOverlapEmpty(t *testing.T) {
@@ -21,6 +23,13 @@ func TestOverlapRun(t *testing.T) {
 
 	m := &Overlap{}
 	require.NoError(t, m.Run(ctx))
+}
+
+func TestOverlap_SkipsOverlapReportsNoOverlap(t *testing.T) {
+	t.Parallel()
+	var on, off core.OverlapGuard = &Overlap{OverlapConfig{NoOverlap: true}}, &Overlap{}
+	assert.True(t, on.SkipsOverlap())
+	assert.False(t, off.SkipsOverlap())
 }
 
 func TestOverlap_ContinueOnStop(t *testing.T) {
