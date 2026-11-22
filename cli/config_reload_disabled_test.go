@@ -157,8 +157,8 @@ func TestReplaceIfChanged_DisabledRunOnStartupDoesNotRun(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "the disabled replacement must not run on startup")
 }
 
-// A replacement the scheduler rejects (a bad schedule) leaves no job, and the
-// next, corrected definition must come back disabled.
+// A replacement the scheduler refuses (a bad schedule) leaves the disabled
+// job in place, and the next, corrected definition replaces it disabled.
 func TestReplaceIfChanged_DisabledSurvivesRejectedReplacement(t *testing.T) {
 	t.Parallel()
 
@@ -181,11 +181,12 @@ func TestReplaceIfChanged_DisabledSurvivesRejectedReplacement(t *testing.T) {
 	}
 
 	badJob := &ExecJobConfig{Schedule: "not a schedule", Command: "echo bad"}
-	require.True(t, replaceIfChanged(cfg, "testjob", oldJob, badJob, prep, JobSourceINI))
-	require.Empty(t, cfg.sh.Entries(), "the rejected replacement must not be scheduled")
+	require.False(t, replaceIfChanged(cfg, "testjob", oldJob, badJob, prep, JobSourceINI))
+	assert.Same(t, core.Job(oldJob), cfg.sh.GetAnyJob("testjob"), "the refused replacement must leave the job in place")
+	assert.True(t, cfg.sh.IsJobDisabled("testjob"))
 
 	fixedJob := &ExecJobConfig{Schedule: "@every 10s", Command: "echo fixed"}
-	require.True(t, replaceIfChanged(cfg, "testjob", badJob, fixedJob, prep, JobSourceINI))
+	require.True(t, replaceIfChanged(cfg, "testjob", oldJob, fixedJob, prep, JobSourceINI))
 
 	assert.True(t, cfg.sh.IsJobDisabled("testjob"), "the corrected job must come back disabled")
 	entries := cfg.sh.Entries()

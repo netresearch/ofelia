@@ -26,7 +26,7 @@ Ofelia supports multiple configuration methods that can be used independently or
 
 Disable flags from the state file apply on top regardless of where the underlying job came from, so an INI/label job paused via the UI stays paused after restart.
 
-A running daemon keeps a job disabled when a config reload replaces it: a changed INI or label definition, or an INI job taking over a same-named label job, comes back paused, without running first, even with `run-on-startup`. If the scheduler rejects the new definition, for example for an invalid schedule, the corrected definition of a later reload comes back paused. This holds with or without a state file.
+A running daemon keeps a job disabled when a config reload replaces it: a changed INI or label definition, or an INI job taking over a same-named label job, comes back paused, without running first, even with `run-on-startup`. If the scheduler rejects the new definition, for example for an invalid schedule, the previous definition keeps running (or stays paused), the error is logged, and the health check reports the job as not scheduled until a later reload brings a definition the scheduler accepts or takes the change back. An INI job that would take over a same-named label job and that the scheduler rejects still replaces the label job, so nothing runs under the name. This holds with or without a state file.
 
 ## State File (`--state-file`)
 

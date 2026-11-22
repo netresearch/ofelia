@@ -926,6 +926,23 @@ func (s *Scheduler) recordUnschedulable(name string, reason error) {
 	s.unschedulable[name] = reason.Error()
 }
 
+// Precheck returns the error AddJob would return for a job called name with
+// schedule, or nil, and records a refusal for name as AddJob does. It changes
+// no registration, so a caller that replaces a running job can check the
+// replacement before it removes the job: the job then keeps running, and the
+// health check reports the refused replacement.
+func (s *Scheduler) Precheck(name, schedule string) error {
+	err := ErrEmptySchedule
+	if schedule != "" {
+		err = s.cron.ValidateSpec(schedule)
+	}
+	if err != nil {
+		s.recordUnschedulable(name, err)
+		return fmt.Errorf("check job: %w", err)
+	}
+	return nil
+}
+
 // DiscardRefusal forgets that the scheduler refused a job of name. It is for
 // a caller whose refused job belongs to no configuration, such as a rejected
 // API request: the health check counts refusals as configured jobs that are
