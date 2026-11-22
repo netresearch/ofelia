@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -78,6 +79,9 @@ type DaemonCommand struct {
 	// record it skipped is not among them, so the web server does not take
 	// its name for an API job.
 	restoredJobs map[string]*persist.Job
+	// configUnreadable is true when the config file exists but did not load
+	// at boot, so the settings it holds, web auth included, are unknown.
+	configUnreadable bool
 }
 
 // registeredJobCount returns how many jobs the scheduler holds, enabled or
@@ -126,6 +130,7 @@ func (c *DaemonCommand) boot() (err error) {
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
 		config = fallbackConfig(c.Logger, c.ConfigFile, scheduleStateFor(c.StateFile))
+		c.configUnreadable = !errors.Is(err, fs.ErrNotExist)
 	}
 	config.levelVar = c.LevelVar
 	c.applyOptions(config)
@@ -201,6 +206,13 @@ func (c *DaemonCommand) boot() (err error) {
 		return fmt.Errorf("load state file: %w", err)
 	}
 
+	// A config file that did not load may be the only place that turns web
+	// auth on; serving the web UI then would serve it without a login.
+	if c.EnableWeb && !c.WebAuthEnabled && c.configUnreadable {
+		c.Logger.Error("Web UI and API not started: the config file did not load, so whether it requires " +
+			"a login is unknown. Fix the file and restart, or set web-auth-enabled by flag or environment.")
+		c.EnableWeb = false
+	}
 	if c.EnableWeb {
 		if err := c.setupWebServer(); err != nil {
 			return err
