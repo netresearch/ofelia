@@ -305,6 +305,7 @@ job.Run(ctx)
 - [ ] All tests pass (`go test -tags=integration,e2e -v ./...`)
 - [ ] Code follows project style guidelines
 - [ ] Documentation updated (if needed)
+- [ ] Changelog fragment added under `changelog.d/` for a change users notice (see [changelog.d/README.md](changelog.d/README.md)), not an edit of `CHANGELOG.md`
 - [ ] Commit messages are clear and descriptive
 - [ ] No breaking changes (or clearly documented if unavoidable)
 
@@ -316,30 +317,33 @@ Ofelia uses [SLSA Level 3](https://slsa.dev/) provenance for all releases, provi
 
 #### Creating a Release
 
-Version is automatically derived from the git tag by GoReleaser.
+The version comes from the git tag. Pushing the tag is the release: CI creates
+the GitHub release, so never create it by hand (`gh release create` or the web
+form). Under immutable releases a release created that way burns the version.
 
-1. **Create signed tag** (recommended for GPG-signed releases):
+1. **Open the release pull request.** Run `make changelog-collect`, which moves
+   every `changelog.d/` fragment into `## [Unreleased]` of `CHANGELOG.md`, then
+   rename `## [Unreleased]` to the version and add a new empty
+   `## [Unreleased]` above it.
+
+2. **Merge it, and tag the merge commit on `main`:**
    ```bash
-   # Configure GPG signing (one-time setup)
-   git config --global user.signingkey YOUR_GPG_KEY_ID
-   git config --global tag.gpgSign true
-
-   # Create signed tag
-   git tag -s v0.X.Y -m "Release v0.X.Y"
-   git push origin v0.X.Y
+   git fetch origin
+   git switch --detach origin/main      # the merged release commit
+   git tag -s vX.Y.Z -m "Release vX.Y.Z"
+   git push origin vX.Y.Z
    ```
 
-2. **Create GitHub Release**: Go to [Releases](https://github.com/netresearch/ofelia/releases) → Draft a new release
-   - Select the tag you just created
-   - Generate release notes or write a summary
-   - Publish the release
-
-3. **Automated pipeline**: The release workflow automatically:
+3. **Wait for the pipeline.** The release workflow then:
+   - Creates the GitHub release
    - Builds binaries with SLSA Level 3 provenance
    - Generates SBOMs for all artifacts
    - Creates signed checksums (Cosign keyless)
    - Builds and signs container images
    - Updates release notes with verification instructions
+
+   `gh release edit vX.Y.Z --notes-file notes.md` replaces the generated notes
+   afterwards.
 
 #### Supply Chain Security
 

@@ -11,6 +11,12 @@ This file explains repo‑wide conventions and where to find scoped rules.
 - Write comprehensive commit message bodies that thoroughly describe every change introduced.
 - Ask first before: adding heavy deps, running full e2e suites, or repo‑wide rewrites.
 - Update `README.md` or files in `docs/` when you change user-facing behavior.
+- **Changelog entries go into `changelog.d/<branch-slug>.<section>.md`**, one
+  file per change holding only its bullet(s), not into `## [Unreleased]` of
+  `CHANGELOG.md`: two PRs that edit that section conflict as soon as one
+  merges. `changelog.d/README.md` has the format; `make changelog-check`
+  (pre-commit hook, and a test in `go test ./...`) refuses a malformed
+  fragment.
 
 ## Minimal pre‑commit checks
 - Format Go code: `gofmt -w $(git ls-files '*.go')`
@@ -70,6 +76,11 @@ This file explains repo‑wide conventions and where to find scoped rules.
   releases a lightweight tag from that command burns the version name
   permanently. The order is: cut the release PR, merge it, tag `main`'s merge
   commit with `git tag -s vX.Y.Z`, push the tag, wait.
+- **The release PR runs `make changelog-collect` before it renames
+  `[Unreleased]`** (CONTRIBUTING.md, "Creating a Release", has the steps). The command appends every `changelog.d/` fragment under
+  its heading and deletes the fragment. `make changelog-check` fails while
+  fragments remain and the topmost released section has no tag yet, so a
+  release PR that skips the step does not pass CI.
 - `gh release edit vX.Y.Z --notes-file notes.md` afterwards is the supported
   way to replace CI's generated notes. `--notes-file` and `--repo` are the
   flags to use; the rest of that command's flags are blocked.
