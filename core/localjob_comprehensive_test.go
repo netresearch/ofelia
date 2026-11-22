@@ -151,10 +151,10 @@ func TestLocalJob_BuildCommand_CorrectArguments(t *testing.T) {
 	}
 
 	// Verify output streams are connected
-	if cmd.Stdout != execution.OutputStream {
+	if copyTarget(cmd.Stdout) != execution.OutputStream {
 		t.Error("Expected Stdout to be connected to execution OutputStream")
 	}
-	if cmd.Stderr != execution.ErrorStream {
+	if copyTarget(cmd.Stderr) != execution.ErrorStream {
 		t.Error("Expected Stderr to be connected to execution ErrorStream")
 	}
 }

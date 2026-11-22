@@ -21,7 +21,7 @@ func TestLocalBuildCommand(t *testing.T) {
 	if cmd.Path == "" || len(cmd.Args) == 0 {
 		t.Fatalf("unexpected cmd: %#v", cmd)
 	}
-	if cmd.Stdout != e.OutputStream || cmd.Stderr != e.ErrorStream {
+	if copyTarget(cmd.Stdout) != e.OutputStream || copyTarget(cmd.Stderr) != e.ErrorStream {
 		t.Fatalf("expected stdio bound to execution buffers")
 	}
 }
