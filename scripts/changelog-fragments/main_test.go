@@ -170,6 +170,11 @@ func TestCheck(t *testing.T) {
 		{"fragments, no release yet", header + "## [Unreleased]\n", map[string]string{"x.fixed.md": "- x\n"}, tags(false, nil), 0, ""},
 		{"tag lookup fails", released, map[string]string{"x.fixed.md": "- x\n"}, tags(false, lookupErr), 2, "no network"},
 		{"malformed fragment", released, map[string]string{"x.txt": "- x\n"}, tags(true, nil), 1, "x.txt  is not named"},
+		{
+			"malformed fragment while the tag lookup fails", released,
+			map[string]string{"ok.fixed.md": "- x\n", "x.txt": "- x\n"},
+			tags(false, lookupErr), 1, "x.txt  is not named",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -319,8 +324,13 @@ func TestTagLookup(t *testing.T) {
 	}
 
 	unreachable := tagLookupFor(filepath.Join(t.TempDir(), "missing"))
-	if _, err := unreachable(local, "9.9.9"); err == nil {
-		t.Error("unreachable upstream: want an error, not a missing tag")
+	_, err := unreachable(local, "9.9.9")
+	if err == nil {
+		t.Fatal("unreachable upstream: want an error, not a missing tag")
+	}
+	// git's own reason reaches the message, not only the exit status.
+	if !strings.Contains(err.Error(), "does not appear to be a git repository") {
+		t.Errorf("error %q lacks git's reason", err)
 	}
 }
 

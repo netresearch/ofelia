@@ -27,6 +27,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -105,7 +106,9 @@ func run(mode, root string, tagExists tagLookup, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	if mode == "check" {
+	// Name and content problems need no network, so they are reported even
+	// when the tag lookup would fail.
+	if mode == "check" && len(problems) == 0 {
 		problem, err := untaggedRelease(root, changelog, len(fragments), tagExists)
 		if err != nil {
 			fmt.Fprintf(stderr, "changelog-fragments: %v\n", err)
@@ -202,6 +205,9 @@ func untaggedRelease(root, changelog string, fragments int, tagExists tagLookup)
 		released, released, fragments, released), nil
 }
 
+// errTagLookup reports that upstream could not be asked for a tag.
+var errTagLookup = errors.New("cannot ask")
+
 // tagLookupFor returns a lookup that asks for tag v<version> in the local
 // repository first and then at url.
 //
@@ -221,8 +227,12 @@ func tagLookupFor(url string) tagLookup {
 		}
 		out, err := exec.CommandContext(ctx, "git", "ls-remote", "--tags", url, ref).Output() // #nosec G204 -- see above
 		if err != nil {
-			return false, fmt.Errorf("cannot ask %s whether tag v%s exists (%w); check the network and run the check again",
-				url, version, err)
+			reason := err.Error()
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) && len(bytes.TrimSpace(exitErr.Stderr)) > 0 {
+				reason = string(bytes.TrimSpace(exitErr.Stderr))
+			}
+			return false, fmt.Errorf("%w %s whether tag v%s exists: %s", errTagLookup, url, version, reason)
 		}
 		return strings.TrimSpace(string(out)) != "", nil
 	}
