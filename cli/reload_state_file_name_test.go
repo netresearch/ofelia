@@ -70,3 +70,36 @@ func TestReload_StateFileJobKeepsItsNameAgainstTheINIJob(t *testing.T) {
 		})
 	}
 }
+
+// An INI job added on a reload while a job from the state file or the web API
+// holds its name is kept unregistered, as at boot, and is not reported as a
+// job the scheduler refused.
+func TestReload_AddedINIJobLeavesTheAPIJobItsName(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.ini")
+	write := func(body string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+	}
+	write("[global]\n")
+	logger := test.NewTestLogger()
+	cfg, err := BuildFromFile(path, logger)
+	require.NoError(t, err)
+	cfg.sh = core.NewScheduler(logger)
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+	cfg.dockerHandler = &DockerHandler{ctx: context.Background(), logger: logger}
+	cfg.configPath = path
+	cfg.levelVar = &slog.LevelVar{}
+	cfg.registerAllJobs()
+	api, err := cfg.BuildAPIJob("shop.report", persist.Job{Type: persist.JobTypeLocal, Schedule: "@hourly", Command: "echo api"})
+	require.NoError(t, err)
+	require.NoError(t, cfg.sh.AddJob(api))
+
+	cfg.configModTime = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	write("[job-local \"shop.report\"]\nschedule = @daily\ncommand = echo ini\n")
+	require.NoError(t, cfg.iniConfigUpdate())
+
+	assert.Same(t, api, cfg.sh.GetAnyJob("shop.report"))
+	assert.Empty(t, cfg.sh.GetUnschedulableJobs(), "the added INI job is reported as refused")
+}

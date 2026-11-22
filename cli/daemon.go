@@ -607,7 +607,8 @@ func waitForServerWithErrChan(ctx context.Context, addr string, errChan <-chan e
 // evaluates every job, with one exception: go-cron keeps the run-on-startup
 // flag of the entry UpdateJob swaps a job into. A record replacing a
 // run-on-startup job is therefore registered by RemoveJob and AddJob, and
-// the old job is registered again when the scheduler refuses the record.
+// the old job is registered again when the scheduler refuses the record. In
+// that case only, the old job is also listed as removed.
 func (c *DaemonCommand) applyPersistedJob(name string, job core.Job) error {
 	existing := c.scheduler.GetAnyJob(name)
 	switch {
