@@ -35,6 +35,7 @@ func TestInitPersistStore_WiresScheduleRecords(t *testing.T) {
 	c := newDaemonForPersistTest(t)
 	c.config = NewConfig(c.Logger)
 	c.config.configPath = "/etc/ofelia.ini"
+	c.config.configLoaded = true
 	c.config.sh = c.scheduler
 	c.config.ComposeJobs["shop.backup"] = durableComposeJob("shop.backup")
 	c.StateFile = writePersistFile(t, persist.State{
@@ -50,13 +51,14 @@ func TestInitPersistStore_WiresScheduleRecords(t *testing.T) {
 		"the record of a removed job is pruned, the configured job's record stays")
 }
 
-// When the configuration file did not load, boot runs with an empty
-// configuration that knows none of the jobs; it prunes nothing, so the
-// records, unended dispatches included, survive until the file loads again.
+// When the configuration file did not load, boot runs with the fallback
+// configuration, which knows none of the jobs but keeps the file's path for
+// the watcher; it prunes nothing, so the records, unended dispatches
+// included, survive until the file loads again.
 func TestInitPersistStore_FailedConfigKeepsScheduleRecords(t *testing.T) {
 	t.Parallel()
 	c := newDaemonForPersistTest(t)
-	c.config = NewConfig(c.Logger)
+	c.config = fallbackConfig(c.Logger, "/etc/ofelia.ini", scheduleStateFor("/var/lib/ofelia/state.json"))
 	c.config.sh = c.scheduler
 	c.StateFile = writePersistFile(t, persist.State{
 		Schedules: map[string]*persist.Schedule{

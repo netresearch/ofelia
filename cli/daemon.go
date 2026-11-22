@@ -125,8 +125,7 @@ func (c *DaemonCommand) boot() (err error) {
 	config, err := buildFromFile(c.ConfigFile, c.Logger, scheduleStateFor(c.StateFile))
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
-		// Create an empty config if loading failed
-		config = NewConfig(c.Logger)
+		config = fallbackConfig(c.Logger, c.ConfigFile, scheduleStateFor(c.StateFile))
 	}
 	config.levelVar = c.LevelVar
 	c.applyOptions(config)
@@ -696,9 +695,10 @@ func (c *DaemonCommand) initPersistStore() error {
 func (c *DaemonCommand) wireScheduleRecords() {
 	c.scheduler.SetScheduleStore(c.persistStore)
 	// A configuration that failed to load knows none of its jobs (boot falls
-	// back to an empty one, and only a loaded file sets configPath); pruning
-	// with it would delete every record, unended dispatches included.
-	if c.config != nil && c.config.configPath != "" {
+	// back to an empty one, which keeps the file's path for the watcher but is
+	// not marked loaded); pruning with it would delete every record, unended
+	// dispatches included.
+	if c.config != nil && c.config.configLoaded {
 		c.config.pruneScheduleRecords()
 	}
 }
@@ -741,4 +741,16 @@ func validatePersistedJobName(name string) error {
 		}
 	}
 	return nil
+}
+
+// fallbackConfig is the empty config the daemon runs with when the config file
+// does not load at boot. It keeps the file's path, so the config watcher loads
+// the file once it has been fixed instead of never reading it again, and the
+// schedule-state mode that load uses. It is not marked as loaded, so boot
+// prunes no schedule record with it.
+func fallbackConfig(logger *slog.Logger, path string, state scheduleStateMode) *Config {
+	config := NewConfig(logger)
+	config.configPath = path
+	config.scheduleState = state
+	return config
 }
