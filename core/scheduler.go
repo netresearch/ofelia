@@ -927,6 +927,16 @@ func (s *Scheduler) recordUnschedulable(name string, reason error) {
 	s.unschedulable[name] = reason.Error()
 }
 
+// DiscardRefusal forgets that the scheduler refused a job of name. It is for
+// a caller whose refused job belongs to no configuration, such as a rejected
+// API request: the health check counts refusals as configured jobs that are
+// not scheduled.
+func (s *Scheduler) DiscardRefusal(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.unschedulable, name)
+}
+
 // GetUnschedulableJobs returns a copy of the jobs the scheduler refused,
 // keyed by job name with the reason as the value. Empty means every job that
 // was offered is registered.

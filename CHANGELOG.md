@@ -44,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scheduler now removes a job only when it is the job registered under its
   name, and a job edited in the web UI keeps its cron ID
   ([#974](https://github.com/netresearch/ofelia/pull/974)).
+- **A create request the scheduler refuses no longer degrades the health
+  check.** A web API create under a name an API job already held, or with a
+  schedule the scheduler cannot parse, answered `400` and left the health
+  check reporting a configured job that is not scheduled until the name was
+  removed or registered again
+  ([#974](https://github.com/netresearch/ofelia/pull/974)).
+- **A state-file job that replaces an INI or label job at boot no longer lists
+  that job as removed.** `/api/jobs/removed` showed the INI or label job,
+  which is still in the configuration, and kept showing it when the scheduler
+  refused the state-file job and the INI or label job went on running
+  ([#974](https://github.com/netresearch/ofelia/pull/974)).
 - **A failed write of the state file no longer stops a Compose job until the
   next reload.** For a Compose job with `missed_fires: one` or
   `concurrency: queue`, a failed write while a fire waited for a slot, or

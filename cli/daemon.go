@@ -617,29 +617,18 @@ func (c *DaemonCommand) initPersistStore() error {
 			continue
 		}
 		// Replace any same-named job from INI/labels — persisted API
-		// state is authoritative for its own jobs. Use UpdateJob when
-		// the slot exists, else AddJob. The RemoveJob error path is
-		// logged but not fatal: a failed remove typically means the
-		// job already vanished between GetAnyJob and RemoveJob (race
-		// with label sync); the subsequent AddJob will either succeed
-		// or hit a duplicate-name path, both of which are surfaced.
-		existing := c.scheduler.GetAnyJob(name)
-		if existing != nil {
-			if rmErr := c.scheduler.RemoveJob(existing); rmErr != nil {
-				c.Logger.Warn("could not remove existing job to apply persisted state",
-					"job", name, "error", rmErr)
-			}
+		// state is authoritative for its own jobs. UpdateJob replaces it in
+		// place: the INI or label job is still configured, so it is not
+		// listed as removed, and when the scheduler refuses the record the
+		// job it was to replace keeps running. Before Start, UpdateJob and
+		// AddJob register alike; Start evaluates every job.
+		if c.scheduler.GetAnyJob(name) != nil {
+			err = c.scheduler.UpdateJob(name, job.GetSchedule(), job)
+		} else {
+			err = c.scheduler.AddJob(job)
 		}
-		if err := c.scheduler.AddJob(job); err != nil {
+		if err != nil {
 			c.Logger.Warn("could not apply persisted job", "job", name, "error", err)
-			// The job from INI or labels that the record was to replace keeps
-			// running; a record that cannot be scheduled must not take it down.
-			if existing != nil {
-				if reErr := c.scheduler.AddJob(existing); reErr != nil {
-					c.Logger.Warn("could not restore the job the persisted state was to replace",
-						"job", name, "error", reErr)
-				}
-			}
 			continue
 		}
 		if c.restoredJobs == nil {
