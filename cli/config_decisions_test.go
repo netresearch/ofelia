@@ -63,11 +63,14 @@ func TestRegisterAllJobs_RefusesJobsThatCannotRun(t *testing.T) {
 }
 
 // A value that is only a comment is empty, as before SpaceBeforeInlineComment;
-// a quoted value and a """ block keep their # and ;.
+// a quoted value and a multi-line block keep their # and ;. A """ or a
+// backtick elsewhere on a line does not change how later lines are read.
 func TestLoadINI_ValueThatIsOnlyACommentIsEmpty(t *testing.T) {
 	t.Parallel()
 	f, err := loadINI([]byte("[global]\nlog-level = # use default\nsemi = ; none\n" +
-		"quoted = \"# kept\"\nkeep = a # note\nblock = \"\"\"\nx = # kept\n\"\"\"\n"))
+		"quoted = \"# kept\"\nkeep = a # note\nblock = \"\"\"\nx = # kept\n\"\"\"\n" +
+		"# use \"\"\" for multi-line commands\nafter-stray = # default\n" +
+		"tick = `sh -c '\nFOO= #bar\n'`\nshadow = a\nshadow = # b\n"))
 	require.NoError(t, err)
 	s := f.Section("global")
 	assert.Empty(t, s.Key("log-level").String())
@@ -75,4 +78,7 @@ func TestLoadINI_ValueThatIsOnlyACommentIsEmpty(t *testing.T) {
 	assert.Equal(t, "# kept", s.Key("quoted").String())
 	assert.Equal(t, "a", s.Key("keep").String())
 	assert.Equal(t, "\nx = # kept\n", s.Key("block").String())
+	assert.Empty(t, s.Key("after-stray").String(), "a stray \"\"\" in a comment switched the rule off")
+	assert.Equal(t, "sh -c '\nFOO= #bar\n'", s.Key("tick").String())
+	assert.Equal(t, []string{"a"}, s.Key("shadow").ValueWithShadows())
 }

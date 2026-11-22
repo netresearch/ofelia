@@ -4,20 +4,30 @@
 package cli
 
 import (
-	"bytes"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 
 	ini "gopkg.in/ini.v1"
 )
 
 // loadINI parses an INI config the way the daemon reads it: with
-// iniLoadOptions, after blankCommentValues.
+// iniLoadOptions, and with a value that holds only a comment left empty.
 func loadINI(data []byte) (*ini.File, error) {
-	f, err := ini.LoadSources(iniLoadOptions, blankCommentValues(data))
+	f, err := ini.LoadSources(iniLoadOptions, data)
 	if err != nil {
 		return nil, fmt.Errorf("parse INI: %w", err)
 	}
+	// The same text read without SpaceBeforeInlineComment, which the options
+	// add, tells which values are only a comment.
+	withoutSpaceRule := iniLoadOptions
+	withoutSpaceRule.SpaceBeforeInlineComment = false
+	plain, err := ini.LoadSources(withoutSpaceRule, data)
+	if err != nil {
+		return nil, fmt.Errorf("parse INI: %w", err)
+	}
+	blankCommentValues(f, plain)
 	return f, nil
 }
 
@@ -31,33 +41,55 @@ func LoadINIFile(path string) (*ini.File, error) {
 	return loadINI(data)
 }
 
-// blankCommentValues empties a value that holds only a comment, such as
-// "log-level = # default". With SpaceBeforeInlineComment, go-ini drops the
+// blankCommentValues drops from f each value that holds only a comment, such
+// as "log-level = # default". With SpaceBeforeInlineComment, go-ini drops the
 // space after the delimiter before it looks for a comment, so the comment
-// would become the value; without that option such a line had an empty
-// value. A quoted value and the lines of a """ block stay as they are.
-func blankCommentValues(src []byte) []byte {
-	lines := bytes.Split(src, []byte("\n"))
-	inBlock := false
-	for i, line := range lines {
-		if bytes.Count(line, []byte(`"""`))%2 == 1 {
-			inBlock = !inBlock
+// becomes the value. plain is the same text parsed without that option: a
+// value of f that starts with # or ; is kept only where plain has it too, as
+// for a quoted value or a multi-line block. A key left without a value is
+// empty, as plain has it.
+func blankCommentValues(f, plain *ini.File) {
+	for _, sec := range f.Sections() {
+		plainSec, err := plain.GetSection(sec.Name())
+		if err != nil {
 			continue
 		}
-		if inBlock {
-			continue
-		}
-		t := bytes.TrimLeft(line, " \t")
-		if len(t) == 0 || t[0] == '#' || t[0] == ';' || t[0] == '[' {
-			continue
-		}
-		d := bytes.IndexAny(t, "=:")
-		if d < 0 {
-			continue
-		}
-		if v := bytes.TrimLeft(t[d+1:], " \t"); len(v) > 0 && (v[0] == '#' || v[0] == ';') {
-			lines[i] = line[:len(line)-len(t)+d+1]
+		for _, key := range sec.Keys() {
+			values := key.ValueWithShadows()
+			var plainValues []string
+			if plainSec.HasKey(key.Name()) {
+				plainValues = plainSec.Key(key.Name()).ValueWithShadows()
+			}
+			if kept := withoutCommentValues(values, plainValues); len(kept) != len(values) {
+				replaceValues(sec, key, kept)
+			}
 		}
 	}
-	return bytes.Join(lines, []byte("\n"))
+}
+
+// withoutCommentValues returns values without those that start with # or ;
+// and that plainValues, the values of the plain parse, do not hold.
+func withoutCommentValues(values, plainValues []string) []string {
+	return slices.DeleteFunc(slices.Clone(values), func(v string) bool {
+		return (strings.HasPrefix(v, "#") || strings.HasPrefix(v, ";")) && !slices.Contains(plainValues, v)
+	})
+}
+
+// replaceValues sets the values of key to kept, or to an empty value when
+// kept is empty. A key with shadows is recreated, because go-ini cannot drop
+// a shadow.
+func replaceValues(sec *ini.Section, key *ini.Key, kept []string) {
+	if len(kept) == 0 {
+		kept = []string{""}
+	}
+	if len(key.ValueWithShadows()) == 1 {
+		key.SetValue(kept[0])
+		return
+	}
+	name := key.Name()
+	sec.DeleteKey(name)
+	nk, _ := sec.NewKey(name, kept[0])
+	for _, v := range kept[1:] {
+		_ = nk.AddShadow(v)
+	}
 }
