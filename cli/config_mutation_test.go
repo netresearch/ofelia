@@ -32,7 +32,7 @@ func TestSectionToMap_BoundaryExact(t *testing.T) {
 	t.Parallel()
 
 	// Create an INI section with exactly one value per key
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true},
+	cfg, err := ini.LoadSources(iniLoadOptions,
 		[]byte("[test]\nsingle = value1\n"))
 	require.NoError(t, err)
 	section := cfg.Section("test")
@@ -51,7 +51,7 @@ func TestSectionToMap_BoundaryExact(t *testing.T) {
 func TestSectionToMap_MultipleValues(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true},
+	cfg, err := ini.LoadSources(iniLoadOptions,
 		[]byte("[test]\nmulti = alpha\nmulti = beta\n"))
 	require.NoError(t, err)
 	section := cfg.Section("test")
@@ -69,7 +69,7 @@ func TestSectionToMap_MultipleValues(t *testing.T) {
 func TestSectionToMap_ExactlyTwoValues(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true},
+	cfg, err := ini.LoadSources(iniLoadOptions,
 		[]byte("[test]\nkey = val1\nkey = val2\n"))
 	require.NoError(t, err)
 	section := cfg.Section("test")
@@ -87,7 +87,7 @@ func TestSectionToMap_ExactlyTwoValues(t *testing.T) {
 func TestSectionToMap_EmptyValue(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true},
+	cfg, err := ini.LoadSources(iniLoadOptions,
 		[]byte("[test]\nempty =\n"))
 	require.NoError(t, err)
 	section := cfg.Section("test")

@@ -247,8 +247,13 @@ func resolveConfigFiles(pattern string) ([]string, error) {
 // iniLoadOptions is how every INI config is read. A # or ; starts an inline
 // comment only after a space, so a value such as the schedule "0 12 * * FRI#3"
 // or the command "echo a;echo b" is kept whole, as labels and the web API
-// keep it; "key = value # note" still ends at the comment.
+// keep it; "key = value # note" still ends at the comment. A tab before the
+// # or ; does not start a comment.
 var iniLoadOptions = ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true, SpaceBeforeInlineComment: true}
+
+// INILoadOptions returns the options every INI config is read with, for a
+// reader outside this package that must parse the file as the daemon does.
+func INILoadOptions() ini.LoadOptions { return iniLoadOptions }
 
 // loadConfigFile reads one INI config file, parses it into c, merges used keys
 // into allUsedKeys, logs unknown-key warnings, and updates latest with the file
@@ -918,7 +923,10 @@ func (c *Config) registerAllJobs() {
 func (c *Config) finishJob(name string, j jobConfig, wm *middlewares.WebhookManager) int {
 	if err := c.assembleJob(name, j); err != nil {
 		c.logger.Error(msgJobConfigError, "job", name, "error", err)
-		c.sh.RecordRefusal(name, err)
+		// A job of another kind may already run under the name.
+		if c.sh.GetAnyJob(name) == nil {
+			c.sh.RecordRefusal(name, err)
+		}
 		return 1
 	}
 	j.buildMiddlewares(c.logger, wm)

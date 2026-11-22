@@ -54,7 +54,7 @@ func TestDocumentedINIParses(t *testing.T) {
 		name := b.file + ":" + strconv.Itoa(b.line)
 		t.Run(name, func(t *testing.T) {
 			cfg, err := ini.LoadSources(
-				ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true},
+				iniLoadOptions,
 				[]byte(b.body),
 			)
 			if err != nil {

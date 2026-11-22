@@ -30,6 +30,15 @@ func TestBuildFromString_InlineCommentNeedsASpace(t *testing.T) {
 	assert.Equal(t, "true", cfg.LocalJobs["noted"].Command)
 }
 
+// Only a space starts an inline comment: after a tab the # is part of the
+// value, as go-ini's SpaceBeforeInlineComment defines it.
+func TestBuildFromString_InlineCommentAfterATabStaysInTheValue(t *testing.T) {
+	t.Parallel()
+	cfg, err := BuildFromString("[job-local \"tabbed\"]\nschedule = @daily\t# once a day\ncommand = true\n", test.NewTestLogger())
+	require.NoError(t, err)
+	assert.Equal(t, "@daily\t# once a day", cfg.LocalJobs["tabbed"].Schedule)
+}
+
 // A job that can never run is refused at load and reported, and the other
 // jobs run.
 func TestRegisterAllJobs_RefusesJobsThatCannotRun(t *testing.T) {

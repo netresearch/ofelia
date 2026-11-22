@@ -397,6 +397,7 @@ A `#` or `;` starts a comment at the start of a line, or after a space inside
 a value: `schedule = @daily # once a day` is `@daily`. Without a space before
 it, the character belongs to the value, so `schedule = 0 12 * * FRI#3` keeps the
 nth-weekday syntax and `command = echo a;echo b` keeps the second command.
+Only a space counts: after a tab, `#` and `;` belong to the value too.
 
 ### Global Settings
 
@@ -1333,7 +1334,8 @@ without `image` or `container`, a `job-service-run` without `image`, and a
 directory such as `/etc`. The error is logged, the health check lists the job
 as not scheduled, and the other jobs run. This holds for INI files, labels, the
 web API and jobs restored from the state file; `ofelia validate` reports the
-same jobs.
+same jobs. A state-file job refused at restore stays in the state file until
+`POST /api/jobs/delete` removes it.
 
 **Strict Validation (Opt-in)**
 

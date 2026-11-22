@@ -1138,7 +1138,9 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	j := s.scheduler.GetAnyJob(req.Name)
 	if j == nil {
-		http.Error(w, msgJobNotFound, http.StatusNotFound)
+		if !s.deleteUnrestoredJob(w, req.Name) {
+			http.Error(w, msgJobNotFound, http.StatusNotFound)
+		}
 		return
 	}
 	// #593: only API-mutated jobs can be deleted. INI/Docker-label
@@ -1396,4 +1398,29 @@ func extractToken(r *http.Request) string {
 	}
 
 	return ""
+}
+
+// deleteUnrestoredJob removes a job that the state file holds but the
+// scheduler does not, such as a job a restart refused to restore because it
+// no longer validates, and reports whether it wrote the response. Without it
+// such an entry, and its report in the health check, could only be removed
+// by editing the state file.
+func (s *Server) deleteUnrestoredJob(w http.ResponseWriter, name string) bool {
+	if s.persistStore == nil {
+		return false
+	}
+	if _, ok := s.persistStore.Snapshot().Jobs[name]; !ok {
+		return false
+	}
+	if s.guardConfigOwned(w, name, "delete") {
+		return true
+	}
+	if err := s.persistStore.RemoveJob(name); err != nil {
+		s.scheduler.Logger.Error("persist remove job failed", "job", name, "error", err)
+		http.Error(w, "failed to delete job", http.StatusInternalServerError)
+		return true
+	}
+	s.scheduler.DiscardRefusal(name)
+	w.WriteHeader(http.StatusNoContent)
+	return true
 }
