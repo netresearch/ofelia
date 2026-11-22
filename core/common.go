@@ -387,7 +387,7 @@ func middlewareKey(m Middleware) string {
 // j.Use(s.Middlewares()...). See middlewareKey for the dedup-key strategy.
 //
 // Not safe for concurrent use; callers must serialize. In practice
-// (*Scheduler).Use happens under Scheduler.mu, and (*BareJob).Use is
+// the scheduler's container is guarded by Scheduler.mwMu, and (*BareJob).Use is
 // invoked from config-parse paths and from AddJob before the job is
 // published to the cron runner — there is no in-flight reader during
 // mutation.

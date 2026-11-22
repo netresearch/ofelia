@@ -676,17 +676,27 @@ func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
 		c.logger.Error("job will not run: the scheduler rejected it",
 			"job", name, "error", err)
 		if disabled {
-			c.disabledMu.Lock()
-			if c.disabledUnregistered == nil {
-				c.disabledUnregistered = make(map[string]bool)
-			}
-			c.disabledUnregistered[name] = true
-			c.disabledMu.Unlock()
+			c.rememberDisabledUnregistered(name)
 		}
 		return false
 	}
 	c.forgetDisabledName(name)
 	return true
+}
+
+// msgJobConfigError is logged for a job whose definition does not assemble or
+// validate.
+const msgJobConfigError = "Job configuration error"
+
+// rememberDisabledUnregistered remembers name as disabled for when a job of
+// that name is registered later, such as a job the scheduler did not accept.
+func (c *Config) rememberDisabledUnregistered(name string) {
+	c.disabledMu.Lock()
+	defer c.disabledMu.Unlock()
+	if c.disabledUnregistered == nil {
+		c.disabledUnregistered = make(map[string]bool)
+	}
+	c.disabledUnregistered[name] = true
 }
 
 // rememberRefusedChange records that the scheduler refused the definition
@@ -713,6 +723,50 @@ func (c *Config) forgetRefusedChange(name string) bool {
 	_, ok := c.refusedChanges[name]
 	delete(c.refusedChanges, name)
 	return ok
+}
+
+// RegisterConfiguredJob registers the INI or label job called name when no
+// job holds that name, for example after the API job that had taken the name
+// was deleted. Such a job stays in the config unregistered while the API job
+// runs, and an unchanged definition is not registered again by a reload.
+// disabled carries the pause of the job that held the name: the persisted
+// pause is kept by name and applies to the configured job after a restart.
+func (c *Config) RegisterConfiguredJob(name string, disabled bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.sh == nil || c.sh.GetAnyJob(name) != nil {
+		return
+	}
+	disabled = disabled || c.wasDisabled(name)
+	// The order of registerAllJobs, so a name defined by two kinds gets the
+	// job boot would have registered.
+	_ = registerConfigured(c, c.ExecJobs, name, disabled) ||
+		registerConfigured(c, c.RunJobs, name, disabled) ||
+		registerConfigured(c, c.LocalJobs, name, disabled) ||
+		registerConfigured(c, c.ServiceJobs, name, disabled) ||
+		registerConfigured(c, c.ComposeJobs, name, disabled)
+}
+
+// registerConfigured registers the job called name from m and reports
+// whether it did. A job that does not validate, which boot rejected, stays
+// unregistered, and the next job kind is tried, as boot does.
+func registerConfigured[J jobConfig](c *Config, m map[string]J, name string, disabled bool) bool {
+	j, ok := m[name]
+	if !ok {
+		return false
+	}
+	if v, ok := any(j).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			c.logger.Error(msgJobConfigError, "job", name, "error", err)
+			// The pause must hold when the job is fixed and registered.
+			if disabled {
+				c.rememberDisabledUnregistered(name)
+			}
+			return false
+		}
+	}
+	j.buildMiddlewares(c.logger, c.getWebhookManager())
+	return c.registerJobAs(name, j, disabled)
 }
 
 // heldByAPIJob reports whether a job that does not come from the INI file or
@@ -794,7 +848,7 @@ func (c *Config) registerAllJobs() {
 // refused it, so callers can accumulate without a branch of their own.
 func (c *Config) finishJob(name string, j jobConfig, wm *middlewares.WebhookManager) int {
 	if err := c.assembleJob(name, j); err != nil {
-		c.logger.Error("Job configuration error", "job", name, "error", err)
+		c.logger.Error(msgJobConfigError, "job", name, "error", err)
 		return 1
 	}
 	j.buildMiddlewares(c.logger, wm)
@@ -1093,7 +1147,7 @@ func syncJobMap[J jobConfig](
 
 func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, prep func(string, J) error, source JobSource) bool {
 	if err := prep(name, newJob); err != nil {
-		c.logger.Error("Job configuration error", "job", name, "error", err)
+		c.logger.Error(msgJobConfigError, "job", name, "error", err)
 		return false
 	}
 	newJob.SetJobSource(source)
@@ -1243,6 +1297,10 @@ func addNewJob[J jobConfig](
 func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	c.logger.Debug("dockerContainersUpdate started")
 
+	// An INI reload replaces c.Global under c.mu on its own goroutine. The
+	// labels are parsed against a copy of it and merged back in the same
+	// locked section, so a [global] change in between is not undone.
+	c.mu.Lock()
 	parsedLabelConfig := newScratchConfig(c)
 	_ = parsedLabelConfig.buildFromDockerContainers(containers)
 
@@ -1256,7 +1314,6 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 		}
 	}
 
-	c.mu.Lock()
 	// Forward allow-listed non-webhook globals (Slack, Mail, Save,
 	// log-level, max-runtime, notification-cooldown, enable-strict-validation)
 	// BEFORE syncJobMap so job assembly — which calls
