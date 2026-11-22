@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A reload keeps a job running when the scheduler refuses its changed
+  definition.** An INI or label job changed to a definition the scheduler
+  refuses, for example `schedule = not-a-schedule`, was removed, and nothing
+  ran under its name until a later reload fixed it. The previous definition
+  now keeps running, or stays paused, and an INI job that would override a
+  label job of its name leaves the label job running. The refusal is logged and
+  the health check reports the job as not scheduled until the configuration is
+  fixed ([#976](https://github.com/netresearch/ofelia/pull/976)).
 - **A manual run that would be skipped is refused with `409 Conflict`.**
   `POST /api/jobs/run` and the web UI's run button answered `204` for a job
   whose run the global limit (`[global] max-concurrent-jobs`) or `no-overlap`

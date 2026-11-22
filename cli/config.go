@@ -1007,7 +1007,7 @@ type jobConfig interface {
 // Returns true when the caller should proceed to addNewJob (the existing entry,
 // if any, has already been removed from the scheduler). Returns false when the
 // job should be skipped (e.g. INI takes precedence over a label-defined entry).
-func reconcileParsedJob[J jobConfig](c *Config, name string, cur J, curOK bool, source JobSource, jobKind string) bool {
+func reconcileParsedJob[J jobConfig](c *Config, name string, j, cur J, curOK bool, source JobSource, jobKind string) bool {
 	if !curOK {
 		return true // no existing entry — always add
 	}
@@ -1015,6 +1015,10 @@ func reconcileParsedJob[J jobConfig](c *Config, name string, cur J, curOK bool, 
 	case cur.GetJobSource() == source:
 		return false // same source, already updated in the first loop
 	case source == JobSourceINI && cur.GetJobSource() == JobSourceLabel:
+		if err := c.sh.Precheck(name, j.GetSchedule()); err != nil {
+			c.logger.Error(fmt.Sprintf("the INI %s job %q is refused; the label-defined job keeps running", jobKind, name), "error", err)
+			return false
+		}
 		c.logger.Warn(fmt.Sprintf("overriding label-defined %s job %q with INI job", jobKind, name))
 		_ = c.sh.RemoveJob(cur)
 		return true
@@ -1054,7 +1058,7 @@ func syncJobMap[J jobConfig](
 		// reconcileParsedJob may replace an existing job through RemoveJob,
 		// which forgets that the name was disabled.
 		wasDisabled := curOK && c.wasDisabled(name)
-		if reconcileParsedJob(c, name, cur, curOK, source, jobKind) {
+		if reconcileParsedJob(c, name, j, cur, curOK, source, jobKind) {
 			addNewJob(c, name, j, prep, source, current, wasDisabled)
 		}
 	}
@@ -1087,13 +1091,20 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 		c.logger.Info("the changed job is not registered: another job holds its name", "job", name)
 		return true
 	}
+	// A replacement the scheduler would refuse leaves the running job in
+	// place; the old definition stays in the config, so the next reload
+	// compares against it again.
+	if err := c.sh.Precheck(name, newJob.GetSchedule()); err != nil {
+		c.logger.Error("the changed job is refused; the previous definition keeps running", "job", name, "error", err)
+		return false
+	}
 	// RemoveJob forgets that the job was disabled, so read it first and
 	// register the replacement disabled.
 	wasDisabled := c.wasDisabled(name)
 	_ = c.sh.RemoveJob(oldJob)
 	newJob.buildMiddlewares(c.logger, c.getWebhookManager())
-	// A rejection here is worse than at boot: the old job has already been
-	// removed, so a job that was running stops and nothing takes its place.
+	// Precheck above catches the refusals of the schedule; a rejection that
+	// still happens here leaves no job, because the old one is removed.
 	c.registerJobAs(name, newJob, wasDisabled)
 	// caller updates current map entry
 	return true

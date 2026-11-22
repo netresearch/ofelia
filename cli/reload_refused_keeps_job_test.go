@@ -1,0 +1,127 @@
+// Copyright (c) 2026 Netresearch DTT GmbH
+// SPDX-License-Identifier: MIT
+
+package cli
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/netresearch/ofelia/core"
+	"github.com/netresearch/ofelia/core/domain"
+	"github.com/netresearch/ofelia/test"
+)
+
+// iniReloadConfig returns a config read from an INI file with body, with a
+// scheduler and the job registration of boot, and a function that rewrites
+// the file and reloads it.
+func iniReloadConfig(t *testing.T, body string) (*Config, func(string)) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.ini")
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+	logger := test.NewTestLogger()
+	cfg, err := BuildFromFile(path, logger)
+	require.NoError(t, err)
+	cfg.sh = core.NewScheduler(logger)
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+	cfg.dockerHandler = &DockerHandler{ctx: context.Background(), logger: logger}
+	cfg.configPath = path
+	cfg.levelVar = &slog.LevelVar{}
+	cfg.registerAllJobs()
+	return cfg, func(next string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(path, []byte(next), 0o644))
+		cfg.configModTime = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+		require.NoError(t, cfg.iniConfigUpdate())
+	}
+}
+
+// A reload that changes a job so that the scheduler refuses it keeps the
+// previous definition running and reports the refusal; a reload that fixes
+// the job registers it and clears the report.
+func TestReload_RefusedChangeKeepsTheRunningJob(t *testing.T) {
+	t.Parallel()
+	cfg, reload := iniReloadConfig(t, "[job-local \"shop.report\"]\nschedule = @daily\ncommand = echo old\n")
+	old := cfg.sh.GetAnyJob("shop.report")
+	require.NotNil(t, old)
+
+	reload("[job-local \"shop.report\"]\nschedule = not-a-schedule\ncommand = echo new\n")
+	assert.Same(t, old, cfg.sh.GetAnyJob("shop.report"), "the running job was replaced or removed")
+	assert.True(t, cfg.sh.EntryByName("shop.report").Valid())
+	assert.Contains(t, cfg.sh.GetUnschedulableJobs(), "shop.report", "the refusal is not reported")
+	assert.Empty(t, cfg.sh.GetRemovedJobs())
+
+	reload("[job-local \"shop.report\"]\nschedule = @hourly\ncommand = echo fixed\n")
+	live := cfg.sh.GetAnyJob("shop.report")
+	require.NotNil(t, live)
+	assert.Equal(t, "echo fixed", live.GetCommand())
+	assert.Empty(t, cfg.sh.GetUnschedulableJobs())
+}
+
+// The same holds for a job from labels.
+func TestReload_RefusedLabelChangeKeepsTheRunningJob(t *testing.T) {
+	t.Parallel()
+	logger := test.NewTestLogger()
+	cfg := NewConfig(logger)
+	cfg.sh = core.NewScheduler(logger)
+	cfg.buildSchedulerMiddlewares(cfg.sh)
+	cfg.dockerHandler = &DockerHandler{ctx: context.Background(), logger: logger}
+	cfg.WebhookConfigs = NewWebhookConfigs()
+	containers := func(schedule string) []DockerContainerInfo {
+		return []DockerContainerInfo{{
+			Name:  "shop",
+			State: domain.ContainerState{Running: true},
+			Labels: map[string]string{
+				"ofelia.enabled":                  "true",
+				"ofelia.job-exec.report.schedule": schedule,
+				"ofelia.job-exec.report.command":  "id",
+			},
+		}}
+	}
+	cfg.dockerContainersUpdate(containers("@daily"))
+	require.Len(t, cfg.ExecJobs, 1)
+	var name string
+	for k := range cfg.ExecJobs {
+		name = k
+	}
+	old := cfg.sh.GetAnyJob(name)
+	require.NotNil(t, old)
+
+	cfg.dockerContainersUpdate(containers("not-a-schedule"))
+	assert.Same(t, old, cfg.sh.GetAnyJob(name), "the running job was replaced or removed")
+	assert.Contains(t, cfg.sh.GetUnschedulableJobs(), name)
+}
+
+// An INI job that would override a label job of its name but that the
+// scheduler refuses leaves the label job running.
+func TestReload_RefusedINIOverrideKeepsTheLabelJob(t *testing.T) {
+	t.Parallel()
+	cfg, reload := iniReloadConfig(t, "[global]\n")
+	cfg.WebhookConfigs = NewWebhookConfigs()
+	cfg.dockerContainersUpdate([]DockerContainerInfo{{
+		Name:  "shop",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
+			"ofelia.enabled":                  "true",
+			"ofelia.job-exec.report.schedule": "@daily",
+			"ofelia.job-exec.report.command":  "id",
+		},
+	}})
+	var name string
+	for k := range cfg.ExecJobs {
+		name = k
+	}
+	label := cfg.sh.GetAnyJob(name)
+	require.NotNil(t, label)
+
+	reload("[job-exec \"" + name + "\"]\nschedule = not-a-schedule\ncontainer = shop\ncommand = id\n")
+	assert.Same(t, label, cfg.sh.GetAnyJob(name), "the label job was removed")
+	assert.Contains(t, cfg.sh.GetUnschedulableJobs(), name)
+}
