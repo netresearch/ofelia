@@ -305,6 +305,7 @@ job.Run(ctx)
 - [ ] All tests pass (`go test -tags=integration,e2e -v ./...`)
 - [ ] Code follows project style guidelines
 - [ ] Documentation updated (if needed)
+- [ ] Changelog fragment added under `changelog.d/` for a change users notice (see [changelog.d/README.md](changelog.d/README.md)), not an edit of `CHANGELOG.md`
 - [ ] Commit messages are clear and descriptive
 - [ ] No breaking changes (or clearly documented if unavoidable)
 
@@ -317,6 +318,10 @@ Ofelia uses [SLSA Level 3](https://slsa.dev/) provenance for all releases, provi
 #### Creating a Release
 
 Version is automatically derived from the git tag by GoReleaser.
+
+0. **Collect the changelog fragments** in the release pull request: run
+   `make changelog-collect` before renaming `## [Unreleased]` to the version.
+   It moves every `changelog.d/` fragment into `CHANGELOG.md`.
 
 1. **Create signed tag** (recommended for GPG-signed releases):
    ```bash

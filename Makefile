@@ -111,6 +111,14 @@ ci: vet
 	fi
 	@go test ./...
 
+.PHONY: changelog-check
+changelog-check:
+	@go run ./scripts/changelog-fragments check
+
+.PHONY: changelog-collect
+changelog-collect:
+	@go run ./scripts/changelog-fragments collect
+
 .PHONY: test
 test: 
 	@go test -v ./...
@@ -290,6 +298,8 @@ help:
 	@echo "  precommit          - Run pre-commit validation"
 	@echo "  ci                 - Run CI checks locally"
 	@echo "  tidy               - Tidy Go modules"
+	@echo "  changelog-check    - Check the changelog.d/ fragments"
+	@echo "  changelog-collect  - Move the changelog.d/ fragments into CHANGELOG.md (release commit)"
 	@echo ""
 	@echo "📊 Test Coverage: run 'make test-coverage' for current numbers"
 	@echo "🎯 Quality: 45+ linting rules, security scanning, pre-commit hooks"

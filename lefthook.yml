@@ -53,6 +53,10 @@ pre-commit:
                 sys.exit(1)
         " {staged_files}
 
+    changelog-fragments:
+      glob: "{CHANGELOG.md,changelog.d/*}"
+      run: go run ./scripts/changelog-fragments check
+
     actionlint:
       glob: ".github/workflows/*.{yml,yaml}"
       run: |
