@@ -54,6 +54,9 @@ type Scheduler struct {
 	Logger  *slog.Logger
 
 	middlewareContainer
+	// mwMu guards middlewareContainer: a reload replaces the global
+	// middlewares while a web update or a registration reads them.
+	mwMu              sync.RWMutex
 	cron              *cron.Cron
 	mu                sync.RWMutex
 	maxConcurrentJobs int
@@ -409,6 +412,27 @@ func (s *Scheduler) SetOnJobComplete(callback func(jobName string, success bool)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onJobComplete = callback
+}
+
+// Use adds global middlewares that every job registered afterwards gets.
+func (s *Scheduler) Use(ms ...Middleware) {
+	s.mwMu.Lock()
+	defer s.mwMu.Unlock()
+	s.middlewareContainer.Use(ms...)
+}
+
+// ResetMiddlewares replaces the global middlewares.
+func (s *Scheduler) ResetMiddlewares(ms ...Middleware) {
+	s.mwMu.Lock()
+	defer s.mwMu.Unlock()
+	s.middlewareContainer.ResetMiddlewares(ms...)
+}
+
+// Middlewares returns the global middlewares in the order they were added.
+func (s *Scheduler) Middlewares() []Middleware {
+	s.mwMu.RLock()
+	defer s.mwMu.RUnlock()
+	return s.middlewareContainer.Middlewares()
 }
 
 // AddJob registers j under its configured name, equivalent to AddJobWithTags

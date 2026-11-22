@@ -1271,11 +1271,15 @@ func addNewJob[J jobConfig](
 func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	c.logger.Debug("dockerContainersUpdate started")
 
+	// An INI reload replaces c.Global under c.mu on its own goroutine.
+	c.mu.RLock()
 	parsedLabelConfig := newScratchConfig(c)
+	allowHostJobs := c.Global.AllowHostJobsFromLabels
+	c.mu.RUnlock()
 	_ = parsedLabelConfig.buildFromDockerContainers(containers)
 
 	// Security: Log consolidated warning when syncing host-based jobs from container labels
-	if c.Global.AllowHostJobsFromLabels {
+	if allowHostJobs {
 		localCount := len(parsedLabelConfig.LocalJobs)
 		composeCount := len(parsedLabelConfig.ComposeJobs)
 		if localCount > 0 || composeCount > 0 {
