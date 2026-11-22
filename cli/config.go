@@ -676,17 +676,27 @@ func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
 		c.logger.Error("job will not run: the scheduler rejected it",
 			"job", name, "error", err)
 		if disabled {
-			c.disabledMu.Lock()
-			if c.disabledUnregistered == nil {
-				c.disabledUnregistered = make(map[string]bool)
-			}
-			c.disabledUnregistered[name] = true
-			c.disabledMu.Unlock()
+			c.rememberDisabledUnregistered(name)
 		}
 		return false
 	}
 	c.forgetDisabledName(name)
 	return true
+}
+
+// msgJobConfigError is logged for a job whose definition does not assemble or
+// validate.
+const msgJobConfigError = "Job configuration error"
+
+// rememberDisabledUnregistered remembers name as disabled for when a job of
+// that name is registered later, such as a job the scheduler did not accept.
+func (c *Config) rememberDisabledUnregistered(name string) {
+	c.disabledMu.Lock()
+	defer c.disabledMu.Unlock()
+	if c.disabledUnregistered == nil {
+		c.disabledUnregistered = make(map[string]bool)
+	}
+	c.disabledUnregistered[name] = true
 }
 
 // rememberRefusedChange records that the scheduler refused the definition
@@ -737,8 +747,9 @@ func (c *Config) RegisterConfiguredJob(name string, disabled bool) {
 		registerConfigured(c, c.ComposeJobs, name, disabled)
 }
 
-// registerConfigured registers the job called name from m, if m holds one.
-// A job that does not validate, which boot rejected, stays unregistered.
+// registerConfigured registers the job called name from m and reports
+// whether it did. A job that does not validate, which boot rejected, stays
+// unregistered, and the next job kind is tried, as boot does.
 func registerConfigured[J jobConfig](c *Config, m map[string]J, name string, disabled bool) bool {
 	j, ok := m[name]
 	if !ok {
@@ -746,13 +757,16 @@ func registerConfigured[J jobConfig](c *Config, m map[string]J, name string, dis
 	}
 	if v, ok := any(j).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			c.logger.Error("Job configuration error", "job", name, "error", err)
-			return true
+			c.logger.Error(msgJobConfigError, "job", name, "error", err)
+			// The pause must hold when the job is fixed and registered.
+			if disabled {
+				c.rememberDisabledUnregistered(name)
+			}
+			return false
 		}
 	}
 	j.buildMiddlewares(c.logger, c.getWebhookManager())
-	c.registerJobAs(name, j, disabled)
-	return true
+	return c.registerJobAs(name, j, disabled)
 }
 
 // heldByAPIJob reports whether a job that does not come from the INI file or
@@ -834,7 +848,7 @@ func (c *Config) registerAllJobs() {
 // refused it, so callers can accumulate without a branch of their own.
 func (c *Config) finishJob(name string, j jobConfig, wm *middlewares.WebhookManager) int {
 	if err := c.assembleJob(name, j); err != nil {
-		c.logger.Error("Job configuration error", "job", name, "error", err)
+		c.logger.Error(msgJobConfigError, "job", name, "error", err)
 		return 1
 	}
 	j.buildMiddlewares(c.logger, wm)
@@ -1133,7 +1147,7 @@ func syncJobMap[J jobConfig](
 
 func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, prep func(string, J) error, source JobSource) bool {
 	if err := prep(name, newJob); err != nil {
-		c.logger.Error("Job configuration error", "job", name, "error", err)
+		c.logger.Error(msgJobConfigError, "job", name, "error", err)
 		return false
 	}
 	newJob.SetJobSource(source)

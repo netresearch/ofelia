@@ -128,3 +128,62 @@ func TestDeleteAPIJob_InvalidConfigJobStaysUnregistered(t *testing.T) {
 
 	assert.Nil(t, c.scheduler.GetAnyJob("job"), "the rejected label job was registered")
 }
+
+// When the first job kind defining the name is refused, the next kind is
+// tried, as boot does: here boot refused the exec job and registered the
+// local job of the same name.
+func TestDeleteAPIJob_FallsBackToTheNextJobKind(t *testing.T) {
+	t.Parallel()
+	c := newDaemonForPersistTest(t)
+	cfg, err := BuildFromString("[job-exec \"dup\"]\nschedule = not-a-schedule\ncontainer = app\ncommand = id\n"+
+		"[job-local \"dup\"]\nschedule = @hourly\ncommand = echo ini\n", c.Logger)
+	require.NoError(t, err)
+	c.config = cfg
+	attachRestoreConfig(t, c, &mockDockerProviderForHandler{})
+	cfg.sh = c.scheduler
+	cfg.registerAllJobs()
+	require.Equal(t, "echo ini", c.scheduler.GetAnyJob("dup").GetCommand(), "precondition: boot registers the local job")
+	c.StateFile = writePersistFile(t, persist.State{Jobs: map[string]*persist.Job{
+		"dup": {Type: persist.JobTypeLocal, Schedule: "@daily", Command: "echo api"},
+	}})
+	require.NoError(t, c.initPersistStore())
+
+	deleteThroughAPI(t, c, "dup")
+
+	live := c.scheduler.GetAnyJob("dup")
+	require.NotNil(t, live, "the name stays unregistered although the local job is valid")
+	assert.Equal(t, "echo ini", live.GetCommand())
+}
+
+// A paused API job that shadowed a label job boot rejected leaves the pause
+// for the label job once it is fixed.
+func TestDeleteAPIJob_RejectedConfigJobKeepsThePauseForLater(t *testing.T) {
+	t.Parallel()
+	c := newDaemonForPersistTest(t)
+	cfg := NewConfig(c.Logger)
+	require.NoError(t, cfg.buildFromDockerContainers([]DockerContainerInfo{{
+		Name:  "app",
+		State: domain.ContainerState{Running: true},
+		Labels: map[string]string{
+			"ofelia.enabled":                      "true",
+			"ofelia.service":                      "true",
+			"ofelia.job-service-run.job.schedule": "@daily",
+			"ofelia.job-service-run.job.command":  "echo hi",
+		},
+	}}))
+	c.config = cfg
+	attachRestoreConfig(t, c, &mockDockerProviderForHandler{})
+	cfg.sh = c.scheduler
+	cfg.dockerHandler = &DockerHandler{ctx: context.Background(), logger: c.Logger}
+	cfg.registerAllJobs()
+	c.StateFile = writePersistFile(t, persist.State{
+		Jobs:     map[string]*persist.Job{"job": {Type: persist.JobTypeLocal, Schedule: "@daily", Command: "echo api"}},
+		Disabled: []string{"job"},
+	})
+	require.NoError(t, c.initPersistStore())
+
+	deleteThroughAPI(t, c, "job")
+
+	require.Nil(t, c.scheduler.GetAnyJob("job"))
+	assert.True(t, cfg.wasDisabled("job"), "the pause is lost for when the label job is fixed")
+}
