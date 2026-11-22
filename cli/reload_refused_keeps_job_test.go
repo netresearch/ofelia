@@ -99,29 +99,18 @@ func TestReload_RefusedLabelChangeKeepsTheRunningJob(t *testing.T) {
 	assert.Contains(t, cfg.sh.GetUnschedulableJobs(), name)
 }
 
-// An INI job that would override a label job of its name but that the
-// scheduler refuses leaves the label job running.
-func TestReload_RefusedINIOverrideKeepsTheLabelJob(t *testing.T) {
+// Taking a refused change back clears the report: the running job is the
+// configured one again.
+func TestReload_RevertedRefusedChangeClearsTheReport(t *testing.T) {
 	t.Parallel()
-	cfg, reload := iniReloadConfig(t, "[global]\n")
-	cfg.WebhookConfigs = NewWebhookConfigs()
-	cfg.dockerContainersUpdate([]DockerContainerInfo{{
-		Name:  "shop",
-		State: domain.ContainerState{Running: true},
-		Labels: map[string]string{
-			"ofelia.enabled":                  "true",
-			"ofelia.job-exec.report.schedule": "@daily",
-			"ofelia.job-exec.report.command":  "id",
-		},
-	}})
-	var name string
-	for k := range cfg.ExecJobs {
-		name = k
-	}
-	label := cfg.sh.GetAnyJob(name)
-	require.NotNil(t, label)
+	original := "[job-local \"shop.report\"]\nschedule = @daily\ncommand = echo old\n"
+	cfg, reload := iniReloadConfig(t, original)
+	old := cfg.sh.GetAnyJob("shop.report")
 
-	reload("[job-exec \"" + name + "\"]\nschedule = not-a-schedule\ncontainer = shop\ncommand = id\n")
-	assert.Same(t, label, cfg.sh.GetAnyJob(name), "the label job was removed")
-	assert.Contains(t, cfg.sh.GetUnschedulableJobs(), name)
+	reload("[job-local \"shop.report\"]\nschedule = not-a-schedule\ncommand = echo old\n")
+	require.Contains(t, cfg.sh.GetUnschedulableJobs(), "shop.report")
+
+	reload(original)
+	assert.Same(t, old, cfg.sh.GetAnyJob("shop.report"))
+	assert.Empty(t, cfg.sh.GetUnschedulableJobs(), "the report outlives the refused change")
 }

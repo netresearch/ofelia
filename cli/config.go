@@ -133,15 +133,19 @@ type Config struct {
 	// definition that registers under such a name is registered disabled.
 	disabledUnregistered map[string]bool
 	disabledMu           sync.Mutex
-	configPath           string
-	configFiles          []string
-	configModTime        time.Time
-	sh                   *core.Scheduler
-	dockerHandler        *DockerHandler
-	logger               *slog.Logger
-	levelVar             *slog.LevelVar
-	notificationDedup    *middlewares.NotificationDedup
-	WebhookConfigs       *WebhookConfigs
+	// refusedChanges holds, per job name, the hash of a changed definition
+	// the scheduler refused while the previous definition keeps running.
+	refusedChanges    map[string]string
+	refusedMu         sync.Mutex
+	configPath        string
+	configFiles       []string
+	configModTime     time.Time
+	sh                *core.Scheduler
+	dockerHandler     *DockerHandler
+	logger            *slog.Logger
+	levelVar          *slog.LevelVar
+	notificationDedup *middlewares.NotificationDedup
+	WebhookConfigs    *WebhookConfigs
 }
 
 // RLock takes the read lock that guards the job maps, for a reader on
@@ -685,6 +689,32 @@ func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
 	return true
 }
 
+// rememberRefusedChange records that the scheduler refused the definition
+// with hash newHash for the running job name, and reports whether that
+// definition is new, i.e. not refused on an earlier reload already.
+func (c *Config) rememberRefusedChange(name, newHash string) bool {
+	c.refusedMu.Lock()
+	defer c.refusedMu.Unlock()
+	if c.refusedChanges[name] == newHash {
+		return false
+	}
+	if c.refusedChanges == nil {
+		c.refusedChanges = make(map[string]string)
+	}
+	c.refusedChanges[name] = newHash
+	return true
+}
+
+// forgetRefusedChange drops the refused change of name and reports whether
+// there was one.
+func (c *Config) forgetRefusedChange(name string) bool {
+	c.refusedMu.Lock()
+	defer c.refusedMu.Unlock()
+	_, ok := c.refusedChanges[name]
+	delete(c.refusedChanges, name)
+	return ok
+}
+
 // heldByAPIJob reports whether a job that does not come from the INI file or
 // from labels, such as a job from the state file or the web API, holds name.
 func (c *Config) heldByAPIJob(name string) bool {
@@ -1007,7 +1037,7 @@ type jobConfig interface {
 // Returns true when the caller should proceed to addNewJob (the existing entry,
 // if any, has already been removed from the scheduler). Returns false when the
 // job should be skipped (e.g. INI takes precedence over a label-defined entry).
-func reconcileParsedJob[J jobConfig](c *Config, name string, j, cur J, curOK bool, source JobSource, jobKind string) bool {
+func reconcileParsedJob[J jobConfig](c *Config, name string, cur J, curOK bool, source JobSource, jobKind string) bool {
 	if !curOK {
 		return true // no existing entry — always add
 	}
@@ -1015,10 +1045,6 @@ func reconcileParsedJob[J jobConfig](c *Config, name string, j, cur J, curOK boo
 	case cur.GetJobSource() == source:
 		return false // same source, already updated in the first loop
 	case source == JobSourceINI && cur.GetJobSource() == JobSourceLabel:
-		if err := c.sh.Precheck(name, j.GetSchedule()); err != nil {
-			c.logger.Error(fmt.Sprintf("the INI %s job %q is refused; the label-defined job keeps running", jobKind, name), "error", err)
-			return false
-		}
 		c.logger.Warn(fmt.Sprintf("overriding label-defined %s job %q with INI job", jobKind, name))
 		_ = c.sh.RemoveJob(cur)
 		return true
@@ -1044,6 +1070,7 @@ func syncJobMap[J jobConfig](
 		newJob, ok := parsed[name]
 		if !ok {
 			_ = c.sh.RemoveJob(j)
+			c.forgetRefusedChange(name)
 			delete(current, name)
 			c.forgetDisabledName(name)
 			continue
@@ -1058,7 +1085,7 @@ func syncJobMap[J jobConfig](
 		// reconcileParsedJob may replace an existing job through RemoveJob,
 		// which forgets that the name was disabled.
 		wasDisabled := curOK && c.wasDisabled(name)
-		if reconcileParsedJob(c, name, j, cur, curOK, source, jobKind) {
+		if reconcileParsedJob(c, name, cur, curOK, source, jobKind) {
 			addNewJob(c, name, j, prep, source, current, wasDisabled)
 		}
 	}
@@ -1082,6 +1109,11 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 		return false
 	}
 	if newHash == oldHash {
+		// A change the scheduler refused was taken back: the running job is
+		// the configured one again.
+		if c.forgetRefusedChange(name) && c.sh.GetAnyJob(name) == core.Job(oldJob) {
+			c.sh.DiscardRefusal(name)
+		}
 		return false
 	}
 	// Another job holds the name, such as a job from the state file, which
@@ -1095,9 +1127,14 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 	// place; the old definition stays in the config, so the next reload
 	// compares against it again.
 	if err := c.sh.Precheck(name, newJob.GetSchedule()); err != nil {
-		c.logger.Error("the changed job is refused; the previous definition keeps running", "job", name, "error", err)
+		// A label reload runs on every container event; the same refused
+		// definition is logged once.
+		if c.rememberRefusedChange(name, newHash) {
+			c.logger.Error("the changed job is refused; the previous definition keeps running", "job", name, "error", err)
+		}
 		return false
 	}
+	c.forgetRefusedChange(name)
 	// RemoveJob forgets that the job was disabled, so read it first and
 	// register the replacement disabled.
 	wasDisabled := c.wasDisabled(name)
