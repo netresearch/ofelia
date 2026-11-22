@@ -522,29 +522,45 @@ func (s *Scheduler) addJob(j Job, disabled bool, tags ...string) error {
 // progress, drops the job from the active jobs and appends it to Removed. It
 // does not wait for the canceled run to stop: until it has, IsRemovedJobRunning
 // reports true for j, and a job registered under the same name skips its
-// fires (see runGate). Removal is by name, so a job that was never registered
-// is silently ignored. The error return is always nil and exists for API
-// stability.
+// fires (see runGate). Only the job registered under j's name is removed: a
+// job that was never registered, or whose name another job holds, is ignored
+// and leaves that other job running. The error return is always nil and
+// exists for API stability.
 func (s *Scheduler) RemoveJob(j Job) error {
+	name := j.GetName()
+	// regMu is held to the end, so no registration of the name can start
+	// between the check and the removal from the job lists.
+	s.regMu.Lock()
+	defer s.regMu.Unlock()
+	if !s.gate.holds(j) {
+		s.Logger.Debug("not removing a job that is not registered under its name", "job", name)
+		// A refused job that leaves the config is no longer expected to run.
+		s.mu.Lock()
+		if s.jobsByName[name] == nil {
+			delete(s.unschedulable, name)
+		}
+		s.mu.Unlock()
+		return nil
+	}
 	s.Logger.Info(fmt.Sprintf(
 		"Job deregistered (will not fire again) %q - %q - %q - ID: %v",
-		j.GetName(), j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
+		name, j.GetCommand(), j.GetSchedule(), j.GetCronJobID(),
 	))
 	// Retire before removing: a fire go-cron dispatched before the removal
 	// but that has not reached the gate yet is then refused instead of
 	// starting after the removal returned.
-	s.regMu.Lock()
-	s.gate.retire(j.GetName())
-	s.cron.RemoveByName(j.GetName())
-	s.regMu.Unlock()
+	s.gate.retire(name)
+	s.cron.RemoveByName(name)
 	s.mu.Lock()
+	// By name: the cron entry of the name is gone, and UpdateJob may have
+	// swapped another job in for j since the check above.
 	for i, job := range s.Jobs {
-		if job == j || job.GetCronJobID() == j.GetCronJobID() {
+		if job.GetName() == name {
 			s.Jobs = append(s.Jobs[:i], s.Jobs[i+1:]...)
 			break
 		}
 	}
-	delete(s.jobsByName, j.GetName())
+	delete(s.jobsByName, name)
 	// A job removed from the config is no longer expected to run, so a past
 	// refusal stops being a complaint about the current state.
 	delete(s.unschedulable, j.GetName())
@@ -995,6 +1011,7 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 		return fmt.Errorf("update job: %w", err)
 	}
 	s.gate.replace(old, w, w.durable())
+	newJob.SetCronJobID(uint64(s.cron.EntryByName(name).ID))
 	s.regMu.Unlock()
 
 	if err := s.applyUpdatedJob(name, newJob); err != nil {
