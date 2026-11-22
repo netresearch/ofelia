@@ -7,10 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // #nosec G108
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,6 +81,9 @@ type DaemonCommand struct {
 	// record it skipped is not among them, so the web server does not take
 	// its name for an API job.
 	restoredJobs map[string]*persist.Job
+	// configUnreadable is true when the config did not load at boot although
+	// it may exist, so the settings it holds, web auth included, are unknown.
+	configUnreadable bool
 }
 
 // registeredJobCount returns how many jobs the scheduler holds, enabled or
@@ -126,6 +132,7 @@ func (c *DaemonCommand) boot() (err error) {
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
 		config = fallbackConfig(c.Logger, c.ConfigFile, scheduleStateFor(c.StateFile))
+		c.configUnreadable = configMayExist(c.ConfigFile)
 	}
 	config.levelVar = c.LevelVar
 	c.applyOptions(config)
@@ -201,6 +208,13 @@ func (c *DaemonCommand) boot() (err error) {
 		return fmt.Errorf("load state file: %w", err)
 	}
 
+	// A config file that did not load may be the only place that turns web
+	// auth on; serving the web UI then would serve it without a login.
+	if c.EnableWeb && !c.WebAuthEnabled && c.configUnreadable {
+		c.Logger.Error("Web UI and API not started: the config file did not load, so whether it requires " +
+			"a login is unknown. Fix the file and restart, or set web-auth-enabled by flag or environment.")
+		c.EnableWeb = false
+	}
 	if c.EnableWeb {
 		if err := c.setupWebServer(); err != nil {
 			return err
@@ -746,6 +760,25 @@ func validatePersistedJobName(name string) error {
 		}
 	}
 	return nil
+}
+
+// configMayExist reports whether a config path whose load failed may still
+// name a file whose settings were not read. A plain path names no such file
+// when the system reports it as not existing, or when it is a directory, which
+// is what a container runtime mounts for a bind source that does not exist. A
+// symlink there counts as a file even when its target is missing: a mounted
+// config such as a Kubernetes ConfigMap is a symlink that can briefly dangle. A
+// glob may match a file the daemon cannot see, such as one in a directory it
+// cannot list, so a failed load of a glob always counts.
+func configMayExist(pattern string) bool {
+	if strings.ContainsAny(pattern, globMeta) {
+		return true
+	}
+	info, err := os.Lstat(pattern)
+	if err == nil {
+		return !info.IsDir()
+	}
+	return !errors.Is(err, fs.ErrNotExist)
 }
 
 // fallbackConfig is the empty config the daemon runs with when the config file
