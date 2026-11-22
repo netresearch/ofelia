@@ -106,6 +106,16 @@ func TestBoot_ConfigInAnUnreadableDirectoryKeepsUnauthenticatedWebOff(t *testing
 	}
 }
 
+func TestBoot_MalformedConfigGlobKeepsUnauthenticatedWebOff(t *testing.T) {
+	// Not parallel - modifies global newDockerHandler
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "x[.ini"), []byte("[global]\nweb-auth-enabled = true\n"), 0o600))
+
+	cmd, _ := bootWithWebFlag(t, filepath.Join(dir, "x[.ini"), false)
+
+	assert.Nil(t, cmd.webServer, "a path the daemon cannot resolve may name the file with the web auth settings")
+}
+
 func TestBoot_MissingConfigStillServesWeb(t *testing.T) {
 	// Not parallel - modifies global newDockerHandler
 	for name, path := range map[string]string{

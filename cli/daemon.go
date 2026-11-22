@@ -132,7 +132,7 @@ func (c *DaemonCommand) boot() (err error) {
 	if err != nil {
 		c.Logger.Warn(fmt.Sprintf("Could not load config file %q: %v", c.ConfigFile, err))
 		config = fallbackConfig(c.Logger, c.ConfigFile, scheduleStateFor(c.StateFile))
-		c.configUnreadable = configNamesAFile(c.ConfigFile)
+		c.configUnreadable = configNamesAFile(c.ConfigFile) || !errors.Is(err, fs.ErrNotExist)
 	}
 	config.levelVar = c.LevelVar
 	c.applyOptions(config)
@@ -767,7 +767,8 @@ func validatePersistedJobName(name string) error {
 // cannot be read. A failed load is "no config file" only when this is false;
 // otherwise the load missed a file that may exist (one that does not parse, a
 // dangling symlink among glob matches, a directory the daemon cannot read),
-// so the settings in it are unknown.
+// so the settings in it are unknown. boot also counts every error other than
+// "not exist" as unreadable, such as a malformed glob.
 func configNamesAFile(pattern string) bool {
 	matches, err := filepath.Glob(pattern)
 	if err == nil && len(matches) > 0 {

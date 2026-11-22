@@ -1317,7 +1317,7 @@ python3 -c "import bcrypt, getpass; print(bcrypt.hashpw(getpass.getpass('Passwor
 
 **Sessions:** a session is a random token held in the daemon's memory. It ends at logout, at expiry (`web-token-expiry`) or when the daemon restarts. `web-secret-key` is accepted but currently has no effect.
 
-**Without authentication:** the API can create and run jobs, including local jobs that execute commands on the host. The daemon logs a warning at startup when the web UI runs without authentication, and a stronger one when `web-address` is reachable from other hosts. When the config file exists but does not load at startup, the daemon does not know whether the file turns authentication on, so it does not start the web UI unless `web-auth-enabled` is set by flag or environment; fix the file and restart. When the config path names no file at all (no such file, no glob match, in a directory the daemon can read), the web UI starts as before.
+**Without authentication:** the API can create and run jobs, including local jobs that execute commands on the host. The daemon logs a warning at startup when the web UI runs without authentication, and a stronger one when `web-address` is reachable from other hosts. When the config file exists but does not load at startup, the daemon does not know whether the file turns authentication on, so it does not start the web UI unless `web-auth-enabled` is set by flag or environment; fix the file and restart. Only when the config path names no file at all (no such file or no glob match, in a directory the daemon can read) does the web UI start as before.
 
 ### Input Validation
 
