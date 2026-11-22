@@ -97,6 +97,9 @@ This file explains repo‑wide conventions and where to find scoped rules.
 - Go version tracked in `go.mod` — CI reads from `go-version-file: go.mod`
 - Update Go version in `go.mod` to fix stdlib vulnerabilities (govulncheck detects these)
 
+## Domain glossary
+- `docs/GLOSSARY.md` defines the domain terms, such as job, job definition and job source. Read it before you name a new type or function. Add a new term to that file; do not create a second `GLOSSARY.md` in the repository root.
+
 ## Index of scoped AGENTS.md
 - `./cli/AGENTS.md` — command-line interface and configuration
 - `./core/AGENTS.md` — core business logic and scheduling
