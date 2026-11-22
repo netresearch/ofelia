@@ -209,7 +209,9 @@ func occurrenceInfo(o persist.Occurrence) cron.RunInfo {
 // launch starts an occurrence whose dispatch the record already holds in the
 // state "waiting". It arrives at the job wrapper with its own scheduled time
 // and kind, where admit recognizes it. If go-cron refuses, the dispatch stays
-// waiting and the next registration of the entry starts it.
+// waiting and the next registration of the entry starts it. A waiting
+// run-on-startup run (TriggerImmediate) has no dispatch in the record: it
+// arrives like the original run-on-startup fire, and a refused one is lost.
 func (s *Scheduler) launch(l *pendingLaunch) {
 	if l == nil {
 		return
@@ -843,6 +845,8 @@ func (s *Scheduler) resumeLocked(name string) *pendingLaunch {
 		return nil
 	}
 	if ok && rec.Dispatch != nil && rec.Dispatch.State == dispatchWaiting {
+		// The resumed dispatch takes the place of a waiting run-on-startup run.
+		e.startupDefers, e.startupDue = false, false
 		return &pendingLaunch{name: name, info: occurrenceInfo(rec.Dispatch.Occurrence)}
 	}
 	return s.nextLaunchLocked(name, e)
@@ -908,6 +912,22 @@ func (s *Scheduler) durableBusy(name string) bool {
 	return busyStateLocked(rec, s.entryLocked(name)).busy()
 }
 
+// dropWaitingStartup drops a run-on-startup run that waits for the entry to
+// become idle, for a job whose definition was replaced in place.
+func (s *Scheduler) dropWaitingStartup(name string) {
+	s.durableMu.Lock()
+	defer s.durableMu.Unlock()
+	s.dropWaitingStartupLocked(name)
+}
+
+// dropWaitingStartupLocked is dropWaitingStartup for a caller that holds
+// durableMu.
+func (s *Scheduler) dropWaitingStartupLocked(name string) {
+	if e, ok := s.durable[name]; ok {
+		e.startupDefers, e.startupDue = false, false
+	}
+}
+
 // durableDisabled drops a queued and a waiting occurrence of a job that was
 // just disabled.
 func (s *Scheduler) durableDisabled(name string) {
@@ -918,9 +938,7 @@ func (s *Scheduler) durableDisabled(name string) {
 		return
 	}
 	s.logDropped(name, rec, "the job was disabled")
-	if e, ok := s.durable[name]; ok {
-		e.startupDefers, e.startupDue = false, false
-	}
+	s.dropWaitingStartupLocked(name)
 	changed := rec.Pending != nil
 	rec.Pending = nil
 	if rec.Dispatch != nil && rec.Dispatch.State == dispatchWaiting {

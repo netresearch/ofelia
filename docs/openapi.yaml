@@ -94,8 +94,8 @@ paths:
             name skips its scheduled fires until then, refuses a manual run
             with 409, and runs its run-on-startup run once the old run has
             stopped. A Compose job with schedule state replacing another
-            such job is the exception: it applies its concurrency policy and
-            refuses the run-on-startup run while the old run is busy.
+            such job is the exception: it applies its concurrency policy, and
+            its run-on-startup run waits until the old run has ended.
           content:
             application/json:
               schema:

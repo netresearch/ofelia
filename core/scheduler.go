@@ -1000,6 +1000,7 @@ func (s *Scheduler) UpdateJob(name string, newSchedule string, newJob Job) error
 	if err := s.applyUpdatedJob(name, newJob); err != nil {
 		return err
 	}
+	s.dropWaitingStartup(name)
 
 	s.Logger.Info(fmt.Sprintf("Job updated %q - %q", name, newSchedule))
 	return nil

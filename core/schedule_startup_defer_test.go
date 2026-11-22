@@ -190,6 +190,47 @@ func TestStartupDefer_ReregistrationDropsIt(t *testing.T) {
 	noRun(t, again)
 }
 
+func TestStartupDefer_UpdateDropsIt(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 10))
+	j := newDurableJob("shop.backup", false, false)
+	end := startWithOrphan(h, j, persist.Schedule{Activated: at(19, 10), Cursor: at(23, 2)})
+
+	fireStartup(h, "shop.backup")
+	waitStartupDue(h, "shop.backup")
+	updated := newDurableJob("shop.backup", false, false)
+	updated.setRunning(func(id string) (bool, error) { return j.WorkloadRunning(context.Background(), id) })
+	require.NoError(t, h.s.UpdateJob("shop.backup", durableSchedule, updated))
+	end()
+	h.eventually("shop.backup", func(r persist.Schedule) bool { return r.Workload == "" }, "the old run's end is recorded")
+	noRun(t, updated)
+	noRun(t, j)
+}
+
+// A dispatch that waited for a slot and is resumed after a registration takes
+// the place of a waiting run-on-startup run, so the job runs once.
+func TestStartupDefer_ResumedDispatchTakesItsPlace(t *testing.T) {
+	t.Parallel()
+	h := newDurableHarness(t, at(23, 10))
+	j := newDurableJob("shop.backup", false, false)
+	require.NoError(t, h.s.AddJob(j))
+	h.start()
+	rec := h.record("shop.backup")
+	rec.Dispatch = &persist.Dispatch{Occurrence: persist.Occurrence{Scheduled: at(23, 2), Trigger: triggerScheduled}, State: dispatchWaiting}
+	h.put("shop.backup", rec)
+
+	h.s.durableMu.Lock()
+	e := h.s.entryLocked("shop.backup")
+	e.startupDefers, e.startupDue = true, true
+	launch := h.s.resumeLocked("shop.backup")
+	defers, due := e.startupDefers, e.startupDue
+	h.s.durableMu.Unlock()
+
+	require.NotNil(t, launch, "the waiting dispatch is resumed")
+	assert.Equal(t, cron.TriggerScheduled, launch.info.Trigger)
+	assert.False(t, defers || due, "the resumed dispatch takes the place of the run-on-startup run")
+}
+
 // Only the run-on-startup run waits; a manual or dependency run is refused,
 // also when the registration found a run it did not start.
 func TestStartupDefer_OnlyTheStartupRunWaits(t *testing.T) {
