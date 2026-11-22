@@ -53,9 +53,10 @@ type Server struct {
 	persistStore *persist.Store
 	// buildJob builds the job of a create or update request; see JobBuilder.
 	buildJob JobBuilder
-	// nameReleased is called with the name of a deleted API job, so the
-	// configuration can register a job of its own under that name.
-	nameReleased func(name string)
+	// nameReleased is called with the name of a deleted API job and whether
+	// it was paused, so the configuration can register a job of its own
+	// under that name.
+	nameReleased func(name string, disabled bool)
 }
 
 // JobBuilder turns the definition of a job created or updated through the
@@ -76,7 +77,7 @@ func (s *Server) SetJobBuilder(b JobBuilder) {
 // SetNameReleasedHook sets what runs after an API job is deleted: an INI or
 // label job of the same name that the API job took the name of is registered
 // again there. Safe to call only before Start.
-func (s *Server) SetNameReleasedHook(f func(name string)) {
+func (s *Server) SetNameReleasedHook(f func(name string, disabled bool)) {
 	s.nameReleased = f
 }
 
@@ -1150,6 +1151,8 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	if s.guardConfigOwned(w, req.Name, "delete") {
 		return
 	}
+	// RemoveJob forgets the pause, and the state file keeps it by name.
+	wasDisabled := s.scheduler.IsJobDisabled(req.Name)
 	_ = s.scheduler.RemoveJob(j)
 	s.originsMu.Lock()
 	delete(s.origins, req.Name)
@@ -1161,7 +1164,7 @@ func (s *Server) deleteJobHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if s.nameReleased != nil {
-		s.nameReleased(req.Name)
+		s.nameReleased(req.Name, wasDisabled)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

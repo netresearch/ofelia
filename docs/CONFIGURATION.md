@@ -46,6 +46,7 @@ When the daemon runs with `--state-file=/path/to/state.json` (or `OFELIA_STATE_F
 
 - `POST /api/jobs/delete` is **only** allowed against API-origin jobs; INI/Docker-label jobs return 403 with a message naming the origin so operators know which source file to edit. (Pre-fix this handler silently removed any job from memory until the next reload — a sharp edge that #593 tightens.)
 - To suppress an INI/label job temporarily, use `POST /api/jobs/disable` instead — that *does* persist across restart.
+- Deleting an API job that had taken the name of an INI or label job registers that job again at once. A pause of the deleted job carries over, as the persisted pause does after a restart.
 
 **On-disk format** (JSON, atomic tmp+rename, schema-versioned):
 

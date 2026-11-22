@@ -719,27 +719,39 @@ func (c *Config) forgetRefusedChange(name string) bool {
 // job holds that name, for example after the API job that had taken the name
 // was deleted. Such a job stays in the config unregistered while the API job
 // runs, and an unchanged definition is not registered again by a reload.
-func (c *Config) RegisterConfiguredJob(name string) {
+// disabled carries the pause of the job that held the name: the persisted
+// pause is kept by name and applies to the configured job after a restart.
+func (c *Config) RegisterConfiguredJob(name string, disabled bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.sh == nil || c.sh.GetAnyJob(name) != nil {
 		return
 	}
-	_ = registerConfigured(c, c.ExecJobs, name) ||
-		registerConfigured(c, c.RunJobs, name) ||
-		registerConfigured(c, c.ServiceJobs, name) ||
-		registerConfigured(c, c.LocalJobs, name) ||
-		registerConfigured(c, c.ComposeJobs, name)
+	disabled = disabled || c.wasDisabled(name)
+	// The order of registerAllJobs, so a name defined by two kinds gets the
+	// job boot would have registered.
+	_ = registerConfigured(c, c.ExecJobs, name, disabled) ||
+		registerConfigured(c, c.RunJobs, name, disabled) ||
+		registerConfigured(c, c.LocalJobs, name, disabled) ||
+		registerConfigured(c, c.ServiceJobs, name, disabled) ||
+		registerConfigured(c, c.ComposeJobs, name, disabled)
 }
 
 // registerConfigured registers the job called name from m, if m holds one.
-func registerConfigured[J jobConfig](c *Config, m map[string]J, name string) bool {
+// A job that does not validate, which boot rejected, stays unregistered.
+func registerConfigured[J jobConfig](c *Config, m map[string]J, name string, disabled bool) bool {
 	j, ok := m[name]
 	if !ok {
 		return false
 	}
+	if v, ok := any(j).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			c.logger.Error("Job configuration error", "job", name, "error", err)
+			return true
+		}
+	}
 	j.buildMiddlewares(c.logger, c.getWebhookManager())
-	c.registerJobAs(name, j, c.wasDisabled(name))
+	c.registerJobAs(name, j, disabled)
 	return true
 }
 
@@ -1271,15 +1283,15 @@ func addNewJob[J jobConfig](
 func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 	c.logger.Debug("dockerContainersUpdate started")
 
-	// An INI reload replaces c.Global under c.mu on its own goroutine.
-	c.mu.RLock()
+	// An INI reload replaces c.Global under c.mu on its own goroutine. The
+	// labels are parsed against a copy of it and merged back in the same
+	// locked section, so a [global] change in between is not undone.
+	c.mu.Lock()
 	parsedLabelConfig := newScratchConfig(c)
-	allowHostJobs := c.Global.AllowHostJobsFromLabels
-	c.mu.RUnlock()
 	_ = parsedLabelConfig.buildFromDockerContainers(containers)
 
 	// Security: Log consolidated warning when syncing host-based jobs from container labels
-	if allowHostJobs {
+	if c.Global.AllowHostJobsFromLabels {
 		localCount := len(parsedLabelConfig.LocalJobs)
 		composeCount := len(parsedLabelConfig.ComposeJobs)
 		if localCount > 0 || composeCount > 0 {
@@ -1288,7 +1300,6 @@ func (c *Config) dockerContainersUpdate(containers []DockerContainerInfo) {
 		}
 	}
 
-	c.mu.Lock()
 	// Forward allow-listed non-webhook globals (Slack, Mail, Save,
 	// log-level, max-runtime, notification-cooldown, enable-strict-validation)
 	// BEFORE syncJobMap so job assembly — which calls
