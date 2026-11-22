@@ -1012,6 +1012,9 @@ func (s *Server) createJobHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.scheduler.AddJob(job); err != nil { //nolint:contextcheck // the job outlives the request
 		s.scheduler.Logger.Error("create job failed", "job", req.Name, "error", err)
+		// The guard above keeps config-owned names out, so the refusal is
+		// about this request only, not about a configured job.
+		s.scheduler.DiscardRefusal(req.Name)
 		http.Error(w, "failed to create job", http.StatusBadRequest)
 		return
 	}
@@ -1073,6 +1076,7 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := s.scheduler.AddJob(job); err != nil { //nolint:contextcheck // the job outlives the request
 			s.scheduler.Logger.Error("add job failed during update", "job", req.Name, "error", err)
+			s.scheduler.DiscardRefusal(req.Name)
 			http.Error(w, "failed to create job", http.StatusBadRequest)
 			return
 		}

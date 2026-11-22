@@ -685,6 +685,20 @@ func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
 	return true
 }
 
+// heldByAPIJob reports whether a job that does not come from the INI file or
+// from labels, such as a job from the state file or the web API, holds name.
+func (c *Config) heldByAPIJob(name string) bool {
+	holder := c.sh.GetAnyJob(name)
+	if holder == nil {
+		return false
+	}
+	if s, ok := holder.(interface{ GetJobSource() JobSource }); ok {
+		src := s.GetJobSource()
+		return src != JobSourceINI && src != JobSourceLabel
+	}
+	return true
+}
+
 // applyMaxConcurrentJobs hands [global] max-concurrent-jobs to the scheduler.
 // A value below 1 would let no job run, so it is refused with a warning and the
 // default is kept. The scheduler is only resized when the limit changes: a
@@ -1066,6 +1080,13 @@ func replaceIfChanged[J jobConfig](c *Config, name string, oldJob, newJob J, pre
 	if newHash == oldHash {
 		return false
 	}
+	// Another job holds the name, such as a job from the state file, which
+	// takes precedence over the INI and label job it replaced at boot. The
+	// new definition is kept in the config, unregistered, as at boot.
+	if holder := c.sh.GetAnyJob(name); holder != nil && holder != core.Job(oldJob) {
+		c.logger.Info("the changed job is not registered: another job holds its name", "job", name)
+		return true
+	}
 	// RemoveJob forgets that the job was disabled, so read it first and
 	// register the replacement disabled.
 	wasDisabled := c.wasDisabled(name)
@@ -1151,6 +1172,14 @@ func addNewJob[J jobConfig](
 	}
 	if err := prep(name, j); err != nil {
 		c.logger.Error(fmt.Sprintf("Job %q configuration error: %v", name, err))
+		return
+	}
+	// A job from the state file or the web API takes precedence over the
+	// INI and label job of its name, as at boot: the new job is kept in the
+	// config, unregistered, instead of being refused as a duplicate.
+	if c.heldByAPIJob(name) {
+		c.logger.Info("the job is not registered: a job from the state file or the web API holds its name", "job", name)
+		current[name] = j
 		return
 	}
 

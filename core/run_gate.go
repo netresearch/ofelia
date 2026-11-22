@@ -60,6 +60,14 @@ func (g *runGate) register(w *jobWrapper) {
 	g.current[w.j.GetName()] = w
 }
 
+// holds reports whether j is the job of the live registration of its name.
+func (g *runGate) holds(j Job) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	w := g.current[j.GetName()]
+	return w != nil && w.j == j
+}
+
 // retire marks the live registration of name as removed or replaced and
 // returns it, or nil if name has none. A run of it that is in progress keeps
 // counting until it ends; a fire of it that has not started yet is refused.
