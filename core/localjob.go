@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/gobs/args"
@@ -162,4 +163,12 @@ func (j *LocalJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 		Env: append(os.Environ(), mergedEnv...),
 		Dir: j.Dir,
 	}, nil
+}
+
+// Validate reports a job that cannot run: it needs a command.
+func (j *LocalJob) Validate() error {
+	if strings.TrimSpace(j.Command) == "" {
+		return ErrEmptyCommand
+	}
+	return nil
 }

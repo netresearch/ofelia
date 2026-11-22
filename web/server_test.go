@@ -547,7 +547,7 @@ func TestCreateJobTypes(t *testing.T) {
 		{"run1", `{"name":"run1","type":"run","schedule":"@hourly","image":"busybox"}`, http.StatusBadRequest, func(j core.Job) bool { return j == nil }},
 		{"exec1", `{"name":"exec1","type":"exec","schedule":"@hourly","container":"c1"}`, http.StatusBadRequest, func(j core.Job) bool { return j == nil }},
 		{"comp1", `{"name":"comp1","type":"compose","schedule":"@hourly","service":"db"}`, http.StatusCreated, func(j core.Job) bool { _, ok := j.(*core.ComposeJob); return ok }},
-		{"local1", `{"name":"local1","type":"local","schedule":"@hourly"}`, http.StatusCreated, func(j core.Job) bool { _, ok := j.(*core.LocalJob); return ok }},
+		{"local1", `{"name":"local1","type":"local","schedule":"@hourly","command":"true"}`, http.StatusCreated, func(j core.Job) bool { _, ok := j.(*core.LocalJob); return ok }},
 	}
 
 	for _, c := range cases {

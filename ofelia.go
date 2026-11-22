@@ -101,7 +101,7 @@ func run(args []string) int {
 	}
 
 	if pre.LogLevel == "" {
-		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, configFile)
+		cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true, SpaceBeforeInlineComment: true}, configFile)
 		if err == nil {
 			if sec, err := cfg.GetSection("global"); err == nil {
 				pre.LogLevel = cli.ExpandEnvVars(sec.Key("log-level").String())

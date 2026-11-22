@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/gobs/args"
 
@@ -181,4 +182,16 @@ func (j *ExecJob) RunWithStreams(ctx context.Context, stdout, stderr io.Writer) 
 		return exitCode, fmt.Errorf("run exec: %w", err)
 	}
 	return exitCode, nil
+}
+
+// Validate reports a job that cannot run: it needs a container to exec in
+// and a command.
+func (j *ExecJob) Validate() error {
+	if j.Container == "" {
+		return ErrExecContainerRequired
+	}
+	if strings.TrimSpace(j.Command) == "" {
+		return ErrEmptyCommand
+	}
+	return nil
 }

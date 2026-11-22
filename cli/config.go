@@ -136,8 +136,12 @@ type Config struct {
 	// refusedChanges holds, per job name, the hash of a changed definition
 	// the scheduler refused while the previous definition keeps running.
 	refusedChanges map[string]string
-	refusedMu      sync.Mutex
-	configPath     string
+	// loadRefusals holds the definitions a reload refused to assemble and
+	// reported in the health check, so the report goes when they are fixed
+	// or removed. refusedMu guards it too.
+	loadRefusals map[loadRefusalKey]struct{}
+	refusedMu    sync.Mutex
+	configPath   string
 	// configLoaded is true for a config built from its file, and false for
 	// the fallback boot runs with when the file does not load.
 	configLoaded      bool
@@ -240,6 +244,12 @@ func resolveConfigFiles(pattern string) ([]string, error) {
 	return files, nil
 }
 
+// iniLoadOptions is how every INI config is read. A # or ; starts an inline
+// comment only after a space, so a value such as the schedule "0 12 * * FRI#3"
+// or the command "echo a;echo b" is kept whole, as labels and the web API
+// keep it; "key = value # note" still ends at the comment.
+var iniLoadOptions = ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true, SpaceBeforeInlineComment: true}
+
 // loadConfigFile reads one INI config file, parses it into c, merges used keys
 // into allUsedKeys, logs unknown-key warnings, and updates latest with the file
 // mod-time. Returns an error only when the file cannot be read or parsed.
@@ -249,7 +259,7 @@ func loadConfigFile(f string, c *Config, logger *slog.Logger, allUsedKeys map[st
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
 		return fmt.Errorf("failed to load config file %q: %w\n  → Check file exists and is readable: ls -l %q\n  → Verify file path is correct\n  → Check file permissions (should be readable)", f, err, f)
 	}
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, data)
+	cfg, err := ini.LoadSources(iniLoadOptions, data)
 	if err != nil {
 		//nolint:revive // Error message intentionally verbose for UX (actionable troubleshooting hints)
 		return fmt.Errorf("failed to parse config file %q: %w\n  → Check INI syntax is valid\n  → Verify environment variable substitutions resolve correctly", f, err)
@@ -458,7 +468,7 @@ var newDockerHandler = NewDockerHandler
 // creates a scheduler — call InitializeApp on the result for that.
 func BuildFromString(configStr string, logger *slog.Logger) (*Config, error) {
 	c := NewConfig(logger)
-	cfg, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, InsensitiveKeys: true}, []byte(configStr))
+	cfg, err := ini.LoadSources(iniLoadOptions, []byte(configStr))
 	if err != nil {
 		return nil, fmt.Errorf("load ini from string: %w", err)
 	}
@@ -688,6 +698,60 @@ func (c *Config) registerJobAs(name string, j core.Job, disabled bool) bool {
 	return true
 }
 
+// loadRefusalKey names a definition of one job kind and source that a reload
+// refused to assemble.
+type loadRefusalKey struct {
+	kind   string
+	source JobSource
+	name   string
+}
+
+// reportLoadRefusals wraps prep so that a definition it refuses is reported
+// in the health check, as boot reports it, unless a job from the state file
+// or the web API runs under the name. A definition it accepts drops an
+// earlier report of the same definition.
+func reportLoadRefusals[J jobConfig](c *Config, prep func(string, J) error, kind string, source JobSource) func(string, J) error {
+	return func(name string, j J) error {
+		key := loadRefusalKey{kind: kind, source: source, name: name}
+		err := prep(name, j)
+		report := err != nil && !c.heldByAPIJob(name)
+		c.refusedMu.Lock()
+		_, had := c.loadRefusals[key]
+		delete(c.loadRefusals, key)
+		if report {
+			if c.loadRefusals == nil {
+				c.loadRefusals = make(map[loadRefusalKey]struct{})
+			}
+			c.loadRefusals[key] = struct{}{}
+		}
+		c.refusedMu.Unlock()
+		switch {
+		case report:
+			c.sh.RecordRefusal(name, err)
+		case err == nil && had:
+			c.sh.DiscardRefusal(name)
+		}
+		return err
+	}
+}
+
+// dropLoadRefusalsNotIn drops the reports of refused definitions of kind and
+// source that the configuration no longer has.
+func (c *Config) dropLoadRefusalsNotIn(kind string, source JobSource, defined func(string) bool) {
+	c.refusedMu.Lock()
+	var gone []string
+	for key := range c.loadRefusals {
+		if key.kind == kind && key.source == source && !defined(key.name) {
+			gone = append(gone, key.name)
+			delete(c.loadRefusals, key)
+		}
+	}
+	c.refusedMu.Unlock()
+	for _, name := range gone {
+		c.sh.DiscardRefusal(name)
+	}
+}
+
 // msgJobConfigError is logged for a job whose definition does not assemble or
 // validate.
 const msgJobConfigError = "Job configuration error"
@@ -762,6 +826,7 @@ func registerConfigured[J jobConfig](c *Config, m map[string]J, name string, dis
 	if v, ok := any(j).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			c.logger.Error(msgJobConfigError, "job", name, "error", err)
+			c.sh.RecordRefusal(name, err)
 			// The pause must hold when the job is fixed and registered.
 			if disabled {
 				c.rememberDisabledUnregistered(name)
@@ -853,6 +918,7 @@ func (c *Config) registerAllJobs() {
 func (c *Config) finishJob(name string, j jobConfig, wm *middlewares.WebhookManager) int {
 	if err := c.assembleJob(name, j); err != nil {
 		c.logger.Error(msgJobConfigError, "job", name, "error", err)
+		c.sh.RecordRefusal(name, err)
 		return 1
 	}
 	j.buildMiddlewares(c.logger, wm)
@@ -1121,6 +1187,8 @@ func reconcileParsedJob[J jobConfig](c *Config, name string, cur J, curOK bool, 
 func syncJobMap[J jobConfig](
 	c *Config, current, parsed map[string]J, prep func(string, J) error, source JobSource, jobKind string,
 ) {
+	prep = reportLoadRefusals(c, prep, jobKind, source)
+	defer c.dropLoadRefusalsNotIn(jobKind, source, func(name string) bool { _, ok := parsed[name]; return ok })
 	for name, j := range current {
 		if source != "" && j.GetJobSource() != source && j.GetJobSource() != "" {
 			continue

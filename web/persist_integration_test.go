@@ -100,7 +100,7 @@ func TestPersist_DeleteJob_RemovesFromStateFileWhenAPIOrigin(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated,
 		postJSON(t, srv, "/api/jobs/create",
-			`{"name":"tmp","type":"local","schedule":"@hourly"}`).Code)
+			`{"name":"tmp","type":"local","schedule":"@hourly","command":"true"}`).Code)
 	require.Equal(t, http.StatusNoContent,
 		postJSON(t, srv, "/api/jobs/delete", `{"name":"tmp"}`).Code)
 
@@ -125,7 +125,7 @@ func TestPersist_DisableJob_WritesToStateFile(t *testing.T) {
 	// Job created via API (origin=api).
 	require.Equal(t, http.StatusCreated,
 		postJSON(t, srv, "/api/jobs/create",
-			`{"name":"pauseme","type":"local","schedule":"@hourly"}`).Code)
+			`{"name":"pauseme","type":"local","schedule":"@hourly","command":"true"}`).Code)
 	require.Equal(t, http.StatusNoContent,
 		postJSON(t, srv, "/api/jobs/disable", `{"name":"pauseme"}`).Code)
 
@@ -178,7 +178,7 @@ func TestPersist_CreateJob_IgnoresMaliciousXOriginIni(t *testing.T) {
 	store := persist.NewStore(path)
 	srv := newWebServerWithStore(t, store)
 
-	body := `{"name":"trapped","type":"local","schedule":"@hourly"}`
+	body := `{"name":"trapped","type":"local","schedule":"@hourly","command":"true"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Origin", "ini") // malicious: claim config ownership
@@ -209,7 +209,7 @@ func TestPersist_CreateJob_PersistsWhenOriginWeb(t *testing.T) {
 	store := persist.NewStore(path)
 	srv := newWebServerWithStore(t, store)
 
-	body := `{"name":"from-ui","type":"local","schedule":"@hourly"}`
+	body := `{"name":"from-ui","type":"local","schedule":"@hourly","command":"true"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs/create", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Origin", "web") // exactly what static/ui/app.js sends
@@ -233,7 +233,7 @@ func TestPersist_NoStore_HandlersUnchanged(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated,
 		postJSON(t, srv, "/api/jobs/create",
-			`{"name":"ephemeral","type":"local","schedule":"@hourly"}`).Code)
+			`{"name":"ephemeral","type":"local","schedule":"@hourly","command":"true"}`).Code)
 	require.Equal(t, http.StatusNoContent,
 		postJSON(t, srv, "/api/jobs/disable", `{"name":"ephemeral"}`).Code)
 }

@@ -5,9 +5,11 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"strings"
 
 	defaults "github.com/creasty/defaults"
@@ -24,6 +26,43 @@ type ValidateCommand struct {
 	LogLevel  string `long:"log-level" env:"OFELIA_LOG_LEVEL" description:"Set log level (overrides config)"`
 	Logger    *slog.Logger
 	LevelVar  *slog.LevelVar
+}
+
+// ErrJobDefinitionInvalid is returned by validate for jobs the daemon refuses
+// at load.
+var ErrJobDefinitionInvalid = errors.New("jobs that cannot run")
+
+// validateJobDefinitions runs the validation that job assembly applies to
+// every job of the configuration and reports each job that fails it.
+func (c *Config) validateJobDefinitions() error {
+	var failed []string
+	check := func(section, name string, j any) {
+		if v, ok := j.(validatable); ok {
+			if err := v.Validate(); err != nil {
+				failed = append(failed, fmt.Sprintf("[%s %q]: %v", section, name, err))
+			}
+		}
+	}
+	for name, j := range c.ExecJobs {
+		check(jobExec, name, j)
+	}
+	for name, j := range c.RunJobs {
+		check(jobRun, name, j)
+	}
+	for name, j := range c.LocalJobs {
+		check(jobLocal, name, j)
+	}
+	for name, j := range c.ServiceJobs {
+		check(jobServiceRun, name, j)
+	}
+	for name, j := range c.ComposeJobs {
+		check(jobCompose, name, j)
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	sort.Strings(failed)
+	return fmt.Errorf("%w: %s", ErrJobDefinitionInvalid, strings.Join(failed, "; "))
 }
 
 // Execute runs the validation command
@@ -68,6 +107,12 @@ func (c *ValidateCommand) Execute(_ []string) error {
 	}
 
 	applyConfigDefaults(conf)
+	// The daemon refuses a job that fails its own validation at load, after
+	// the defaults are applied, so this command does too.
+	if err := conf.validateJobDefinitions(); err != nil {
+		c.Logger.Error("ERROR")
+		return err
+	}
 	out, err := json.MarshalIndent(conf, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)

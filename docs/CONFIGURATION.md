@@ -393,6 +393,11 @@ command = pg_dump ${DB_NAME:-mydb}
 # Registers a Compose project; its scheduled jobs become jobs named NAME.<job>
 ```
 
+A `#` or `;` starts a comment at the start of a line, or after a space inside
+a value: `schedule = @daily # once a day` is `@daily`. Without a space before
+it, the character belongs to the value, so `schedule = 0 12 * * FRI#3` keeps the
+nth-weekday syntax and `command = echo a;echo b` keeps the second command.
+
 ### Global Settings
 
 ```ini
@@ -1320,6 +1325,15 @@ Ofelia provides two levels of input validation:
 - Cron expression validation
 - Required field checks
 - Docker image name format validation
+
+A job that fails these checks is not registered: a `job-exec` without
+`container` or `command`, a `job-local` without `command`, a `job-run`
+without `image` or `container`, a `job-service-run` without `image`, and a
+`job-compose` whose service name is invalid or whose file lies in a sensitive
+directory such as `/etc`. The error is logged, the health check lists the job
+as not scheduled, and the other jobs run. This holds for INI files, labels, the
+web API and jobs restored from the state file; `ofelia validate` reports the
+same jobs.
 
 **Strict Validation (Opt-in)**
 

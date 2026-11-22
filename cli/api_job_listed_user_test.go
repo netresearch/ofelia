@@ -42,8 +42,8 @@ func TestAPIJob_ListShowsTheDefinedUser(t *testing.T) {
 	t.Parallel()
 	f := newAPIJobFixture(t, &mockDockerProviderForHandler{})
 	for _, b := range []map[string]any{
-		{"name": "inherits", "type": "exec", "schedule": "@hourly", "container": "c1"},
-		{"name": "own", "type": "exec", "schedule": "@hourly", "container": "c1", "user": "app"},
+		{"name": "inherits", "type": "exec", "schedule": "@hourly", "container": "c1", "command": "true"},
+		{"name": "own", "type": "exec", "schedule": "@hourly", "container": "c1", "command": "true", "user": "app"},
 		{"name": "local", "type": "local", "schedule": "@hourly", "command": "echo"},
 	} {
 		require.Equal(t, http.StatusCreated, f.create(t, b).Code)
@@ -62,7 +62,7 @@ func TestSetupWebServer_ListsTheRestoredUser(t *testing.T) {
 	c := newDaemonForPersistTest(t)
 	attachRestoreConfig(t, c, &mockDockerProviderForHandler{})
 	c.StateFile = writePersistFile(t, persist.State{Jobs: map[string]*persist.Job{
-		"restored": {Type: persist.JobTypeExec, Schedule: "@hourly", Container: "c1", User: "default"},
+		"restored": {Type: persist.JobTypeExec, Schedule: "@hourly", Container: "c1", Command: "true", User: "default"},
 	}})
 	require.NoError(t, c.initPersistStore())
 	c.WebAddr = "127.0.0.1:0"

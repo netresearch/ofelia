@@ -655,6 +655,11 @@ func (c *DaemonCommand) initPersistStore() error {
 		if err != nil {
 			c.Logger.Warn("skip persisted job (could not materialize)",
 				"job", name, "error", err)
+			// Reported like a configured job that cannot run, unless a job
+			// of the configuration runs under the name.
+			if c.scheduler.GetAnyJob(name) == nil {
+				c.scheduler.RecordRefusal(name, err)
+			}
 			continue
 		}
 		if err := c.applyPersistedJob(name, job); err != nil {

@@ -578,6 +578,19 @@ func (j *ComposeJob) projectArgs(validator *config.CommandValidator) ([]string, 
 	return out, nil
 }
 
+// Validate reports a job that cannot run, with the checks buildCommand applies
+// before every run: a valid service name and valid compose file paths.
+func (j *ComposeJob) Validate() error {
+	validator := config.NewCommandValidator()
+	if err := validator.ValidateServiceName(j.Service); err != nil {
+		return fmt.Errorf("invalid service name: %w", err)
+	}
+	if _, err := j.projectArgs(validator); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (j *ComposeJob) buildCommand(ctx *Context) (*exec.Cmd, error) {
 	// Validate inputs to prevent command injection
 	validator := config.NewCommandValidator()
