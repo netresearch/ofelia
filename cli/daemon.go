@@ -766,6 +766,8 @@ func validatePersistedJobName(name string) error {
 // name a file whose settings were not read. A plain path names no such file
 // when the system reports it as not existing, or when it is a directory, which
 // is what a container runtime mounts for a bind source that does not exist. A
+// symlink there counts as a file even when its target is missing: a mounted
+// config such as a Kubernetes ConfigMap is a symlink that can briefly dangle. A
 // glob may match a file the daemon cannot see, such as one in a directory it
 // cannot list, so a failed load of a glob always counts.
 func configMayExist(pattern string) bool {
