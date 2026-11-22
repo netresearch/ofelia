@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `concurrency: queue` still wait for a slot. Scheduled runs are skipped and
   recorded as before.
 
+- **The run-on-startup run of a Compose job with `missed_fires: one` or
+  `concurrency: queue` waits instead of being dropped.** When such a job
+  started while a run from before the restart, or the run of the job it
+  replaced, was still in progress, its run-on-startup run was refused and did
+  not happen. It now starts once that run has ended, as it already did for
+  every other job. A catch-up or a queued run that starts first takes its
+  place.
+
 ### Fixed
 
 - **A state-file job that fails to restore no longer makes a config job

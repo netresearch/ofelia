@@ -656,6 +656,10 @@ evaluated, and the run it admitted last. From it:
 - **Manual runs.** `POST /api/jobs/run` and the web UI are refused with
   `409 Conflict` while a run of the job is in progress or waiting, so a manual
   run never runs beside a scheduled one. A manual run does not count as a fire.
+- **Run on startup.** While a run from before the restart, or the run of the
+  job this one replaced, is still in progress, the run-on-startup run waits and
+  starts once that run has ended. A catch-up or a queued run that starts first
+  takes its place, so the job runs once, not twice.
 - **Global limit.** For these jobs the global limit of concurrent jobs
   (`[global] max-concurrent-jobs`) delays a run instead of dropping it. While the run waits for a slot, the job counts as
   busy.

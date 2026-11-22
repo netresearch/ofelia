@@ -142,6 +142,15 @@ type durableEntry struct {
 	// pruneWhenIdle retains a removed schedule only until its last workload
 	// has ended. A later durable registration keeps the record again.
 	pruneWhenIdle bool
+	// startupDefers is set when the registration found a run in progress
+	// that it did not start: a workload from before the restart, or the run
+	// of the registration it replaced. Its run-on-startup run then waits for
+	// that run instead of being refused. Cleared when the scheduler starts an
+	// occurrence of the record, which takes the run-on-startup run's place.
+	startupDefers bool
+	// startupDue is set while a run-on-startup run waits; the run starts
+	// when the entry is idle (nextLaunchLocked).
+	startupDue bool
 }
 
 // SetScheduleStore sets where schedule records are kept. Without one, no job
@@ -206,6 +215,10 @@ func (s *Scheduler) launch(l *pendingLaunch) {
 		return
 	}
 	if err := s.cron.TriggerEntryWithInfoByName(l.name, l.info); err != nil {
+		if l.info.Trigger == cron.TriggerImmediate {
+			s.Logger.Warn("could not start the waiting run-on-startup run", "job", l.name, "error", err)
+			return
+		}
 		s.Logger.Error("could not start the occurrence; it starts at the next registration",
 			"job", l.name, "scheduled", l.info.ScheduledTime, "trigger", l.info.Trigger, "error", err)
 	}
@@ -235,6 +248,10 @@ func (s *Scheduler) prepareDurableEntry(j Job, policy SchedulePolicy, disabled b
 	if ok {
 		s.settleInterruptedLocked(j, &rec, e, orphan)
 	}
+	// A run-on-startup run of this registration waits for a run that is in
+	// progress now; a waiting run of a former registration is dropped.
+	e.startupDefers = !disabled && busyStateLocked(rec, e).running()
+	e.startupDue = false
 	if !ok || rec.Revision != policy.Revision {
 		fresh := persist.Schedule{Revision: policy.Revision, Activated: now, Cursor: now}
 		if ok {
@@ -473,7 +490,7 @@ func (s *Scheduler) orphanEnded(name, executionID string) (*pendingLaunch, bool)
 	if s.pruneIdleRecordLocked(name, e) {
 		return nil, true
 	}
-	return s.startPendingLocked(name, e), true
+	return s.nextLaunchLocked(name, e), true
 }
 
 // startPendingLocked moves a queued occurrence into the dispatch, recorded as
@@ -493,6 +510,25 @@ func (s *Scheduler) startPendingLocked(name string, e *durableEntry) *pendingLau
 		return nil
 	}
 	return &pendingLaunch{name: name, info: occurrenceInfo(occ)}
+}
+
+// nextLaunchLocked returns what starts on an entry that has become idle: a
+// queued occurrence, which takes the place of a waiting run-on-startup run,
+// else that run-on-startup run. Caller holds durableMu.
+func (s *Scheduler) nextLaunchLocked(name string, e *durableEntry) *pendingLaunch {
+	if l := s.startPendingLocked(name, e); l != nil {
+		e.startupDefers, e.startupDue = false, false
+		return l
+	}
+	if !e.startupDue {
+		return nil
+	}
+	rec, _ := s.records.GetSchedule(name)
+	if busyStateLocked(rec, e).busy() || !s.cron.IsRunning() || !s.liveAndEnabled(name) {
+		return nil
+	}
+	e.startupDefers, e.startupDue = false, false
+	return &pendingLaunch{name: name, info: cron.RunInfo{ScheduledTime: s.now(), Trigger: cron.TriggerImmediate}}
 }
 
 // liveAndEnabled reports whether name has a go-cron entry and is not
@@ -519,6 +555,7 @@ func (s *Scheduler) endOrphanWatchers() {
 	for _, e := range s.durable {
 		e.stopWatch = nil
 		e.orphan = ""
+		e.startupDefers, e.startupDue = false, false
 	}
 }
 
@@ -667,9 +704,20 @@ func (s *Scheduler) arrivalLocked(name string, rec *persist.Schedule, e *durable
 	case cron.TriggerManual, cron.TriggerDependency, cron.TriggerImmediate:
 		// A manual run, one started by another job's dependency chain, and
 		// the run-on-startup run are no fires of the schedule: they do not
-		// move the cursor and are refused while the entry is busy.
+		// move the cursor and are refused while the entry is busy. A
+		// run-on-startup run waits instead while a run its registration did
+		// not start is in progress (durableEntry.startupDefers).
 		if busyStateLocked(*rec, e).busy() {
-			s.Logger.Warn("a run is in progress; the manual run is refused", "job", name)
+			if info.Trigger != cron.TriggerImmediate {
+				s.Logger.Warn("a run is in progress; the manual run is refused", "job", name)
+				return persist.Occurrence{}, false
+			}
+			if e != nil && e.startupDefers {
+				e.startupDue = true
+				s.Logger.Info("a run is in progress; the run-on-startup run starts when it has ended", "job", name)
+				return persist.Occurrence{}, false
+			}
+			s.Logger.Info("the run started at registration takes the place of the run-on-startup run", "job", name)
 			return persist.Occurrence{}, false
 		}
 		return persist.Occurrence{Scheduled: t, Trigger: triggerManual}, true
@@ -797,7 +845,7 @@ func (s *Scheduler) resumeLocked(name string) *pendingLaunch {
 	if ok && rec.Dispatch != nil && rec.Dispatch.State == dispatchWaiting {
 		return &pendingLaunch{name: name, info: occurrenceInfo(rec.Dispatch.Occurrence)}
 	}
-	return s.startPendingLocked(name, e)
+	return s.nextLaunchLocked(name, e)
 }
 
 func trySlot(slot chan struct{}) bool {
@@ -834,7 +882,7 @@ func (s *Scheduler) finishDispatch(ctx context.Context, a *admission, outcome st
 	a.release()
 	var launch *pendingLaunch
 	if !s.pruneIdleRecordLocked(a.name, e) {
-		launch = s.startPendingLocked(a.name, e)
+		launch = s.nextLaunchLocked(a.name, e)
 	}
 	s.durableMu.Unlock()
 	s.launch(launch)
@@ -870,6 +918,9 @@ func (s *Scheduler) durableDisabled(name string) {
 		return
 	}
 	s.logDropped(name, rec, "the job was disabled")
+	if e, ok := s.durable[name]; ok {
+		e.startupDefers, e.startupDue = false, false
+	}
 	changed := rec.Pending != nil
 	rec.Pending = nil
 	if rec.Dispatch != nil && rec.Dispatch.State == dispatchWaiting {
