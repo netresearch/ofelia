@@ -5,7 +5,6 @@ package cli
 
 import (
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,20 +32,12 @@ command = echo "foo"
 	err := os.WriteFile(configFile, []byte(content), 0o644)
 	require.NoError(t, err)
 
-	r, w, _ := os.Pipe()
-	oldStdout := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = oldStdout }()
-
 	cmd := ValidateCommand{ConfigFile: configFile, Logger: test.NewTestLogger()}
-	err = cmd.Execute(nil)
+	out := captureStdout(t, func() { err = cmd.Execute(nil) })
 	require.NoError(t, err)
 
-	w.Close()
-	out, _ := io.ReadAll(r)
-
 	var conf Config
-	err = json.Unmarshal(out, &conf)
+	err = json.Unmarshal([]byte(out), &conf)
 	require.NoError(t, err)
 	job, ok := conf.ExecJobs["foo"]
 	assert.True(t, ok)
@@ -95,16 +86,9 @@ command = echo "foo"
 `
 	require.NoError(t, os.WriteFile(configFile, []byte(content), 0o644))
 
-	r, w, _ := os.Pipe()
-	oldStdout := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = oldStdout }()
-
 	cmd := ValidateCommand{ConfigFile: configFile, Logger: test.NewTestLogger()}
-	err := cmd.Execute(nil)
-
-	w.Close()
-	_, _ = io.ReadAll(r)
+	var err error
+	captureStdout(t, func() { err = cmd.Execute(nil) })
 
 	require.Error(t, err, "an invalid web-address was accepted without the strict flag")
 	assert.Contains(t, err.Error(), "web-address")

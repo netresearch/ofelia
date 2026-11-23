@@ -4,9 +4,7 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -106,25 +104,14 @@ command = echo service
 				configFile = filepath.Join(t.TempDir(), "nonexistent_config.ini")
 			}
 
-			// Capture stdout
-			oldStdout := os.Stdout
-			r, w, _ := os.Pipe()
-			os.Stdout = w
-
 			logger := test.NewTestLogger()
 			cmd := &ConfigShowCommand{
 				ConfigFile: configFile,
 				Logger:     logger,
 			}
 
-			err := cmd.Execute(nil)
-
-			// Restore stdout and read captured output
-			w.Close()
-			os.Stdout = oldStdout
-			var buf bytes.Buffer
-			io.Copy(&buf, r)
-			output := buf.String()
+			var err error
+			output := captureStdout(t, func() { err = cmd.Execute(nil) })
 
 			if tt.expectedError {
 				if err == nil {
@@ -158,11 +145,6 @@ command = echo test
 		t.Fatalf("Failed to write config file: %v", err)
 	}
 
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
 	logger := test.NewTestLogger()
 	cmd := &ConfigShowCommand{
 		ConfigFile: configFile,
@@ -170,12 +152,8 @@ command = echo test
 		Logger:     logger,
 	}
 
-	err := cmd.Execute(nil)
-
-	// Restore stdout
-	w.Close()
-	os.Stdout = oldStdout
-	io.Copy(io.Discard, r)
+	var err error
+	captureStdout(t, func() { err = cmd.Execute(nil) })
 
 	if err != nil {
 		t.Errorf("Expected no error but got: %v", err)
