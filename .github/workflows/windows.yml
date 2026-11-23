@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025-2026 Netresearch DTT GmbH
+#
+# Runs the cli package tests on Windows. The release builds Windows binaries
+# (.goreleaser.yml), but go-check.yml runs every job on one runner OS, so
+# without this job no Windows test runs before a release. The cli package
+# holds the config-path handling whose glob detection differs per OS
+# (config_glob_meta_windows.go).
+#
+# A separate file because ci.yml is template-managed (check-template-drift).
+# harden-runner is left out: it supports Linux runners only.
+
+name: Windows
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+  merge_group:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: windows-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  cli-test:
+    name: cli tests (windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Test cli
+        run: go test -count=1 ./cli/...
