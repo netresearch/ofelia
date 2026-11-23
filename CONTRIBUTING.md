@@ -289,6 +289,22 @@ if err := job.Run(ctx); err != nil {
 job.Run(ctx)
 ```
 
+### Security decisions that fall back
+
+Some code picks a security setting from what it finds at run time, for example "no config file, so the unauthenticated web UI stays off". For such a change, the PR description lists every class of input the decision can see and states which way the decision goes for each class. A class that leads to the less safe setting gets a reason in a code comment. A test covers each class. The reviewer checks that the list is complete.
+
+The classes that [#981](https://github.com/netresearch/ofelia/pull/981) needed for a config path show the depth this takes:
+
+- the path does not exist
+- the path exists but cannot be read
+- the path is a glob, and a match is a dangling symlink
+- the path is a glob with a glob character in a directory part
+- the path is a glob in a directory the process cannot list
+- the path is a directory
+- the same path on Windows, where `\` separates directories and does not escape a glob character
+
+The Go behaviours behind these cases are described in [filepath-globs.md](https://github.com/netresearch/go-development-skill/blob/main/skills/go-development/references/filepath-globs.md) of the go-development skill.
+
 ## Pull Request Process
 
 1. **Fork and create a branch**: Create a feature branch from `main`

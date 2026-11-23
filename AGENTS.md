@@ -11,6 +11,7 @@ This file explains repo‑wide conventions and where to find scoped rules.
 - Write comprehensive commit message bodies that thoroughly describe every change introduced.
 - Ask first before: adding heavy deps, running full e2e suites, or repo‑wide rewrites.
 - Update `README.md` or files in `docs/` when you change user-facing behavior.
+- Review a change against `CONTRIBUTING.md` § Code Style.
 - **Changelog entries go into `changelog.d/<branch-slug>.<section>.md`**, one
   file per change holding only its bullet(s), not into `## [Unreleased]` of
   `CHANGELOG.md`: two PRs that edit that section conflict as soon as one
