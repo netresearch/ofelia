@@ -7,4 +7,4 @@ package cli
 
 // globMeta holds the characters that make a config path a glob for
 // filepath.Glob; on Windows a backslash separates path elements.
-const globMeta = "*?["
+const globMeta = `*?[\`
