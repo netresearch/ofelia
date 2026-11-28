@@ -11,7 +11,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/creasty/defaults v1.11.0
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.10.0+incompatible
+	github.com/docker/cli v29.10.1+incompatible
 	github.com/docker/go-connections v0.8.2
 	github.com/emersion/go-smtp v0.26.0
 	github.com/go-mail/mail/v2 v2.3.0
